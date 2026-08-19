@@ -165,6 +165,11 @@ Lista os últimos builds com status e link. Fila no plano free é longa
 - **Jobs de release-bot falham** ("Build Release Candidate", "Check PR to
   Release" e afins) — esperado sem o bot do upstream; inofensivo.
 - `eas init` precisa de `node_modules` instalado (usa `semver`).
+- **Dívidas para o futuro** (documentadas no próprio repo): o hook
+  `eas-build-on-success` está comentado no `package.json` (reativar quando
+  houver storage próprio para os artefatos); o owner atual é a conta pessoal
+  `joarez` (para migrar para uma org: criar a org no expo.dev, atualizar
+  `owner` no `app.json`, rodar `link-eas` de novo).
 
 ## Troubleshooting
 
