@@ -17,7 +17,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import {execFileSync, execSync, spawnSync} from 'node:child_process';
+import {execFileSync, spawnSync} from 'node:child_process';
 import process from 'node:process';
 
 const ROOT = process.cwd();
@@ -250,7 +250,7 @@ function cmdApply(args) {
   applyRepl(
     'expo-config-plugins/flagSecure/index.js',
     `// Convert "com.comapeo.dev" => ["com","comapeo","dev"] for example`,
-    `// Convert "${appId}.dev" => [${segs.map(s => `"${s}"`).join(',')},\"dev\"] for example`,
+    `// Convert "${appId}.dev" => [${segs.map(s => `"${s}"`).join(',')},"dev"] for example`,
   );
   applyRepl(
     'expo-config-plugins/flagSecure/index.js',
