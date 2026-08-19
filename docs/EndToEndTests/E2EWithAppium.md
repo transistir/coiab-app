@@ -51,8 +51,8 @@ You can run e2e tests on this build by adding the following properties to your c
       {
          'appium:noReset':true,
          'appium:fullReset': false, // if set to true, it will uninstall the app before each test
-         'appium:appPackage': 'com.comapeo.dev',
-         'appium:appActivity': 'com.comapeo.dev.MainActivity'
+         'appium:appPackage': 'org.coiab.dev',
+         'appium:appActivity': 'org.coiab.dev.MainActivity'
          // remove appium:app
       },
    ],

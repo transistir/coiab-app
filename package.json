@@ -1,5 +1,5 @@
 {
-  "name": "comapeo-mobile",
+  "name": "ekanadyby",
   "version": "1.14.0-pre",
   "private": true,
   "main": "index.js",
@@ -24,7 +24,7 @@
     "build:backend": "node ./scripts/build-backend.mjs",
     "extract-messages": "node scripts/extract-messages.mjs",
     "eas-build-post-install": "npm run build:backend && npm run build:translations && npm run build:intl-polyfills",
-    "eas-build-on-success": "scripts/upload-release.sh",
+    "//eas-build-on-success": "scripts/upload-release.sh (desativado: requer storage MinIO/R2 com credenciais AWS — reativar/remover quando houver storage próprio)",
     "upgrade-deps:all": "npm-check --update --save-exact",
     "upgrade-deps:production": "npm-check --update --save-exact --production",
     "upgrade-deps:dev": "npm-check --update --save-exact --dev-only",

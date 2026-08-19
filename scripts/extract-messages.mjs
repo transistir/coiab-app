@@ -12,8 +12,9 @@ import path from 'node:path';
 import fs from 'node:fs';
 import {writeFile} from 'node:fs/promises';
 import {execSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 
-const PROJECT_ROOT = new URL('../', import.meta.url).pathname;
+const PROJECT_ROOT = fileURLToPath(new URL('../', import.meta.url));
 const OUT_DIR = path.join(PROJECT_ROOT, 'messages', 'en-US');
 const TEMP_FILE = path.join(OUT_DIR, '_all.json');
 const PRIMARY_FILE = path.join(OUT_DIR, 'primary.json');

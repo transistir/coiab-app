@@ -1,4 +1,4 @@
-package com.comapeo.flagsecure; 
+package org.coiab.flagsecure;
 
 import com.facebook.react.bridge.NativeModule;
 import com.facebook.react.bridge.ReactApplicationContext;

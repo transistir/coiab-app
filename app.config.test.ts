@@ -22,29 +22,29 @@ const TEST_CASES = [
   {
     pkgVersion: '1.0.0',
     appVariant: 'development',
-    expectedName: 'CoMapeo Dev',
-    expectedPackage: 'com.comapeo.dev',
+    expectedName: 'Ekanâdyby Dev',
+    expectedPackage: 'org.coiab.dev',
     expectedVersion: '0.0-dev+1234567',
   },
   {
     pkgVersion: '1.6.0',
     appVariant: 'development',
-    expectedName: 'CoMapeo Dev',
-    expectedPackage: 'com.comapeo.dev',
+    expectedName: 'Ekanâdyby Dev',
+    expectedPackage: 'org.coiab.dev',
     expectedVersion: '6.0-dev+1234567',
   },
   {
     pkgVersion: '2.1.3',
     appVariant: 'development',
-    expectedName: 'CoMapeo Dev',
-    expectedPackage: 'com.comapeo.dev',
+    expectedName: 'Ekanâdyby Dev',
+    expectedPackage: 'org.coiab.dev',
     expectedVersion: '1.3-dev+1234567',
   },
   {
     pkgVersion: '10.25.99',
     appVariant: 'development',
-    expectedName: 'CoMapeo Dev',
-    expectedPackage: 'com.comapeo.dev',
+    expectedName: 'Ekanâdyby Dev',
+    expectedPackage: 'org.coiab.dev',
     expectedVersion: '25.99-dev+1234567',
   },
 
@@ -52,29 +52,29 @@ const TEST_CASES = [
   {
     pkgVersion: '1.0.0',
     appVariant: 'production',
-    expectedName: 'CoMapeo',
-    expectedPackage: 'com.comapeo',
+    expectedName: 'Ekanâdyby',
+    expectedPackage: 'org.coiab',
     expectedVersion: '0.0',
   },
   {
     pkgVersion: '1.6.0',
     appVariant: 'production',
-    expectedName: 'CoMapeo',
-    expectedPackage: 'com.comapeo',
+    expectedName: 'Ekanâdyby',
+    expectedPackage: 'org.coiab',
     expectedVersion: '6.0',
   },
   {
     pkgVersion: '2.1.3',
     appVariant: 'production',
-    expectedName: 'CoMapeo',
-    expectedPackage: 'com.comapeo',
+    expectedName: 'Ekanâdyby',
+    expectedPackage: 'org.coiab',
     expectedVersion: '1.3',
   },
   {
     pkgVersion: '10.25.99',
     appVariant: 'production',
-    expectedName: 'CoMapeo',
-    expectedPackage: 'com.comapeo',
+    expectedName: 'Ekanâdyby',
+    expectedPackage: 'org.coiab',
     expectedVersion: '25.99',
   },
 
@@ -82,22 +82,22 @@ const TEST_CASES = [
   {
     pkgVersion: '1.0.0',
     appVariant: 'releaseCandidate',
-    expectedName: 'CoMapeo RC',
-    expectedPackage: 'com.comapeo.rc',
+    expectedName: 'Ekanâdyby RC',
+    expectedPackage: 'org.coiab.rc',
     expectedVersion: '0.0-rc+1234567',
   },
   {
     pkgVersion: '1.6.0',
     appVariant: 'releaseCandidate',
-    expectedName: 'CoMapeo RC',
-    expectedPackage: 'com.comapeo.rc',
+    expectedName: 'Ekanâdyby RC',
+    expectedPackage: 'org.coiab.rc',
     expectedVersion: '6.0-rc+1234567',
   },
   {
     pkgVersion: '2.1.3',
     appVariant: 'releaseCandidate',
-    expectedName: 'CoMapeo RC',
-    expectedPackage: 'com.comapeo.rc',
+    expectedName: 'Ekanâdyby RC',
+    expectedPackage: 'org.coiab.rc',
     expectedVersion: '1.3-rc+1234567',
   },
 
@@ -105,22 +105,22 @@ const TEST_CASES = [
   {
     pkgVersion: '1.0.0',
     appVariant: 'preRelease',
-    expectedName: 'CoMapeo Pre',
-    expectedPackage: 'com.comapeo.pre',
+    expectedName: 'Ekanâdyby Pre',
+    expectedPackage: 'org.coiab.pre',
     expectedVersion: '0.0-pre+1234567',
   },
   {
     pkgVersion: '1.6.0',
     appVariant: 'preRelease',
-    expectedName: 'CoMapeo Pre',
-    expectedPackage: 'com.comapeo.pre',
+    expectedName: 'Ekanâdyby Pre',
+    expectedPackage: 'org.coiab.pre',
     expectedVersion: '6.0-pre+1234567',
   },
   {
     pkgVersion: '2.1.3',
     appVariant: 'preRelease',
-    expectedName: 'CoMapeo Pre',
-    expectedPackage: 'com.comapeo.pre',
+    expectedName: 'Ekanâdyby Pre',
+    expectedPackage: 'org.coiab.pre',
     expectedVersion: '1.3-pre+1234567',
   },
 
@@ -128,22 +128,22 @@ const TEST_CASES = [
   {
     pkgVersion: '1.6.0-pre',
     appVariant: 'development',
-    expectedName: 'CoMapeo Dev',
-    expectedPackage: 'com.comapeo.dev',
+    expectedName: 'Ekanâdyby Dev',
+    expectedPackage: 'org.coiab.dev',
     expectedVersion: '6.0-dev+1234567',
   },
   {
     pkgVersion: '1.6.0-dev',
     appVariant: 'production',
-    expectedName: 'CoMapeo',
-    expectedPackage: 'com.comapeo',
+    expectedName: 'Ekanâdyby',
+    expectedPackage: 'org.coiab',
     expectedVersion: '6.0',
   },
   {
     pkgVersion: '1.6.0-rc.1',
     appVariant: 'releaseCandidate',
-    expectedName: 'CoMapeo RC',
-    expectedPackage: 'com.comapeo.rc',
+    expectedName: 'Ekanâdyby RC',
+    expectedPackage: 'org.coiab.rc',
     expectedVersion: '6.0-rc+1234567',
   },
 ] as const;
@@ -215,10 +215,10 @@ describe('app.config.js', () => {
         // Additional checks
         expect(result.ios.bundleIdentifier).toBe(expectedPackage);
         expect(result.extra.eas.projectId).toBe(
-          '2d5b8137-12ec-45aa-9c23-56b6a1c522b7',
+          '528d108c-46da-4447-a6f2-774248724cde',
         );
         expect(result.updates.url).toBe(
-          'https://u.expo.dev/2d5b8137-12ec-45aa-9c23-56b6a1c522b7',
+          'https://u.expo.dev/528d108c-46da-4447-a6f2-774248724cde',
         );
         expect(result.runtimeVersion.policy).toBe('appVersion');
       });
@@ -230,26 +230,26 @@ describe('app.config.js', () => {
       {
         appVersion: '1.0',
         appVariant: 'development',
-        expectedName: 'CoMapeo Dev',
-        expectedPackage: 'com.comapeo.dev',
+        expectedName: 'Ekanâdyby Dev',
+        expectedPackage: 'org.coiab.dev',
       },
       {
         appVersion: '2.5-dev.1',
         appVariant: 'development',
-        expectedName: 'CoMapeo Dev',
-        expectedPackage: 'com.comapeo.dev',
+        expectedName: 'Ekanâdyby Dev',
+        expectedPackage: 'org.coiab.dev',
       },
       {
         appVersion: '1.0-rc',
         appVariant: 'releaseCandidate',
-        expectedName: 'CoMapeo RC',
-        expectedPackage: 'com.comapeo.rc',
+        expectedName: 'Ekanâdyby RC',
+        expectedPackage: 'org.coiab.rc',
       },
       {
         appVersion: '3.1-pre.5',
         appVariant: 'preRelease',
-        expectedName: 'CoMapeo Pre',
-        expectedPackage: 'com.comapeo.pre',
+        expectedName: 'Ekanâdyby Pre',
+        expectedPackage: 'org.coiab.pre',
       },
     ];
 
