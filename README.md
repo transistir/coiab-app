@@ -1,13 +1,13 @@
-# CoMapeo Mobile
+# Ekanâdyby
 
-The next version of Mapeo Mobile
+Fork do [CoMapeo Mobile](https://github.com/digidem/comapeo-mobile) mantido pela COIAB (coiab.org).
 
 ## Getting started
 
 1. Clone repository
 
    ```sh
-   git clone https://github.com/digidem/comapeo-mobile.git
+   git clone https://github.com/transistir/comapeo-mobile-1.git
    ```
 
 2. Set up the development environment
