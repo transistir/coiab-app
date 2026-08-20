@@ -190,9 +190,12 @@ Lista os últimos builds com status e link. Fila do plano free é variável
   `base` propaga para todos os perfis via `extends`. Quando houver org Sentry
   própria, remova essa linha.
 - **`eas secret:create` foi descontinuado** — use `eas env:set`.
-- **Caminho com caractere não-ASCII** (`â`) quebra scripts que usam
-  `fileURLToPath(...).pathname` (percent-encoding) — o apply corrige os três
-  scripts afetados.
+- **Caminho com caractere não-ASCII** (`â`): `new URL(..., import.meta.url).pathname`
+  retorna o caminho percent-encoded (`Ekan%C3%A2dyby`), não o real — scripts
+  que usam isso criam uma pasta-clone literal `Ekan%C3%A2dyby` ao lado do
+  repo e/ou falham com ENOENT. O apply corrige os três scripts afetados com
+  `fileURLToPath(...)`; se um sync do upstream trouxer script novo usando
+  `.pathname`, aplique a mesma correção.
 - **`requireCommit: true` no `eas.json`** — build EAS só de commit pushado.
 - **Jobs de release-bot**: o fork tem GitHub App próprio (ID 4654934;
   `vars.RELEASE_BOT_APP_ID` + `secrets.RELEASE_BOT_PRIVATE_KEY` no repo) —
