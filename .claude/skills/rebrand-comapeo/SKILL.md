@@ -162,8 +162,12 @@ Lista os últimos builds com status e link. Fila no plano free é longa
   `fileURLToPath(...).pathname` (percent-encoding) — o apply corrige os três
   scripts afetados.
 - **`requireCommit: true` no `eas.json`** — build EAS só de commit pushado.
-- **Jobs de release-bot falham** ("Build Release Candidate", "Check PR to
-  Release" e afins) — esperado sem o bot do upstream; inofensivo.
+- **Jobs de release-bot**: o fork tem GitHub App próprio (ID 4654934;
+  `vars.RELEASE_BOT_APP_ID` + `secrets.RELEASE_BOT_PRIVATE_KEY` no repo) —
+  com ele o `build-rc.yml` gera o APK ao abrir PR para `release/**`, sem
+  nenhum diff de workflow em relação ao upstream. Se "Create GitHub App
+  Token" voltar a falhar: confira essas configs e se o App está instalado no
+  repo com permissões Contents R/W + Pull requests R/W.
 - `eas init` precisa de `node_modules` instalado (usa `semver`).
 - **Dívidas para o futuro** (documentadas no próprio repo): o hook
   `eas-build-on-success` está comentado no `package.json` (reativar quando
