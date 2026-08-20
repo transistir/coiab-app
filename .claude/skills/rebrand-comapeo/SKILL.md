@@ -26,6 +26,38 @@ sincronizável com o upstream, NÃO mude:
 - o workflow `.github/workflows/build-release.yml` — o build dispara ao
   mesclar qualquer PR cujo base é `release/**`; não crie workflow novo
 
+## O que cada perfil EAS gera
+
+| perfil | distribution | artefato | package | nome |
+|---|---|---|---|---|
+| `production` | store | **.aab** (Play Store — não instala direto) | `org.coiab` | Ekanâdyby |
+| `release-candidate` | internal | **.apk** (instalável) | `org.coiab.rc` | Ekanâdyby RC |
+| `pre-release` | internal | **.apk** (instalável) | `org.coiab.pre` | Ekanâdyby Pre |
+
+AAB (Android App Bundle) é o formato que a Play Store consome — o Google
+gera os APKs por dispositivo. Para testar no aparelho use sempre um perfil
+`internal` (`release-candidate`). Os sufixos `.rc`/`.pre` deixam o RC
+coexistir com a produção no mesmo aparelho.
+
+## CI do fork (mapa de gatilhos)
+
+Validado nesta sessão (PRs #3–#5; builds `428185c1`→`6c9725bb`):
+
+| evento | workflow | resultado no fork |
+|---|---|---|
+| abrir PR p/ `release/**` | `build-rc.yml` | ✅ build EAS RC (**APK**) + comentário do bot no PR |
+| mesclar PR em `release/**` | `build-release.yml` | ✅ build EAS produção (**AAB**); jobs de tag/comentário herdaram o App (não re-testados) |
+| push em `develop`/`release/**` | `ci.yml` | ✅ lint + testes (arquivos de `.claude/skills/` entram no lint via `toolingConfig` do `eslint.config.mjs`) |
+| PR p/ `release/**` | `check-pr-to-release.yml` | exige branch de origem `rc/*` (by design; o driver cumpre) |
+| PR p/ `release/**` | `lockfile.yml` | ❌ faltam `LOCKFILE_BOT_*` (dívida 1) |
+| comentário `/build-rc` | `build-bot.yml` → `build-rc.yml` | parcial: falta `RELEASE_BOT_USER_ID` (dívida 2) |
+| — | `e2e-appium-browserstack.yml` | nunca rodou no fork; se rodar, faltam secrets `EXPO` e `BROWSERSTACK_*` |
+
+O GitHub App release-bot do fork: **ID 4654934**, instalado no repo com
+Contents R/W + Pull requests R/W; comentários aparecem como
+`transistir-release-bot`. Nenhum workflow foi modificado em relação ao
+upstream — por isso o App é preferível a patch nos arquivos (ver dívidas).
+
 ## Pré-requisitos
 
 Node 20+, git, `gh` autenticado (dono do fork) e uma conta no expo.dev.
@@ -143,8 +175,8 @@ gh pr merge 1 --repo transistir/comapeo-mobile-1 --merge
 node .claude/skills/rebrand-comapeo/rebrand.mjs build-status
 ```
 
-Lista os últimos builds com status e link. Fila no plano free é longa
-(~1h); o build em si leva minutos.
+Lista os últimos builds com status e link. Fila do plano free é variável
+(observado: ~15min a ~1h) e roda um build por vez; o build em si leva minutos.
 
 ## Gotchas
 
@@ -169,11 +201,14 @@ Lista os últimos builds com status e link. Fila no plano free é longa
   Token" voltar a falhar: confira essas configs e se o App está instalado no
   repo com permissões Contents R/W + Pull requests R/W.
 - `eas init` precisa de `node_modules` instalado (usa `semver`).
-- **Dívidas para o futuro** (documentadas no próprio repo): o hook
-  `eas-build-on-success` está comentado no `package.json` (reativar quando
-  houver storage próprio para os artefatos); o owner atual é a conta pessoal
-  `joarez` (para migrar para uma org: criar a org no expo.dev, atualizar
-  `owner` no `app.json`, rodar `link-eas` de novo).
+- **PRs para `release/**` devem vir de branch `rc/*`** — exigência do
+  `check-pr-to-release.yml` (by design do upstream; o subcomando `release`
+  do driver já cria `rc/vX`). PR de outra branch mergeia igual, mas o check
+  fica vermelho.
+- **Deriva de versões**: após o primeiro release, `develop` continua
+  `X.Y.0-pre` e `release/vX` fica com `X.Y.0` limpo. Para o próximo ciclo,
+  bump o `develop` primeiro (o subcomando `release` lê a versão do
+  `package.json` do checkout atual).
 
 ## Troubleshooting
 
@@ -196,3 +231,47 @@ Lista os últimos builds com status e link. Fila no plano free é longa
 - **Jest: `Cannot find ./translations/index`** → `npm run build:translations`.
 - **apply reporta `missing`** → o upstream mudou os textos-base; confira o
   diff de `git log` do upstream e adapte o from-string no driver.
+
+## Dívidas para o futuro (checklist)
+
+1. **Check Lockfile morto** — `lockfile.yml` usa um segundo App. Resolver:
+   criar variável `LOCKFILE_BOT_APP_ID` com `4654934` e secret
+   `LOCKFILE_BOT_PRIVATE_KEY` com o mesmo `.pem` usado no
+   `RELEASE_BOT_PRIVATE_KEY` (mesmo padrão `gh variable set` /
+   `gh secret set` usado para o RELEASE_BOT).
+2. **Trigger por comentário `/build-rc` parcial** — falta a variável
+   `RELEASE_BOT_USER_ID` (ID numérico do bot) para o passo de cherry-pick
+   release notes; depois testar `build-bot.yml` → `workflow_call`.
+3. **Sentry** — quando houver org/token próprios, remover
+   `SENTRY_DISABLE_AUTO_UPLOAD` do env `base` do `eas.json` (volta o upload
+   de source maps nos builds de release).
+4. **Hook `eas-build-on-success`** comentado no `package.json` — reativar ou
+   remover quando houver storage próprio (MinIO/R2 com credenciais AWS) para
+   os artefatos.
+5. **Owner `joarez` → org `transistir`** — criar a org no expo.dev, mudar
+   `owner` no `app.json`, rodar `link-eas` de novo; migrar/instalar o
+   GitHub App na org também.
+6. **Placeholders de métricas** — `COMAPEO_METRICS_URL=https://metrics.invalid`
+   e `COMAPEO_METRICS_API_KEY=not-configured` nos 3 ambientes EAS e em
+   variável GitHub; trocar quando houver servidor de métricas real.
+7. **Workflows nunca testados no fork** — `post-release-check.yml`,
+   `hotfix-release.yml`, `scheduled-release.yml`, `update-core.yml` (todos
+   usam o App; testar quando esses fluxos forem necessários). Se a private
+   key do App for rotacionada, atualizar os secrets correspondentes.
+
+## Estado atual do fork (snapshot de 2026-08-20)
+
+- **Branches**: `develop` (`1.14.0-pre`, trabalho diário) e `release/v14.0`
+  (`1.14.0`, releases). PRs de release: `rc/vX` → `release/vX`.
+- **Projeto EAS**: `@joarez/ekanadyby`.
+- **GitHub (repo `transistir/comapeo-mobile-1`)**: variáveis
+  `RELEASE_BOT_APP_ID=4654934`, `EAS_PROJECT_URL`, `COMAPEO_METRICS_URL`;
+  secrets `EXPO_TOKEN`, `RELEASE_BOT_PRIVATE_KEY`, `MAPBOX_ACCESS_TOKEN`,
+  `COMAPEO_METRICS_API_KEY`, `APP_VARIANT`.
+- **Builds feitos**: `428185c1` (produção/AAB, primeiro), `57cc781f`
+  (produção/AAB via CI do PR #4), `c2001d56` (RC/APK via CLI), `6c9725bb`
+  (RC/APK — primeiro disparado pelo `build-rc.yml` oficial, PR #5).
+- **Validação da skill**: driver testado num worktree do commit pré-rebrand
+  (`6e2274ab`) — saída byte-idêntica ao rebrand real (`3465e14f`) em 15
+  arquivos; `apply` idempotente (0 aplica / 37 já aplicadas no repo vivo);
+  `verify` verde nos dois.
