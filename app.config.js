@@ -5,7 +5,7 @@ const semverParse = require('semver/functions/parse');
 /** @import {ExpoConfig} from '@expo/config-types' */
 /** @import {AppVariant} from './src/frontend/lib/appVariant' */
 
-const EAS_PROJECT_ID = '2d5b8137-12ec-45aa-9c23-56b6a1c522b7';
+const EAS_PROJECT_ID = '528d108c-46da-4447-a6f2-774248724cde';
 const EAS_UPDATES_URL = 'https://u.expo.dev/' + EAS_PROJECT_ID;
 
 const VALID_APP_VARIANTS = /** @satisfies {readonly AppVariant[]} */ (
@@ -27,7 +27,7 @@ validateAppVersion(APP_VERSION);
 // These constants define the suffixes used for the app name, the app ID (bundle
 // identifier/package name), and the version pre-release suffix based on the
 // APP_VARIANT.
-const APP_ID_BASE = 'com.comapeo';
+const APP_ID_BASE = 'org.coiab';
 const VARIANT_TO_APP_ID_SUFFIX =
   /** @satisfies {Record<AppVariant, string>} */ ({
     development: '.dev',
@@ -35,7 +35,7 @@ const VARIANT_TO_APP_ID_SUFFIX =
     releaseCandidate: '.rc',
     preRelease: '.pre',
   });
-const APP_NAME_BASE = 'CoMapeo';
+const APP_NAME_BASE = 'Ekanâdyby';
 const VARIANT_TO_APP_NAME_SUFFIX =
   /** @satisfies {Record<AppVariant, string>} */ ({
     development: ' Dev',

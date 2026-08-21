@@ -21,8 +21,8 @@ describe('Passcode - Obscure Passcode Mode', () => {
   });
 
   it('should show a blank Observations screen after entering obscure passcode', async () => {
-    await driver.terminateApp('com.comapeo.rc');
-    await driver.activateApp('com.comapeo.rc');
+    await driver.terminateApp('org.coiab.rc');
+    await driver.activateApp('org.coiab.rc');
     if (await driver.isLocked()) await driver.unlock();
     await expect($(byTextMatches('Enter your passcode'))).toBeDisplayed();
     const passcodeField = await $(byResourceId('SETTINGS.auth-passcode-inp'));
@@ -71,8 +71,8 @@ describe('Passcode - Obscure Passcode Mode', () => {
     checkForElementGone(byResourceId('securitySettingsButton'));
   });
   it('should show Observations again after entering regular passcode but not new observation', async () => {
-    await driver.terminateApp('com.comapeo.rc');
-    await driver.activateApp('com.comapeo.rc');
+    await driver.terminateApp('org.coiab.rc');
+    await driver.activateApp('org.coiab.rc');
     if (await driver.isLocked()) await driver.unlock();
     await expect($(byTextMatches('Enter your passcode'))).toBeDisplayed();
 

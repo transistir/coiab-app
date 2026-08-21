@@ -5,8 +5,8 @@ import {handleGPSAlert} from '../../utils/alerts';
 
 describe('MAIN - Observation Navigation Flow', () => {
   it('should start on the Map screen if no observation exists', async () => {
-    await driver.terminateApp('com.comapeo.rc');
-    await driver.activateApp('com.comapeo.rc');
+    await driver.terminateApp('org.coiab.rc');
+    await driver.activateApp('org.coiab.rc');
 
     await expect($(byResourceId('MAIN.mapbox-map-view'))).toBeDisplayed();
   });
@@ -19,8 +19,8 @@ describe('MAIN - Observation Navigation Flow', () => {
   });
 
   it('should navigate to PresetChooser if an observation exists but no preset selected', async () => {
-    await driver.terminateApp('com.comapeo.rc');
-    await driver.activateApp('com.comapeo.rc');
+    await driver.terminateApp('org.coiab.rc');
+    await driver.activateApp('org.coiab.rc');
 
     await expect($(byTextMatches('Choose a category'))).toBeDisplayed();
   });
@@ -33,8 +33,8 @@ describe('MAIN - Observation Navigation Flow', () => {
   });
 
   it('should retain ObservationCreate state when restarting the app', async () => {
-    await driver.terminateApp('com.comapeo.rc');
-    await driver.activateApp('com.comapeo.rc');
+    await driver.terminateApp('org.coiab.rc');
+    await driver.activateApp('org.coiab.rc');
 
     await expect($(byTextMatches('New Observation'))).toBeDisplayed();
   });
@@ -75,8 +75,8 @@ describe('MAIN - Observation Navigation Flow', () => {
     await descriptionInput.click();
     await descriptionInput.setValue('Updated description');
 
-    await driver.terminateApp('com.comapeo.rc');
-    await driver.activateApp('com.comapeo.rc');
+    await driver.terminateApp('org.coiab.rc');
+    await driver.activateApp('org.coiab.rc');
 
     await expect($(byTextMatches('Edit Observation'))).toBeDisplayed();
     //updated description should still be present

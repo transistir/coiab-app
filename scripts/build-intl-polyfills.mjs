@@ -47,10 +47,9 @@ build();
 function build() {
   const locales = getPolyfillableLocales();
 
-  const outputPath = new URL(
-    '../src/frontend/polyfills/intl.ts',
-    import.meta.url,
-  ).pathname;
+  const outputPath = fileURLToPath(
+    new URL('../src/frontend/polyfills/intl.ts', import.meta.url),
+  );
 
   writePolyfillFile(locales, outputPath);
 

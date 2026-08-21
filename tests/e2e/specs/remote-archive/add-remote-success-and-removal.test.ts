@@ -53,8 +53,8 @@ describe('Remote Archive - Add Success Flow', () => {
       archiveAdded = true;
     } catch {
       console.warn('🛑 Remote Archive addition failed — restarting app');
-      await driver.terminateApp('com.comapeo.rc');
-      await driver.activateApp('com.comapeo.rc');
+      await driver.terminateApp('org.coiab.rc');
+      await driver.activateApp('org.coiab.rc');
       await driver.pause(15000);
       return;
     }
@@ -107,8 +107,8 @@ describe('Remote Archive - Add Success Flow', () => {
       cleanupNeeded = true;
     } catch {
       console.warn('🛑 Remote Archive removal failed — restarting app');
-      await driver.terminateApp('com.comapeo.rc');
-      await driver.activateApp('com.comapeo.rc');
+      await driver.terminateApp('org.coiab.rc');
+      await driver.activateApp('org.coiab.rc');
       await driver.pause(15000);
       return;
     }

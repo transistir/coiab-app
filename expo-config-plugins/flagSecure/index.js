@@ -13,7 +13,7 @@ function withFlagSecureModule(config) {
 
       // Patch the actual MainApplication.(kt|java)
       // We'll get the final package name from config.android.package
-      const androidPackage = config.android?.package ?? 'com.comapeo';
+      const androidPackage = config.android?.package ?? 'org.coiab';
       await patchMainApplication(androidRoot, androidPackage);
 
       return config;
@@ -31,8 +31,8 @@ async function copyJavaFiles(androidRoot) {
     'src',
     'main',
     'java',
-    'com',
-    'comapeo',
+    'org',
+    'coiab',
     'flagsecure',
     'FlagSecureModule.java',
   );
@@ -42,8 +42,8 @@ async function copyJavaFiles(androidRoot) {
     'src',
     'main',
     'java',
-    'com',
-    'comapeo',
+    'org',
+    'coiab',
     'flagsecure',
     'FlagSecurePackage.java',
   );
@@ -58,9 +58,9 @@ async function copyJavaFiles(androidRoot) {
  *  - Insert packages.add(FlagSecurePackage()) in getPackages()
  */
 async function patchMainApplication(androidRoot, androidPackage) {
-  // Convert "com.comapeo.dev" => ["com","comapeo","dev"] for example
+  // Convert "org.coiab.dev" => ["org","coiab","dev"] for example
   const segments = androidPackage.split('.');
-  // So your MainApplication is at: android/app/src/main/java/com/comapeo/dev/MainApplication.kt for example
+  // So your MainApplication is at: android/app/src/main/java/org/coiab/dev/MainApplication.kt for example
   const appJavaDir = path.join(
     androidRoot,
     'app',
@@ -85,7 +85,7 @@ async function patchMainApplication(androidRoot, androidPackage) {
   let contents = await fs.readFile(mainAppPath, 'utf8');
 
   // Insert import if missing
-  const importLine = 'import com.comapeo.flagsecure.FlagSecurePackage';
+  const importLine = 'import org.coiab.flagsecure.FlagSecurePackage';
   if (!contents.includes(importLine)) {
     const packageDecl = /^package .*[\r\n]+/m;
     if (packageDecl.test(contents)) {

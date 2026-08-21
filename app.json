@@ -2,13 +2,15 @@
   "expo": {
     "newArchEnabled": false,
     "jsEngine": "hermes",
-    "name": "CoMapeo",
-    "slug": "comapeo",
-    "scheme": "comapeo",
+    "name": "Ekanâdyby",
+    "slug": "ekanadyby",
+    "scheme": "ekanadyby",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "updates": {
       "enabled": false
     },
@@ -22,7 +24,9 @@
       "expo-secure-store",
       "expo-document-picker",
       "react-native-vision-camera",
-      ["@maplibre/maplibre-react-native"],
+      [
+        "@maplibre/maplibre-react-native"
+      ],
       [
         "expo-splash-screen",
         {
@@ -72,12 +76,24 @@
           }
         }
       ],
-      ["./expo-config-plugins/removeExpoInputStyles.js"],
-      ["./expo-config-plugins/targetArmArchsOnly.js"],
-      ["./expo-config-plugins/increaseJavaMemory.js"],
-      ["./expo-config-plugins/flagSecure/index.js"],
-      ["./expo-config-plugins/customPermissionText.js"],
-      ["./expo-config-plugins/removeMediaPlaybackPermission.js"],
+      [
+        "./expo-config-plugins/removeExpoInputStyles.js"
+      ],
+      [
+        "./expo-config-plugins/targetArmArchsOnly.js"
+      ],
+      [
+        "./expo-config-plugins/increaseJavaMemory.js"
+      ],
+      [
+        "./expo-config-plugins/flagSecure/index.js"
+      ],
+      [
+        "./expo-config-plugins/customPermissionText.js"
+      ],
+      [
+        "./expo-config-plugins/removeMediaPlaybackPermission.js"
+      ],
       [
         "react-native-share",
         {
@@ -103,10 +119,13 @@
           "data": [
             {
               "scheme": "https",
-              "host": "app.comapeo.org"
+              "host": "app.coiab.org"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ],
       "permissions": [
@@ -119,16 +138,16 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.CHANGE_WIFI_MULTICAST_STATE"
       ],
-      "package": "com.comapeo"
+      "package": "org.coiab"
     },
     "ios": {
-      "bundleIdentifier": "com.comapeo"
+      "bundleIdentifier": "org.coiab"
     },
+    "owner": "joarez",
     "extra": {
       "eas": {
-        "projectId": "2d5b8137-12ec-45aa-9c23-56b6a1c522b7"
+        "projectId": "528d108c-46da-4447-a6f2-774248724cde"
       }
-    },
-    "owner": "digidem"
+    }
   }
 }

@@ -2,8 +2,8 @@ import {parse} from 'expo-linking';
 import type {LinkingOptions} from '@react-navigation/native';
 import type {AppStackParamsList} from '../sharedTypes/navigation';
 
-// Custom scheme for testing: comapeo://
-// App Links (https): https://app.comapeo.org/
+// Custom scheme for testing: ekanadyby://
+// App Links (https): https://app.coiab.org/
 //
 // The hash fragment (#) is intentionally used for sensitive invite data in the
 // full invite-over-internet flow so it is never sent to the server (per
@@ -12,22 +12,22 @@ import type {AppStackParamsList} from '../sharedTypes/navigation';
 // screen (InviteReceived?) is responsible for parsing window.location.hash /
 // the raw URL when needed to get the secret.
 
-export const DEEP_LINK_HOST = 'app.comapeo.org';
+export const DEEP_LINK_HOST = 'app.coiab.org';
 
 export const linking: LinkingOptions<AppStackParamsList> = {
-  prefixes: ['comapeo://', `https://${DEEP_LINK_HOST}`],
+  prefixes: ['ekanadyby://', `https://${DEEP_LINK_HOST}`],
 };
 
 // For now handles both custom scheme that is useful for preproduction
-// and testing: (comapeo://invite/<id>) and
-// Whatever we end up using (ex. https://app.comapeo.org/invite/<id>).
+// and testing: (ekanadyby://invite/<id>) and
+// Whatever we end up using (ex. https://app.coiab.org/invite/<id>).
 export function parseInviteUrl(url: string): string | null {
   try {
     const parsed = parse(url);
-    // https URLs: scheme=https, hostname=app.comapeo.org, path=invite/abc123
+    // https URLs: scheme=https, hostname=app.coiab.org, path=invite/abc123
     const pathMatch = (parsed.path || '').match(/^invite\/(.+)$/);
     if (pathMatch) return pathMatch[1] ?? null;
-    // Custom scheme URLs: scheme=comapeo, hostname=invite, path=abc123
+    // Custom scheme URLs: scheme=ekanadyby, hostname=invite, path=abc123
     if (parsed.hostname === 'invite' && parsed.path) return parsed.path;
     return null;
   } catch {

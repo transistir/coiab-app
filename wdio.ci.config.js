@@ -36,7 +36,7 @@ const config = {
         browserstackLocal: true,
         testObservability: true,
         testObservabilityOptions: {
-          projectName: 'CoMapeo',
+          projectName: 'Ekanâdyby',
           buildName: `${prTitle || 'Manual Run'} – ${shortSha}`,
         },
       },
@@ -52,7 +52,7 @@ const config = {
       'appium:autoGrantPermissions': true,
       'appium:newCommandTimeout': 150,
       'bstack:options': {
-        projectName: 'CoMapeo',
+        projectName: 'Ekanâdyby',
         buildName: `${prTitle || 'Manual Run'} – ${shortSha}`,
         sessionName: `E2E: ${shortSha}`,
         appiumVersion: '2.12.1',

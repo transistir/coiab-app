@@ -13,7 +13,7 @@ describe('Passcode - Check Passcode Requirements Flow', () => {
     // presses Back
     await driver.pressKeyCode(4);
     await driver.pressKeyCode(3);
-    await driver.activateApp('com.comapeo.rc');
+    await driver.activateApp('org.coiab.rc');
 
     await expect($(byTextMatches('Enter your passcode'))).toBeDisplayed();
 
@@ -25,8 +25,8 @@ describe('Passcode - Check Passcode Requirements Flow', () => {
   });
 
   it('should relaunch app and see Passcode entry screen', async () => {
-    await driver.terminateApp('com.comapeo.rc');
-    await driver.activateApp('com.comapeo.rc');
+    await driver.terminateApp('org.coiab.rc');
+    await driver.activateApp('org.coiab.rc');
 
     await expect($(byTextMatches('Enter your passcode'))).toBeDisplayed();
     await expect($(byResourceId('SETTINGS.auth-passcode-inp'))).toBeDisplayed();
@@ -43,7 +43,7 @@ describe('Passcode - Check Passcode Requirements Flow', () => {
     // presses Back
     await driver.pressKeyCode(4);
     await driver.pressKeyCode(3);
-    await driver.activateApp('com.comapeo.rc');
+    await driver.activateApp('org.coiab.rc');
 
     await expect($(byTextMatches('Enter your passcode'))).toBeDisplayed();
   });
@@ -63,7 +63,7 @@ describe('Passcode - Check Passcode Requirements Flow', () => {
     // some of the older phones and Android versions default to a lock screen
     if (await driver.isLocked()) await driver.unlock();
 
-    await driver.activateApp('com.comapeo.rc');
+    await driver.activateApp('org.coiab.rc');
 
     await expect($(byTextMatches('Enter your passcode'))).toBeDisplayed();
   });
