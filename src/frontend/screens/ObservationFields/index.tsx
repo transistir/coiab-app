@@ -9,8 +9,7 @@ import {Number as NumberField} from './Number';
 import {TextArea} from './TextArea';
 
 import {NativeRootNavigationProps} from '../../sharedTypes/navigation';
-import {useManyDocs} from '@comapeo/core-react';
-import {useActiveProject} from '../../contexts/ActiveProjectContext';
+import {useFieldsQuery} from '../../hooks/server/fields';
 import {HeaderText} from '../../sharedComponents/Text/HeaderText';
 import {
   useDraftObservationActions,
@@ -18,7 +17,7 @@ import {
 } from '../../contexts/DraftObservationContext';
 import {COMAPEO_BLUE} from '../../lib/styles';
 import {usePreventRemove} from '@react-navigation/native';
-import {useLocaleState} from '../../contexts/LocaleStoreContext';
+import {DatePicker} from './Date';
 
 const m = defineMessages({
   nextQuestion: {
@@ -43,18 +42,12 @@ export const ObservationFields = ({
   navigation,
   route,
 }: NativeRootNavigationProps<'ObservationFields'>) => {
-  const {projectId} = useActiveProject();
   const [current, setCurrent] = React.useState(1);
   const {fieldIds} = route.params;
   const {formatMessage} = useIntl();
   const observationId = useDraftObservationState(store => store.id?.docId);
-  const languageTag = useLocaleState(s => s.languageTag);
 
-  const {data: fields} = useManyDocs({
-    projectId,
-    docType: 'field',
-    lang: languageTag,
-  });
+  const {data: fields} = useFieldsQuery();
 
   const {updateTag} = useDraftObservationActions();
   const tags = useDraftObservationState(state => state.value?.tags);
@@ -131,6 +124,11 @@ export const ObservationFields = ({
         />
       ) : field.type === 'number' ? (
         <NumberField
+          updateTag={val => updateTag(tagKey, val)}
+          tagValue={tagValue}
+        />
+      ) : field.type === 'date' ? (
+        <DatePicker
           updateTag={val => updateTag(tagKey, val)}
           tagValue={tagValue}
         />
