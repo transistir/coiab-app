@@ -6,7 +6,7 @@ on:
 jobs:
   capture:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       STORYBOOK_PACKAGE_ID: org.coiab.rc
 
@@ -77,8 +77,7 @@ jobs:
           COMAPEO_METRICS_API_KEY: ${{ secrets.COMAPEO_METRICS_API_KEY }}
         run: |
           npm run extract-messages
-          npx expo prebuild -p android
-          eas build --platform android --profile storybook --local
+          eas build --platform android --profile storybook --local --non-interactive
 
       - name: Locate built APK
         run: echo "APK_PATH=$(ls -t build-*.apk | head -n 1)" >> "$GITHUB_ENV"
