@@ -8,7 +8,7 @@ const defaultBlockList = Array.isArray(config.resolver.blockList)
   ? config.resolver.blockList
   : [config.resolver.blockList];
 
-module.exports = {
+const finalConfig = {
   ...config,
   transformer: {
     ...config.transformer,
@@ -31,3 +31,9 @@ module.exports = {
     unstable_enablePackageExports: true,
   },
 };
+
+const {withStorybook} = require('@storybook/react-native/metro/withStorybook');
+
+module.exports = withStorybook(finalConfig, {
+  enabled: process.env.EXPO_PUBLIC_STORYBOOK_ENABLED === 'true',
+});

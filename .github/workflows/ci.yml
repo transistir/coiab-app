@@ -67,6 +67,8 @@ jobs:
         run: npm run build:translations
       - name: Build Intl polyfills
         run: npm run build:intl-polyfills
+      - name: Generate Storybook index
+        run: EXPO_PUBLIC_STORYBOOK_ENABLED=true npm run storybook-generate
       - name: Check types
         run: npm run lint:types
       - name: Run unit tests
