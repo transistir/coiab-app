@@ -1,0 +1,134 @@
+name: Storybook Flow Capture
+
+on:
+  workflow_dispatch:
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      STORYBOOK_PACKAGE_ID: org.coiab.rc
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Free up space
+        run: |
+          echo "Disk space before cleanup:"
+          df -h
+          sudo rm -rf /usr/local/.ghcup
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo apt-get clean
+          echo "Disk space after cleanup:"
+          df -h
+
+      - name: Cache dependencies
+        id: cache-dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches/
+            ~/.gradle/wrapper/
+            ~/.gradle/daemon/
+            node_modules
+          key: storybook-dependencies-cache-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            storybook-dependencies-cache-
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        if: steps.cache-dependencies.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Build backend
+        run: npm run build:backend
+
+      - name: Generate Storybook index
+        run: EXPO_PUBLIC_STORYBOOK_ENABLED=true npm run storybook-generate
+
+      # A standalone APK with the bundle embedded, built the same way as the
+      # BrowserStack e2e job (eas build --local, .test profile). Deliberately
+      # not a Metro dev-server build: babysitting Metro alongside an emulator
+      # in one job is exactly the fragile pattern that caused repeated
+      # capture failures in local/manual testing, and it's unnecessary here
+      # since the bundle only needs to be built once, not served live.
+      - name: Build standalone Storybook APK
+        env:
+          SENTRY_DISABLE_AUTO_UPLOAD: 'true'
+          EXPO_PUBLIC_STORYBOOK_ENABLED: 'true'
+          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
+          COMAPEO_METRICS_URL: ${{ vars.COMAPEO_METRICS_URL }}
+          COMAPEO_METRICS_API_KEY: ${{ secrets.COMAPEO_METRICS_API_KEY }}
+        run: |
+          npm run extract-messages
+          npx expo prebuild -p android
+          eas build --platform android --profile storybook --local
+
+      - name: Locate built APK
+        run: echo "APK_PATH=$(ls -t build-*.apk | head -n 1)" >> "$GITHUB_ENV"
+
+      - name: Enable KVM group perms
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: AVD cache
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-api35-x86_64-google_apis-v1
+
+      - name: Create AVD snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: echo "AVD snapshot created for caching."
+
+      - name: Capture Storybook flow screenshots
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: |
+            adb install -r "$APK_PATH"
+            scripts/storybook-capture-all.sh storybook-captures
+            node scripts/storybook-report.mjs storybook-captures
+
+      - name: Upload captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: storybook-captures-${{ github.run_number }}
+          path: storybook-captures/
+          retention-days: 30
+          if-no-files-found: warn
