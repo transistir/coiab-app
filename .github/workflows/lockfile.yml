@@ -21,6 +21,9 @@ jobs:
   lockfile_changes:
     name: Lockfile changes check
     runs-on: ubuntu-latest
+    # Requires a GitHub App (LOCKFILE_BOT_APP_ID / LOCKFILE_BOT_PRIVATE_KEY) that
+    # only exists on the upstream repo; skip on forks where it isn't configured.
+    if: vars.LOCKFILE_BOT_APP_ID != ''
     strategy:
       matrix:
         path: [package-lock.json, src/backend/package-lock.json]
