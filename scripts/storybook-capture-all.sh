@@ -162,6 +162,16 @@ printf '%s\n' \
 
 adb wait-for-device
 
+# Each frame's runtime identity check re-reads logcat AFTER the capture
+# command exits, so the `STORYBOOK: Linking event received` line has to
+# survive in the ring buffer for the whole capture. At the default buffer
+# size a chatty interval — a system dump, an ANR, a slow first load — can
+# evict it, which fails the identity check even though the screenshot itself
+# is correct. Enlarge the buffer for this session so eviction can't turn a
+# good frame into a failed run. A failure to set it is not fatal: the
+# default buffer still works for short captures.
+adb logcat -G 16M >/dev/null 2>&1 || echo "storybook-capture-all: could not enlarge the logcat buffer; continuing with the default size" >&2
+
 # A runtime permission dialog (the add-photo flow asks for the camera on first
 # use) is a system window this script can neither see nor dismiss, so it stalls
 # readiness in a way that is indistinguishable from a hung screen. Pre-grant
@@ -273,7 +283,12 @@ for ((index = 0; index < record_count; index += 1)); do
   fi
   expected_log="STORYBOOK: Linking event received, navigating to story: $story_id"
   if ! grep -Fqx -- "$expected_log" <<<"$runtime_logs"; then
-    fail "runtime identity check failed at position $position for story: $story_id"
+    # Keep what logcat did hold next to the frame. Without this the failure
+    # is undiagnosable after the fact: the frame can be perfectly correct
+    # and the line merely evicted from the ring buffer, which looks
+    # identical to the app never having received the deep link.
+    printf '%s\n' "$runtime_logs" >"${frame_path%.png}.failure-reactnative-logcat.txt" 2>/dev/null || true
+    fail "runtime identity check failed at position $position for story: $story_id (expected line: $expected_log)"
   fi
   # Native readiness is not re-checked here: the capture command already
   # asserts the marker in a UI dump taken immediately before and immediately

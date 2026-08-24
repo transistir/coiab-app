@@ -5,7 +5,7 @@ description: Generate and verify CoMapeo React Native Storybook flow screenshots
 
 # CoMapeo Storybook capture
 
-Use this project skill when regenerating the Storybook bundle, launching the
+Use this skill when regenerating the Storybook bundle, launching the
 Android app, or collecting the documented user-flow screenshots.
 
 ## Golden path
@@ -35,11 +35,18 @@ Android app, or collecting the documented user-flow screenshots.
    node scripts/storybook-report.mjs /tmp/storybook-captures-<run>
    ```
 
-4. A usable run contains 12 PNGs, `captures.tsv`, the flow reports,
-   `cold-start-provenance.txt`, and the leaf-recovery PNG. Compare ledger
-   identity/order fields across independent cold runs before accepting the
-   result. Inspect onboarding PNGs to ensure they show named screens rather
-   than `FlowStatePlaceholder`.
+4. A usable run contains one PNG per manifest row — never a fixed number, the
+   manifest is the source of truth and grows — plus `captures.tsv`, the flow
+   reports, `cold-start-provenance.txt`, and the leaf-recovery PNG:
+
+   ```sh
+   find /tmp/storybook-captures-<run> -name '*.png' | wc -l
+   wc -l < .rnstorybook/capture-manifest.tsv   # must match
+   ```
+
+   Compare ledger identity/order fields across independent cold runs before
+   accepting the result. Inspect onboarding PNGs to ensure they show named
+   screens rather than `FlowStatePlaceholder`.
 
 ## Disposable local environment
 
@@ -57,7 +64,8 @@ Android app, or collecting the documented user-flow screenshots.
 
 - A capture that stops at a current native readiness check is partial, even
   when earlier PNGs exist. Preserve that directory and record the first
-  failing story; do not report it as a complete 12-screen generation.
+  failing story; do not report it as a complete generation. A generation is
+  complete only when its PNG count equals the manifest row count.
 
 ## Known failure handling
 
@@ -104,7 +112,61 @@ before re-debugging from scratch:
   `if cond; then fn || true; fi` instead.
 - On a capture timeout, write failure diagnostics (logcat, UI hierarchy
   dump, screenshot) next to the expected output before exiting 1 — otherwise
-  the uploaded CI artifact gives no clue why it failed.
+  the uploaded CI artifact gives no clue why it failed. The same applies to
+  the runtime identity check in `storybook-capture-all.sh`: it used to fail
+  with nothing retained, which cost two full CI cycles to diagnose.
+- The `STORYBOOK: Linking event received` line the identity check looks for
+  has to survive in logcat's ring buffer for the whole capture, because that
+  check re-reads logcat *after* the capture command exits. A chatty interval
+  evicts it, and an evicted line is indistinguishable from the app never
+  having received the deep link — the run fails while the frame it produced
+  is perfectly correct. The buffer is enlarged once per session
+  (`adb logcat -G 16M`) to prevent this.
+- Storybook switches stories through a deep link and never dismisses the
+  IME, so a keyboard raised by one story (an autofocused `TextInput`) stays
+  up and covers the bottom of every later frame. `storybook-capture.sh`
+  now checks `dumpsys input_method` for `mInputShown` and hides it with
+  KEYCODE_ESCAPE — not KEYCODE_BACK, which would pop the navigation stack
+  on the majority of rows where no keyboard is showing.
+
+## Verify before burning a CI run
+
+A full capture run costs roughly 30-50 minutes (a local EAS build plus one
+emulator interaction per manifest row; 12 rows ran in ~29 min, 38 rows fits
+inside a 90-minute job). Both offline checks below run in seconds and catch
+the mistakes that otherwise fail the run at row 1:
+
+```sh
+# Every manifest story id must resolve against the source story index —
+# the same check the capture wrapper runs before it touches a device.
+node -e "const {buildIndex}=require('@storybook/react-native/node');const fs=require('fs');const ids=fs.readFileSync('.rnstorybook/capture-manifest.tsv','utf8').trim().split('\n').map(l=>l.split('\t')[1]);buildIndex({configPath:'.rnstorybook'}).then(i=>{const m=ids.filter(id=>!(id in i.entries));console.log(m.length?'MISSING: '+m.join(', '):'ALL '+ids.length+' IDS PRESENT')})"
+```
+
+A runtime story id is the kebab-cased meta `title` path plus `--` plus the
+kebab-cased **export name**; a `name:` override does not change it. Also
+confirm every route name used in an `initialState` is actually registered as
+a screen in `Navigation/Stack/AppScreens.tsx` — `RootStackParamsList`
+declares at least one key (`Settings`) that is never registered and is not
+navigable.
+
+## A green capture run does not mean good frames
+
+The readiness checks assert that a story's marker and its route/testID marker
+are present in the Android view hierarchy. They say nothing about whether
+something is *covering* the screen. A run can report 38/38 passed while half
+the frames are occluded — this happened, with a stuck soft keyboard hiding
+~45% of 20 consecutive frames, and every check green.
+
+Always open the PNGs before accepting a run. Cheap signals that something is
+wrong without looking at all of them:
+
+- A sharp, sustained change in ledger byte sizes partway through the run.
+- Frames from a screen you know is mostly empty coming back unexpectedly
+  large.
+
+Note also that some frames are legitimately not byte-stable between runs, so
+compare those by eye rather than by size: any screen showing native
+device-info values (About) or live location (the coordinate-format examples).
 
 ## Provenance
 

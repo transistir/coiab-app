@@ -29,7 +29,7 @@ export type NavigatorScreenLayout = NonNullable<
   React.ComponentProps<typeof RootStack.Navigator>['screenLayout']
 >;
 
-const NavigatorScreenOptions: NativeStackNavigationOptions = {
+export const NavigatorScreenOptions: NativeStackNavigationOptions = {
   presentation: 'card',
   contentStyle: {backgroundColor: WHITE},
   headerStyle: {backgroundColor: WHITE},

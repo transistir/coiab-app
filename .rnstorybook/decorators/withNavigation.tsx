@@ -17,6 +17,9 @@ import {createNativeStackNavigator} from '@react-navigation/native-stack';
 export const withNavigation: Decorator = (Story, context) => {
   const Stack = createNativeStackNavigator();
   const params = context.parameters?.navigation?.params;
+  const options = context.parameters?.navigation?.options ?? {
+    headerShown: false,
+  };
 
   return (
     <NavigationContainer>
@@ -25,7 +28,7 @@ export const withNavigation: Decorator = (Story, context) => {
           name="StoryScreen"
           component={Story}
           initialParams={params}
-          options={{headerShown: false}}
+          options={options}
         />
       </Stack.Navigator>
     </NavigationContainer>

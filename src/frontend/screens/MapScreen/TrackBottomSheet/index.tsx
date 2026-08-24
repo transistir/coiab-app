@@ -108,14 +108,14 @@ export const TrackBottomSheet = React.memo(() => {
   const isE2E = process.env.EXPO_PUBLIC_E2E_TEST === 'true';
   if (isE2E) {
     return (
-      <View style={styles.container}>
+      <View style={styles.container} testID="MAP:track-bottom-sheet">
         <View style={styles.animatedBackground}>{renderContent()}</View>
       </View>
     );
   } else
     return (
       // Semi hacky, but without this <View> the animated view bounces too far initially and then bounces back down to adjust.
-      <View style={styles.container}>
+      <View style={styles.container} testID="MAP:track-bottom-sheet">
         <Animated.View
           style={styles.animatedBackground}
           entering={SlideInDown.duration(250)}

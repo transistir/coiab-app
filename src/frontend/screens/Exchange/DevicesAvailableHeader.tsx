@@ -14,7 +14,7 @@ export const DevicesAvailableHeader = ({
   showOverlay: boolean;
 }) => {
   return (
-    <View style={styles.wrapper}>
+    <View testID="EXCHANGE.devices-available-header" style={styles.wrapper}>
       <View style={[styles.circle, {borderColor: iconColor}]}>
         <SyncIcon size={28} color={iconColor} />
       </View>

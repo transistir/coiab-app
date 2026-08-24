@@ -4,13 +4,23 @@ There are two different kinds of stories in this Storybook:
 
 - **Leaf stories** exercise one screen or component in isolation. Use the
   `withNavigation` decorator when the component needs ordinary navigation
-  context. The decorator mounts the story component inside its small stack.
+  context. The decorator mounts the story component inside its small stack,
+  hides the header by default, and accepts per-story screen options through
+  `parameters.navigation.options` when the real app header is part of the
+  capture.
 - **Flow stories** exercise a user journey through the app's real navigation.
   Use `withRealNavigator`. The real `RootStackNavigator` is mounted by the
   decorator, so the story function is only a Storybook placeholder and should
   render `null` (or a short, non-essential legend). The decorator renders
   everything visible; do not put a second screen or navigator in the story
   function.
+- **Non-route flow stories** exercise something the capture manifest lists
+  that isn't a navigation route — `DrawerMenu` (rendered by
+  `react-native-drawer-layout` with component-local open/closed state, so
+  `withRealNavigator`'s `initialState` can't reach it) or a full screen whose
+  live presentation state cannot be seeded through `FlowStateSpec`. Use
+  `withFlowState`, described below, combined with `withNavigation` (or another
+  navigation decorator) when the component also calls navigation hooks.
 
 ## Flow story shape
 
@@ -46,6 +56,38 @@ The `lockedApp`/`auth: 'unauthenticated'` preset is currently limited: changing
 the passcode does not update `AuthContext`'s already-mounted auth state. Use a
 fresh app boot when a flow must visibly start at `AuthScreen`.
 
+## withFlowState (non-route flow stories)
+
+`withFlowState` is the flow-state half of `withRealNavigator`, without the
+navigator. It applies `parameters.flow.state` the same way, but doesn't mount
+`RootStackNavigator` and has no `initialState` concept, since there's no
+navigator to seed a back-stack in.
+
+`scripts/storybook-capture.sh` requires the `STORYBOOK.flow-ready.<storyId>`
+marker to be present in the Android UI hierarchy for **every** manifest row,
+whatever readiness target that row uses. `withRealNavigator` was previously
+the only decorator that rendered it; `withFlowState` now renders the same
+marker, so any non-route story can be captured too.
+
+`parameters.flow.state` is optional on `withFlowState`: a story that needs no
+seeded backend state can use the decorator purely to obtain the marker
+(`useFlowState(undefined)` resolves on the first render).
+
+### Exchange full-screen state fixtures
+
+`Exchange/Screen` replaces the removed `Exchange/DevicesAvailableHeader` and
+`Exchange/WifiCard` leaf stories. Each story renders the complete
+`ExchangeScreenContent` composition, including the app's real navigation
+header, against an `onboardedWithData` project.
+
+`ExchangeScreenContent` exposes an optional Storybook-only `overrides` prop for
+live values that cannot be seeded on a CI emulator: Wi-Fi SSID, sync progress,
+archive-device status, and remote-archive connection status. A story may use
+this seam only when it renders the real full screen and the desired state has
+no `FlowStateSpec` axis. Every field is optional; `undefined` preserves the
+hook's live value, including for fields where `null` is a meaningful fixture.
+The shipping `SyncScreen` never passes the prop.
+
 After adding or renaming stories, regenerate Storybook's story index before
 selecting or deep-linking to them:
 
@@ -79,6 +121,23 @@ current Android UI hierarchy. The markers are updated by the navigator's
 current-state callbacks; a historical route log cannot certify a later frame.
 The Home story uses the story-specific marker plus `MAIN.map-screen` because
 the root route is `Home` while the visible nested tab is `Map`.
+
+Choose `route:<Name>` for a story on a plain stack screen reached through
+`withRealNavigator`'s `initialState`. Choose a `testID:` marker for anything
+rendered inside `Home`'s nested tab navigator (as above, since its current
+route isn't `Home`) or for any `withFlowState` story, since a non-route
+story has no navigator route to certify against.
+
+Before each screenshot the capture command dismisses the Android soft
+keyboard if one is showing. Storybook switches stories through a deep link
+and never closes the IME, so a keyboard raised by one story (an autofocused
+`TextInput`, for example) otherwise stays up and covers the bottom of every
+later story's frame — and no readiness marker catches it, because the markers
+assert route/testID presence, not occlusion. A keyboard that will not close
+fails the capture rather than producing an occluded frame. One consequence
+worth knowing when reviewing frames: the text-entry screens (device name
+edit, set passcode) are captured with their form fully visible and no
+keyboard over it.
 
 The capture command validates every runtime ID against the source story index,
 requires exact story selection before checking the target, captures each row in
