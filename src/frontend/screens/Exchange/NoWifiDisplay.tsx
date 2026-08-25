@@ -73,7 +73,6 @@ export const NoWifiDisplay = ({onGoBack}: {onGoBack: () => void}) => {
           <HeaderText variant="header2" style={{textAlign: 'center'}}>
             {t(m.title)}
           </HeaderText>
-          <View style={{height: 165}} />
           <HeaderText
             variant="header6"
             style={{
@@ -93,6 +92,7 @@ const styles = StyleSheet.create({
   contentContainer: {
     paddingVertical: 20,
     gap: 10,
+    flexGrow: 1,
   },
   wifiCard: {
     alignItems: 'center',
@@ -149,8 +149,16 @@ const styles = StyleSheet.create({
   exchangeSettingsCard: {
     marginTop: 25,
     alignItems: 'center',
+    // Mirrors the flexible spacer ExchangeScreenContent puts around its own
+    // settings card: the title stays at the top of the space left inside the
+    // border and the description at the bottom, at any viewport height. This
+    // replaced a hardcoded `height: 165` spacer that pushed the card past the
+    // bottom of a Pixel 5 once the screen was rendered under its real header.
+    flexGrow: 1,
+    justifyContent: 'space-between',
   },
   contentWrapper: {
+    flexGrow: 1,
     borderWidth: 1,
     borderColor: BLUE_GREY,
     borderRadius: 10,
