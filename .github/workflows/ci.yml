@@ -28,6 +28,8 @@ jobs:
         run: npm run lint:prettier
       - name: Run ESLint
         run: npm run lint:eslint
+      - name: Run shell script fixtures
+        run: npm run test:scripts
 
   backend:
     runs-on: ubuntu-latest

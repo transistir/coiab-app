@@ -29,6 +29,7 @@
     "upgrade-deps:production": "npm-check --update --save-exact --production",
     "upgrade-deps:dev": "npm-check --update --save-exact --dev-only",
     "test:jest": "dotenv -- jest",
+    "test:scripts": "bash scripts/storybook-fixtures.sh",
     "test:e2e:nobuild": "wdio run ./wdio.local.config.js",
     "test:e2e:build": "npm run build:android:e2e && npm run test:e2e:nobuild",
     "storybook-generate": "sb-rn-get-stories",
