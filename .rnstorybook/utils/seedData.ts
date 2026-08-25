@@ -134,6 +134,41 @@ export function useSeedObservations(count: number, options?: {lang?: string}) {
 }
 
 /**
+ * Pick the point preset a draft-backed flow story should render, from the
+ * presets a project's config exposes.
+ *
+ * Deterministic *across* capture runs, not just within one. Every run seeds a
+ * fresh project, so `docId` — which is generated when the config is written —
+ * is a different value each time; ordering by it produced a different preset
+ * on every run while looking stable in the code. `name` comes from the config
+ * itself, so it survives project re-creation, and it makes the choice legible:
+ * a reviewer can tell which preset a frame should show by reading the config
+ * rather than by running a capture.
+ *
+ * Compared by code unit rather than by `localeCompare`, whose ordering depends
+ * on the ICU data available to the runtime. `docId` breaks ties, which only
+ * matters for a config that ships two point presets under one name.
+ */
+export function selectPointPreset(
+  presets: ReadonlyArray<Preset>,
+  options?: {requireFields?: boolean},
+): Preset | undefined {
+  const requireFields = options?.requireFields ?? false;
+
+  return presets
+    .filter(
+      preset =>
+        preset.geometry.includes('point') &&
+        (!requireFields || preset.fieldRefs.length > 0),
+    )
+    .sort((a, b) => {
+      if (a.name !== b.name) return a.name < b.name ? -1 : 1;
+      if (a.docId !== b.docId) return a.docId < b.docId ? -1 : 1;
+      return 0;
+    })[0];
+}
+
+/**
  * Resolve the deterministic point preset used by draft-backed flow stories.
  * This only reads project config; applying the preset remains the draft
  * store's responsibility.
@@ -150,14 +185,7 @@ export function useSeedPointPreset(options?: {
     async (projectId: string): Promise<Preset> => {
       const projectApi = await clientApi.getProject(projectId);
       const presets = await projectApi.preset.getMany({lang});
-      const eligiblePresets = presets
-        .filter(
-          preset =>
-            preset.geometry.includes('point') &&
-            (!requireFields || preset.fieldRefs.length > 0),
-        )
-        .sort((a, b) => (a.docId < b.docId ? -1 : a.docId > b.docId ? 1 : 0));
-      const preset = eligiblePresets[0];
+      const preset = selectPointPreset(presets, {requireFields});
 
       if (!preset) {
         throw new Error(
