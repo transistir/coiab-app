@@ -88,6 +88,13 @@ no `FlowStateSpec` axis. Every field is optional; `undefined` preserves the
 hook's live value, including for fields where `null` is a meaningful fixture.
 The shipping `SyncScreen` never passes the prop.
 
+That restriction is enforced rather than merely documented: the
+`storybook/no-seam-outside-stories` ESLint rule
+([`eslint-rules/storybook.js`](../eslint-rules/storybook.js)) errors on the
+`overrides` prop and on any import of `ExchangeScreenContentOverrides` outside
+`*.stories.tsx`. Without it a production call site would type-check, lint clean
+and pass CI while rendering fixtured Wi-Fi and peer state to a real user.
+
 After adding or renaming stories, regenerate Storybook's story index before
 selecting or deep-linking to them:
 

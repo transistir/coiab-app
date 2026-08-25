@@ -17,6 +17,7 @@ import {createRequire} from 'node:module';
 const require = createRequire(import.meta.url);
 const pluginIntl = require('./eslint-rules/intl.js');
 const pluginReactNativeCustom = require('./eslint-rules/react-native.js');
+const pluginStorybookCustom = require('./eslint-rules/storybook.js');
 
 const gitignorePath = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -76,11 +77,27 @@ const frontendConfig = pluginTs.config(
     plugins: {
       intl: pluginIntl,
       'react-native': pluginReactNativeCustom,
+      storybook: pluginStorybookCustom,
     },
     rules: {
       'intl/no-unused-message-descriptors': 'error',
       'intl/no-duplicate-message-descriptor-ids': 'error',
       'react-native/no-single-element-style-arrays': 'error',
+      // Storybook-only seams live in app source and look like supported API.
+      // Switched off for *.stories.tsx below, which is the only legitimate
+      // caller. See eslint-rules/storybook.js and .rnstorybook/README.md.
+      'storybook/no-seam-outside-stories': [
+        'error',
+        {
+          seams: [
+            {
+              component: 'ExchangeScreenContent',
+              prop: 'overrides',
+              types: ['ExchangeScreenContentOverrides'],
+            },
+          ],
+        },
+      ],
       // Duplicate of react-hooks/set-state-in-effect, already set to warn below
       '@eslint-react/set-state-in-effect': 'off',
       // Some React Native libraries use the subscription return approach
@@ -108,6 +125,14 @@ const frontendConfig = pluginTs.config(
     },
     languageOptions: {
       parser: tsParser,
+    },
+  },
+  {
+    name: 'stories',
+    files: ['src/frontend/**/*.stories.{js,jsx,ts,tsx}'],
+    rules: {
+      // The one place a Storybook-only seam is allowed to be used.
+      'storybook/no-seam-outside-stories': 'off',
     },
   },
   {
