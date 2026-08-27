@@ -132,12 +132,24 @@ native_readiness_matches() {
   esac
 }
 
-# Under emulator resource pressure, Android's own "isn't responding" ANR
+# Under emulator resource pressure, Android's own "isn't responding" (ANR)
 # dialog (e.g. for Pixel Launcher, unrelated to our app) can appear as a
-# system-level overlay and block every readiness check indefinitely, even
-# though the app screen underneath is already correct. Dismiss it via its
-# "Wait" button and let the caller's own poll loop re-check — this is not a
-# real failure, just a transient system hiccup to wait out.
+# system-level overlay on top of an otherwise-ready screen. The readiness
+# markers only assert route/testID presence in the view hierarchy, so a dump
+# containing both the app's markers and the ANR dialog passes readiness while
+# the dialog occludes the screen — the same shape of defect the soft-keyboard
+# guard exists for. Read-only predicate (no adb calls); takes the hierarchy
+# dump the caller already has.
+anr_dialog_is_shown() {
+  local hierarchy=$1
+  grep -Fq 'resource-id="android:id/aerr_wait"' <<<"$hierarchy"
+}
+
+# Dismiss the ANR dialog by tapping its "Wait" button and sleeping briefly to
+# let it clear. Returns 0 if a dialog was found and tapped, 1 if no dialog was
+# present in the given hierarchy. The caller re-dumps and re-checks readiness
+# after this returns, since tapping "Wait" takes a moment to dismiss the
+# dialog and the app underneath may need time to settle.
 dismiss_anr_dialog_if_present() {
   local hierarchy=$1
   local bounds
@@ -210,6 +222,7 @@ write_capture_failure_diagnostics() {
 assert_current_native_readiness() {
   local timing=$1
   local dump_deadline=$((SECONDS + 30))
+  local anr_dismiss_attempts=0
   local hierarchy
 
   while :; do
@@ -220,6 +233,22 @@ assert_current_native_readiness() {
       continue
     fi
     if native_readiness_matches "$hierarchy"; then
+      # Readiness markers cannot see occlusion (#67): a dump containing both
+      # the app's markers and the ANR dialog passes readiness while the dialog
+      # covers the screen. Dismiss it and re-run the whole dump/check cycle
+      # rather than accept it, and fail the capture once the dialog survives
+      # repeated dismissals — exactly as a stuck keyboard fails it.
+      if anr_dialog_is_shown "$hierarchy"; then
+        if (( anr_dismiss_attempts >= 3 )); then
+          write_capture_failure_diagnostics
+          echo "storybook-capture: aborting capture for story: $story_id because an 'isn't responding' system dialog kept occluding the screen $timing" >&2
+          return 1
+        fi
+        dismiss_anr_dialog_if_present "$hierarchy" || true
+        anr_dismiss_attempts=$((anr_dismiss_attempts + 1))
+        (( SECONDS < dump_deadline )) || break
+        continue
+      fi
       return 0
     fi
     if dismiss_anr_dialog_if_present "$hierarchy"; then
@@ -255,8 +284,14 @@ while (( SECONDS < deadline )); do
       fi
 
       if (( SECONDS >= ui_probe_at )); then
+        # Same occlusion guard as assert_current_native_readiness (#67):
+        # readiness passing is not sufficient while an ANR dialog covers the
+        # screen. When the dialog is up, fall through to the dismissal branch
+        # and let the loop re-probe in 2s; capture_ready is only set once a
+        # dump passes readiness with no dialog on top of it.
         if ui_dump=$(timeout 10 adb exec-out uiautomator dump /dev/tty 2>/dev/null) &&
-          native_readiness_matches "$ui_dump"; then
+          native_readiness_matches "$ui_dump" &&
+          ! anr_dialog_is_shown "$ui_dump"; then
           capture_ready=true
           break
         fi

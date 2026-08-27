@@ -68,6 +68,7 @@ capture_out="$capture_root/frames"
 capture_calls="$capture_root/adb-calls.txt"
 capture_ime_counter="$capture_root/ime-count"
 capture_dump_counter="$capture_root/dump-count"
+capture_anr_state="$capture_root/anr-state"
 mkdir -p -- "$capture_bin" "$capture_out"
 
 # Fake `adb`. Records every invocation to $FAKE_ADB_CALLS so ordering
@@ -127,6 +128,15 @@ if [[ ${1:-} == exec-out && ${2:-} == uiautomator && ${3:-} == dump ]]; then
     if [[ -n ${FAKE_ADB_BAD_TEST_ID:-} ]]; then ready_test_id=wrong.test-id; fi
     printf '<node resource-id="%s" />' "$ready_test_id"
   fi
+  # An ANR dialog on top of the ready screen (#67): included from the start
+  # with FAKE_ANR_DIALOG=1, or from dump N with FAKE_ANR_DIALOG_FROM=N, until
+  # the script taps its "Wait" button (which flips FAKE_ANR_STATE), unless
+  # FAKE_ANR_DIALOG_STUCK=1 makes it survive every dismissal.
+  if [[ -n ${FAKE_ANR_DIALOG:-} ||
+    ( -n ${FAKE_ANR_DIALOG_FROM:-} && dump_count -ge ${FAKE_ANR_DIALOG_FROM} ) ]] &&
+    [[ $(<"$FAKE_ANR_STATE") != dismissed ]]; then
+    printf '<node resource-id="android:id/aerr_wait" bounds="[100,100][300,160]" />'
+  fi
   printf '</hierarchy>\n'
   exit 0
 fi
@@ -150,7 +160,14 @@ if [[ ${1:-} == shell && ${2:-} == dumpsys && ${3:-} == input_method ]]; then
   exit 0
 fi
 
-if [[ ${1:-} == shell && ${2:-} == input ]]; then exit 0; fi
+if [[ ${1:-} == shell && ${2:-} == input ]]; then
+  # Tapping the fake ANR dialog's "Wait" button dismisses it, unless the
+  # fixture pins it as stuck.
+  if [[ ${3:-} == tap && -z ${FAKE_ANR_DIALOG_STUCK:-} ]]; then
+    printf 'dismissed\n' >"$FAKE_ANR_STATE"
+  fi
+  exit 0
+fi
 
 if [[ ${1:-} == shell && ${2:-} == screencap ]]; then exit 0; fi
 
@@ -192,6 +209,7 @@ run_capture() {
   : >"$capture_calls"
   printf '0\n' >"$capture_ime_counter"
   printf '0\n' >"$capture_dump_counter"
+  printf 'none\n' >"$capture_anr_state"
   (
     cd -- "$capture_root"
     env \
@@ -199,6 +217,7 @@ run_capture() {
       FAKE_ADB_CALLS="$capture_calls" \
       FAKE_IME_COUNTER="$capture_ime_counter" \
       FAKE_DUMP_COUNTER="$capture_dump_counter" \
+      FAKE_ANR_STATE="$capture_anr_state" \
       FAKE_STORY_ID="$capture_story_id" \
       FAKE_READY_ROUTE=IntroToCoMapeo \
       STORYBOOK_READY_TARGET=route:IntroToCoMapeo \
@@ -392,6 +411,49 @@ assert_call_count 'shell screencap -p /sdcard/storybook-capture.png' 0
 run_capture ime-dumpsys-unavailable FAKE_IME_DUMPSYS_FAILS=1 >/dev/null 2>&1
 assert_frame_written
 assert_call_count 'shell input keyevent 111' 0
+
+# --- ANR dialog occlusion (#67) ----------------------------------------------
+
+# An ANR dialog on top of an otherwise-ready screen during the readiness wait:
+# the probe dump contains both the markers and `aerr_wait`, so pre-#67 code
+# declared the screen ready and shot through the dialog. Now: the probe must
+# refuse, dismiss, re-probe clean, and only then capture. The 0.5s poll sleeps
+# between probes make an exact timeline brittle here, so assert the tap, the
+# dump count and the frame instead.
+run_capture anr-during-wait FAKE_ANR_DIALOG=1 STORYBOOK_READY_TIMEOUT=8 >/dev/null 2>&1
+assert_frame_written
+assert_call_count 'shell input tap 200 130' 1
+assert_call_count 'exec-out uiautomator dump /dev/tty' 4
+assert_call_count 'shell screencap -p /sdcard/storybook-capture.png' 1
+
+# The dialog appears only at settle time (dump 2 is the 'immediately before
+# screenshot' check): markers+dialog must not pass, one dismissal happens, and
+# the re-dump clean returns success. Exact ordering assertable: the dismiss
+# pause sits between the two dumps of the assert's retry loop.
+run_capture anr-at-settle FAKE_ANR_DIALOG_FROM=2 >/dev/null 2>&1
+assert_frame_written
+assert_timeline 'exec-out uiautomator dump /dev/tty
+shell dumpsys input_method
+sleep 1.5
+shell dumpsys input_method
+exec-out uiautomator dump /dev/tty
+sleep 1
+exec-out uiautomator dump /dev/tty
+shell dumpsys input_method
+shell screencap -p
+exec-out uiautomator dump /dev/tty
+shell dumpsys input_method'
+assert_call_count 'shell input tap 200 130' 1
+
+# A dialog that survives dismissal: exactly three taps, then the capture fails
+# as a stuck keyboard. The sixth dump is write_capture_failure_diagnostics
+# re-reading the hierarchy for the failure artifact.
+expect_failure 1 'kept occluding the screen immediately before screenshot' \
+  run_capture anr-stuck FAKE_ANR_DIALOG_FROM=2 FAKE_ANR_DIALOG_STUCK=1
+assert_no_frame_written
+assert_diagnostics_written
+assert_call_count 'shell input tap 200 130' 3
+assert_call_count 'shell screencap -p /sdcard/storybook-capture.png' 0
 
 echo 'storybook-capture fixtures: PASS'
 
