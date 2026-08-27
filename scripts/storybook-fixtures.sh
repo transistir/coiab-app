@@ -231,7 +231,7 @@ run_capture() {
 # The device-facing steps whose order is the invariant, with the volatile
 # `mktemp` path in the `pull` line trimmed off.
 capture_timeline() {
-  grep -E '^(shell dumpsys input_method|shell input keyevent |shell screencap |exec-out uiautomator dump|sleep )' \
+  grep -E '^(shell dumpsys input_method|shell input (keyevent |tap )|shell screencap |exec-out uiautomator dump|sleep )' \
     "$capture_calls" | sed 's#^shell screencap -p .*#shell screencap -p#'
 }
 
@@ -298,6 +298,7 @@ exec-out uiautomator dump /dev/tty
 shell dumpsys input_method
 shell screencap -p
 exec-out uiautomator dump /dev/tty
+exec-out uiautomator dump /dev/tty
 shell dumpsys input_method'
 assert_call_count 'shell input keyevent 111' 0
 
@@ -354,6 +355,7 @@ exec-out uiautomator dump /dev/tty
 shell dumpsys input_method
 shell screencap -p
 exec-out uiautomator dump /dev/tty
+exec-out uiautomator dump /dev/tty
 shell dumpsys input_method'
 # KEYCODE_ESCAPE (111), never KEYCODE_BACK (4): BACK would pop the navigation
 # stack on the majority of rows, where no keyboard is showing at all.
@@ -376,6 +378,7 @@ shell dumpsys input_method
 exec-out uiautomator dump /dev/tty
 shell dumpsys input_method
 shell screencap -p
+exec-out uiautomator dump /dev/tty
 exec-out uiautomator dump /dev/tty
 shell dumpsys input_method'
 
@@ -422,9 +425,18 @@ assert_call_count 'shell input keyevent 111' 0
 # dump count and the frame instead.
 run_capture anr-during-wait FAKE_ANR_DIALOG=1 STORYBOOK_READY_TIMEOUT=8 >/dev/null 2>&1
 assert_frame_written
-assert_call_count 'shell input tap 200 130' 1
-assert_call_count 'exec-out uiautomator dump /dev/tty' 4
+assert_call_count 'exec-out uiautomator dump /dev/tty' 5
 assert_call_count 'shell screencap -p /sdcard/storybook-capture.png' 1
+
+# Distinguishes the wait-loop guard from "only the settle guard is present":
+# both implementations produce one tap and one frame, but the tap must be in
+# the *wait* phase (before the settle phase's first dumpsys), not in settle.
+tap_line=$(grep -nFx 'shell input tap 200 130' "$capture_calls" | head -n1 | cut -d: -f1)
+first_dumpsys_line=$(grep -nFx 'shell dumpsys input_method' "$capture_calls" | head -n1 | cut -d: -f1)
+if [[ -z $tap_line || -z $first_dumpsys_line || $tap_line -ge $first_dumpsys_line ]]; then
+  echo "anr-during-wait: tap (line $tap_line) was not before the first settle-phase dumpsys (line $first_dumpsys_line) — the wait-loop guard did not act" >&2
+  exit 1
+fi
 
 # The dialog appears only at settle time (dump 2 is the 'immediately before
 # screenshot' check): markers+dialog must not pass, one dismissal happens, and
@@ -437,13 +449,14 @@ shell dumpsys input_method
 sleep 1.5
 shell dumpsys input_method
 exec-out uiautomator dump /dev/tty
+shell input tap 200 130
 sleep 1
 exec-out uiautomator dump /dev/tty
 shell dumpsys input_method
 shell screencap -p
 exec-out uiautomator dump /dev/tty
+exec-out uiautomator dump /dev/tty
 shell dumpsys input_method'
-assert_call_count 'shell input tap 200 130' 1
 
 # A dialog that survives dismissal: exactly three taps, then the capture fails
 # as a stuck keyboard. The sixth dump is write_capture_failure_diagnostics
@@ -454,6 +467,33 @@ assert_no_frame_written
 assert_diagnostics_written
 assert_call_count 'shell input tap 200 130' 3
 assert_call_count 'shell screencap -p /sdcard/storybook-capture.png' 0
+
+# An ANR dialog that appears in the irreducible window between the
+# pre-screenshot readiness check and `screencap` itself: the frame on the
+# device is already bad, so the dedicated post-screencap occlusion check
+# must fail without pulling or dismissing — mirrors the soft-keyboard
+# post-check. Discriminator: zero taps (the new check doesn't tap, and the
+# post-assert's ANR retry never runs because the post-screencap check exits
+# first).
+expect_failure 1 'appeared around the screenshot' \
+  run_capture anr-around-screencap FAKE_ANR_DIALOG_FROM=3
+assert_no_frame_written
+assert_diagnostics_written
+assert_call_count 'shell input tap 200 130' 0
+assert_call_count 'shell screencap -p /sdcard/storybook-capture.png' 1
+
+# The same race in identity-only mode (no readiness target, so the wait loop
+# never dumps): pre-fix, neither the pre- nor post-screenshot assert ran, the
+# dialog was invisible, and the frame was published occluded. Now both
+# asserts are unconditional, so the post-screencap check catches it.
+expect_failure 1 'appeared around the screenshot' \
+  run_capture anr-identity-around-screencap \
+  STORYBOOK_READY_TARGET= FAKE_READY_ROUTE= FAKE_ANR_DIALOG_FROM=2
+assert_no_frame_written
+assert_diagnostics_written
+assert_call_count 'shell input tap 200 130' 0
+assert_call_count 'shell screencap -p /sdcard/storybook-capture.png' 1
+
 
 echo 'storybook-capture fixtures: PASS'
 

@@ -160,11 +160,16 @@ dismiss_anr_dialog_if_present() {
     grep -oE '\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]' | head -n1)
 
   if [[ $bounds =~ ^\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]$ ]]; then
-    local center_x=$(( (${BASH_REMATCH[1]} + ${BASH_REMATCH[3]}) / 2 ))
-    local center_y=$(( (${BASH_REMATCH[2]} + ${BASH_REMATCH[4]}) / 2 ))
+    local center_x=$(( (BASH_REMATCH[1] + BASH_REMATCH[3]) / 2 ))
+    local center_y=$(( (BASH_REMATCH[2] + BASH_REMATCH[4]) / 2 ))
     echo "storybook-capture: dismissing an 'isn't responding' system dialog (tapping Wait)..." >&2
     adb shell input tap "$center_x" "$center_y" >/dev/null 2>&1
     sleep 1
+  else
+    # The dialog is present but the bounds attribute is malformed — there is
+    # no safe coordinate to tap, and returning success here would make the
+    # caller think the dialog is gone when nothing was done (#67).
+    return 1
   fi
   return 0
 }
@@ -351,9 +356,10 @@ while :; do
   # Readiness markers cannot see occlusion, so re-verify the keyboard after
   # settling rather than only before the delay.
   if ! soft_keyboard_is_shown; then
-    if [[ -n $ready_kind ]]; then
-      assert_current_native_readiness 'immediately before screenshot' || exit 1
-    fi
+    # Unconditional, not gated on $ready_kind: in identity-only mode the
+    # readiness check is the only thing that would catch an ANR dialog
+    # sitting on top of the screen at the moment of the screenshot (#67).
+    assert_current_native_readiness 'immediately before screenshot' || exit 1
 
     if ! soft_keyboard_is_shown; then
       break
@@ -373,9 +379,21 @@ remote_path=/sdcard/storybook-capture.png
 temporary_path="$temporary_dir/storybook-capture.png"
 adb shell screencap -p "$remote_path"
 
-if [[ -n $ready_kind ]]; then
-  assert_current_native_readiness 'immediately after screenshot' || exit 1
+# A sub-millisecond window between the final readiness check and `screencap`
+# is irreducible, and an ANR dialog can land in it; this post-shot occlusion
+# check closes it the way the soft-keyboard post-check does. Crucially, when
+# the dialog is up *now* the captured frame is already bad — we must fail
+# without pulling rather than dismiss and pull anyway (#67).
+if post_dump=$(timeout 10 adb exec-out uiautomator dump /dev/tty 2>/dev/null) &&
+  anr_dialog_is_shown "$post_dump"; then
+  write_capture_failure_diagnostics
+  echo "storybook-capture: aborting capture for story: $story_id because an 'isn't responding' system dialog appeared around the screenshot" >&2
+  exit 1
 fi
+
+# Unconditional, same reason as the pre-screenshot check: the post-assert's
+# ANR retry is a backup for the small window between this and the pull.
+assert_current_native_readiness 'immediately after screenshot' || exit 1
 
 # A sub-millisecond window between the final check and screencap is
 # irreducible; this post-shot check closes the multi-second occlusion races.
