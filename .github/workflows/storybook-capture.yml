@@ -58,9 +58,6 @@ jobs:
         if: steps.cache-dependencies.outputs.cache-hit != 'true'
         run: npm ci
 
-      - name: Build backend
-        run: npm run build:backend
-
       - name: Generate Storybook index
         run: EXPO_PUBLIC_STORYBOOK_ENABLED=true npm run storybook-generate
 
