@@ -1,7 +1,5 @@
 {
   "expo": {
-    "newArchEnabled": false,
-    "jsEngine": "hermes",
     "name": "Ekanâdyby",
     "slug": "ekanadyby",
     "scheme": "ekanadyby",
@@ -76,24 +74,13 @@
           }
         }
       ],
-      [
-        "./expo-config-plugins/removeExpoInputStyles.js"
-      ],
-      [
-        "./expo-config-plugins/targetArmArchsOnly.js"
-      ],
-      [
-        "./expo-config-plugins/increaseJavaMemory.js"
-      ],
-      [
-        "./expo-config-plugins/flagSecure/index.js"
-      ],
-      [
-        "./expo-config-plugins/customPermissionText.js"
-      ],
-      [
-        "./expo-config-plugins/removeMediaPlaybackPermission.js"
-      ],
+      ["./expo-config-plugins/removeExpoInputStyles.js"],
+      ["./expo-config-plugins/targetArmArchsOnly.js"],
+      ["./expo-config-plugins/increaseJavaMemory.js"],
+      ["./expo-config-plugins/flagSecure/index.js"],
+      ["./expo-config-plugins/customPermissionText.js"],
+      ["./expo-config-plugins/removeMediaPlaybackPermission.js"],
+      ["./expo-config-plugins/mergeBackupRules.js"],
       [
         "react-native-share",
         {
@@ -136,12 +123,19 @@
         "android.permission.FOREGROUND_SERVICE_LOCATION",
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
-        "android.permission.CHANGE_WIFI_MULTICAST_STATE"
+        "android.permission.CHANGE_WIFI_MULTICAST_STATE",
+        "android.permission.RECEIVE_BOOT_COMPLETED"
       ],
       "package": "org.coiab"
     },
     "ios": {
-      "bundleIdentifier": "org.coiab"
+      "bundleIdentifier": "org.coiab",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocalNetworkUsageDescription": "CoMapeo uses the local network to discover and sync with nearby devices in your project.",
+        "NSBonjourServices": ["_comapeo._tcp"],
+        "UIViewControllerBasedStatusBarAppearance": true
+      }
     },
     "owner": "joarez",
     "extra": {
