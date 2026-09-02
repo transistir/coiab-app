@@ -13,6 +13,10 @@ Environment:
   STORYBOOK_READY_TARGET Required route:<name> or testID:<id> proof (optional)
   STORYBOOK_READY_TIMEOUT Seconds to wait for target readiness (default: 300)
   STORYBOOK_SETTLE_DELAY Seconds to wait after readiness (default: 2)
+  STORYBOOK_POST_SHOT_TIMEOUT Seconds to keep retrying a readable screen dump
+                          after the screenshot (default: 30). Bounds only the
+                          post-screenshot occlusion check; the readiness
+                          re-assert that follows it keeps its own 30s budget.
 EOF
 }
 
@@ -27,6 +31,7 @@ package_id=${STORYBOOK_PACKAGE_ID:-com.comapeo.dev}
 ready_target=${STORYBOOK_READY_TARGET:-}
 ready_timeout=${STORYBOOK_READY_TIMEOUT:-300}
 settle_delay=${STORYBOOK_SETTLE_DELAY:-2}
+post_shot_timeout=${STORYBOOK_POST_SHOT_TIMEOUT:-30}
 
 if [[ -z $story_id ]]; then
   echo "storybook-capture: story id must not be empty" >&2
@@ -70,6 +75,11 @@ fi
 
 if [[ ! $ready_timeout =~ ^[1-9][0-9]*$ ]]; then
   echo "storybook-capture: STORYBOOK_READY_TIMEOUT must be a positive integer" >&2
+  exit 2
+fi
+
+if [[ ! $post_shot_timeout =~ ^[1-9][0-9]*$ ]]; then
+  echo "storybook-capture: STORYBOOK_POST_SHOT_TIMEOUT must be a positive integer" >&2
   exit 2
 fi
 
@@ -132,12 +142,24 @@ native_readiness_matches() {
   esac
 }
 
-# Under emulator resource pressure, Android's own "isn't responding" ANR
+# Under emulator resource pressure, Android's own "isn't responding" (ANR)
 # dialog (e.g. for Pixel Launcher, unrelated to our app) can appear as a
-# system-level overlay and block every readiness check indefinitely, even
-# though the app screen underneath is already correct. Dismiss it via its
-# "Wait" button and let the caller's own poll loop re-check — this is not a
-# real failure, just a transient system hiccup to wait out.
+# system-level overlay on top of an otherwise-ready screen. The readiness
+# markers only assert route/testID presence in the view hierarchy, so a dump
+# containing both the app's markers and the ANR dialog passes readiness while
+# the dialog occludes the screen — the same shape of defect the soft-keyboard
+# guard exists for. Read-only predicate (no adb calls); takes the hierarchy
+# dump the caller already has.
+anr_dialog_is_shown() {
+  local hierarchy=$1
+  grep -Fq 'resource-id="android:id/aerr_wait"' <<<"$hierarchy"
+}
+
+# Dismiss the ANR dialog by tapping its "Wait" button and sleeping briefly to
+# let it clear. Returns 0 if a dialog was found and tapped, 1 if no dialog was
+# present in the given hierarchy. The caller re-dumps and re-checks readiness
+# after this returns, since tapping "Wait" takes a moment to dismiss the
+# dialog and the app underneath may need time to settle.
 dismiss_anr_dialog_if_present() {
   local hierarchy=$1
   local bounds
@@ -148,11 +170,16 @@ dismiss_anr_dialog_if_present() {
     grep -oE '\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]' | head -n1)
 
   if [[ $bounds =~ ^\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]$ ]]; then
-    local center_x=$(( (${BASH_REMATCH[1]} + ${BASH_REMATCH[3]}) / 2 ))
-    local center_y=$(( (${BASH_REMATCH[2]} + ${BASH_REMATCH[4]}) / 2 ))
+    local center_x=$(( (BASH_REMATCH[1] + BASH_REMATCH[3]) / 2 ))
+    local center_y=$(( (BASH_REMATCH[2] + BASH_REMATCH[4]) / 2 ))
     echo "storybook-capture: dismissing an 'isn't responding' system dialog (tapping Wait)..." >&2
     adb shell input tap "$center_x" "$center_y" >/dev/null 2>&1
     sleep 1
+  else
+    # The dialog is present but the bounds attribute is malformed — there is
+    # no safe coordinate to tap, and returning success here would make the
+    # caller think the dialog is gone when nothing was done (#67).
+    return 1
   fi
   return 0
 }
@@ -210,6 +237,7 @@ write_capture_failure_diagnostics() {
 assert_current_native_readiness() {
   local timing=$1
   local dump_deadline=$((SECONDS + 30))
+  local anr_dismiss_attempts=0
   local hierarchy
 
   while :; do
@@ -220,6 +248,22 @@ assert_current_native_readiness() {
       continue
     fi
     if native_readiness_matches "$hierarchy"; then
+      # Readiness markers cannot see occlusion (#67): a dump containing both
+      # the app's markers and the ANR dialog passes readiness while the dialog
+      # covers the screen. Dismiss it and re-run the whole dump/check cycle
+      # rather than accept it, and fail the capture once the dialog survives
+      # repeated dismissals — exactly as a stuck keyboard fails it.
+      if anr_dialog_is_shown "$hierarchy"; then
+        if (( anr_dismiss_attempts >= 3 )); then
+          write_capture_failure_diagnostics
+          echo "storybook-capture: aborting capture for story: $story_id because an 'isn't responding' system dialog kept occluding the screen $timing" >&2
+          return 1
+        fi
+        dismiss_anr_dialog_if_present "$hierarchy" || true
+        anr_dismiss_attempts=$((anr_dismiss_attempts + 1))
+        (( SECONDS < dump_deadline )) || break
+        continue
+      fi
       return 0
     fi
     if dismiss_anr_dialog_if_present "$hierarchy"; then
@@ -255,8 +299,14 @@ while (( SECONDS < deadline )); do
       fi
 
       if (( SECONDS >= ui_probe_at )); then
+        # Same occlusion guard as assert_current_native_readiness (#67):
+        # readiness passing is not sufficient while an ANR dialog covers the
+        # screen. When the dialog is up, fall through to the dismissal branch
+        # and let the loop re-probe in 2s; capture_ready is only set once a
+        # dump passes readiness with no dialog on top of it.
         if ui_dump=$(timeout 10 adb exec-out uiautomator dump /dev/tty 2>/dev/null) &&
-          native_readiness_matches "$ui_dump"; then
+          native_readiness_matches "$ui_dump" &&
+          ! anr_dialog_is_shown "$ui_dump"; then
           capture_ready=true
           break
         fi
@@ -316,9 +366,10 @@ while :; do
   # Readiness markers cannot see occlusion, so re-verify the keyboard after
   # settling rather than only before the delay.
   if ! soft_keyboard_is_shown; then
-    if [[ -n $ready_kind ]]; then
-      assert_current_native_readiness 'immediately before screenshot' || exit 1
-    fi
+    # Unconditional, not gated on $ready_kind: in identity-only mode the
+    # readiness check is the only thing that would catch an ANR dialog
+    # sitting on top of the screen at the moment of the screenshot (#67).
+    assert_current_native_readiness 'immediately before screenshot' || exit 1
 
     if ! soft_keyboard_is_shown; then
       break
@@ -338,9 +389,39 @@ remote_path=/sdcard/storybook-capture.png
 temporary_path="$temporary_dir/storybook-capture.png"
 adb shell screencap -p "$remote_path"
 
-if [[ -n $ready_kind ]]; then
-  assert_current_native_readiness 'immediately after screenshot' || exit 1
-fi
+# A sub-millisecond window between the final readiness check and `screencap`
+# is irreducible, and an ANR dialog can land in it. This post-shot occlusion
+# check closes it the way the soft-keyboard post-check does — with one
+# difference: the frame on the device is already taken, so a dialog visible
+# *now* means that frame is bad; fail without pulling, and never
+# dismiss-and-continue (#67). A transiently unreadable dump (empty or not
+# hierarchy XML — the same flakiness the readiness assert retries) must not
+# silently pass this check either: that would hand the dialog to the
+# post-screenshot assert below, whose dismissal path would return success and
+# publish the occluded frame. Retry for a readable dump; if none arrives in
+# time, fail with diagnostics rather than publish an unverifiable frame.
+post_shot_deadline=$((SECONDS + post_shot_timeout))
+while :; do
+  post_dump=$(timeout 10 adb exec-out uiautomator dump /dev/tty 2>/dev/null) || post_dump=
+  if [[ -n $post_dump && $post_dump == *'<hierarchy'* ]]; then
+    if anr_dialog_is_shown "$post_dump"; then
+      write_capture_failure_diagnostics
+      echo "storybook-capture: aborting capture for story: $story_id because an 'isn't responding' system dialog appeared around the screenshot" >&2
+      exit 1
+    fi
+    break
+  fi
+  if (( SECONDS >= post_shot_deadline )); then
+    write_capture_failure_diagnostics
+    echo "storybook-capture: aborting capture for story: $story_id because the screen could not be re-read after the screenshot" >&2
+    exit 1
+  fi
+  sleep 0.5
+done
+
+# Unconditional, same reason as the pre-screenshot check: the post-assert's
+# ANR retry is a backup for the small window between this and the pull.
+assert_current_native_readiness 'immediately after screenshot' || exit 1
 
 # A sub-millisecond window between the final check and screencap is
 # irreducible; this post-shot check closes the multi-second occlusion races.

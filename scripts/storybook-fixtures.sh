@@ -68,6 +68,7 @@ capture_out="$capture_root/frames"
 capture_calls="$capture_root/adb-calls.txt"
 capture_ime_counter="$capture_root/ime-count"
 capture_dump_counter="$capture_root/dump-count"
+capture_anr_state="$capture_root/anr-state"
 mkdir -p -- "$capture_bin" "$capture_out"
 
 # Fake `adb`. Records every invocation to $FAKE_ADB_CALLS so ordering
@@ -105,9 +106,25 @@ if [[ ${1:-} == exec-out && ${2:-} == uiautomator && ${3:-} == dump ]]; then
   dump_count=$((dump_count + 1))
   printf '%s\n' "$dump_count" >"$FAKE_DUMP_COUNTER"
 
-  if [[ -n ${FAKE_ADB_UNREADABLE_DUMP:-} ]]; then
+  # Dump read failures (#67): the command succeeds but the read is not
+  # hierarchy XML — the on-device helper was reaped mid-dump, the same shape
+  # the readiness assert and the post-screencap check retry. FAKE_DUMP_FAILS_AT
+  # lists exact dump numbers that read empty (transient); FAKE_DUMP_FAILS_FROM
+  # makes every dump from N on read empty (permanent unreadability);
+  # FAKE_DUMP_GARBAGE_AT lists dump numbers that read non-empty garbage
+  # instead, pinning the '<hierarchy' discriminator against adb error text.
+  if [[ -n ${FAKE_DUMP_FAILS_FROM:-} ]] && (( dump_count >= FAKE_DUMP_FAILS_FROM )); then
     exit 0
   fi
+  for failed_at in ${FAKE_DUMP_FAILS_AT:-}; do
+    if (( failed_at == dump_count )); then exit 0; fi
+  done
+  for garbage_at in ${FAKE_DUMP_GARBAGE_AT:-}; do
+    if (( garbage_at == dump_count )); then
+      printf 'error: device offline\n'
+      exit 0
+    fi
+  done
   if [[ -n ${FAKE_ADB_NOT_READY:-} ]]; then
     printf '<hierarchy />\n'
     exit 0
@@ -126,6 +143,15 @@ if [[ ${1:-} == exec-out && ${2:-} == uiautomator && ${3:-} == dump ]]; then
     ready_test_id=$FAKE_READY_TEST_ID
     if [[ -n ${FAKE_ADB_BAD_TEST_ID:-} ]]; then ready_test_id=wrong.test-id; fi
     printf '<node resource-id="%s" />' "$ready_test_id"
+  fi
+  # An ANR dialog on top of the ready screen (#67): included from the start
+  # with FAKE_ANR_DIALOG=1, or from dump N with FAKE_ANR_DIALOG_FROM=N, until
+  # the script taps its "Wait" button (which flips FAKE_ANR_STATE), unless
+  # FAKE_ANR_DIALOG_STUCK=1 makes it survive every dismissal.
+  if [[ -n ${FAKE_ANR_DIALOG:-} ||
+    ( -n ${FAKE_ANR_DIALOG_FROM:-} && dump_count -ge ${FAKE_ANR_DIALOG_FROM} ) ]] &&
+    [[ $(<"$FAKE_ANR_STATE") != dismissed ]]; then
+    printf '<node resource-id="android:id/aerr_wait" bounds="[100,100][300,160]" />'
   fi
   printf '</hierarchy>\n'
   exit 0
@@ -150,7 +176,14 @@ if [[ ${1:-} == shell && ${2:-} == dumpsys && ${3:-} == input_method ]]; then
   exit 0
 fi
 
-if [[ ${1:-} == shell && ${2:-} == input ]]; then exit 0; fi
+if [[ ${1:-} == shell && ${2:-} == input ]]; then
+  # Tapping the fake ANR dialog's "Wait" button dismisses it, unless the
+  # fixture pins it as stuck.
+  if [[ ${3:-} == tap && -z ${FAKE_ANR_DIALOG_STUCK:-} ]]; then
+    printf 'dismissed\n' >"$FAKE_ANR_STATE"
+  fi
+  exit 0
+fi
 
 if [[ ${1:-} == shell && ${2:-} == screencap ]]; then exit 0; fi
 
@@ -192,6 +225,7 @@ run_capture() {
   : >"$capture_calls"
   printf '0\n' >"$capture_ime_counter"
   printf '0\n' >"$capture_dump_counter"
+  printf 'none\n' >"$capture_anr_state"
   (
     cd -- "$capture_root"
     env \
@@ -199,6 +233,7 @@ run_capture() {
       FAKE_ADB_CALLS="$capture_calls" \
       FAKE_IME_COUNTER="$capture_ime_counter" \
       FAKE_DUMP_COUNTER="$capture_dump_counter" \
+      FAKE_ANR_STATE="$capture_anr_state" \
       FAKE_STORY_ID="$capture_story_id" \
       FAKE_READY_ROUTE=IntroToCoMapeo \
       STORYBOOK_READY_TARGET=route:IntroToCoMapeo \
@@ -212,7 +247,7 @@ run_capture() {
 # The device-facing steps whose order is the invariant, with the volatile
 # `mktemp` path in the `pull` line trimmed off.
 capture_timeline() {
-  grep -E '^(shell dumpsys input_method|shell input keyevent |shell screencap |exec-out uiautomator dump|sleep )' \
+  grep -E '^(shell dumpsys input_method|shell input (keyevent |tap )|shell screencap |exec-out uiautomator dump|sleep )' \
     "$capture_calls" | sed 's#^shell screencap -p .*#shell screencap -p#'
 }
 
@@ -253,6 +288,16 @@ assert_no_frame_written() {
   fi
 }
 
+# A failed capture must never pull the frame off the device: the `pull` line
+# carries a volatile mktemp path, so exact-match counting cannot be used.
+assert_no_pull() {
+  if grep -q '^pull ' "$capture_calls"; then
+    echo 'the frame was pulled despite the capture failing' >&2
+    cat "$capture_calls" >&2
+    exit 1
+  fi
+}
+
 assert_diagnostics_written() {
   local prefix="${capture_frame%.png}"
   local suffix
@@ -278,6 +323,7 @@ shell dumpsys input_method
 exec-out uiautomator dump /dev/tty
 shell dumpsys input_method
 shell screencap -p
+exec-out uiautomator dump /dev/tty
 exec-out uiautomator dump /dev/tty
 shell dumpsys input_method'
 assert_call_count 'shell input keyevent 111' 0
@@ -335,6 +381,7 @@ exec-out uiautomator dump /dev/tty
 shell dumpsys input_method
 shell screencap -p
 exec-out uiautomator dump /dev/tty
+exec-out uiautomator dump /dev/tty
 shell dumpsys input_method'
 # KEYCODE_ESCAPE (111), never KEYCODE_BACK (4): BACK would pop the navigation
 # stack on the majority of rows, where no keyboard is showing at all.
@@ -358,6 +405,7 @@ exec-out uiautomator dump /dev/tty
 shell dumpsys input_method
 shell screencap -p
 exec-out uiautomator dump /dev/tty
+exec-out uiautomator dump /dev/tty
 shell dumpsys input_method'
 
 # An IME that appears around `screencap` itself. The frame is already taken, so
@@ -367,6 +415,7 @@ expect_failure 1 'because a soft keyboard appeared around the screenshot' \
 assert_no_frame_written
 assert_diagnostics_written
 assert_call_count 'shell screencap -p /sdcard/storybook-capture.png' 1
+assert_no_pull
 
 # A keyboard that survives KEYCODE_ESCAPE fails the capture, with the same
 # diagnostics any other capture failure writes.
@@ -392,6 +441,146 @@ assert_call_count 'shell screencap -p /sdcard/storybook-capture.png' 0
 run_capture ime-dumpsys-unavailable FAKE_IME_DUMPSYS_FAILS=1 >/dev/null 2>&1
 assert_frame_written
 assert_call_count 'shell input keyevent 111' 0
+
+# --- ANR dialog occlusion (#67) ----------------------------------------------
+
+# An ANR dialog on top of an otherwise-ready screen during the readiness wait:
+# the probe dump contains both the markers and `aerr_wait`, so pre-#67 code
+# declared the screen ready and shot through the dialog. Now: the probe must
+# refuse, dismiss, re-probe clean, and only then capture. The 0.5s poll sleeps
+# between probes make an exact timeline brittle here, so assert the tap, the
+# dump count and the frame instead.
+run_capture anr-during-wait FAKE_ANR_DIALOG=1 STORYBOOK_READY_TIMEOUT=8 >/dev/null 2>&1
+assert_frame_written
+assert_call_count 'exec-out uiautomator dump /dev/tty' 5
+assert_call_count 'shell screencap -p /sdcard/storybook-capture.png' 1
+
+# Distinguishes the wait-loop guard from "only the settle guard is present":
+# both implementations produce one tap and one frame, but the tap must be in
+# the *wait* phase (before the settle phase's first dumpsys), not in settle.
+tap_line=$(grep -nFx 'shell input tap 200 130' "$capture_calls" | head -n1 | cut -d: -f1)
+first_dumpsys_line=$(grep -nFx 'shell dumpsys input_method' "$capture_calls" | head -n1 | cut -d: -f1)
+if [[ -z $tap_line || -z $first_dumpsys_line || $tap_line -ge $first_dumpsys_line ]]; then
+  echo "anr-during-wait: tap (line $tap_line) was not before the first settle-phase dumpsys (line $first_dumpsys_line) — the wait-loop guard did not act" >&2
+  exit 1
+fi
+
+# The dialog appears only at settle time (dump 2 is the 'immediately before
+# screenshot' check): markers+dialog must not pass, one dismissal happens, and
+# the re-dump clean returns success. Exact ordering assertable: the dismiss
+# pause sits between the two dumps of the assert's retry loop.
+run_capture anr-at-settle FAKE_ANR_DIALOG_FROM=2 >/dev/null 2>&1
+assert_frame_written
+assert_timeline 'exec-out uiautomator dump /dev/tty
+shell dumpsys input_method
+sleep 1.5
+shell dumpsys input_method
+exec-out uiautomator dump /dev/tty
+shell input tap 200 130
+sleep 1
+exec-out uiautomator dump /dev/tty
+shell dumpsys input_method
+shell screencap -p
+exec-out uiautomator dump /dev/tty
+exec-out uiautomator dump /dev/tty
+shell dumpsys input_method'
+
+# A dialog that survives dismissal: exactly three taps, then the capture fails
+# as a stuck keyboard. The sixth dump is write_capture_failure_diagnostics
+# re-reading the hierarchy for the failure artifact.
+expect_failure 1 'kept occluding the screen immediately before screenshot' \
+  run_capture anr-stuck FAKE_ANR_DIALOG_FROM=2 FAKE_ANR_DIALOG_STUCK=1
+assert_no_frame_written
+assert_diagnostics_written
+assert_call_count 'shell input tap 200 130' 3
+assert_call_count 'shell screencap -p /sdcard/storybook-capture.png' 0
+
+# An ANR dialog that appears in the irreducible window between the
+# pre-screenshot readiness check and `screencap` itself: the frame on the
+# device is already bad, so the dedicated post-screencap occlusion check
+# must fail without pulling or dismissing — mirrors the soft-keyboard
+# post-check. Discriminator: zero taps (the new check doesn't tap, and the
+# post-assert's ANR retry never runs because the post-screencap check exits
+# first).
+expect_failure 1 'appeared around the screenshot' \
+  run_capture anr-around-screencap FAKE_ANR_DIALOG_FROM=3
+assert_no_frame_written
+assert_diagnostics_written
+assert_call_count 'shell input tap 200 130' 0
+assert_call_count 'shell screencap -p /sdcard/storybook-capture.png' 1
+assert_no_pull
+
+# The same race in identity-only mode (no readiness target, so the wait loop
+# never dumps): pre-fix, neither the pre- nor post-screenshot assert ran, the
+# dialog was invisible, and the frame was published occluded. Now both
+# asserts are unconditional, so the post-screencap check catches it.
+expect_failure 1 'appeared around the screenshot' \
+  run_capture anr-identity-around-screencap \
+  STORYBOOK_READY_TARGET= FAKE_READY_ROUTE= FAKE_ANR_DIALOG_FROM=2
+assert_no_frame_written
+assert_diagnostics_written
+assert_call_count 'shell input tap 200 130' 0
+assert_call_count 'shell screencap -p /sdcard/storybook-capture.png' 1
+assert_no_pull
+
+# --- unreadable post-screenshot dumps (#67) ----------------------------------
+
+# A dump read that fails transiently exactly at the post-screencap occlusion
+# check: the retry loop must re-read the screen, confirm no dialog, and still
+# publish the frame. Discriminator: five dumps total where the happy path
+# takes four — the extra one is the post-screencap retry.
+run_capture dump-fails-transiently-after-screencap FAKE_DUMP_FAILS_AT=3 >/dev/null 2>&1
+assert_frame_written
+assert_call_count 'exec-out uiautomator dump /dev/tty' 5
+assert_call_count 'shell screencap -p /sdcard/storybook-capture.png' 1
+assert_call_count 'shell input tap 200 130' 0
+
+# The same transient failure inside the pre-screenshot readiness assert: that
+# assert has always retried unreadable dumps, and this must keep holding —
+# five dumps again, frame published.
+run_capture dump-fails-transiently-before-screencap FAKE_DUMP_FAILS_AT=2 >/dev/null 2>&1
+assert_frame_written
+assert_call_count 'exec-out uiautomator dump /dev/tty' 5
+
+# A dump that reads non-empty garbage instead of hierarchy XML (adb error
+# text): the '<hierarchy' discriminator must treat it as unreadable and
+# retry, not mistake any non-empty output for a readable screen. Same shape
+# as the transient cases: five dumps, frame published, nothing dismissed.
+run_capture dump-garbage-after-screencap FAKE_DUMP_GARBAGE_AT=3 >/dev/null 2>&1
+assert_frame_written
+assert_call_count 'exec-out uiautomator dump /dev/tty' 5
+assert_call_count 'shell input tap 200 130' 0
+
+# The interleaving the two families of occlusion can produce: the first
+# post-screencap read is empty and the ANR dialog surfaces only on the
+# retry. Every readable retry must be checked for the dialog — an
+# implementation that treats retries as readability-only would sail into
+# the post-assert, whose dismiss path would publish the occluded frame.
+# Discriminators: same 'appeared around the screenshot' failure as the
+# direct race, zero taps, and no pull.
+expect_failure 1 'appeared around the screenshot' \
+  run_capture dump-unreadable-then-anr-after-screencap \
+  FAKE_DUMP_FAILS_AT=3 FAKE_ANR_DIALOG_FROM=4
+assert_no_frame_written
+assert_diagnostics_written
+assert_call_count 'shell input tap 200 130' 0
+assert_call_count 'shell screencap -p /sdcard/storybook-capture.png' 1
+assert_no_pull
+
+# Every dump from the post-screencap check onward reads empty: the frame on
+# the device may be occluded and can no longer be verified, so the capture
+# must fail without pulling it. Discriminators: the screencap still happened
+# (the failure is post-shot, like the ANR races) and zero taps (nothing was
+# dismissed — there was nothing readable to dismiss).
+expect_failure 1 'the screen could not be re-read after the screenshot' \
+  run_capture dump-unreadable-after-screencap \
+  FAKE_DUMP_FAILS_FROM=3 STORYBOOK_POST_SHOT_TIMEOUT=1
+assert_no_frame_written
+assert_diagnostics_written
+assert_call_count 'shell screencap -p /sdcard/storybook-capture.png' 1
+assert_call_count 'shell input tap 200 130' 0
+assert_no_pull
+
 
 echo 'storybook-capture fixtures: PASS'
 

@@ -15,6 +15,7 @@ Environment:
   STORYBOOK_PACKAGE_ID        Passed through to the capture command
   STORYBOOK_READY_TARGET      Set per manifest row for the capture command
   STORYBOOK_SETTLE_DELAY      Post-readiness delay set per manifest row
+  STORYBOOK_POST_SHOT_TIMEOUT Passed through to the capture command
   STORYBOOK_COLD_START_TIMEOUT Seconds to wait for Running "main" (default: 300)
 EOF
 }
