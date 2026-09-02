@@ -13,6 +13,10 @@ Environment:
   STORYBOOK_READY_TARGET Required route:<name> or testID:<id> proof (optional)
   STORYBOOK_READY_TIMEOUT Seconds to wait for target readiness (default: 300)
   STORYBOOK_SETTLE_DELAY Seconds to wait after readiness (default: 2)
+  STORYBOOK_POST_SHOT_TIMEOUT Seconds to keep retrying a readable screen dump
+                          after the screenshot (default: 30). Bounds only the
+                          post-screenshot occlusion check; the readiness
+                          re-assert that follows it keeps its own 30s budget.
 EOF
 }
 
@@ -27,6 +31,7 @@ package_id=${STORYBOOK_PACKAGE_ID:-com.comapeo.dev}
 ready_target=${STORYBOOK_READY_TARGET:-}
 ready_timeout=${STORYBOOK_READY_TIMEOUT:-300}
 settle_delay=${STORYBOOK_SETTLE_DELAY:-2}
+post_shot_timeout=${STORYBOOK_POST_SHOT_TIMEOUT:-30}
 
 if [[ -z $story_id ]]; then
   echo "storybook-capture: story id must not be empty" >&2
@@ -70,6 +75,11 @@ fi
 
 if [[ ! $ready_timeout =~ ^[1-9][0-9]*$ ]]; then
   echo "storybook-capture: STORYBOOK_READY_TIMEOUT must be a positive integer" >&2
+  exit 2
+fi
+
+if [[ ! $post_shot_timeout =~ ^[1-9][0-9]*$ ]]; then
+  echo "storybook-capture: STORYBOOK_POST_SHOT_TIMEOUT must be a positive integer" >&2
   exit 2
 fi
 
@@ -380,16 +390,34 @@ temporary_path="$temporary_dir/storybook-capture.png"
 adb shell screencap -p "$remote_path"
 
 # A sub-millisecond window between the final readiness check and `screencap`
-# is irreducible, and an ANR dialog can land in it; this post-shot occlusion
-# check closes it the way the soft-keyboard post-check does. Crucially, when
-# the dialog is up *now* the captured frame is already bad — we must fail
-# without pulling rather than dismiss and pull anyway (#67).
-if post_dump=$(timeout 10 adb exec-out uiautomator dump /dev/tty 2>/dev/null) &&
-  anr_dialog_is_shown "$post_dump"; then
-  write_capture_failure_diagnostics
-  echo "storybook-capture: aborting capture for story: $story_id because an 'isn't responding' system dialog appeared around the screenshot" >&2
-  exit 1
-fi
+# is irreducible, and an ANR dialog can land in it. This post-shot occlusion
+# check closes it the way the soft-keyboard post-check does — with one
+# difference: the frame on the device is already taken, so a dialog visible
+# *now* means that frame is bad; fail without pulling, and never
+# dismiss-and-continue (#67). A transiently unreadable dump (empty or not
+# hierarchy XML — the same flakiness the readiness assert retries) must not
+# silently pass this check either: that would hand the dialog to the
+# post-screenshot assert below, whose dismissal path would return success and
+# publish the occluded frame. Retry for a readable dump; if none arrives in
+# time, fail with diagnostics rather than publish an unverifiable frame.
+post_shot_deadline=$((SECONDS + post_shot_timeout))
+while :; do
+  post_dump=$(timeout 10 adb exec-out uiautomator dump /dev/tty 2>/dev/null) || post_dump=
+  if [[ -n $post_dump && $post_dump == *'<hierarchy'* ]]; then
+    if anr_dialog_is_shown "$post_dump"; then
+      write_capture_failure_diagnostics
+      echo "storybook-capture: aborting capture for story: $story_id because an 'isn't responding' system dialog appeared around the screenshot" >&2
+      exit 1
+    fi
+    break
+  fi
+  if (( SECONDS >= post_shot_deadline )); then
+    write_capture_failure_diagnostics
+    echo "storybook-capture: aborting capture for story: $story_id because the screen could not be re-read after the screenshot" >&2
+    exit 1
+  fi
+  sleep 0.5
+done
 
 # Unconditional, same reason as the pre-screenshot check: the post-assert's
 # ANR retry is a backup for the small window between this and the pull.
