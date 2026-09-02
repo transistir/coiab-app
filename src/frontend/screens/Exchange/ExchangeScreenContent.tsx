@@ -124,24 +124,57 @@ const m = defineMessages({
   },
 });
 
-export const ExchangeScreenContent = ({syncState}: {syncState: SyncState}) => {
+/**
+ * Storybook-only presentation seam.
+ *
+ * `ExchangeScreenContent` reads live Wi-Fi radio status, peer discovery,
+ * sync progress and archive-device settings from hooks. None of those are
+ * seedable on a CI emulator (`FlowStateSpec` has no discovery axis), so
+ * without this seam the screen's non-default states cannot be captured as
+ * screens at all — only as stranded sub-component swatches.
+ *
+ * Every field is optional and `undefined` means "use the live value", so the
+ * shipping app (which never passes this prop) is unaffected. Only
+ * `ExchangeScreen.stories.tsx` may pass it.
+ */
+export type ExchangeScreenContentOverrides = {
+  /** `null` is a real value (no network); `undefined` means use live. */
+  ssid?: string | null;
+  progress?: number | null;
+  isArchiveDevice?: boolean;
+  remoteArchiveConnected?: boolean;
+};
+
+export const ExchangeScreenContent = ({
+  syncState,
+  overrides,
+}: {
+  syncState: SyncState;
+  overrides?: ExchangeScreenContentOverrides;
+}) => {
   const {formatMessage: t} = useIntl();
   const queryClient = useQueryClient();
   const navigation = useNavigationFromRoot();
   const {projectApi, projectId} = useActiveProject();
-  const progress = useDataSyncProgress({projectId});
+  const liveProgress = useDataSyncProgress({projectId});
+  const progress =
+    overrides?.progress !== undefined ? overrides.progress : liveProgress;
   const startSync = useStartSync({projectId});
-  const {data: isArchive} = useIsArchiveDevice();
+  const {data: liveIsArchive} = useIsArchiveDevice();
+  const isArchive = overrides?.isArchiveDevice ?? liveIsArchive;
 
   const currentMediaSetting = isArchive ? 'everything' : 'previews';
 
-  const ssid = useLocalDiscoveryState(state => state.ssid);
+  const liveSsid = useLocalDiscoveryState(state => state.ssid);
+  const ssid = overrides?.ssid !== undefined ? overrides.ssid : liveSsid;
 
   const connectedPeersCount = getConnectedPeersCount(
     syncState.remoteDeviceSyncState,
   );
 
-  const remoteArchiveConnected = !!useActiveArchiveServer({projectId});
+  const activeArchiveServer = useActiveArchiveServer({projectId});
+  const remoteArchiveConnected =
+    overrides?.remoteArchiveConnected ?? !!activeArchiveServer;
 
   const syncingPeersCount = getSyncingPeersCount(
     syncState.remoteDeviceSyncState,
@@ -212,31 +245,28 @@ export const ExchangeScreenContent = ({syncState}: {syncState: SyncState}) => {
   } else {
     switch (syncStage.name) {
       case 'idle': {
-        dockContent =
-          syncStage.connectedPeersCount > 0 ? (
-            <PrimaryButton
-              fullSize
-              text={t(m.start)}
-              renderIcon={({size}) => <SyncIcon size={size} />}
-              onPress={() => {
-                // TODO: Catch/surface error
-                startSync.mutate(undefined);
-              }}
-            />
-          ) : (
-            <SecondaryButton
-              fullSize={true}
-              text={t(m.close)}
-              onPress={() => navigation.goBack()}
-            />
-          );
+        const hasConnectedPeers = syncStage.connectedPeersCount > 0;
+
+        dockContent = (
+          <PrimaryButton
+            fullSize
+            text={t(m.start)}
+            disabled={!hasConnectedPeers}
+            testID="EXCHANGE.start-btn"
+            renderIcon={({color, size}) => (
+              <SyncIcon color={color} size={size} />
+            )}
+            onPress={() => {
+              // TODO: Catch/surface error
+              startSync.mutate(undefined);
+            }}
+          />
+        );
 
         syncInfoContent = (
           <>
             <HeaderText variant="header2" style={styles.exchangeInfoText}>
-              {syncStage.connectedPeersCount > 0
-                ? t(m.devicesFound)
-                : t(m.noDevicesFound)}
+              {hasConnectedPeers ? t(m.devicesFound) : t(m.noDevicesFound)}
             </HeaderText>
           </>
         );

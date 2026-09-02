@@ -10,6 +10,14 @@ const {
  * @type {import('expo/config-plugins').ConfigPlugin}
  */
 module.exports = function targetArmArchsOnly(config) {
+  // Storybook builds run on an x86_64 CI emulator (no real ARM device
+  // involved), so restricting the APK to ARM-only ABIs here would make it
+  // uninstallable there (INSTALL_FAILED_NO_MATCHING_ABIS). Skip this plugin
+  // for those builds and keep Expo's default multi-ABI output instead.
+  if (process.env.EXPO_PUBLIC_STORYBOOK_ENABLED === 'true') {
+    return config;
+  }
+
   // Update reactNativeArchitectures property in android/gradle.properties
   const conf = withGradleProperties(config, configWithGradleProperties => {
     const reactNativeArchitecturesProperty =

@@ -1,0 +1,38 @@
+onboarding	flows-onboarding--intro	route:IntroToCoMapeo	2	01 Intro
+onboarding	flows-onboarding--data-privacy	route:DataPrivacy	2	02 Data Privacy
+onboarding	flows-onboarding--privacy-policy	route:OnboardingPrivacyPolicy	2	03 Privacy Policy
+onboarding	flows-onboarding--device-naming	route:DeviceNaming	2	04 Device Naming
+onboarding	flows-onboarding--success	route:Success	2	05 Success
+onboarding	flows-onboarding--map-on-your-own-intro	route:MapOnYourOwnIntro	2	06b Map On Your Own Intro
+create-observation	flows-createobservation--home	testID:MAIN.map-screen	10	01 Home
+create-observation	flows-createobservation--category-chooser	route:ObservationCategoryChooser	10	02 Category Chooser
+create-observation	flows-createobservation--add-photo	route:AddPhoto	10	03 Add Photo
+create-observation	flows-createobservation--observation-create	route:ObservationCreate	10	04 Observation Create
+create-observation	flows-createobservation--observation-fields	route:ObservationFields	10	05 Observation Fields
+create-observation	flows-createobservation--observation-detail	route:Observation	10	06 Observation Detail
+menu	flows-menu--map	testID:MAIN.map-screen	10	01 Map
+menu	flows-menu--observations-list	testID:OBS.list-scrn	2	02 Observations List
+menu	flows-menu--map-tracking-open	testID:MAP:track-bottom-sheet	10	04 Map Tracking Open
+menu	menu-drawermenu--default	testID:MENU.main-action-button	2	05 Drawer Menu
+settings	flows-settings--settings-home	route:AppSettings	2	01 Settings Home
+settings	flows-settings--device-name-display	route:DeviceNameDisplay	2	02 Device Name Display
+settings	flows-settings--device-name-edit	route:DeviceNameEdit	2	03 Device Name Edit
+settings	flows-settings--language	route:LanguageSettings	2	04 Language
+settings	flows-settings--coordinate-format	route:CoordinateFormat	2	05 Coordinate Format
+settings	flows-settings--unit-system	route:UnitSystemSettings	2	06 Unit System
+settings	flows-settings--security	route:Security	2	07 Security
+settings	flows-settings--app-passcode	route:AppPasscode	2	08 App Passcode
+settings	flows-settings--set-passcode	route:SetPasscode	2	09 Set Passcode
+settings	flows-settings--obscure-passcode	route:ObscurePasscode	2	10 Obscure Passcode
+settings	flows-settings--early-access	route:EarlyAccess	2	11 Early Access
+settings	flows-settings--data-and-privacy	route:DataAndPrivacy	2	12 Data And Privacy
+settings	flows-settings--privacy-policy	route:SettingsPrivacyPolicy	2	13 Privacy Policy
+settings	flows-settings--about	route:AboutSettings	2	14 About
+exchange	flows-exchange--main-screen	route:Sync	10	01 Main Screen (Sync)
+exchange	flows-exchange--exchange-settings	route:ExchangeSettingsBottomSheet	10	02 Exchange Settings
+exchange	exchange-screen--no-devices-found	testID:EXCHANGE.devices-available-header	2	03 No Devices Found
+exchange	exchange-screen--devices-found-previews	testID:EXCHANGE.devices-available-header	2	04 Devices Found (Previews Only)
+exchange	exchange-screen--devices-found-everything	testID:EXCHANGE.devices-available-header	2	05 Devices Found (Exchange Everything)
+exchange	exchange-screen--syncing	testID:EXCHANGE.devices-available-header	2	06 Syncing
+exchange	exchange-screen--wifi-disconnected	testID:no-wifi-icon	2	07 Wifi Disconnected
+exchange	exchange-nowifidisplay--no-wifi	testID:EXCHANGE.no-wifi-display	2	08 No Wifi Display

@@ -44,6 +44,18 @@
         "EXPO_PUBLIC_E2E_TEST": "true"
       }
     },
+    "storybook": {
+      "extends": "base",
+      "distribution": "internal",
+      "environment": "preview",
+      "env": {
+        "APP_VARIANT": "releaseCandidate",
+        "EXPO_PUBLIC_STORYBOOK_ENABLED": "true"
+      },
+      "android": {
+        "gradleCommand": ":app:assembleRelease -x lintVitalRelease --no-parallel"
+      }
+    },
     "production": {
       "extends": "base",
       "distribution": "store",

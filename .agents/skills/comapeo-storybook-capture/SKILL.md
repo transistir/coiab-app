@@ -1,0 +1,176 @@
+---
+name: comapeo-storybook-capture
+description: Generate and verify CoMapeo React Native Storybook flow screenshots with deterministic readiness and durable acceptance evidence.
+---
+
+# CoMapeo Storybook capture
+
+Use this skill when regenerating the Storybook bundle, launching the
+Android app, or collecting the documented user-flow screenshots.
+
+## Golden path
+
+1. Generate the Storybook index:
+
+   ```sh
+   EXPO_PUBLIC_STORYBOOK_ENABLED=true npm run storybook-generate
+   ```
+
+   Treat a non-zero exit as a generation failure; do not claim capture
+   evidence from a stale generated index.
+
+2. Launch the native Storybook app on an available Android device or emulator:
+
+   ```sh
+   npm run storybook:android
+   ```
+
+3. Capture into a new, empty directory. The wrapper performs its own
+   force-stop, log clear, launcher start, `Running "main"` check, and native
+   readiness checks:
+
+   ```sh
+   STORYBOOK_PACKAGE_ID=com.comapeo.dev \
+     scripts/storybook-capture-all.sh /tmp/storybook-captures-<run>
+   node scripts/storybook-report.mjs /tmp/storybook-captures-<run>
+   ```
+
+4. A usable run contains one PNG per manifest row — never a fixed number, the
+   manifest is the source of truth and grows — plus `captures.tsv`, the flow
+   reports, `cold-start-provenance.txt`, and the leaf-recovery PNG:
+
+   ```sh
+   find /tmp/storybook-captures-<run> -name '*.png' | wc -l
+   wc -l < .rnstorybook/capture-manifest.tsv   # must match
+   ```
+
+   Compare ledger identity/order fields across independent cold runs before
+   accepting the result. Inspect onboarding PNGs to ensure they show named
+   screens rather than `FlowStatePlaceholder`.
+
+## Disposable local environment
+
+- If the Android emulator reports a pending snapshot and exits, a disposable
+  development AVD may need a one-time reset before capture (for example,
+  `emulator @Medium_Phone_API_35 -wipe-data -no-snapshot -no-boot-anim`).
+- If Expo/Gradle cannot write the host caches, retry with writable temporary
+  caches rather than changing repository files:
+
+  ```sh
+  GRADLE_USER_HOME=/tmp/storybook-gradle \
+    __UNSAFE_EXPO_HOME_DIRECTORY=/tmp/storybook-expo-home \
+    EXPO_PUBLIC_STORYBOOK_ENABLED=true npm run storybook:android
+  ```
+
+- A capture that stops at a current native readiness check is partial, even
+  when earlier PNGs exist. Preserve that directory and record the first
+  failing story; do not report it as a complete generation. A generation is
+  complete only when its PNG count equals the manifest row count.
+
+## Known failure handling
+
+- If Expo reports that `Medium_Phone_API_35` quit before opening, record the
+  exact emulator command it prints in `TODO.md`. In a verification-only task,
+  stop there and do not repair or restart the emulator.
+- If the native run fails, keep its output directory for diagnosis but do not
+  call it an accepted run. Report the first failing gate and whether any PNGs
+  were produced.
+- Do not treat a Storybook linking identity or historical route log alone as
+  proof that the screenshot shows the target. The wrapper's current native
+  marker/UI readiness checks must pass immediately around each screenshot.
+
+## CI build gotchas (`.github/workflows/storybook-capture.yml`, `ci.yml`)
+
+Hard-won from getting the GitHub Actions capture run green. Check these first
+before re-debugging from scratch:
+
+- `ci.yml`'s frontend job must generate the Storybook index
+  (`EXPO_PUBLIC_STORYBOOK_ENABLED=true npm run storybook-generate`) before
+  `tsc --noEmit`, or a fresh checkout fails type-checking because
+  `.rnstorybook/index.tsx` imports the gitignored `./storybook.requires`.
+- `eas.json` is plain JSON — no `//` comments allowed, `JSON.parse` will
+  reject them.
+- The default release Gradle build plus `lintVitalRelease` running in
+  parallel stalls the Kotlin/Gradle daemon on constrained CI runners (memory
+  contention, presents as a hang, not an OOM crash). Fix: override
+  `gradleCommand` to something like
+  `:app:assembleRelease -x lintVitalRelease --no-parallel`.
+- Expo config plugins that restrict native ABIs to ARM-only (e.g.
+  `targetArmArchsOnly.js`) break installs on the x86_64 CI emulator.
+  Env-gate them off when `EXPO_PUBLIC_STORYBOOK_ENABLED=true`.
+- Under emulator resource pressure, Android's own "isn't responding" ANR
+  system dialog (e.g. for Pixel Launcher, unrelated to the app under test)
+  can cover the screen and block every readiness check indefinitely. Detect
+  `resource-id="android:id/aerr_wait"` in the UI hierarchy dump and tap it
+  (Wait) instead of treating it as a real failure — see
+  `dismiss_anr_dialog_if_present` in `scripts/storybook-capture.sh`.
+- Bash `set -euo pipefail`: a bare `cond && fn` statement (not inside `if`)
+  still triggers errexit when `fn` returns non-zero — it does not behave as
+  a silent no-op-on-false guard the way it looks. Verified:
+  `bash -c 'set -euo pipefail; f(){ return 1; }; [[ -n "x" ]] && f; echo
+  survived'` prints nothing and exits 1. Wrap in
+  `if cond; then fn || true; fi` instead.
+- On a capture timeout, write failure diagnostics (logcat, UI hierarchy
+  dump, screenshot) next to the expected output before exiting 1 — otherwise
+  the uploaded CI artifact gives no clue why it failed. The same applies to
+  the runtime identity check in `storybook-capture-all.sh`: it used to fail
+  with nothing retained, which cost two full CI cycles to diagnose.
+- The `STORYBOOK: Linking event received` line the identity check looks for
+  has to survive in logcat's ring buffer for the whole capture, because that
+  check re-reads logcat *after* the capture command exits. A chatty interval
+  evicts it, and an evicted line is indistinguishable from the app never
+  having received the deep link — the run fails while the frame it produced
+  is perfectly correct. The buffer is enlarged once per session
+  (`adb logcat -G 16M`) to prevent this.
+- Storybook switches stories through a deep link and never dismisses the
+  IME, so a keyboard raised by one story (an autofocused `TextInput`) stays
+  up and covers the bottom of every later frame. `storybook-capture.sh`
+  now checks `dumpsys input_method` for `mInputShown` and hides it with
+  KEYCODE_ESCAPE — not KEYCODE_BACK, which would pop the navigation stack
+  on the majority of rows where no keyboard is showing.
+
+## Verify before burning a CI run
+
+A full capture run costs roughly 30-50 minutes (a local EAS build plus one
+emulator interaction per manifest row; 12 rows ran in ~29 min, 38 rows fits
+inside a 90-minute job). Both offline checks below run in seconds and catch
+the mistakes that otherwise fail the run at row 1:
+
+```sh
+# Every manifest story id must resolve against the source story index —
+# the same check the capture wrapper runs before it touches a device.
+node -e "const {buildIndex}=require('@storybook/react-native/node');const fs=require('fs');const ids=fs.readFileSync('.rnstorybook/capture-manifest.tsv','utf8').trim().split('\n').map(l=>l.split('\t')[1]);buildIndex({configPath:'.rnstorybook'}).then(i=>{const m=ids.filter(id=>!(id in i.entries));console.log(m.length?'MISSING: '+m.join(', '):'ALL '+ids.length+' IDS PRESENT')})"
+```
+
+A runtime story id is the kebab-cased meta `title` path plus `--` plus the
+kebab-cased **export name**; a `name:` override does not change it. Also
+confirm every route name used in an `initialState` is actually registered as
+a screen in `Navigation/Stack/AppScreens.tsx` — `RootStackParamsList`
+declares at least one key (`Settings`) that is never registered and is not
+navigable.
+
+## A green capture run does not mean good frames
+
+The readiness checks assert that a story's marker and its route/testID marker
+are present in the Android view hierarchy. They say nothing about whether
+something is *covering* the screen. A run can report 38/38 passed while half
+the frames are occluded — this happened, with a stuck soft keyboard hiding
+~45% of 20 consecutive frames, and every check green.
+
+Always open the PNGs before accepting a run. Cheap signals that something is
+wrong without looking at all of them:
+
+- A sharp, sustained change in ledger byte sizes partway through the run.
+- Frames from a screen you know is mostly empty coming back unexpectedly
+  large.
+
+Note also that some frames are legitimately not byte-stable between runs, so
+compare those by eye rather than by size: any screen showing native
+device-info values (About) or live location (the coordinate-format examples).
+
+## Provenance
+
+The accepted workflow has passed two independent 12-frame cold runs with
+matching ledger fields and durable cold-start provenance. Long captures should
+run in a persistent tool-managed terminal session so the controlling command
+is not killed while waiting on a slow first-load flow.

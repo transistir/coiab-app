@@ -6,7 +6,9 @@ on:
 jobs:
   capture:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # The capture manifest drives wall-clock cost directly (one emulator
+    # interaction per row); it has grown from 12 rows to 38.
+    timeout-minutes: 90
     env:
       STORYBOOK_PACKAGE_ID: org.coiab.rc
 
@@ -56,9 +58,6 @@ jobs:
         if: steps.cache-dependencies.outputs.cache-hit != 'true'
         run: npm ci
 
-      - name: Build backend
-        run: npm run build:backend
-
       - name: Generate Storybook index
         run: EXPO_PUBLIC_STORYBOOK_ENABLED=true npm run storybook-generate
 
@@ -77,8 +76,7 @@ jobs:
           COMAPEO_METRICS_API_KEY: ${{ secrets.COMAPEO_METRICS_API_KEY }}
         run: |
           npm run extract-messages
-          npx expo prebuild -p android
-          eas build --platform android --profile storybook --local
+          eas build --platform android --profile storybook --local --non-interactive
 
       - name: Locate built APK
         run: echo "APK_PATH=$(ls -t build-*.apk | head -n 1)" >> "$GITHUB_ENV"
@@ -96,7 +94,7 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-api35-x86_64-google_apis-v1
+          key: avd-api35-x86_64-google_apis-pixel5-v2
 
       - name: Create AVD snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
@@ -105,6 +103,7 @@ jobs:
           api-level: 35
           arch: x86_64
           target: google_apis
+          profile: pixel_5
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: false
@@ -116,6 +115,7 @@ jobs:
           api-level: 35
           arch: x86_64
           target: google_apis
+          profile: pixel_5
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true

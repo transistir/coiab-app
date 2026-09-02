@@ -32,7 +32,7 @@ const DRAWER_EDGE_GAP = 56;
 // https://m3.material.io/components/navigation-drawer/specs
 const MAX_DRAWER_WIDTH = 360;
 
-function getDrawerWidth(windowWidth: number) {
+export function getDrawerWidth(windowWidth: number) {
   return Math.max(Math.min(windowWidth - DRAWER_EDGE_GAP, MAX_DRAWER_WIDTH), 0);
 }
 
