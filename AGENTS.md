@@ -29,12 +29,42 @@ order:
    there).
 2. **Then `transistir/coiab-app`** — bring the merged develop over as a PR.
    Coiab's `develop` is protected: direct pushes are rejected and required
-   checks (`all`, `backend`, `frontend`) must pass before merge. Push a
-   branch like `sync/digidem-upstream` to `origin` and open a PR against
-   `develop`.
+   checks (`all`, `frontend`) must pass before merge. (`backend` was a
+   required check until 2026-09-02 — the upstream `@comapeo/core-react-native`
+   migration deleted `src/backend` and its CI job, so that check could never
+   report again and was removed from the protection rule.) Push a branch
+   like `sync/digidem-upstream` to `origin` and open a PR against `develop`.
 
 Merging `digidem/*` branches into local branches is always fine — the
 restriction is about where things get *pushed*.
+
+### Upstream-merge verification
+
+An upstream merge that deletes scripts or dependencies breaks fork-owned
+files **without any textual conflict**. Before pushing a merge of
+`digidem/develop`:
+
+1. Grep fork-owned workflows and `package.json` scripts for references to
+   anything the merge removed. Real case: the migration deleted the
+   `build:backend` script and `src/backend`; the fork-owned
+   `storybook-capture.yml` still had a `Build backend` step — clean merge,
+   30-minute CI run to discover it.
+2. Run `npx tsc --noEmit` and `npm run lint` locally — they catch broken
+   imports and dead references the merge left behind.
+3. After the PR merges, watch `develop`'s own CI run to completion. A green
+   PR proves the PR head was good; only the post-merge run proves the merge
+   commit is good.
+
+### Coiab CI environment
+
+CI on `transistir/coiab-app` needs repo-level values that are not in the
+code. Already set: `MAPBOX_ACCESS_TOKEN` (secret), `COMAPEO_METRICS_URL`
+(variable, `https://metrics.invalid` placeholder), `COMAPEO_METRICS_API_KEY`
+(secret, placeholder — only truthiness-asserted). **Missing:** `EXPO_TOKEN`
+(secret) — the storybook-capture workflow's Setup EAS step fails without it.
+A fresh repo fork starts with zero secrets/vars; expect this class of gap
+when wiring workflows that the fork already had configured
+(`APP_VARIANT`, `RELEASE_BOT_*` are also uncopied).
 
 ### `gh` targeting rules
 
