@@ -1,65 +1,66 @@
 # AGENTS.md
 
-## Remote safety — never write to digidem repos
+## Remote layout and safety
 
-This repo's `origin` remote points to `digidem/comapeo-mobile`, the upstream
-project. **Never push, open/edit/close PRs or issues, comment, create
-releases, trigger workflows, set secrets, or otherwise write to any
-`digidem/*` repository on GitHub.** This applies to `origin` and to any
-other `digidem/...` repo (e.g. `digidem/comapeo-cloud-app`), regardless of
-what permissions the credentials in use happen to allow.
+Three remotes, each with one job:
 
-All work in this repo — pushes, branches, PRs — goes to the
-**`transistir/comapeo-mobile-1`** fork only (remote name `transistir`).
+| Remote | Repo | Role |
+|--------|------|------|
+| `origin` | `transistir/coiab-app` | **The working repo.** All day-to-day pushes, PRs, issues, and workflow runs go here. |
+| `transistir` | `transistir/comapeo-mobile-1` | The CoMapeo fork. Receives general CoMapeo work and is the first stop for upstream syncs. |
+| `digidem` | `digidem/comapeo-mobile` | Upstream. **Never write to it** — fetch, diff, and read only. |
 
-Concretely:
+**Never push, open/edit/close PRs or issues, comment, create releases,
+trigger workflows, set secrets, or otherwise write to any `digidem/*`
+repository on GitHub** — regardless of what permissions the credentials in
+use happen to allow. In this clone the `digidem` remote's push URL is set
+to `no-push`, so any write attempt fails loudly. Read-only operations
+(fetching, diffing, checking CI, viewing issues/PRs for context) are fine,
+and CI workflows may freely consume `digidem/*` GitHub Actions (e.g.
+`digidem/npm-lockfile-version`) — using a published Action is a read.
 
-- `git push` must target the `transistir` remote, never `origin`. This
-  includes tags (`git push --tags`), deletes (`git push --delete`), and
-  force pushes — any write verb, not just plain pushes.
-- Any `gh` write operation must target `transistir/comapeo-mobile-1`, never
-  `digidem/comapeo-mobile` — but the flag for doing so differs by
-  subcommand, so use the form that command actually accepts:
-  - `gh pr create/edit/close/merge`, `gh issue create/comment/close`,
-    `gh release create`, `gh workflow run`, and `gh secret set` all accept
-    `-R/--repo transistir/comapeo-mobile-1`.
-  - `gh repo edit` takes the repository as a **positional** argument, not
-    `--repo`: `gh repo edit transistir/comapeo-mobile-1 ...`.
-  - `gh api` has **no `--repo`/`-R` flag at all**. Either use a
-    fully-qualified endpoint path — `gh api
-    repos/transistir/comapeo-mobile-1/...` — or set `GH_REPO=transistir/comapeo-mobile-1`
-    for the call. This applies to any write method (`-X POST/PATCH/PUT/DELETE`,
-    or `-f`/`-F` fields, which switch the request to `POST` by default).
-    Don't rely on the endpoint's placeholder expansion (`{owner}`/`{repo}`)
-    from the current directory — since `origin` still points at
-    `digidem/comapeo-mobile`, that would resolve to the upstream repo.
-  - `gh repo fork` is not applicable in this repo — `transistir` is already
-    the fork, so there's nothing to fork.
-- Before any push or `gh` write operation, double-check the target repo in
-  the command itself — don't rely on defaults, since `gh` and bare `git push`
-  both default to `origin`/the upstream-tracked repo unless told otherwise.
-- Read-only operations against `digidem/comapeo-mobile` (fetching, diffing,
-  checking CI, viewing issues/PRs for context) are fine. Only writes are
-  off-limits. This also means CI workflows in this repo may freely consume
-  `digidem/*` GitHub Actions (e.g. `digidem/npm-lockfile-version`) — using
-  a published Action is a read, not a write.
-- Merging any `origin/*` branch (e.g. `origin/main`, `origin/develop`) into
-  a local branch or into `transistir`'s branches is fine and expected, to
-  stay in sync with upstream — the restriction is about where things get
-  *pushed*, not about reading or merging upstream content in.
+### Upstream sync order
 
-If a task seems to require writing to a `digidem/*` repo, stop and ask
-instead of doing it.
+When `digidem/comapeo-mobile` has new commits, they land in two steps, in
+order:
 
-## Hardening the clone against accidental pushes
+1. **First `transistir/comapeo-mobile-1`** — merge `digidem/develop` into
+   develop and push to the `transistir` remote (direct push is allowed
+   there).
+2. **Then `transistir/coiab-app`** — bring the merged develop over as a PR.
+   Coiab's `develop` is protected: direct pushes are rejected and required
+   checks (`all`, `backend`, `frontend`) must pass before merge. Push a
+   branch like `sync/digidem-upstream` to `origin` and open a PR against
+   `develop`.
 
-Because `origin` still points at `digidem/comapeo-mobile` and `main`/
-`develop` track it, a bare `git push` on those branches would go straight
-upstream. Run once per clone to make that fail loudly instead:
+Merging `digidem/*` branches into local branches is always fine — the
+restriction is about where things get *pushed*.
+
+### `gh` targeting rules
+
+`gh` has no default repo set in this clone, so never rely on implicit
+resolution — name the repo every time:
+
+- `gh pr create/edit/close/merge`, `gh issue ...`, `gh release create`,
+  `gh workflow run`, `gh secret set`, `gh run ...` accept
+  `-R/--repo transistir/coiab-app` (or `transistir/comapeo-mobile-1` for
+  fork-side work).
+- `gh repo edit` takes the repository as a **positional** argument:
+  `gh repo edit transistir/coiab-app ...`.
+- `gh api` has **no `--repo`/`-R` flag**. Use a fully-qualified endpoint
+  path (`gh api repos/transistir/coiab-app/...`) or set
+  `GH_REPO=transistir/coiab-app`. This applies to any write method
+  (`-X POST/PATCH/PUT/DELETE`, or `-f`/`-F` fields, which default to POST).
+- Never point any of the above at `digidem/*`. If a task seems to require
+  it, stop and ask instead.
+
+### Hardening the clone
+
+Already applied here; reapply on a fresh clone:
 
 ```sh
-git remote set-url --push origin DISABLED_no_push
-gh repo set-default transistir/comapeo-mobile-1
+git remote set-url --push digidem no-push
+gh repo set-default transistir/coiab-app
 ```
 
 ## Storybook screenshot capture
