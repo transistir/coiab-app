@@ -59,6 +59,16 @@ type ReconstructedOrg =
       state: 'incomplete';
       organizationId: string;
       slots: Partial<Record<Slot, string>>;
+    }
+  | {
+      // Two local projects claim the same (organization, slot) — e.g. a
+      // retried create or a hand-edited marker. Overwriting one id with the
+      // other would route product actions to an arbitrary project while
+      // reporting the org as fine, so the state is surfaced instead.
+      state: 'invalid';
+      organizationId: string;
+      reason: 'duplicate-slot';
+      slots: Partial<Record<Slot, string>>;
     };
 
 /**
@@ -71,6 +81,7 @@ async function reconstructOrganization(
 ): Promise<ReconstructedOrg | undefined> {
   const projects = await manager.listProjects();
   const byOrg = new Map<string, Partial<Record<Slot, string>>>();
+  const orgsWithDuplicateSlot = new Set<string>();
 
   for (const project of projects) {
     const settings = await (
@@ -79,6 +90,9 @@ async function reconstructOrganization(
     const marker = parseMarker(settings.projectDescription || '');
     if (!marker) continue;
     const slots = byOrg.get(marker.organizationId) ?? {};
+    if (slots[marker.slot] !== undefined) {
+      orgsWithDuplicateSlot.add(marker.organizationId);
+    }
     slots[marker.slot] = project.projectId;
     byOrg.set(marker.organizationId, slots);
   }
@@ -88,6 +102,9 @@ async function reconstructOrganization(
   // singleton).
   const [organizationId, slots] = byOrg.entries().next().value ?? [];
   if (!organizationId) return undefined;
+  if (orgsWithDuplicateSlot.has(organizationId)) {
+    return {state: 'invalid', organizationId, reason: 'duplicate-slot', slots};
+  }
   return slots.m && slots.a
     ? {state: 'ready', organizationId, slots: slots as Record<Slot, string>}
     : {state: 'incomplete', organizationId, slots};
@@ -222,6 +239,13 @@ async function acceptOrganizationBundle(
         `invite for slot ${slot} is marked as slot ${marker?.slot ?? '(no marker)'}`,
       );
     }
+    // KNOWN SPIKE LIMITATION (docs/OrgLayerSpike.md): a full bundle is pinned
+    // by groupInvitesIntoBundle to one inviter and one role; a recovery
+    // bundle carries only the missing slot's invite, and the consumed
+    // invite's inviter/role left no local trace — so this path validates
+    // organization and slot but cannot re-derive them. The product layer
+    // must persist the bundle identity (inviter + role) at invite time and
+    // validate against it here.
     const projectId = await manager.invite.accept({inviteId: invite.inviteId});
     accepted.push({slot, projectId});
   }
@@ -314,38 +338,43 @@ describe('E1/E2 — Organization composition survives restart (SPEC 14 E1/E2)', 
     // device's root key, exactly as the app does.
     const rootKey = KeyManager.generateRootKey();
     const managerA = await createPersistentManager(dir, 'device-a', rootKey);
+    // Whichever manager is live when the test ends (A before the restart, B
+    // after) is closed in the finally — a failure at any step must not leak
+    // the persistent manager or its temp database folder.
+    let managerB: MapeoManager | undefined;
+    try {
+      const {organizationId, projectIds} = await createOrganization(managerA);
+      expect(projectIds.m).toBeDefined();
+      expect(projectIds.a).toBeDefined();
+      expect(projectIds.m).not.toBe(projectIds.a);
 
-    const {organizationId, projectIds} = await createOrganization(managerA);
-    expect(projectIds.m).toBeDefined();
-    expect(projectIds.a).toBeDefined();
-    expect(projectIds.m).not.toBe(projectIds.a);
+      // Restart: brand-new manager instance over the same persisted folders.
+      await managerA.close();
+      managerB = await createPersistentManager(
+        dir,
+        'device-a-restarted',
+        rootKey,
+      );
 
-    // Restart: brand-new manager instance over the same persisted folders.
-    await managerA.close();
-    const managerB = await createPersistentManager(
-      dir,
-      'device-a-restarted',
-      rootKey,
-    );
+      const org = await reconstructOrganization(managerB);
+      expect(org).toBeDefined();
+      expect(org!.state).toBe('ready');
+      expect(org!.organizationId).toBe(organizationId);
+      expect(org!.slots.m).toBe(projectIds.m);
+      expect(org!.slots.a).toBe(projectIds.a);
 
-    const org = await reconstructOrganization(managerB);
-    expect(org).toBeDefined();
-    expect(org!.state).toBe('ready');
-    expect(org!.organizationId).toBe(organizationId);
-    expect(org!.slots.m).toBe(projectIds.m);
-    expect(org!.slots.a).toBe(projectIds.a);
-
-    // E2: both slots are usable through the plain per-project API, in either
-    // order, with no mechanism beyond project ids (activeProjectId is app
-    // state; nothing in core needs to change to "switch").
-    for (const slot of ['a', 'm'] as const) {
-      const project = await managerB.getProject(org!.slots[slot]);
-      const settings = await project.$getProjectSettings();
-      expect(settings.name).toBe(slot === 'm' ? 'Monitoramento' : 'Alertas');
+      // E2: both slots are usable through the plain per-project API, in either
+      // order, with no mechanism beyond project ids (activeProjectId is app
+      // state; nothing in core needs to change to "switch").
+      for (const slot of ['a', 'm'] as const) {
+        const project = await managerB.getProject(org!.slots[slot]);
+        const settings = await project.$getProjectSettings();
+        expect(settings.name).toBe(slot === 'm' ? 'Monitoramento' : 'Alertas');
+      }
+    } finally {
+      await (managerB ?? managerA).close().catch(() => undefined);
+      fs.rmSync(dir, {recursive: true, force: true});
     }
-
-    await managerB.close();
-    fs.rmSync(dir, {recursive: true, force: true});
   });
 
   test('a stale or foreign marker never groups into an Organization', async () => {
@@ -355,16 +384,44 @@ describe('E1/E2 — Organization composition survives restart (SPEC 14 E1/E2)', 
       'device-a',
       KeyManager.generateRootKey(),
     );
+    try {
+      // Only one slot of an org, plus an unmarked project.
+      await createOrganization(manager, ['m']);
+      await manager.createProject({name: 'Plain project'});
+      const org = await reconstructOrganization(manager);
+      expect(org?.state).toBe('incomplete'); // never 'ready' on one slot
+      expect(Object.keys(org?.slots ?? {})).toEqual(['m']);
+    } finally {
+      await manager.close().catch(() => undefined);
+      fs.rmSync(dir, {recursive: true, force: true});
+    }
+  });
 
-    // Only one slot of an org, plus an unmarked project.
-    await createOrganization(manager, ['m']);
-    await manager.createProject({name: 'Plain project'});
-    const org = await reconstructOrganization(manager);
-    expect(org?.state).toBe('incomplete'); // never 'ready' on one slot
-    expect(Object.keys(org?.slots ?? {})).toEqual(['m']);
-
-    await manager.close();
-    fs.rmSync(dir, {recursive: true, force: true});
+  test('two local projects claiming the same slot mark the org invalid, not ready', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'spike-org-e1c-'));
+    const manager = await createPersistentManager(
+      dir,
+      'device-a',
+      KeyManager.generateRootKey(),
+    );
+    try {
+      // A retried create (or hand-edited marker) leaves a second project on
+      // the same (organization, slot). Reconstruction must surface the
+      // conflict — reporting 'ready' with an arbitrarily chosen project id
+      // would route product actions to an arbitrary project.
+      const {organizationId} = await createOrganization(manager);
+      await manager.createProject({
+        name: 'Monitoramento (duplicado)',
+        projectDescription: markerFor(organizationId, 'm'),
+      });
+      const org = await reconstructOrganization(manager);
+      expect(org?.state).toBe('invalid');
+      expect(org?.state === 'invalid' && org.reason).toBe('duplicate-slot');
+      expect(org?.organizationId).toBe(organizationId);
+    } finally {
+      await manager.close().catch(() => undefined);
+      fs.rmSync(dir, {recursive: true, force: true});
+    }
   });
 });
 
@@ -385,9 +442,15 @@ describe('E3/E4/E5 — one invite action, one accept action (SPEC 14 E3/E4/E5)',
 
       const {organizationId, projectIds} = await createOrganization(a.manager);
 
-      // E4: ONE product action sends BOTH project invites.
+      // E4: ONE product action sends BOTH project invites. Fire-and-forget:
+      // $member.invite resolves only on the invitee's response, so the
+      // rejection handler attaches at creation — a later failure must not
+      // leave teardown rejecting these as unhandled promises that drown the
+      // original error.
       const invitePromises = (['m', 'a'] as const).map(slot =>
-        sendInvite(projectIds[slot]!, a.manager, b.manager.deviceId),
+        sendInvite(projectIds[slot]!, a.manager, b.manager.deviceId).catch(
+          () => undefined,
+        ),
       );
 
       // Q1: both invites coexist as pending on the receiver, and Q2: the
@@ -412,7 +475,7 @@ describe('E3/E4/E5 — one invite action, one accept action (SPEC 14 E3/E4/E5)',
       // E5: ONE product action accepts the whole bundle.
       const accepted = await acceptOrganizationBundle(b.manager, bundle);
       expect(accepted).toHaveLength(2);
-      await Promise.all(invitePromises.map(p => p && p.catch(() => undefined)));
+      await Promise.all(invitePromises);
 
       // Post-accept (post-sync) the marker is readable from the receiver's own
       // project settings — the source reconstruction consumes (SPEC E3).
@@ -449,8 +512,11 @@ describe('E7 — partial failure recovers without duplicating slots (SPEC 14 E7)
       disconnect = await connectPeers([a.manager, b.manager]);
 
       const {organizationId, projectIds} = await createOrganization(a.manager);
+      // Fire-and-forget with handlers at creation — same rationale as E3.
       const invitePromises = (['m', 'a'] as const).map(slot =>
-        sendInvite(projectIds[slot]!, a.manager, b.manager.deviceId),
+        sendInvite(projectIds[slot]!, a.manager, b.manager.deviceId).catch(
+          () => undefined,
+        ),
       );
 
       // Partial accept: only Monitoramento lands. The bundle accept is
@@ -504,7 +570,7 @@ describe('E7 — partial failure recovers without duplicating slots (SPEC 14 E7)
         invites: {a: inviteA},
       });
       expect(accepted.map(x => x.slot)).toEqual(['a']); // only the missing slot
-      await Promise.all(invitePromises.map(p => p && p.catch(() => undefined)));
+      await Promise.all(invitePromises);
 
       const complete = await reconstructOrganization(b.manager);
       expect(complete?.state).toBe('ready');
@@ -533,32 +599,33 @@ describe('E7 — partial failure recovers without duplicating slots (SPEC 14 E7)
     // with the organizationId it already has — on restart, reconstructed
     // from local state.
     const a = await createManager({name: 'creator', deviceType: 'mobile'});
+    try {
+      // Interruption after slot m landed.
+      const {organizationId, projectIds} = await createOrganization(a.manager, [
+        'm',
+      ]);
+      const interrupted = await reconstructOrganization(a.manager);
+      expect(interrupted?.state).toBe('incomplete');
+      expect(interrupted?.organizationId).toBe(organizationId);
 
-    // Interruption after slot m landed.
-    const {organizationId, projectIds} = await createOrganization(a.manager, [
-      'm',
-    ]);
-    const interrupted = await reconstructOrganization(a.manager);
-    expect(interrupted?.state).toBe('incomplete');
-    expect(interrupted?.organizationId).toBe(organizationId);
+      // Resume: complete only the missing slot, under the SAME org id (as
+      // reconstruction would supply it after a restart).
+      const resumed = await createOrganization(
+        a.manager,
+        ['a'],
+        interrupted?.organizationId,
+      );
+      expect(resumed.organizationId).toBe(organizationId);
+      expect(resumed.projectIds.m).toBeUndefined(); // m was not recreated
 
-    // Resume: complete only the missing slot, under the SAME org id (as
-    // reconstruction would supply it after a restart).
-    const resumed = await createOrganization(
-      a.manager,
-      ['a'],
-      interrupted?.organizationId,
-    );
-    expect(resumed.organizationId).toBe(organizationId);
-    expect(resumed.projectIds.m).toBeUndefined(); // m was not recreated
-
-    const complete = await reconstructOrganization(a.manager);
-    expect(complete?.state).toBe('ready');
-    expect(complete?.organizationId).toBe(organizationId);
-    expect(complete?.slots.m).toBe(projectIds.m); // original m, untouched
-    expect(complete?.slots.a).toBe(resumed.projectIds.a);
-
-    await a.manager.close();
+      const complete = await reconstructOrganization(a.manager);
+      expect(complete?.state).toBe('ready');
+      expect(complete?.organizationId).toBe(organizationId);
+      expect(complete?.slots.m).toBe(projectIds.m); // original m, untouched
+      expect(complete?.slots.a).toBe(resumed.projectIds.a);
+    } finally {
+      await a.manager.close().catch(() => undefined);
+    }
   });
 });
 
@@ -728,8 +795,11 @@ describe('bundle grouping — duplicate slots never group (SPEC 8.5)', () => {
 describe('E6 — fresh device starts with zero projects (SPEC 14 E6, core half)', () => {
   test('a brand-new manager materializes no personal/default project', async () => {
     const fresh = await createManager({name: 'fresh', deviceType: 'mobile'});
-    expect(await fresh.manager.listProjects()).toEqual([]);
-    await fresh.manager.close();
+    try {
+      expect(await fresh.manager.listProjects()).toEqual([]);
+    } finally {
+      await fresh.manager.close().catch(() => undefined);
+    }
   });
 });
 
@@ -788,24 +858,26 @@ describe('E8 — Remote Archive fans out to both projects (SPEC 14 E8)', () => {
 describe('E9 — a plain description edit destroys the marker (SPEC 15 risk)', () => {
   test('saving EditProjectDetails-style settings orphans the slot from the org', async () => {
     const a = await createManager({name: 'coordinator', deviceType: 'mobile'});
-    const {projectIds} = await createOrganization(a.manager);
-    expect((await reconstructOrganization(a.manager))?.state).toBe('ready');
+    try {
+      const {projectIds} = await createOrganization(a.manager);
+      expect((await reconstructOrganization(a.manager))?.state).toBe('ready');
 
-    // Exactly what EditProjectDetails.tsx does on save: the user's text
-    // REPLACES projectDescription — marker included. No product guard
-    // exists today; the marker has no read-only home.
-    const project = await a.manager.getProject(projectIds.m!);
-    const settings = await project.$getProjectSettings();
-    await project.$setProjectSettings({
-      name: settings.name,
-      projectColor: settings.projectColor,
-      projectDescription: 'Plano de manejo atualizado',
-    });
+      // Exactly what EditProjectDetails.tsx does on save: the user's text
+      // REPLACES projectDescription — marker included. No product guard
+      // exists today; the marker has no read-only home.
+      const project = await a.manager.getProject(projectIds.m!);
+      const settings = await project.$getProjectSettings();
+      await project.$setProjectSettings({
+        name: settings.name,
+        projectColor: settings.projectColor,
+        projectDescription: 'Plano de manejo atualizado',
+      });
 
-    const after = await reconstructOrganization(a.manager);
-    expect(after?.state).toBe('incomplete'); // m no longer recognized
-    expect(after?.slots.a).toBe(projectIds.a); // a untouched
-
-    await a.manager.close();
+      const after = await reconstructOrganization(a.manager);
+      expect(after?.state).toBe('incomplete'); // m no longer recognized
+      expect(after?.slots.a).toBe(projectIds.a); // a untouched
+    } finally {
+      await a.manager.close().catch(() => undefined);
+    }
   });
 });

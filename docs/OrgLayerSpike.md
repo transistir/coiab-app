@@ -32,7 +32,7 @@ fan-out — is expressible with existing per-project APIs.
 
 | # | Experiment | Result | Proven by |
 |---|------------|--------|-----------|
-| E1 | Create + reconstruct after restart | ✅ Pass | Two projects with markers, manager closed and recreated over the same folders, both project IDs reconstructed under the same `organizationId` from `listProjects()` + `$getProjectSettings()` alone. Also: a one-slot org reconstructs as `incomplete`, never `ready`. |
+| E1 | Create + reconstruct after restart | ✅ Pass | Two projects with markers, manager closed and recreated over the same folders, both project IDs reconstructed under the same `organizationId` from `listProjects()` + `$getProjectSettings()` alone. Also: a one-slot org reconstructs as `incomplete`, never `ready`; two local projects claiming the same slot reconstruct as `invalid` (`duplicate-slot`), never `ready`. |
 | E2 | Switch between the two projects | ✅ Pass (core half) | Both slots usable through the plain per-project API in either order. Nothing in core changes to "switch" — `activeProjectId` is app state and is not exercised here (see *Not covered*). |
 | E3 | Marker round-trip | ✅ Pass | Marker readable locally before invite, visible in the pending invite **before** accept (it travels in the invite's `projectDescription`), and readable from the receiver's own synced `projectSettings` after accept — the post-sync source reconstruction consumes. `createProject({projectDescription: marker})` (~51 chars) passes schema validation. |
 | E4 | One action sends both invites | ✅ Pass | One product action fans out two `$member.invite()` calls; both coexist as pending invites on the receiver. |
@@ -103,6 +103,19 @@ fan-out — is expressible with existing per-project APIs.
    different slot than the gap it fills: partial bundles bypass
    `groupInvitesIntoBundle`'s per-slot validation, so the slot must be
    re-checked at accept time.
+6. **Recovery bundles cannot re-derive inviter/role** (known spike
+   limitation): a full bundle is pinned by `groupInvitesIntoBundle` to one
+   inviter and one role, but after an interrupted accept the consumed slot's
+   invite is gone and leaves no local trace of who invited or in what role.
+   The recovery path validates organization and slot, not inviter/role. The
+   product layer must persist the bundle identity (inviter + role) at invite
+   time and validate against it at recovery time.
+7. **Duplicate slots surface as `invalid`, never `ready`**: if two local
+   projects claim the same (organization, slot) — a retried create or a
+   hand-edited marker — `reconstructOrganization` returns
+   `{state: 'invalid', reason: 'duplicate-slot'}` instead of silently
+   picking one project id. Reporting `ready` there would route product
+   actions to an arbitrary project (last write wins).
 
 ## What the spike does not cover (app-layer only)
 
