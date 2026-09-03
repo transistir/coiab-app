@@ -163,7 +163,11 @@ function groupInvitesIntoBundle(invites: ReadonlyArray<InviteLike>):
     const slots = new Set(group.map(e => e.marker.slot));
     if (slots.size !== 2) continue; // need distinct m + a
     const roleNames = new Set(group.map(e => e.invite.roleName));
-    if (roleNames.size !== 1) continue; // same role in both invites
+    // Same role in both invites — and the role name must actually be present:
+    // `InviteLike` permits `roleName: undefined`, and a Set of two undefineds
+    // has size 1, so without the presence check a role-less pair would group
+    // with no authoritative role tying the two invites together (SPEC 13 Q3).
+    if (roleNames.size !== 1 || !group[0]!.invite.roleName) continue;
     const {organizationId} = group[0]!.marker;
     const {invitorDeviceId} = group[0]!.invite;
     return {
@@ -552,93 +556,99 @@ describe('bundle-accept guards — foreign org and slot mismatch are refused', (
     const c = await createManager({name: 'sender-2', deviceType: 'mobile'});
     const disconnect = await connectPeers([a.manager, b.manager, c.manager]);
 
-    // b holds a partial org-1 (slot m only) — the state recovery starts from.
-    // The invite promises that stay un-accepted never resolve ($member.invite
-    // awaits the invitee's response), so each gets its catch at creation —
-    // fire-and-forget, never awaited below.
-    const org1 = await createOrganization(a.manager);
-    void (['m', 'a'] as const).map(slot =>
-      sendInvite(org1.projectIds[slot]!, a.manager, b.manager.deviceId).catch(
-        () => undefined,
-      ),
-    );
-    const pending1 = await waitForInvites(
-      b.manager,
-      invites =>
-        invites.filter(
-          i =>
-            parseMarker(i.projectDescription || '')?.organizationId ===
-            org1.organizationId,
-        ).length === 2,
-    );
-    await b.manager.invite.accept({
-      inviteId: pending1.find(
-        i => parseMarker(i.projectDescription!)!.slot === 'm',
-      )!.inviteId,
-    });
-
-    // Foreign-org guard: c's org-2 'a' invite must not fill org-1's gap —
-    // without the guard it would glue two organizations into one.
-    const org2 = await createOrganization(c.manager);
-    const foreignInvitePromise = sendInvite(
-      org2.projectIds.a!,
-      c.manager,
-      b.manager.deviceId,
-    ).catch(() => undefined);
-    const foreign = (
-      await waitForInvites(
+    try {
+      // b holds a partial org-1 (slot m only) — the state recovery starts from.
+      // The invite promises that stay un-accepted never resolve ($member.invite
+      // awaits the invitee's response), so each gets its catch at creation —
+      // fire-and-forget, never awaited below.
+      const org1 = await createOrganization(a.manager);
+      void (['m', 'a'] as const).map(slot =>
+        sendInvite(org1.projectIds[slot]!, a.manager, b.manager.deviceId).catch(
+          () => undefined,
+        ),
+      );
+      const pending1 = await waitForInvites(
         b.manager,
         invites =>
           invites.filter(
             i =>
               parseMarker(i.projectDescription || '')?.organizationId ===
-              org2.organizationId,
-          ).length >= 1,
-      )
-    ).find(
-      i =>
-        parseMarker(i.projectDescription!)!.organizationId ===
-        org2.organizationId,
-    )!;
-    await expect(
-      acceptOrganizationBundle(b.manager, {invites: {a: foreign}}),
-    ).rejects.toThrow(/not the local organization/);
+              org1.organizationId,
+          ).length === 2,
+      );
+      await b.manager.invite.accept({
+        inviteId: pending1.find(
+          i => parseMarker(i.projectDescription!)!.slot === 'm',
+        )!.inviteId,
+      });
 
-    // Slot guard: an m-marked invite of the SAME organization must not fill
-    // the 'a' gap — it would duplicate the other slot while reconstruction
-    // stays incomplete.
-    const duplicateSlotProject = await a.manager.createProject({
-      name: 'Monitoramento (duplicado)',
-      projectDescription: markerFor(org1.organizationId, 'm'),
-    });
-    const mismatchInvitePromise = sendInvite(
-      duplicateSlotProject,
-      a.manager,
-      b.manager.deviceId,
-    ).catch(() => undefined);
-    const mismatched = (
-      await waitForInvites(
-        b.manager,
-        invites =>
-          invites.filter(
-            i => i.projectDescription === markerFor(org1.organizationId, 'm'),
-          ).length >= 1,
-      )
-    ).find(i => i.projectDescription === markerFor(org1.organizationId, 'm'))!;
-    await expect(
-      acceptOrganizationBundle(b.manager, {invites: {a: mismatched}}),
-    ).rejects.toThrow(/invite for slot a is marked as slot m/);
+      // Foreign-org guard: c's org-2 'a' invite must not fill org-1's gap —
+      // without the guard it would glue two organizations into one.
+      const org2 = await createOrganization(c.manager);
+      const foreignInvitePromise = sendInvite(
+        org2.projectIds.a!,
+        c.manager,
+        b.manager.deviceId,
+      ).catch(() => undefined);
+      const foreign = (
+        await waitForInvites(
+          b.manager,
+          invites =>
+            invites.filter(
+              i =>
+                parseMarker(i.projectDescription || '')?.organizationId ===
+                org2.organizationId,
+            ).length >= 1,
+        )
+      ).find(
+        i =>
+          parseMarker(i.projectDescription!)!.organizationId ===
+          org2.organizationId,
+      )!;
+      await expect(
+        acceptOrganizationBundle(b.manager, {invites: {a: foreign}}),
+      ).rejects.toThrow(/not the local organization/);
 
-    // Both refusals left the partial state untouched: still exactly slot m.
-    const still = await reconstructOrganization(b.manager);
-    expect(still?.state).toBe('incomplete');
-    expect(Object.keys(still?.slots ?? {})).toEqual(['m']);
-    expect(still?.organizationId).toBe(org1.organizationId);
+      // Slot guard: an m-marked invite of the SAME organization must not fill
+      // the 'a' gap — it would duplicate the other slot while reconstruction
+      // stays incomplete.
+      const duplicateSlotProject = await a.manager.createProject({
+        name: 'Monitoramento (duplicado)',
+        projectDescription: markerFor(org1.organizationId, 'm'),
+      });
+      const mismatchInvitePromise = sendInvite(
+        duplicateSlotProject,
+        a.manager,
+        b.manager.deviceId,
+      ).catch(() => undefined);
+      const mismatched = (
+        await waitForInvites(
+          b.manager,
+          invites =>
+            invites.filter(
+              i => i.projectDescription === markerFor(org1.organizationId, 'm'),
+            ).length >= 1,
+        )
+      ).find(
+        i => i.projectDescription === markerFor(org1.organizationId, 'm'),
+      )!;
+      await expect(
+        acceptOrganizationBundle(b.manager, {invites: {a: mismatched}}),
+      ).rejects.toThrow(/invite for slot a is marked as slot m/);
 
-    await disconnect();
-    await a.manager.close();
-    await b.manager.close();
-    await c.manager.close();
+      // Both refusals left the partial state untouched: still exactly slot m.
+      const still = await reconstructOrganization(b.manager);
+      expect(still?.state).toBe('incomplete');
+      expect(Object.keys(still?.slots ?? {})).toEqual(['m']);
+      expect(still?.organizationId).toBe(org1.organizationId);
+    } finally {
+      // A failing .rejects assertion is exactly the regression this test
+      // exists to catch — it must not also hang Jest on leaked resources.
+      await disconnect();
+      await a.manager.close();
+      await b.manager.close();
+      await c.manager.close();
+    }
   });
 });
 
@@ -669,6 +679,29 @@ describe('bundle grouping — duplicate slots never group (SPEC 8.5)', () => {
 
     // A lone slot never groups, full stop.
     expect(groupInvitesIntoBundle([invite('a', 'a-1')])).toBeUndefined();
+  });
+
+  test('a role-less pair never groups, even though both roles match', () => {
+    // `InviteLike` permits `roleName: undefined`; a Set of two undefineds has
+    // size 1, so the same-role check alone would accept the pair. SPEC 13 Q3
+    // requires a role name — there is no authoritative role to compare.
+    const roleless = (slot: Slot, id: string): InviteLike => ({
+      inviteId: id,
+      projectDescription: `coiab-org:v1:11111111-1111-1111-1111-111111111111:${slot}`,
+      invitorDeviceId: 'invitor-1',
+    });
+
+    expect(
+      groupInvitesIntoBundle([roleless('m', 'm-1'), roleless('a', 'a-1')]),
+    ).toBeUndefined();
+
+    // Presence on only one side still fails the same-role check.
+    expect(
+      groupInvitesIntoBundle([
+        {...roleless('m', 'm-1'), roleName: 'coordinator'},
+        roleless('a', 'a-1'),
+      ]),
+    ).toBeUndefined();
   });
 });
 

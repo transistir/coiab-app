@@ -12,7 +12,10 @@ discovery (and, for E8, a real `@comapeo/cloud` server in a child process).
 
 ## Verdict: FRONTEND_ONLY_VIABLE
 
-All eight mandatory experiments pass with **zero changes to `@comapeo/core`**.
+All eight mandatory experiments pass with **zero changes to `@comapeo/core`**
+(with one scoped exception: E7's sender-half scenario is not simulated — the
+pass there covers receiver-side acceptance recovery and create-side
+interruption only; see *What the spike does not cover*).
 An Organization is nothing more than a composition of two projects correlated
 by a marker stored in `projectDescription`:
 
@@ -35,7 +38,7 @@ fan-out — is expressible with existing per-project APIs.
 | E4 | One action sends both invites | ✅ Pass | One product action fans out two `$member.invite()` calls; both coexist as pending invites on the receiver. |
 | E5 | One action accepts the bundle | ✅ Pass | One acceptance path consumes both invite IDs; the receiver ends up a member of both projects and reconstruction yields `ready`. |
 | E6 | Fresh device, no default project | ✅ Pass (core half) | A brand-new `MapeoManager` starts with `listProjects() === []`. The onboarding UI that would offer only *Criar organização* / *Entrar em organização* is app-layer (see *Not covered*). |
-| E7 | Partial failure + idempotent retry | ✅ Pass | After accepting only Monitoramento: org is `incomplete` (never prematurely `ready`); recovery goes through the same bundle-accept helper with the still-pending missing-slot invite — the present slot is skipped, not duplicated; re-inviting it answers `ALREADY`. Create-side: an interrupted provisioning resumes under the same `organizationId` (reconstruction supplies it) and provisions only the missing slot. |
+| E7 | Partial failure + idempotent retry | ✅ Pass (receiver-side + create-side only) | After accepting only Monitoramento: org is `incomplete` (never prematurely `ready`); recovery goes through the same bundle-accept helper with the still-pending missing-slot invite — the present slot is skipped, not duplicated; re-inviting it answers `ALREADY`. Create-side: an interrupted provisioning resumes under the same `organizationId` (reconstruction supplies it) and provisions only the missing slot. The sender-half scenario (M invite starts, A invite fails) is NOT simulated — see *Not covered*. |
 | E8 | Remote Archive at org level | ✅ Pass | The same server URL is added to both projects via `$member.addServerPeer()`; both list the server as a member with `selfHostedServerDetails`. |
 | E9 | Marker survives ordinary use | ⚠️ Hazard proven | A plain `EditProjectDetails`-style `$setProjectSettings` save (user text replacing `projectDescription`) erases the marker: reconstruction degrades `ready` → `incomplete`, sibling slot untouched. See *Findings beyond the SPEC* #4 — the product layer must give the marker a read-only home. |
 
