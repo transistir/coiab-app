@@ -446,10 +446,15 @@ describe('E3/E4/E5 — one invite action, one accept action (SPEC 14 E3/E4/E5)',
       // $member.invite resolves only on the invitee's response, so the
       // rejection handler attaches at creation — a later failure must not
       // leave teardown rejecting these as unhandled promises that drown the
-      // original error.
+      // original error. The catch RECORDS the slot instead of discarding it:
+      // an invite that reached the receiver but failed sender-side must fail
+      // the final assertion, not pass silently through Promise.all.
+      const inviteFailures: Array<'m' | 'a'> = [];
       const invitePromises = (['m', 'a'] as const).map(slot =>
         sendInvite(projectIds[slot]!, a.manager, b.manager.deviceId).catch(
-          () => undefined,
+          () => {
+            inviteFailures.push(slot);
+          },
         ),
       );
 
@@ -476,6 +481,7 @@ describe('E3/E4/E5 — one invite action, one accept action (SPEC 14 E3/E4/E5)',
       const accepted = await acceptOrganizationBundle(b.manager, bundle);
       expect(accepted).toHaveLength(2);
       await Promise.all(invitePromises);
+      expect(inviteFailures).toEqual([]);
 
       // Post-accept (post-sync) the marker is readable from the receiver's own
       // project settings — the source reconstruction consumes (SPEC E3).
@@ -488,6 +494,22 @@ describe('E3/E4/E5 — one invite action, one accept action (SPEC 14 E3/E4/E5)',
       expect(orgOnB?.slots.a).toBe(
         accepted.find(x => x.slot === 'a')!.projectId,
       );
+
+      // Authoritative role consistency is checked POST-accept, not at
+      // grouping: the invite wire message carries roleName only — no roleId —
+      // so the receiver cannot compare role ids before accepting (recorded as
+      // a spike limitation in docs/OrgLayerSpike.md). What the product layer
+      // CAN assert is that its own member record holds the same roleId in
+      // both projects after joining.
+      const ownRoleIds = await Promise.all(
+        (['m', 'a'] as const).map(async slot => {
+          const project = await b.manager.getProject(orgOnB!.slots[slot]!);
+          const members = await project.$member.getMany();
+          const me = members.find(m => m.deviceId === b.manager.deviceId);
+          return me?.roleId;
+        }),
+      );
+      expect(ownRoleIds[0]).toBe(ownRoleIds[1]);
       // Q6, asserted: the joining journey ends with EXACTLY the two internal
       // projects — nothing else materializes on the receiver.
       expect(await b.manager.listProjects()).toHaveLength(2);
@@ -512,10 +534,14 @@ describe('E7 — partial failure recovers without duplicating slots (SPEC 14 E7)
       disconnect = await connectPeers([a.manager, b.manager]);
 
       const {organizationId, projectIds} = await createOrganization(a.manager);
-      // Fire-and-forget with handlers at creation — same rationale as E3.
+      // Fire-and-forget with handlers at creation — same rationale as E3,
+      // and the catch records the failing slot for the final assertion.
+      const inviteFailures: Array<'m' | 'a'> = [];
       const invitePromises = (['m', 'a'] as const).map(slot =>
         sendInvite(projectIds[slot]!, a.manager, b.manager.deviceId).catch(
-          () => undefined,
+          () => {
+            inviteFailures.push(slot);
+          },
         ),
       );
 
@@ -571,6 +597,7 @@ describe('E7 — partial failure recovers without duplicating slots (SPEC 14 E7)
       });
       expect(accepted.map(x => x.slot)).toEqual(['a']); // only the missing slot
       await Promise.all(invitePromises);
+      expect(inviteFailures).toEqual([]);
 
       const complete = await reconstructOrganization(b.manager);
       expect(complete?.state).toBe('ready');
@@ -810,15 +837,16 @@ describe('E6 — fresh device starts with zero projects (SPEC 14 E6, core half)'
 describe('E8 — Remote Archive fans out to both projects (SPEC 14 E8)', () => {
   test('the same archive server is added to both projects via member APIs', async () => {
     const a = await createManager({name: 'coordinator', deviceType: 'mobile'});
-    const {projectIds} = await createOrganization(a.manager);
 
     // The server hosts BOTH org projects — the cloud default limit is 1,
     // which would reject the second addServerPeer (ServerTooManyProjects).
-    // The acquisition is INSIDE the try: if createTestServer itself rejects
-    // (child exits, invalid URL), the already-created manager is still closed
-    // below — an unclosed manager can keep Jest alive at exit.
+    // Everything after createManager is INSIDE the try: if createOrganization
+    // or createTestServer rejects (partial provisioning, child exits, invalid
+    // URL), the already-created manager is still closed below — an unclosed
+    // manager can keep Jest alive at exit.
     let closeServer: (() => void) | undefined;
     try {
+      const {projectIds} = await createOrganization(a.manager);
       const {serverBaseUrl, close} = await createTestServer({
         allowedProjects: 2,
       });

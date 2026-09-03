@@ -116,6 +116,17 @@ fan-out — is expressible with existing per-project APIs.
    `{state: 'invalid', reason: 'duplicate-slot'}` instead of silently
    picking one project id. Reporting `ready` there would route product
    actions to an arbitrary project (last write wins).
+8. **Role consistency is checked post-accept, not at grouping** (known
+   spike limitation): the invite wire message (`Invite` RPC) carries
+   `roleName` but not `roleId`, so the receiver cannot compare
+   authoritative role ids before accepting — `groupInvitesIntoBundle`
+   compares `roleName` because that is the only role signal the invite
+   carries. A sender that issues one slot with role X and the other with
+   role Y, both labeled with the same name, would group. The product layer
+   must therefore (a) treat same-role fan-out as a sender-side invariant
+   (both `$member.invite` calls use one roleId) and (b) verify after
+   joining that its own member record holds the same roleId in both
+   projects — the E3/E5 test asserts exactly that.
 
 ## What the spike does not cover (app-layer only)
 
