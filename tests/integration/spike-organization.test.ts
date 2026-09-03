@@ -545,6 +545,103 @@ describe('E7 — partial failure recovers without duplicating slots (SPEC 14 E7)
   });
 });
 
+describe('bundle-accept guards — foreign org and slot mismatch are refused', () => {
+  test('a foreign-org invite and a wrong-slot invite both throw; nothing is accepted', async () => {
+    const a = await createManager({name: 'sender', deviceType: 'mobile'});
+    const b = await createManager({name: 'receiver', deviceType: 'mobile'});
+    const c = await createManager({name: 'sender-2', deviceType: 'mobile'});
+    const disconnect = await connectPeers([a.manager, b.manager, c.manager]);
+
+    // b holds a partial org-1 (slot m only) — the state recovery starts from.
+    // The invite promises that stay un-accepted never resolve ($member.invite
+    // awaits the invitee's response), so each gets its catch at creation —
+    // fire-and-forget, never awaited below.
+    const org1 = await createOrganization(a.manager);
+    void (['m', 'a'] as const).map(slot =>
+      sendInvite(org1.projectIds[slot]!, a.manager, b.manager.deviceId).catch(
+        () => undefined,
+      ),
+    );
+    const pending1 = await waitForInvites(
+      b.manager,
+      invites =>
+        invites.filter(
+          i =>
+            parseMarker(i.projectDescription || '')?.organizationId ===
+            org1.organizationId,
+        ).length === 2,
+    );
+    await b.manager.invite.accept({
+      inviteId: pending1.find(
+        i => parseMarker(i.projectDescription!)!.slot === 'm',
+      )!.inviteId,
+    });
+
+    // Foreign-org guard: c's org-2 'a' invite must not fill org-1's gap —
+    // without the guard it would glue two organizations into one.
+    const org2 = await createOrganization(c.manager);
+    const foreignInvitePromise = sendInvite(
+      org2.projectIds.a!,
+      c.manager,
+      b.manager.deviceId,
+    ).catch(() => undefined);
+    const foreign = (
+      await waitForInvites(
+        b.manager,
+        invites =>
+          invites.filter(
+            i =>
+              parseMarker(i.projectDescription || '')?.organizationId ===
+              org2.organizationId,
+          ).length >= 1,
+      )
+    ).find(
+      i =>
+        parseMarker(i.projectDescription!)!.organizationId ===
+        org2.organizationId,
+    )!;
+    await expect(
+      acceptOrganizationBundle(b.manager, {invites: {a: foreign}}),
+    ).rejects.toThrow(/not the local organization/);
+
+    // Slot guard: an m-marked invite of the SAME organization must not fill
+    // the 'a' gap — it would duplicate the other slot while reconstruction
+    // stays incomplete.
+    const duplicateSlotProject = await a.manager.createProject({
+      name: 'Monitoramento (duplicado)',
+      projectDescription: markerFor(org1.organizationId, 'm'),
+    });
+    const mismatchInvitePromise = sendInvite(
+      duplicateSlotProject,
+      a.manager,
+      b.manager.deviceId,
+    ).catch(() => undefined);
+    const mismatched = (
+      await waitForInvites(
+        b.manager,
+        invites =>
+          invites.filter(
+            i => i.projectDescription === markerFor(org1.organizationId, 'm'),
+          ).length >= 1,
+      )
+    ).find(i => i.projectDescription === markerFor(org1.organizationId, 'm'))!;
+    await expect(
+      acceptOrganizationBundle(b.manager, {invites: {a: mismatched}}),
+    ).rejects.toThrow(/invite for slot a is marked as slot m/);
+
+    // Both refusals left the partial state untouched: still exactly slot m.
+    const still = await reconstructOrganization(b.manager);
+    expect(still?.state).toBe('incomplete');
+    expect(Object.keys(still?.slots ?? {})).toEqual(['m']);
+    expect(still?.organizationId).toBe(org1.organizationId);
+
+    await disconnect();
+    await a.manager.close();
+    await b.manager.close();
+    await c.manager.close();
+  });
+});
+
 describe('bundle grouping — duplicate slots never group (SPEC 8.5)', () => {
   test('three invites with a duplicated slot are rejected, not deduped', () => {
     // Pure grouping rule: m, m, a with the same org, inviter, and role has

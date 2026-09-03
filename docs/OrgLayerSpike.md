@@ -84,7 +84,7 @@ fan-out — is expressible with existing per-project APIs.
    failed assertion closes the manager and the test server.
 4. **The marker has no read-only home** (E9): `EditProjectDetails.tsx`
    already lets a coordinator replace `projectDescription` through
-   `project.updateSettings` (`useUpdateProjectSettings` from
+   `project.$setProjectSettings` (`useUpdateProjectSettings` from
    `@comapeo/core-react`). E9 proves the hazard: saving ordinary settings
    text through the real API orphans that slot — reconstruction degrades
    `ready` → `incomplete` with the other slot untouched. The product layer
