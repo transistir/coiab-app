@@ -376,53 +376,63 @@ describe('E3/E4/E5 — one invite action, one accept action (SPEC 14 E3/E4/E5)',
   test('single Convidar fans out two invites; single Entrar accepts the bundle', async () => {
     const a = await createManager({name: 'sender', deviceType: 'mobile'});
     const b = await createManager({name: 'receiver', deviceType: 'mobile'});
-    const disconnect = await connectPeers([a.manager, b.manager]);
+    // connectPeers starts discovery servers; if it (or any assertion below)
+    // rejects, the finally must still tear everything down or Jest hangs on
+    // the leaked resources (the documented finding-3 failure mode).
+    let disconnect: (() => Promise<void>) | undefined;
+    try {
+      disconnect = await connectPeers([a.manager, b.manager]);
 
-    const {organizationId, projectIds} = await createOrganization(a.manager);
+      const {organizationId, projectIds} = await createOrganization(a.manager);
 
-    // E4: ONE product action sends BOTH project invites.
-    const invitePromises = (['m', 'a'] as const).map(slot =>
-      sendInvite(projectIds[slot]!, a.manager, b.manager.deviceId),
-    );
+      // E4: ONE product action sends BOTH project invites.
+      const invitePromises = (['m', 'a'] as const).map(slot =>
+        sendInvite(projectIds[slot]!, a.manager, b.manager.deviceId),
+      );
 
-    // Q1: both invites coexist as pending on the receiver, and Q2: the
-    // receiver has the marker *before* accepting (it travels in the invite).
-    const pending = await waitForInvites(
-      b.manager,
-      invites =>
-        invites.filter(i => parseMarker(i.projectDescription || '')).length ===
-        2,
-    );
-    const marked = pending.filter(i => parseMarker(i.projectDescription!));
-    expect(marked).toHaveLength(2);
+      // Q1: both invites coexist as pending on the receiver, and Q2: the
+      // receiver has the marker *before* accepting (it travels in the invite).
+      const pending = await waitForInvites(
+        b.manager,
+        invites =>
+          invites.filter(i => parseMarker(i.projectDescription || ''))
+            .length === 2,
+      );
+      const marked = pending.filter(i => parseMarker(i.projectDescription!));
+      expect(marked).toHaveLength(2);
 
-    // Q3: the two invites group deterministically into one bundle.
-    const bundle = groupInvitesIntoBundle(marked);
-    expect(bundle).toBeDefined();
-    expect(bundle!.organizationId).toBe(organizationId);
-    expect(bundle!.invitorDeviceId).toBe(a.manager.deviceId);
-    expect(bundle!.invites.m).toBeDefined();
-    expect(bundle!.invites.a).toBeDefined();
+      // Q3: the two invites group deterministically into one bundle.
+      const bundle = groupInvitesIntoBundle(marked);
+      expect(bundle).toBeDefined();
+      expect(bundle!.organizationId).toBe(organizationId);
+      expect(bundle!.invitorDeviceId).toBe(a.manager.deviceId);
+      expect(bundle!.invites.m).toBeDefined();
+      expect(bundle!.invites.a).toBeDefined();
 
-    // E5: ONE product action accepts the whole bundle.
-    const accepted = await acceptOrganizationBundle(b.manager, bundle);
-    expect(accepted).toHaveLength(2);
-    await Promise.all(invitePromises.map(p => p && p.catch(() => undefined)));
+      // E5: ONE product action accepts the whole bundle.
+      const accepted = await acceptOrganizationBundle(b.manager, bundle);
+      expect(accepted).toHaveLength(2);
+      await Promise.all(invitePromises.map(p => p && p.catch(() => undefined)));
 
-    // Post-accept (post-sync) the marker is readable from the receiver's own
-    // project settings — the source reconstruction consumes (SPEC E3).
-    const orgOnB = await reconstructOrganization(b.manager);
-    expect(orgOnB?.state).toBe('ready');
-    expect(orgOnB?.organizationId).toBe(organizationId);
-    expect(orgOnB?.slots.m).toBe(accepted.find(x => x.slot === 'm')!.projectId);
-    expect(orgOnB?.slots.a).toBe(accepted.find(x => x.slot === 'a')!.projectId);
-    // Q6, asserted: the joining journey ends with EXACTLY the two internal
-    // projects — nothing else materializes on the receiver.
-    expect(await b.manager.listProjects()).toHaveLength(2);
-
-    await disconnect();
-    await a.manager.close();
-    await b.manager.close();
+      // Post-accept (post-sync) the marker is readable from the receiver's own
+      // project settings — the source reconstruction consumes (SPEC E3).
+      const orgOnB = await reconstructOrganization(b.manager);
+      expect(orgOnB?.state).toBe('ready');
+      expect(orgOnB?.organizationId).toBe(organizationId);
+      expect(orgOnB?.slots.m).toBe(
+        accepted.find(x => x.slot === 'm')!.projectId,
+      );
+      expect(orgOnB?.slots.a).toBe(
+        accepted.find(x => x.slot === 'a')!.projectId,
+      );
+      // Q6, asserted: the joining journey ends with EXACTLY the two internal
+      // projects — nothing else materializes on the receiver.
+      expect(await b.manager.listProjects()).toHaveLength(2);
+    } finally {
+      await disconnect?.();
+      await a.manager.close();
+      await b.manager.close();
+    }
   });
 });
 
@@ -434,83 +444,86 @@ describe('E7 — partial failure recovers without duplicating slots (SPEC 14 E7)
   test('accepting one slot leaves org incomplete; retry completes only the missing slot', async () => {
     const a = await createManager({name: 'sender', deviceType: 'mobile'});
     const b = await createManager({name: 'receiver', deviceType: 'mobile'});
-    const disconnect = await connectPeers([a.manager, b.manager]);
+    let disconnect: (() => Promise<void>) | undefined;
+    try {
+      disconnect = await connectPeers([a.manager, b.manager]);
 
-    const {organizationId, projectIds} = await createOrganization(a.manager);
-    const invitePromises = (['m', 'a'] as const).map(slot =>
-      sendInvite(projectIds[slot]!, a.manager, b.manager.deviceId),
-    );
+      const {organizationId, projectIds} = await createOrganization(a.manager);
+      const invitePromises = (['m', 'a'] as const).map(slot =>
+        sendInvite(projectIds[slot]!, a.manager, b.manager.deviceId),
+      );
 
-    // Partial accept: only Monitoramento lands. The bundle accept is
-    // interrupted after its first slot, e.g. app killed mid-flow — simulated
-    // with a direct accept because the interruption itself is the state under
-    // test, not the product action.
-    const pending = await waitForInvites(
-      b.manager,
-      invites =>
-        invites.filter(i => parseMarker(i.projectDescription || '')).length ===
-        2,
-    );
-    const marked = pending.filter(i => parseMarker(i.projectDescription!));
-    await b.manager.invite.accept({
-      inviteId: marked.find(
-        i => parseMarker(i.projectDescription!)!.slot === 'm',
-      )!.inviteId,
-    });
+      // Partial accept: only Monitoramento lands. The bundle accept is
+      // interrupted after its first slot, e.g. app killed mid-flow — simulated
+      // with a direct accept because the interruption itself is the state under
+      // test, not the product action.
+      const pending = await waitForInvites(
+        b.manager,
+        invites =>
+          invites.filter(i => parseMarker(i.projectDescription || ''))
+            .length === 2,
+      );
+      const marked = pending.filter(i => parseMarker(i.projectDescription!));
+      await b.manager.invite.accept({
+        inviteId: marked.find(
+          i => parseMarker(i.projectDescription!)!.slot === 'm',
+        )!.inviteId,
+      });
 
-    const partial = await reconstructOrganization(b.manager);
-    expect(partial?.state).toBe('incomplete'); // never 'ready' prematurely
-    expect(Object.keys(partial?.slots ?? {})).toEqual(['m']);
+      const partial = await reconstructOrganization(b.manager);
+      expect(partial?.state).toBe('incomplete'); // never 'ready' prematurely
+      expect(Object.keys(partial?.slots ?? {})).toEqual(['m']);
 
-    // Recovery: the m invite was consumed by the partial accept (and
-    // re-inviting m answers ALREADY — asserted at the end of this test), so
-    // no full two-invite bundle can form again. The still-pending a invite,
-    // filtered to the same organization, is what the product flow hands to
-    // the SAME bundle-accept helper; its local check skips the present slot.
-    const stillPending = await waitForInvites(
-      b.manager,
-      invites =>
-        invites.filter(
-          i =>
-            parseMarker(i.projectDescription || '')?.slot === 'a' &&
-            parseMarker(i.projectDescription!)?.organizationId ===
-              organizationId,
-        ).length >= 1,
-    );
-    // Pick the same-organization invite the wait above proved exists — never
-    // just any 'a' invite, which on a real device could come from another org.
-    const inviteA = stillPending.find(
-      i =>
-        parseMarker(i.projectDescription || '')?.slot === 'a' &&
-        parseMarker(i.projectDescription!)?.organizationId === organizationId,
-    )!;
+      // Recovery: the m invite was consumed by the partial accept (and
+      // re-inviting m answers ALREADY — asserted at the end of this test), so
+      // no full two-invite bundle can form again. The still-pending a invite,
+      // filtered to the same organization, is what the product flow hands to
+      // the SAME bundle-accept helper; its local check skips the present slot.
+      const stillPending = await waitForInvites(
+        b.manager,
+        invites =>
+          invites.filter(
+            i =>
+              parseMarker(i.projectDescription || '')?.slot === 'a' &&
+              parseMarker(i.projectDescription!)?.organizationId ===
+                organizationId,
+          ).length >= 1,
+      );
+      // Pick the same-organization invite the wait above proved exists — never
+      // just any 'a' invite, which on a real device could come from another org.
+      const inviteA = stillPending.find(
+        i =>
+          parseMarker(i.projectDescription || '')?.slot === 'a' &&
+          parseMarker(i.projectDescription!)?.organizationId === organizationId,
+      )!;
 
-    const localBefore = await reconstructOrganization(b.manager);
-    expect(localBefore?.slots.m).toBeDefined();
-    // Recovery goes through the real helper — never a direct accept.
-    const accepted = await acceptOrganizationBundle(b.manager, {
-      invites: {a: inviteA},
-    });
-    expect(accepted.map(x => x.slot)).toEqual(['a']); // only the missing slot
-    await Promise.all(invitePromises.map(p => p && p.catch(() => undefined)));
+      const localBefore = await reconstructOrganization(b.manager);
+      expect(localBefore?.slots.m).toBeDefined();
+      // Recovery goes through the real helper — never a direct accept.
+      const accepted = await acceptOrganizationBundle(b.manager, {
+        invites: {a: inviteA},
+      });
+      expect(accepted.map(x => x.slot)).toEqual(['a']); // only the missing slot
+      await Promise.all(invitePromises.map(p => p && p.catch(() => undefined)));
 
-    const complete = await reconstructOrganization(b.manager);
-    expect(complete?.state).toBe('ready');
-    expect(complete?.organizationId).toBe(organizationId);
-    expect(complete?.slots.m).toBe(localBefore?.slots.m); // not duplicated
+      const complete = await reconstructOrganization(b.manager);
+      expect(complete?.state).toBe('ready');
+      expect(complete?.organizationId).toBe(organizationId);
+      expect(complete?.slots.m).toBe(localBefore?.slots.m); // not duplicated
 
-    // And re-inviting an already-joined slot is answered ALREADY, not duplicated.
-    const again = await (
-      await a.manager.getProject(projectIds.m!)
-    ).$member.invite(b.manager.deviceId, {
-      roleId: COORDINATOR_ROLE_ID,
-      roleName: 'coordinator',
-    });
-    expect(again).toBe('ALREADY');
-
-    await disconnect();
-    await a.manager.close();
-    await b.manager.close();
+      // And re-inviting an already-joined slot is answered ALREADY, not duplicated.
+      const again = await (
+        await a.manager.getProject(projectIds.m!)
+      ).$member.invite(b.manager.deviceId, {
+        roleId: COORDINATOR_ROLE_ID,
+        roleName: 'coordinator',
+      });
+      expect(again).toBe('ALREADY');
+    } finally {
+      await disconnect?.();
+      await a.manager.close();
+      await b.manager.close();
+    }
   });
 
   test('create-side partial failure resumes in the same organization', async () => {
@@ -554,9 +567,10 @@ describe('bundle-accept guards — foreign org and slot mismatch are refused', (
     const a = await createManager({name: 'sender', deviceType: 'mobile'});
     const b = await createManager({name: 'receiver', deviceType: 'mobile'});
     const c = await createManager({name: 'sender-2', deviceType: 'mobile'});
-    const disconnect = await connectPeers([a.manager, b.manager, c.manager]);
-
+    let disconnect: (() => Promise<void>) | undefined;
     try {
+      disconnect = await connectPeers([a.manager, b.manager, c.manager]);
+
       // b holds a partial org-1 (slot m only) — the state recovery starts from.
       // The invite promises that stay un-accepted never resolve ($member.invite
       // awaits the invitee's response), so each gets its catch at creation —
@@ -644,7 +658,9 @@ describe('bundle-accept guards — foreign org and slot mismatch are refused', (
     } finally {
       // A failing .rejects assertion is exactly the regression this test
       // exists to catch — it must not also hang Jest on leaked resources.
-      await disconnect();
+      // connectPeers itself is inside the try: if it rejects after starting
+      // discovery servers, this finally still closes every manager.
+      await disconnect?.();
       await a.manager.close();
       await b.manager.close();
       await c.manager.close();
