@@ -1,0 +1,98 @@
+# Organization Layer Spike — Verdict
+
+Spike for representing an Organization as a **frontend product layer over two
+ordinary CoMapeo projects** (transistir/coiab-app#46), per
+`SPEC-46-organizacao-camada-produto.md`. This document is the verdict; the
+executable evidence is `tests/integration/spike-organization.test.ts`, which
+drives `@comapeo/core` directly with two in-process devices connected through
+the real local-peer discovery path (and, for E8, a real `@comapeo/cloud`
+server in a child process).
+
+## Verdict: FRONTEND_ONLY_VIABLE
+
+All eight mandatory experiments pass with **zero changes to `@comapeo/core`**.
+An Organization is nothing more than a composition of two projects correlated
+by a marker stored in `projectDescription`:
+
+```
+coiab-org:v1:<organizationId>:m   (Monitoramento)
+coiab-org:v1:<organizationId>:a   (Alertas)
+```
+
+Everything the product layer needs — creation, reconstruction after restart,
+invite fan-out, bundle acceptance, partial-failure recovery, remote-archive
+fan-out — is expressible with existing per-project APIs.
+
+## Experiment results (SPEC section 14)
+
+| # | Experiment | Result | Proven by |
+|---|------------|--------|-----------|
+| E1 | Create + reconstruct after restart | ✅ Pass | Two projects with markers, manager closed and recreated over the same folders, both project IDs reconstructed under the same `organizationId` from `listProjects()` + `$getProjectSettings()` alone. Also: a one-slot org reconstructs as `incomplete`, never `ready`. |
+| E2 | Switch between the two projects | ✅ Pass (core half) | Both slots usable through the plain per-project API in either order. Nothing in core changes to "switch" — `activeProjectId` is app state and is not exercised here (see *Not covered*). |
+| E3 | Marker round-trip | ✅ Pass | Marker readable locally before invite, visible in the pending invite **before** accept (it travels in the invite's `projectDescription`), and readable from the receiver's own synced `projectSettings` after accept — the post-sync source reconstruction consumes. `createProject({projectDescription: marker})` (~51 chars) passes schema validation. |
+| E4 | One action sends both invites | ✅ Pass | One product action fans out two `$member.invite()` calls; both coexist as pending invites on the receiver. |
+| E5 | One action accepts the bundle | ✅ Pass | One acceptance path consumes both invite IDs; the receiver ends up a member of both projects and reconstruction yields `ready`. |
+| E6 | Fresh device, no default project | ✅ Pass (core half) | A brand-new `MapeoManager` starts with `listProjects() === []`. The onboarding UI that would offer only *Criar organização* / *Entrar em organização* is app-layer (see *Not covered*). |
+| E7 | Partial failure + idempotent retry | ✅ Pass | After accepting only Monitoramento: org is `incomplete` (never prematurely `ready`); retry accepts only the missing slot; the completed slot is not duplicated; re-inviting it answers `ALREADY`. |
+| E8 | Remote Archive at org level | ✅ Pass | The same server URL is added to both projects via `$member.addServerPeer()`; both list the server as a member with `selfHostedServerDetails`. |
+
+## Answers to the SPEC's open questions (section 13)
+
+- **Q1 — two invites pending simultaneously?** Yes. Two project invites to
+  the same device coexist as pending; each belongs to a distinct project API.
+- **Q2 — receiver has all metadata before accepting?** Yes.
+  `projectDescription` (marker) plus the invitor's device identity are present
+  on the pending invite — the bundle can be formed and shown pre-accept.
+- **Q3 — deterministic, safe grouping?** Yes. The validated bundle requires:
+  parseable markers, one `organizationId`, one `invitorDeviceId`, one
+  `roleName`, and two **distinct** slots (`m` + `a`). Anything else (junk
+  descriptions, duplicates, one slot) does not group.
+- **Q4 — one button accepts the bundle without core changes?** Yes. The
+  product action coordinates two `invite.accept({inviteId})` calls.
+- **Q5 — recovery when only one of two operations completes?** The state is
+  never `ready` prematurely; the completed slot is detected locally and
+  skipped; only the missing slot is retried; the sender side is naturally
+  idempotent (`ALREADY` for an already-joined slot).
+- **Q6 — fresh device can start directly in an Organization?** Core half:
+  yes — a fresh manager materializes no project, so onboarding can offer only
+  the two Organization journeys. Both journeys end with exactly the two
+  internal projects (creation path: `createOrganization`; joining path: bundle
+  accept). The UI half is app-layer.
+
+## Findings beyond the SPEC
+
+1. **Restart identity**: a restarted manager over persisted folders must
+   reuse the device's `rootKey` — a fresh key cannot decrypt the local
+   database ("could not verify data"). The app already persists the root key,
+   so this is a spike-harness note, not a product risk.
+2. **Remote Archive server must allow ≥ 2 projects.** `@comapeo/cloud`
+   defaults to `allowedProjects: 1` and rejects the second project with
+   `ServerTooManyProjects`. COIAB's real archive server configuration must
+   raise this limit, or the org-level archive fan-out (E8) fails on the
+   second project. The spike threads an `allowedProjects` option through
+   `createTestServer()`/`startTestCloudServer.mjs`.
+3. **Failure paths can leak open handles**: when E8 failed mid-flow in an
+   early spike run, the suite hung at exit. All-green runs exit cleanly, but
+   it is a reminder that the product layer must own cleanup on every path.
+
+## What the spike does not cover (app-layer only)
+
+- **E2 UI half**: switching slots via `activeProjectId` in the running app,
+  including the existing tracking-protection behavior on switch.
+- **E6 UI half**: the onboarding screens offering only the two Organization
+  journeys.
+- **Send-side aggregation**: surfacing one "Convidar" button's two invite
+  operations (states, errors, retries) as a single product action in UI.
+- **Real multi-device conditions**: Wi-Fi/router conditions, device sleep,
+  invite expiry in the field — the spike uses in-process peers on
+  `127.0.0.1`.
+
+## Implementation consequences
+
+The spike's helper functions are the skeleton of the product layer:
+`parseMarker`/`markerFor` (marker module), `reconstructOrganization`
+(read model over `listProjects` + `$getProjectSettings`),
+`createOrganization` (creation flow), `groupInvitesIntoBundle` +
+`acceptOrganizationBundle` (invite surface). None of them touch core
+internals; all consume public per-project APIs, so the layer lives entirely
+in `src/frontend` (or a thin non-UI module it imports).
