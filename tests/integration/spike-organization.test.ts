@@ -180,6 +180,11 @@ async function acceptOrganizationBundle(
 ): Promise<Array<{slot: Slot; projectId: string}>> {
   const local = await reconstructOrganization(manager);
   const alreadyLocal = local?.slots ?? {};
+  // Recovery guard: an invite for a missing slot must belong to the SAME
+  // organization as the slots already on this device. Without this check a
+  // second organization's invite could be accepted into the gap, gluing
+  // projects from two organizations into one supposed "org".
+  const expectedOrgId = local?.organizationId;
   const accepted: Array<{slot: Slot; projectId: string}> = [];
 
   for (const slot of ['m', 'a'] as const) {
@@ -187,6 +192,12 @@ async function acceptOrganizationBundle(
     const invite = bundle.invites[slot];
     if (!invite) {
       throw new Error(`slot ${slot} is missing locally and has no invite`);
+    }
+    const marker = parseMarker(invite.projectDescription || '');
+    if (expectedOrgId && marker?.organizationId !== expectedOrgId) {
+      throw new Error(
+        `slot ${slot} invite is for organization ${marker?.organizationId ?? '(no marker)'}, not the local organization ${expectedOrgId}`,
+      );
     }
     const projectId = await manager.invite.accept({inviteId: invite.inviteId});
     accepted.push({slot, projectId});
@@ -438,8 +449,12 @@ describe('E7 — partial failure recovers without duplicating slots (SPEC 14 E7)
               organizationId,
         ).length >= 1,
     );
+    // Pick the same-organization invite the wait above proved exists — never
+    // just any 'a' invite, which on a real device could come from another org.
     const inviteA = stillPending.find(
-      i => parseMarker(i.projectDescription || '')?.slot === 'a',
+      i =>
+        parseMarker(i.projectDescription || '')?.slot === 'a' &&
+        parseMarker(i.projectDescription!)?.organizationId === organizationId,
     )!;
 
     const localBefore = await reconstructOrganization(b.manager);
@@ -563,24 +578,57 @@ describe('E8 — Remote Archive fans out to both projects (SPEC 14 E8)', () => {
     });
 
     // Fan-out: same URL into both projects, no activeProjectId involved.
-    for (const slot of ['m', 'a'] as const) {
-      const project = await a.manager.getProject(projectIds[slot]!);
-      await project.$member.addServerPeer(serverBaseUrl, {
-        dangerouslyAllowInsecureConnections: true, // test server is plain http
-      });
-    }
+    // Cleanup runs in finally — a failed addServerPeer or assertion must not
+    // leave the manager and cloud child process alive, which stalls Jest.
+    try {
+      for (const slot of ['m', 'a'] as const) {
+        const project = await a.manager.getProject(projectIds[slot]!);
+        await project.$member.addServerPeer(serverBaseUrl, {
+          dangerouslyAllowInsecureConnections: true, // test server is plain http
+        });
+      }
 
-    // Both projects now list the server as a member with server details.
-    for (const slot of ['m', 'a'] as const) {
-      const project = await a.manager.getProject(projectIds[slot]!);
-      const members = await project.$member.getMany();
-      const server = members.find(
-        m => 'selfHostedServerDetails' in m && m.selfHostedServerDetails,
-      );
-      expect(server).toBeDefined();
+      // Both projects now list the server as a member with server details.
+      for (const slot of ['m', 'a'] as const) {
+        const project = await a.manager.getProject(projectIds[slot]!);
+        const members = await project.$member.getMany();
+        const server = members.find(
+          m => 'selfHostedServerDetails' in m && m.selfHostedServerDetails,
+        );
+        expect(server).toBeDefined();
+      }
+    } finally {
+      close();
+      await a.manager.close();
     }
+  });
+});
 
-    close();
+// ---------------------------------------------------------------------------
+// E9 — marker fragility: description edits are an existing hazard
+// ---------------------------------------------------------------------------
+
+describe('E9 — a plain description edit destroys the marker (SPEC 15 risk)', () => {
+  test('saving EditProjectDetails-style settings orphans the slot from the org', async () => {
+    const a = await createManager({name: 'coordinator', deviceType: 'mobile'});
+    const {projectIds} = await createOrganization(a.manager);
+    expect((await reconstructOrganization(a.manager))?.state).toBe('ready');
+
+    // Exactly what EditProjectDetails.tsx does on save: the user's text
+    // REPLACES projectDescription — marker included. No product guard
+    // exists today; the marker has no read-only home.
+    const project = await a.manager.getProject(projectIds.m!);
+    const settings = await project.$getProjectSettings();
+    await project.$setProjectSettings({
+      name: settings.name,
+      projectColor: settings.projectColor,
+      projectDescription: 'Plano de manejo atualizado',
+    });
+
+    const after = await reconstructOrganization(a.manager);
+    expect(after?.state).toBe('incomplete'); // m no longer recognized
+    expect(after?.slots.a).toBe(projectIds.a); // a untouched
+
     await a.manager.close();
   });
 });

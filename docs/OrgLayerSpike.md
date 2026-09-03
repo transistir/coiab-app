@@ -35,6 +35,7 @@ fan-out — is expressible with existing per-project APIs.
 | E6 | Fresh device, no default project | ✅ Pass (core half) | A brand-new `MapeoManager` starts with `listProjects() === []`. The onboarding UI that would offer only *Criar organização* / *Entrar em organização* is app-layer (see *Not covered*). |
 | E7 | Partial failure + idempotent retry | ✅ Pass | After accepting only Monitoramento: org is `incomplete` (never prematurely `ready`); recovery goes through the same bundle-accept helper with the still-pending missing-slot invite — the present slot is skipped, not duplicated; re-inviting it answers `ALREADY`. Create-side: an interrupted provisioning resumes under the same `organizationId` (reconstruction supplies it) and provisions only the missing slot. |
 | E8 | Remote Archive at org level | ✅ Pass | The same server URL is added to both projects via `$member.addServerPeer()`; both list the server as a member with `selfHostedServerDetails`. |
+| E9 | Marker survives ordinary use | ⚠️ Hazard proven | A plain `EditProjectDetails`-style `$setProjectSettings` save (user text replacing `projectDescription`) erases the marker: reconstruction degrades `ready` → `incomplete`, sibling slot untouched. See *Findings beyond the SPEC* #4 — the product layer must give the marker a read-only home. |
 
 ## Answers to the SPEC's open questions (section 13)
 
@@ -77,6 +78,23 @@ fan-out — is expressible with existing per-project APIs.
 3. **Failure paths can leak open handles**: when E8 failed mid-flow in an
    early spike run, the suite hung at exit. All-green runs exit cleanly, but
    it is a reminder that the product layer must own cleanup on every path.
+   E8 now wraps its fan-out and assertions in `try/finally` so even a
+   failed assertion closes the manager and the test server.
+4. **The marker has no read-only home** (E9): `EditProjectDetails.tsx`
+   already lets a coordinator replace `projectDescription` through
+   `project.updateSettings` (`useUpdateProjectSettings` from
+   `@comapeo/core-react`). E9 proves the hazard: saving ordinary settings
+   text through the real API orphans that slot — reconstruction degrades
+   `ready` → `incomplete` with the other slot untouched. The product layer
+   must either store the marker where settings edits cannot reach it (a
+   dedicated field once core offers one) or intercept description edits to
+   re-append the marker. As-is, an org can be silently dissolved by a
+   routine rename of the project description.
+5. **Recovery must validate organization identity**: the bundle-accept
+   helper now refuses an invite whose marker names a different organization
+   than the slots already local — without that guard, a second org's invite
+   could fill the missing-slot gap of a partial acceptance and glue two
+   organizations into one.
 
 ## What the spike does not cover (app-layer only)
 
