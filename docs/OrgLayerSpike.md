@@ -33,7 +33,7 @@ fan-out — is expressible with existing per-project APIs.
 | E4 | One action sends both invites | ✅ Pass | One product action fans out two `$member.invite()` calls; both coexist as pending invites on the receiver. |
 | E5 | One action accepts the bundle | ✅ Pass | One acceptance path consumes both invite IDs; the receiver ends up a member of both projects and reconstruction yields `ready`. |
 | E6 | Fresh device, no default project | ✅ Pass (core half) | A brand-new `MapeoManager` starts with `listProjects() === []`. The onboarding UI that would offer only *Criar organização* / *Entrar em organização* is app-layer (see *Not covered*). |
-| E7 | Partial failure + idempotent retry | ✅ Pass | After accepting only Monitoramento: org is `incomplete` (never prematurely `ready`); retry accepts only the missing slot; the completed slot is not duplicated; re-inviting it answers `ALREADY`. |
+| E7 | Partial failure + idempotent retry | ✅ Pass | After accepting only Monitoramento: org is `incomplete` (never prematurely `ready`); recovery goes through the same bundle-accept helper with the still-pending missing-slot invite — the present slot is skipped, not duplicated; re-inviting it answers `ALREADY`. Create-side: an interrupted provisioning resumes under the same `organizationId` (reconstruction supplies it) and provisions only the missing slot. |
 | E8 | Remote Archive at org level | ✅ Pass | The same server URL is added to both projects via `$member.addServerPeer()`; both list the server as a member with `selfHostedServerDetails`. |
 
 ## Answers to the SPEC's open questions (section 13)
@@ -52,7 +52,10 @@ fan-out — is expressible with existing per-project APIs.
 - **Q5 — recovery when only one of two operations completes?** The state is
   never `ready` prematurely; the completed slot is detected locally and
   skipped; only the missing slot is retried; the sender side is naturally
-  idempotent (`ALREADY` for an already-joined slot).
+  idempotent (`ALREADY` for an already-joined slot). On the create side the
+  caller resumes with the `organizationId` it already has — reconstruction is
+  the source of it after a restart; a naive re-call would mint a new org id
+  and duplicate the completed slot.
 - **Q6 — fresh device can start directly in an Organization?** Core half:
   yes — a fresh manager materializes no project, so onboarding can offer only
   the two Organization journeys. Both journeys end with exactly the two

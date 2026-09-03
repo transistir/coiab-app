@@ -85,17 +85,21 @@ async function reconstructOrganization(
 
 /**
  * SPEC 5: "Criar organização" = one product action that provisions both
- * projects. A failure mid-way leaves the org incomplete; retry provisions
- * only the missing slot (demonstrated in the partial-failure test).
+ * projects. A failure mid-way leaves the org incomplete; recovery is NOT
+ * "call again" (that would mint a new organizationId and recreate the
+ * completed slot) — the caller resumes with the organizationId it already
+ * has, and `reconstructOrganization` is the source of it on restart
+ * (demonstrated in the create-side recovery test in E7).
  */
 async function createOrganization(
   manager: MapeoManager,
   slotsToCreate: ReadonlyArray<Slot> = ['m', 'a'],
+  resumeOrganizationId?: string,
 ): Promise<{
   organizationId: string;
   projectIds: Partial<Record<Slot, string>>;
 }> {
-  const organizationId = randomUUID();
+  const organizationId = resumeOrganizationId ?? randomUUID();
   const names: Record<Slot, string> = {m: 'Monitoramento', a: 'Alertas'};
   const projectIds: Partial<Record<Slot, string>> = {};
 
@@ -142,6 +146,10 @@ function groupInvitesIntoBundle(invites: ReadonlyArray<InviteLike>):
   }
 
   for (const group of byOrgAndInvitor.values()) {
+    // Exactly one invite per slot: duplicates (m, m, a) must NOT group —
+    // silently picking one of the duplicate m invites would make the bundle
+    // depend on invite ordering.
+    if (group.length !== 2) continue;
     const slots = new Set(group.map(e => e.marker.slot));
     if (slots.size !== 2) continue; // need distinct m + a
     const roleNames = new Set(group.map(e => e.invite.roleName));
@@ -159,10 +167,16 @@ function groupInvitesIntoBundle(invites: ReadonlyArray<InviteLike>):
   return undefined;
 }
 
-/** SPEC 8.2: "Entrar na organização" = accept only the slots not yet local. */
+/**
+ * SPEC 8.2: "Entrar na organização" = accept only the slots not yet local.
+ * `invites` may be partial: after an interrupted accept (E7), the consumed
+ * slot's invite is gone and re-inviting it answers ALREADY, so no full
+ * two-invite bundle can ever form again — recovery passes just the missing
+ * slot's invite and the present slot is skipped by the local check.
+ */
 async function acceptOrganizationBundle(
   manager: MapeoManager,
-  bundle: {invites: Record<Slot, InviteLike>},
+  bundle: {invites: Partial<Record<Slot, InviteLike>>},
 ): Promise<Array<{slot: Slot; projectId: string}>> {
   const local = await reconstructOrganization(manager);
   const alreadyLocal = local?.slots ?? {};
@@ -170,9 +184,11 @@ async function acceptOrganizationBundle(
 
   for (const slot of ['m', 'a'] as const) {
     if (alreadyLocal[slot]) continue; // never re-accept a present slot
-    const projectId = await manager.invite.accept({
-      inviteId: bundle.invites[slot].inviteId,
-    });
+    const invite = bundle.invites[slot];
+    if (!invite) {
+      throw new Error(`slot ${slot} is missing locally and has no invite`);
+    }
+    const projectId = await manager.invite.accept({inviteId: invite.inviteId});
     accepted.push({slot, projectId});
   }
   return accepted;
@@ -386,8 +402,10 @@ describe('E7 — partial failure recovers without duplicating slots (SPEC 14 E7)
       sendInvite(projectIds[slot]!, a.manager, b.manager.deviceId),
     );
 
-    // Partial accept: only Monitoramento lands (simulated by accepting one
-    // invite of the bundle and "losing" the other, e.g. app killed mid-flow).
+    // Partial accept: only Monitoramento lands. The bundle accept is
+    // interrupted after its first slot, e.g. app killed mid-flow — simulated
+    // with a direct accept because the interruption itself is the state under
+    // test, not the product action.
     const pending = await waitForInvites(
       b.manager,
       invites =>
@@ -405,11 +423,12 @@ describe('E7 — partial failure recovers without duplicating slots (SPEC 14 E7)
     expect(partial?.state).toBe('incomplete'); // never 'ready' prematurely
     expect(Object.keys(partial?.slots ?? {})).toEqual(['m']);
 
-    // Recovery: re-run the bundle accept — the present slot is skipped, only
-    // the missing one is retried (the m invite is gone/consumed; grouping
-    // must still succeed on the pending a invite alone is NOT assumed — we
-    // re-request the invite, as the product flow would).
-    const reinvited = await waitForInvites(
+    // Recovery: the m invite was consumed by the partial accept (and
+    // re-inviting m answers ALREADY — asserted at the end of this test), so
+    // no full two-invite bundle can form again. The still-pending a invite,
+    // filtered to the same organization, is what the product flow hands to
+    // the SAME bundle-accept helper; its local check skips the present slot.
+    const stillPending = await waitForInvites(
       b.manager,
       invites =>
         invites.filter(
@@ -419,14 +438,17 @@ describe('E7 — partial failure recovers without duplicating slots (SPEC 14 E7)
               organizationId,
         ).length >= 1,
     );
-    const inviteA = reinvited.find(
+    const inviteA = stillPending.find(
       i => parseMarker(i.projectDescription || '')?.slot === 'a',
     )!;
 
     const localBefore = await reconstructOrganization(b.manager);
     expect(localBefore?.slots.m).toBeDefined();
-    // Accept ONLY the missing slot — same rule acceptOrganizationBundle uses.
-    await b.manager.invite.accept({inviteId: inviteA.inviteId});
+    // Recovery goes through the real helper — never a direct accept.
+    const accepted = await acceptOrganizationBundle(b.manager, {
+      invites: {a: inviteA},
+    });
+    expect(accepted.map(x => x.slot)).toEqual(['a']); // only the missing slot
     await Promise.all(invitePromises.map(p => p && p.catch(() => undefined)));
 
     const complete = await reconstructOrganization(b.manager);
@@ -446,6 +468,71 @@ describe('E7 — partial failure recovers without duplicating slots (SPEC 14 E7)
     await disconnect();
     await a.manager.close();
     await b.manager.close();
+  });
+
+  test('create-side partial failure resumes in the same organization', async () => {
+    // SPEC 5 recovery: if provisioning dies after the first createProject,
+    // the completed slot and its marker survive; a plain retry call would
+    // mint a new organizationId and duplicate the slot. The caller resumes
+    // with the organizationId it already has — on restart, reconstructed
+    // from local state.
+    const a = await createManager({name: 'creator', deviceType: 'mobile'});
+
+    // Interruption after slot m landed.
+    const {organizationId, projectIds} = await createOrganization(a.manager, [
+      'm',
+    ]);
+    const interrupted = await reconstructOrganization(a.manager);
+    expect(interrupted?.state).toBe('incomplete');
+    expect(interrupted?.organizationId).toBe(organizationId);
+
+    // Resume: complete only the missing slot, under the SAME org id (as
+    // reconstruction would supply it after a restart).
+    const resumed = await createOrganization(
+      a.manager,
+      ['a'],
+      interrupted?.organizationId,
+    );
+    expect(resumed.organizationId).toBe(organizationId);
+    expect(resumed.projectIds.m).toBeUndefined(); // m was not recreated
+
+    const complete = await reconstructOrganization(a.manager);
+    expect(complete?.state).toBe('ready');
+    expect(complete?.organizationId).toBe(organizationId);
+    expect(complete?.slots.m).toBe(projectIds.m); // original m, untouched
+    expect(complete?.slots.a).toBe(resumed.projectIds.a);
+
+    await a.manager.close();
+  });
+});
+
+describe('bundle grouping — duplicate slots never group (SPEC 8.5)', () => {
+  test('three invites with a duplicated slot are rejected, not deduped', () => {
+    // Pure grouping rule: m, m, a with the same org, inviter, and role has
+    // two distinct slots but is NOT a valid bundle — accepting it would make
+    // the chosen m invite depend on list ordering.
+    const invite = (slot: Slot, id: string): InviteLike => ({
+      inviteId: id,
+      projectDescription: `coiab-org:v1:11111111-1111-1111-1111-111111111111:${slot}`,
+      invitorDeviceId: 'invitor-1',
+      roleName: 'coordinator',
+    });
+
+    expect(
+      groupInvitesIntoBundle([
+        invite('m', 'm-1'),
+        invite('m', 'm-2'),
+        invite('a', 'a-1'),
+      ]),
+    ).toBeUndefined();
+
+    // The same invites minus the duplicate still group normally.
+    expect(
+      groupInvitesIntoBundle([invite('m', 'm-1'), invite('a', 'a-1')]),
+    ).toBeDefined();
+
+    // A lone slot never groups, full stop.
+    expect(groupInvitesIntoBundle([invite('a', 'a-1')])).toBeUndefined();
   });
 });
 
