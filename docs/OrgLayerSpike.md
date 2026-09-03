@@ -2,11 +2,13 @@
 
 Spike for representing an Organization as a **frontend product layer over two
 ordinary CoMapeo projects** (transistir/coiab-app#46), per
-`SPEC-46-organizacao-camada-produto.md`. This document is the verdict; the
+`docs/specs/SPEC-46-organizacao-camada-produto.md` (committed in PR
+transistir/comapeo-mobile-1#76 — open at the time of this writing). This
+document is the verdict; the
 executable evidence is `tests/integration/spike-organization.test.ts`, which
 drives `@comapeo/core` directly with two in-process devices connected through
-the real local-peer discovery path (and, for E8, a real `@comapeo/cloud`
-server in a child process).
+a real local-peer connection path — explicit `connectLocalPeer`, not mDNS
+discovery (and, for E8, a real `@comapeo/cloud` server in a child process).
 
 ## Verdict: FRONTEND_ONLY_VIABLE
 
@@ -94,7 +96,10 @@ fan-out — is expressible with existing per-project APIs.
    helper now refuses an invite whose marker names a different organization
    than the slots already local — without that guard, a second org's invite
    could fill the missing-slot gap of a partial acceptance and glue two
-   organizations into one.
+   organizations into one. It also refuses an invite whose marker names a
+   different slot than the gap it fills: partial bundles bypass
+   `groupInvitesIntoBundle`'s per-slot validation, so the slot must be
+   re-checked at accept time.
 
 ## What the spike does not cover (app-layer only)
 
@@ -104,6 +109,11 @@ fan-out — is expressible with existing per-project APIs.
   journeys.
 - **Send-side aggregation**: surfacing one "Convidar" button's two invite
   operations (states, errors, retries) as a single product action in UI.
+- **E7 sender half**: an invite send failing mid-fan-out (SPEC section 14
+  E7's "M invite iniciado / A invite falha" scenario) is not simulated. The
+  spike proves receiver-side partial acceptance and create-side
+  interruption; sender-side failure relies on the same per-slot retry
+  mechanics (`ALREADY` idempotency, resume by organizationId).
 - **Real multi-device conditions**: Wi-Fi/router conditions, device sleep,
   invite expiry in the field — the spike uses in-process peers on
   `127.0.0.1`.
@@ -117,3 +127,13 @@ The spike's helper functions are the skeleton of the product layer:
 `acceptOrganizationBundle` (invite surface). None of them touch core
 internals; all consume public per-project APIs, so the layer lives entirely
 in `src/frontend` (or a thin non-UI module it imports).
+
+One deliberate divergence to fix when productizing:
+`reconstructOrganization` returns the **first** organization found — a
+single-org spike shortcut. SPEC section 10 requires a *collection* ("o
+mapping é uma coleção de Organizações, não um singleton"; entering a second
+organization is allowed in the MVP), so the product read model must return
+every marker-bearing organization, not the first `Map` entry. The same
+helper also re-reads settings per project through `$getProjectSettings()`;
+`listProjects()` already returns `projectDescription`, so the product
+version can drop that N+1.

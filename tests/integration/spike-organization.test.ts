@@ -3,7 +3,8 @@
  * projects (transistir/coiab-app#46).
  *
  * Every test here drives `@comapeo/core` directly (two in-process devices,
- * connected through the real local-peer discovery path used by the app) to
+ * connected through a real local-peer connection path — explicit
+ * `connectLocalPeer`, not mDNS discovery) to
  * prove — or disprove — that an Organization is nothing more than a
  * composition of two ordinary projects correlated by a marker stored in
  * `projectDescription`:
@@ -12,7 +13,8 @@
  *   coiab-org:v1:<organizationId>:a   (Alertas)
  *
  * The experiments map 1:1 to the mandatory experiments in
- * SPEC-46-organizacao-camada-produto.md (section 14) and to the open
+ * docs/specs/SPEC-46-organizacao-camada-produto.md (section 14; the SPEC
+ * lands in PR transistir/comapeo-mobile-1#76) and to the open
  * questions in section 13. The verdict lives in docs/OrgLayerSpike.md.
  */
 import {MapeoManager, roles} from '@comapeo/core';
@@ -45,7 +47,8 @@ function markerFor(organizationId: string, slot: Slot): string {
 
 /** Strict parse per SPEC 4.1: versioned, unambiguous, rejects junk. */
 function parseMarker(description: string): OrgMarker | undefined {
-  const match = /^coiab-org:v1:([0-9a-f-]{36}):([ma])$/.exec(description);
+  const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+  const match = new RegExp(`^coiab-org:v1:(${UUID}):([ma])$`).exec(description);
   if (!match) return undefined;
   return {organizationId: match[1]!, slot: match[2]!};
 }
@@ -58,7 +61,11 @@ type ReconstructedOrg =
       slots: Partial<Record<Slot, string>>;
     };
 
-/** SPEC section 10: rebuild the Organization from local project state alone. */
+/**
+ * SPEC section 10: rebuild the Organization from local project state alone.
+ * Spike scope: returns the FIRST organization found. SPEC section 10 requires
+ * a collection in the product layer (multiple orgs may coexist).
+ */
 async function reconstructOrganization(
   manager: MapeoManager,
 ): Promise<ReconstructedOrg | undefined> {
@@ -76,6 +83,9 @@ async function reconstructOrganization(
     byOrg.set(marker.organizationId, slots);
   }
 
+  // First Map entry — arbitrary order. Single-org spike shortcut; the product
+  // layer iterates `byOrg` instead (SPEC section 10: a collection, not a
+  // singleton).
   const [organizationId, slots] = byOrg.entries().next().value ?? [];
   if (!organizationId) return undefined;
   return slots.m && slots.a
@@ -199,6 +209,15 @@ async function acceptOrganizationBundle(
         `slot ${slot} invite is for organization ${marker?.organizationId ?? '(no marker)'}, not the local organization ${expectedOrgId}`,
       );
     }
+    // Partial bundles bypass groupInvitesIntoBundle's per-slot validation, so
+    // the slot must be re-checked here: an m-marked invite handed to the 'a'
+    // gap would be accepted, reported as slot a, and duplicate the other
+    // project while reconstruction stays incomplete.
+    if (marker?.slot !== slot) {
+      throw new Error(
+        `invite for slot ${slot} is marked as slot ${marker?.slot ?? '(no marker)'}`,
+      );
+    }
     const projectId = await manager.invite.accept({inviteId: invite.inviteId});
     accepted.push({slot, projectId});
   }
@@ -242,13 +261,15 @@ async function createPersistentManager(
   return manager;
 }
 
+/**
+ * Fire-and-forget delivery: resolves `undefined` once the invite is handed
+ * off (the invitee observes the response), rejects on delivery failure.
+ */
 async function sendInvite(
   projectId: string,
   sender: MapeoManager,
   inviteeDeviceId: string,
-): Promise<
-  Promise<{inviteId: string; projectDescription?: string}> | undefined
-> {
+): Promise<undefined> {
   const project = await sender.getProject(projectId);
   return project.$member
     .invite(inviteeDeviceId, {
@@ -391,6 +412,9 @@ describe('E3/E4/E5 — one invite action, one accept action (SPEC 14 E3/E4/E5)',
     expect(orgOnB?.organizationId).toBe(organizationId);
     expect(orgOnB?.slots.m).toBe(accepted.find(x => x.slot === 'm')!.projectId);
     expect(orgOnB?.slots.a).toBe(accepted.find(x => x.slot === 'a')!.projectId);
+    // Q6, asserted: the joining journey ends with EXACTLY the two internal
+    // projects — nothing else materializes on the receiver.
+    expect(await b.manager.listProjects()).toHaveLength(2);
 
     await disconnect();
     await a.manager.close();
@@ -571,16 +595,23 @@ describe('E8 — Remote Archive fans out to both projects (SPEC 14 E8)', () => {
   test('the same archive server is added to both projects via member APIs', async () => {
     const a = await createManager({name: 'coordinator', deviceType: 'mobile'});
     const {projectIds} = await createOrganization(a.manager);
+
     // The server hosts BOTH org projects — the cloud default limit is 1,
     // which would reject the second addServerPeer (ServerTooManyProjects).
-    const {serverBaseUrl, close} = await createTestServer({
-      allowedProjects: 2,
-    });
-
-    // Fan-out: same URL into both projects, no activeProjectId involved.
-    // Cleanup runs in finally — a failed addServerPeer or assertion must not
-    // leave the manager and cloud child process alive, which stalls Jest.
+    // The acquisition is INSIDE the try: if createTestServer itself rejects
+    // (child exits, invalid URL), the already-created manager is still closed
+    // below — an unclosed manager can keep Jest alive at exit.
+    let closeServer: (() => void) | undefined;
     try {
+      const {serverBaseUrl, close} = await createTestServer({
+        allowedProjects: 2,
+      });
+      closeServer = close;
+
+      // Fan-out: same URL into both projects, no activeProjectId involved.
+      // Cleanup runs in finally — a failed addServerPeer or assertion must
+      // not leave the manager and cloud child process alive, which stalls
+      // Jest.
       for (const slot of ['m', 'a'] as const) {
         const project = await a.manager.getProject(projectIds[slot]!);
         await project.$member.addServerPeer(serverBaseUrl, {
@@ -598,7 +629,7 @@ describe('E8 — Remote Archive fans out to both projects (SPEC 14 E8)', () => {
         expect(server).toBeDefined();
       }
     } finally {
-      close();
+      closeServer?.();
       await a.manager.close();
     }
   });
