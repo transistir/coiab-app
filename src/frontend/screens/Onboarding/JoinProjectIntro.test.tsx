@@ -1,4 +1,4 @@
-import {userEvent, screen, within} from '@testing-library/react-native';
+import {userEvent, screen} from '@testing-library/react-native';
 import {
   setupIntegrationTest,
   setupIntegrationTestWithoutProject,
@@ -11,15 +11,17 @@ describe('Onboarding Screens', () => {
   const inviteeSetup = setupIntegrationTestWithoutProject();
   const invitorSetup = setupIntegrationTest();
 
-  test('should show success screen after being invited to project', async () => {
+  test('should show the org fork and receive an invite while waiting', async () => {
     const user = userEvent.setup();
     await inviteeSetup.renderNavigationAsync();
-    const JoinProjectButton = await screen.findByText('Join a Project');
-    expect(JoinProjectButton).toBeVisible();
-    await user.press(JoinProjectButton);
+    // SPEC E6: the Success fork is organization-first — joining an
+    // Organization is a waiting state until an invite bundle arrives.
+    const JoinOrgButton = await screen.findByText('Join an Organization');
+    expect(JoinOrgButton).toBeVisible();
+    await user.press(JoinOrgButton);
     expect(
       await screen.findByText(
-        'Ask a project coordinator to receive a project invitation.',
+        'Ask a coordinator of an existing Organization to invite this device. When the invitation arrives it will appear on this screen.',
       ),
     ).toBeVisible();
 
@@ -49,15 +51,13 @@ describe('Onboarding Screens', () => {
       await screen.findByText('You have joined testProject'),
     ).toBeVisible();
 
-    const doneButton = await screen.findByText('Done');
+    // Accepting invalidates the project/invite queries; let those refetches
+    // settle so teardown doesn't close the IPC channel under an in-flight
+    // call (RpcChannelClosed).
+    await new Promise(resolve => setTimeout(resolve, 500));
 
-    expect(doneButton).toBeVisible();
-
-    await user.press(doneButton);
-    const header = await screen.findByTestId('HOME.header-button');
-    expect(header).toBeVisible();
-
-    const textInHeader = within(header).getByText('testProject');
-    expect(textInHeader).toBeVisible();
+    // SPEC 10.1 / E6: the invite-accept landing (Done → Home) is reworked by
+    // P5 (org invite receive UI); the org-first landing is covered by the
+    // getInitialRoute unit tests (no organization + project → Success fork).
   });
 });

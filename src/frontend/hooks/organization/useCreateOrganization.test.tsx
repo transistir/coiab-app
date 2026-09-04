@@ -240,6 +240,37 @@ describe('useCreateOrganization', () => {
     hook.unmount();
   });
 
+  test('a caller-provided organization id is used as-is (restart recovery, SPEC 5/E7)', async () => {
+    const {clientApi, createProject, projects} = createFakeCreateClient();
+
+    const hook = await renderHook(() => useCreateOrganization(), {
+      wrapper: createWrapper(clientApi),
+    });
+
+    await waitFor(() => {
+      expect(hook.result.current).not.toBeNull();
+    });
+
+    const recoveredOrganizationId = '0123456789abcdef';
+    await act(async () => {
+      await hook.result.current!.start('Org Teste', recoveredOrganizationId);
+    });
+
+    expect(hook.result.current!.status).toBe('success');
+    // The provided id is used verbatim — no generation.
+    expect(hook.result.current!.organizationId).toBe(recoveredOrganizationId);
+    const organizationIds = projects.map(
+      project => parseMarker(project.projectDescription ?? '')?.organizationId,
+    );
+    expect(organizationIds).toStrictEqual([
+      recoveredOrganizationId,
+      recoveredOrganizationId,
+    ]);
+    expect(createProject).toHaveBeenCalledTimes(2);
+
+    hook.unmount();
+  });
+
   test('a mounted useOrganizations consumer sees the created organization without remounting', async () => {
     const {clientApi, projects} = createFakeCreateClient();
 

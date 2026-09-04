@@ -11,8 +11,19 @@ import {createAppScreens} from './AppScreens';
 import {PendingInvitesListener} from '../../sharedComponents/PendingInvitesListener';
 import {PendingMapSharesListener} from '../../sharedComponents/PendingMapSharesListener';
 import {useOwnDeviceInfo} from '@comapeo/core-react';
-import {useActiveProjectId} from '../../contexts/ActiveProjectIdStoreContext';
+import {
+  useActiveProjectId,
+  useActiveProjectIdActions,
+} from '../../contexts/ActiveProjectIdStoreContext';
+import {
+  useOrganizations,
+  usePrimaryOrganization,
+} from '../../hooks/organization/useOrganizations';
 import {AuthScreen} from '../../screens/AuthScreen';
+import {Success} from '../../screens/Onboarding/Success';
+import {CreateOrganization} from '../../screens/Onboarding/CreateOrganization';
+import {JoinOrganizationIntro} from '../../screens/Onboarding/JoinOrganizationIntro';
+import {OrganizationProvisioning} from '../../screens/Onboarding/OrganizationProvisioning';
 import {ActiveProjectProvider} from '../../contexts/ActiveProjectContext';
 import {useIntl} from 'react-intl';
 import {RootStack} from './RootStack';
@@ -39,10 +50,19 @@ export const NavigatorScreenOptions: NativeStackNavigationOptions = {
   statusBarStyle: 'dark',
 };
 
-function getInitialRoute(
+/**
+ * Organization state as seen by the startup gate (SPEC 10.1): `none` when
+ * the device holds no Organization at all, `provisioning` while one exists
+ * but is not `ready` yet (incomplete or invalid — fail-closed), `ready`
+ * once any Organization is usable.
+ */
+export type OrgGateStatus = 'none' | 'ready' | 'provisioning';
+
+export function getInitialRoute(
   authState: 'authenticated' | 'unauthenticated' | 'obscured',
   deviceName: string | undefined,
   projectId: string | undefined,
+  orgStatus: OrgGateStatus,
 ): keyof AppStackParamsList {
   if (authState === 'unauthenticated') {
     return 'AuthScreen';
@@ -50,7 +70,13 @@ function getInitialRoute(
   if (!deviceName) {
     return 'IntroToCoMapeo';
   }
-  if (!projectId) {
+  if (orgStatus === 'provisioning') {
+    return 'OrganizationProvisioning';
+  }
+  if (orgStatus === 'none') {
+    // A device may hold non-marker projects (e.g. a legacy invite accept),
+    // which still leaves it without an Organization — it goes through the
+    // org fork regardless of any active project id.
     return 'Success';
   }
   return 'Home';
@@ -60,11 +86,48 @@ export const RootStackNavigator = () => {
   const security = useAuthContext();
   const {data: deviceInfo} = useOwnDeviceInfo();
   const activeProjectId = useActiveProjectId();
+  const {setActiveProjectId} = useActiveProjectIdActions();
   const {formatMessage} = useIntl();
+  // Suspends alongside useOwnDeviceInfo on the navigator's existing
+  // Suspense boundary (see PLAN-46 risks: pinned, do not deviate).
+  const organizations = useOrganizations();
+  const orgStatus: OrgGateStatus = organizations.some(
+    org => org.state === 'ready',
+  )
+    ? 'ready'
+    : organizations.length > 0
+      ? 'provisioning'
+      : 'none';
   const isNotReadyForInvite =
     security.authState !== 'authenticated' ||
     !deviceInfo.name ||
     !activeProjectId;
+
+  const primaryOrganization = usePrimaryOrganization();
+
+  // SPEC 1.3: the Organization is the root product state, so once an
+  // Organization is ready, a persisted active id that is a slot of no ready
+  // organization (a standalone/debug switch) does not survive into Home —
+  // getInitialRoute stays pure; this effect corrects the stored id to the
+  // primary organization's Monitoramento slot instead.
+  React.useEffect(() => {
+    if (orgStatus !== 'ready' || !activeProjectId) return;
+    const activeIsReadyOrgSlot = organizations.some(
+      org =>
+        org.state === 'ready' &&
+        (org.slots.m === activeProjectId || org.slots.a === activeProjectId),
+    );
+    if (activeIsReadyOrgSlot) return;
+    if (primaryOrganization?.state === 'ready') {
+      setActiveProjectId(primaryOrganization.slots.m);
+    }
+  }, [
+    organizations,
+    orgStatus,
+    activeProjectId,
+    primaryOrganization,
+    setActiveProjectId,
+  ]);
 
   const layout: NavigatorLayout = ({children, state, navigation}) => (
     <SafeAreaView
@@ -117,6 +180,7 @@ export const RootStackNavigator = () => {
     security.authState,
     deviceInfo.name,
     activeProjectId,
+    orgStatus,
   );
 
   return (
@@ -137,6 +201,35 @@ export const RootStackNavigator = () => {
           {!deviceInfo.name || !activeProjectId
             ? createOnboardingScreens({intl: formatMessage})
             : createAppScreens({intl: formatMessage})}
+          {/* Organization-fork screens, shared between the onboarding and app
+              screen sets (the gate can land on any of them with or without an
+              active project, SPEC 10.1): normal cards, registered
+              unconditionally. The navigationKey remounts the group when the
+              screen set flips (active project appears/disappears), so stale
+              routes on these screens are pruned and the gate re-decides —
+              same mechanic the shared invite-sheet group relies on. */}
+          <RootStack.Group
+            navigationKey={
+              activeProjectId ? 'org-screens-app' : 'org-screens-onboarding'
+            }
+            screenOptions={{
+              presentation: 'card',
+              headerShown: false,
+            }}>
+            <RootStack.Screen name="Success" component={Success} />
+            <RootStack.Screen
+              name="CreateOrganization"
+              component={CreateOrganization}
+            />
+            <RootStack.Screen
+              name="JoinOrganizationIntro"
+              component={JoinOrganizationIntro}
+            />
+            <RootStack.Screen
+              name="OrganizationProvisioning"
+              component={OrganizationProvisioning}
+            />
+          </RootStack.Group>
           {/* Shared screen */}
           <RootStack.Group
             navigationKey={activeProjectId}

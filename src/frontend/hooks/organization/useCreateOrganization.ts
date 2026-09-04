@@ -58,7 +58,16 @@ export function useCreateOrganization() {
     setOrganizationId(undefined);
   };
 
-  const start = async (organizationName: string) => {
+  /**
+   * `organizationId` is optional: when the caller passes one (recovered from
+   * a reconstructed `incomplete` organization after a restart, SPEC 5/E7) it
+   * is used as-is; without it the errored-attempt reuse / fresh-generation
+   * logic applies unchanged.
+   */
+  const start = async (
+    organizationName: string,
+    providedOrganizationId?: string,
+  ) => {
     if (busyRef.current) return;
     busyRef.current = true;
     attemptRef.current += 1;
@@ -69,9 +78,10 @@ export function useCreateOrganization() {
     // that were already created, and only the missing ones get created.
     // Any other status is a fresh organization.
     const nextOrganizationId =
-      status === 'error' && organizationId !== undefined
+      providedOrganizationId ??
+      (status === 'error' && organizationId !== undefined
         ? organizationId
-        : generateOrganizationId();
+        : generateOrganizationId());
     setOrganizationId(nextOrganizationId);
     setStatus('creating');
     setError(undefined);

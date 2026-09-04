@@ -208,6 +208,9 @@ export type RootStackParamsList = {
   TurnOffPasscodeBottomSheet: undefined;
   ConfirmDeleteObservationBottomSheet: {observationId: string};
   ConfirmDeleteTrackBottomSheet: {trackId: string};
+  // Shared with the onboarding screen set (registered in a RootStack.Group
+  // outside the onboarding/app conditional) — routable from both.
+  OrganizationProvisioning: undefined;
 };
 
 export type OnboardingParamsList = {
@@ -216,6 +219,9 @@ export type OnboardingParamsList = {
   DeviceNaming: undefined;
   OnboardingPrivacyPolicy: undefined;
   Success: undefined;
+  CreateOrganization: undefined;
+  JoinOrganizationIntro: undefined;
+  OrganizationProvisioning: undefined;
   JoinProjectIntro: undefined;
   MapOnYourOwnIntro: undefined;
   ErrorBottomSheet: {error: Error};
