@@ -1,0 +1,5 @@
+{
+  "enabledPlugins": {
+    "figma-pack@claude-code-plugins-plus": true
+  }
+}
