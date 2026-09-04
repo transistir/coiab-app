@@ -13,6 +13,15 @@ export type AddRemoteArchiveProgress = {
   error?: unknown;
 };
 
+/**
+ * What a completed `start()` resolved to. `error` is the first slot error
+ * (undefined when both slots succeeded); the per-slot detail stays in
+ * `progress` for surfaces that show partial outcomes. `undefined` means the
+ * attempt was superseded (reset or unmount) and published nothing — the
+ * caller must not navigate on it.
+ */
+export type AddRemoteArchiveOutcome = {error?: unknown} | undefined;
+
 const IDLE_PROGRESS: AddRemoteArchiveProgress = {
   monitoramento: 'idle',
   alertas: 'idle',
@@ -67,7 +76,7 @@ export function useAddRemoteArchiveToOrganization() {
     }: {
       slots: Record<Slot, string>;
       baseUrl: string;
-    }) => {
+    }): Promise<AddRemoteArchiveOutcome> => {
       if (busyRef.current) return;
       busyRef.current = true;
       attemptRef.current += 1;
@@ -100,23 +109,22 @@ export function useAddRemoteArchiveToOrganization() {
         }),
       );
 
-      if (attemptRef.current !== attempt) return;
+      if (attemptRef.current !== attempt) return undefined;
 
-      setProgress(() => {
-        const next = {...IDLE_PROGRESS};
-        let firstError: unknown = undefined;
-        for (const result of results) {
-          next[result.slot === 'm' ? 'monitoramento' : 'alertas'] =
-            result.state;
-          if (result.error !== undefined && firstError === undefined) {
-            firstError = result.error;
-          }
+      const next = {...IDLE_PROGRESS};
+      let firstError: unknown = undefined;
+      for (const result of results) {
+        next[result.slot === 'm' ? 'monitoramento' : 'alertas'] = result.state;
+        if (result.error !== undefined && firstError === undefined) {
+          firstError = result.error;
         }
-        next.error = firstError;
-        return next;
-      });
+      }
+      next.error = firstError;
+
+      setProgress(next);
       busyRef.current = false;
       setBusy(false);
+      return {error: firstError};
     },
     [clientApi, queryClient],
   );

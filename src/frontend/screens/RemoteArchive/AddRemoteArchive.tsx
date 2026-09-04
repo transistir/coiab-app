@@ -17,6 +17,10 @@ import {HeaderText} from '../../sharedComponents/Text/HeaderText';
 import {BodyText} from '../../sharedComponents/Text/BodyText';
 import {useAddServerPeer} from '@comapeo/core-react';
 import {useActiveProject} from '../../contexts/ActiveProjectContext';
+import {useActiveProjectId} from '../../contexts/ActiveProjectIdStoreContext';
+import {useOrganizations} from '../../hooks/organization/useOrganizations';
+import {useAddRemoteArchiveToOrganization} from '../../hooks/organization/useAddRemoteArchiveToOrganization';
+import type {ReconstructedOrganization} from '../../lib/organization/reconstruct';
 import * as Sentry from '@sentry/react-native';
 
 const m = defineMessages({
@@ -52,6 +56,11 @@ const m = defineMessages({
   whatsIncluded: {
     id: 'ProjectSettings.RemoteArchive.AddRemoteArchive.whatsIncluded',
     defaultMessage: 'See What is Included',
+  },
+  orgHint: {
+    id: '$1screens.RemoteArchive.AddRemoteArchive.orgHint',
+    defaultMessage:
+      'This archive will be added to both projects of the Organization.',
   },
 });
 
@@ -180,12 +189,57 @@ type AddFoundArchiveProps = {
   url: string;
 };
 
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
 const AddFoundArchive = ({name, url}: AddFoundArchiveProps) => {
   const {formatMessage} = useIntl();
   const {projectId} = useActiveProject();
   const {mutate, status} = useAddServerPeer({projectId});
   const {navigate, setOptions, addListener} = useNavigationFromRoot();
-  function handleAddRemoteArchive() {
+
+  const activeProjectId = useActiveProjectId();
+  const organizations = useOrganizations();
+  const organizationArchive = useAddRemoteArchiveToOrganization();
+
+  // SPEC 11: when the active project belongs to a ready Organization, one
+  // submission fans the archive out to both of its projects. Otherwise the
+  // legacy single-project add below stays as the debug/legacy path.
+  const activeOrganization = React.useMemo(() => {
+    if (activeProjectId === undefined) return undefined;
+    return organizations.find(
+      (org): org is Extract<ReconstructedOrganization, {state: 'ready'}> =>
+        org.state === 'ready' &&
+        (org.slots.m === activeProjectId || org.slots.a === activeProjectId),
+    );
+  }, [organizations, activeProjectId]);
+
+  const pending = status === 'pending' || organizationArchive.busy;
+
+  async function handleAddRemoteArchive() {
+    if (activeOrganization) {
+      // SPEC 11 / E8 fan-out: both slots via manager APIs, without switching
+      // activeProjectId. A partial failure (one slot done, one error) leaves
+      // the Organization half-configured and surfaces as an error; the retry
+      // re-adds BOTH slots. Core does not document addServerPeer dedupe by
+      // baseUrl (member-api.d.ts lists error codes only), so retry
+      // idempotency rests on the E8 integration evidence, not a core
+      // contract.
+      const outcome = await organizationArchive.start({
+        slots: activeOrganization.slots,
+        baseUrl: url,
+      });
+      if (!outcome) return;
+      if (outcome.error === undefined) {
+        navigate('SuccessfullyAddedArchive', {archiveName: name, url});
+      } else {
+        Sentry.captureException(outcome.error);
+        navigate('ErrorBottomSheet', {error: toError(outcome.error)});
+      }
+      return;
+    }
+
     mutate(
       {baseUrl: url},
       {
@@ -202,7 +256,7 @@ const AddFoundArchive = ({name, url}: AddFoundArchiveProps) => {
 
   React.useEffect(() => {
     const unsubscribe = addListener('beforeRemove', e => {
-      if (status !== 'pending') {
+      if (!pending) {
         // If user is not actively adding server
         return;
       }
@@ -213,7 +267,7 @@ const AddFoundArchive = ({name, url}: AddFoundArchiveProps) => {
     return () => {
       unsubscribe();
     };
-  }, [addListener, status]);
+  }, [addListener, pending]);
 
   React.useLayoutEffect(() => {
     setOptions({headerShown: true});
@@ -222,7 +276,7 @@ const AddFoundArchive = ({name, url}: AddFoundArchiveProps) => {
   return (
     <ScreenContentWithDock
       dockContent={
-        status === 'pending' ? (
+        pending ? (
           <LoadingIndicator style={{marginBottom: 20}} />
         ) : (
           <Button
@@ -239,6 +293,13 @@ const AddFoundArchive = ({name, url}: AddFoundArchiveProps) => {
         <HeaderText variant="header5">{name}</HeaderText>
         <BodyText variant="smallMeta">{url}</BodyText>
       </View>
+      {activeOrganization ? (
+        <BodyText
+          variant="smallMeta"
+          style={{marginBottom: 20, textAlign: 'center'}}>
+          {formatMessage(m.orgHint)}
+        </BodyText>
+      ) : null}
       <View style={styles.greyBox}>
         <BodyText variant="smallMeta">{formatMessage(m.archiveInfo)}</BodyText>
         <BodyText style={{marginTop: 5}} variant="smallMeta">
