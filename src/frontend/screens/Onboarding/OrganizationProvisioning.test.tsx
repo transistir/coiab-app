@@ -4,12 +4,19 @@ import {NavigationContainer} from '@react-navigation/native';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {render, screen, userEvent} from '@testing-library/react-native';
 import {IntlProvider} from 'react-intl';
+import {useManyInvites} from '@comapeo/core-react';
 
 import {OrganizationProvisioning} from './OrganizationProvisioning';
 import {useOrganizations} from '../../hooks/organization/useOrganizations';
 import {useCreateOrganization} from '../../hooks/organization/useCreateOrganization';
+import {markerFor} from '../../lib/organization/marker';
+import type {InviteLike} from '../../lib/organization/bundle';
 import type {ReconstructedOrganization} from '../../lib/organization/reconstruct';
 import type {AppStackParamsList} from '../../sharedTypes/navigation';
+
+jest.mock('@comapeo/core-react', () => ({
+  useManyInvites: jest.fn(),
+}));
 
 jest.mock('../../hooks/organization/useOrganizations', () => ({
   useOrganizations: jest.fn(),
@@ -21,11 +28,16 @@ jest.mock('../../hooks/organization/useCreateOrganization', () => ({
 
 const useOrganizationsMock = useOrganizations as jest.Mock;
 const useCreateOrganizationMock = useCreateOrganization as jest.Mock;
+const useManyInvitesMock = useManyInvites as jest.Mock;
 
 const start = jest.fn();
 
 function mockOrganizations(organizations: ReconstructedOrganization[]) {
   useOrganizationsMock.mockReturnValue(organizations);
+}
+
+function mockInvites(invites: InviteLike[]) {
+  useManyInvitesMock.mockReturnValue({data: invites});
 }
 
 function mockCreateOrganization(
@@ -95,6 +107,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockOrganizations([]);
   mockCreateOrganization();
+  mockInvites([]);
 });
 
 describe('OrganizationProvisioning', () => {
@@ -138,6 +151,28 @@ describe('OrganizationProvisioning', () => {
 
   test('stays passive (no retry) when the incomplete organization has no name', async () => {
     mockOrganizations([namelessIncompleteOrganization]);
+    await renderScreen();
+
+    expect(screen.getByText('Setting up your Organization…')).toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('ORG.provisioning-retry-btn'),
+    ).not.toBeOnTheScreen();
+  });
+
+  test('hides the retry button while a pending invite covers the missing slot', async () => {
+    // The invite sheet completes the organization — fabricating the slot
+    // here would create a private project alongside it.
+    mockOrganizations([incompleteOrganization]);
+    mockInvites([
+      {
+        inviteId: 'invite-a',
+        projectDescription: markerFor('c'.repeat(16), 'a', 'Partial Org'),
+        invitorDeviceId: 'invitor-1',
+        roleName: 'Coordinator',
+        receivedAt: 1,
+        state: 'pending',
+      },
+    ]);
     await renderScreen();
 
     expect(screen.getByText('Setting up your Organization…')).toBeOnTheScreen();

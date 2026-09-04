@@ -17,6 +17,8 @@ import {
   bundleForInvite,
   groupPendingInvites,
 } from '../../lib/organization/bundle';
+import {SLOTS} from '../../lib/organization/marker';
+import {useOrganizations} from '../../hooks/organization/useOrganizations';
 import {useAcceptOrganizationBundle} from '../../hooks/organization/useAcceptOrganizationBundle';
 
 const m = defineMessages({
@@ -72,7 +74,9 @@ function toError(error: unknown): Error {
  * grouped from all pending invites (SPEC 6.5/8.5) and shown as one decision
  * ("Entrar na organização"), never one invite per project. Incomplete
  * bundles distinguish transient ("Preparing invitation…") from definitive
- * (the missing slot can never arrive).
+ * (the missing slot can never arrive) — unless every slot is covered, a
+ * locally-held slot counting as present, in which case the Join decision
+ * stays reachable even on a definitive bundle (join-side recovery).
  */
 export const OrganizationInviteReceived = ({
   route,
@@ -99,6 +103,32 @@ export const OrganizationInviteReceived = ({
   const acceptBundle = useAcceptOrganizationBundle();
   const rejectInvite = useRejectInvite();
   const {isTracking} = useTracking();
+
+  // Join-side recovery: a mid-accept failure can leave one slot joined
+  // locally while the other invite is still pending. The bundle then
+  // classifies `incomplete-definitive` even though the device already holds
+  // half the organization, but the accept path fully supports this partial
+  // bundle (the locally-present slot is skipped, identity enforced by the
+  // hook) — so a locally-held slot counts as covered and the Join decision
+  // stays reachable instead of dead-ending on "ask the sender again".
+  const organizations = useOrganizations();
+  const localOrg = organizations.find(
+    org => org.organizationId === bundle?.organizationId,
+  );
+  const slotsCovered =
+    bundle !== undefined &&
+    SLOTS.every(
+      slot =>
+        localOrg?.slots[slot] !== undefined ||
+        bundle.invites[slot] !== undefined,
+    );
+
+  // Role display comes from the bundle as before; the organization name
+  // falls back to the locally-reconstructed org (the sender's marker name
+  // may be absent on a partial bundle).
+  const organizationDisplayName = bundle
+    ? bundle.organizationName || localOrg?.organizationName
+    : undefined;
 
   const translatedRole =
     bundle?.roleName === 'Coordinator'
@@ -153,7 +183,7 @@ export const OrganizationInviteReceived = ({
     }
 
     const projectName =
-      bundle.organizationName || formatMessage(m.organizationName);
+      organizationDisplayName || formatMessage(m.organizationName);
 
     // Accepting while still in onboarding (the org fork's waiting screen is
     // JoinOrganizationIntro) simply replaces the waiting screen with the
@@ -220,7 +250,8 @@ export const OrganizationInviteReceived = ({
   return (
     <BottomSheetWrapper>
       <View style={styles.container}>
-        {!bundle || bundle.completeness === 'incomplete-definitive' ? (
+        {!bundle ||
+        (!slotsCovered && bundle.completeness !== 'incomplete-transient') ? (
           <>
             <BodyText variant="smallMeta" style={styles.errorText}>
               {formatMessage(m.incompleteDefinitive)}
@@ -245,7 +276,7 @@ export const OrganizationInviteReceived = ({
               )}
             </View>
           </>
-        ) : bundle.completeness === 'incomplete-transient' ? (
+        ) : !slotsCovered ? (
           <>
             <BodyText variant="smallMeta" style={styles.preparingText}>
               {formatMessage(m.preparing)}

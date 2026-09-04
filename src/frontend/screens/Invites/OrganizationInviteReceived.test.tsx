@@ -8,9 +8,11 @@ import {useManyInvites, useRejectInvite} from '@comapeo/core-react';
 
 import {OrganizationInviteReceived} from './OrganizationInviteReceived';
 import {useAcceptOrganizationBundle} from '../../hooks/organization/useAcceptOrganizationBundle';
+import {useOrganizations} from '../../hooks/organization/useOrganizations';
 import {useTracking} from '../../hooks/useTracking';
 import {markerFor} from '../../lib/organization/marker';
 import type {InviteLike} from '../../lib/organization/bundle';
+import type {ReconstructedOrganization} from '../../lib/organization/reconstruct';
 import type {AppStackParamsList} from '../../sharedTypes/navigation';
 
 jest.mock('@comapeo/core-react', () => ({
@@ -22,6 +24,10 @@ jest.mock('../../hooks/organization/useAcceptOrganizationBundle', () => ({
   useAcceptOrganizationBundle: jest.fn(),
 }));
 
+jest.mock('../../hooks/organization/useOrganizations', () => ({
+  useOrganizations: jest.fn(),
+}));
+
 jest.mock('../../hooks/useTracking', () => ({
   useTracking: jest.fn(),
 }));
@@ -31,6 +37,7 @@ const useRejectInviteMock = useRejectInvite as jest.Mock;
 const useAcceptOrganizationBundleMock =
   useAcceptOrganizationBundle as jest.Mock;
 const useTrackingMock = useTracking as jest.Mock;
+const useOrganizationsMock = useOrganizations as jest.Mock;
 
 const ORG_ID = 'a1b2c3d4e5f60718';
 const ORG_NAME = 'Org Um';
@@ -55,6 +62,10 @@ function makeInvite(
 
 function mockInvites(invites: InviteLike[]) {
   useManyInvitesMock.mockReturnValue({data: invites});
+}
+
+function mockOrganizations(organizations: ReconstructedOrganization[]) {
+  useOrganizationsMock.mockReturnValue(organizations);
 }
 
 function mockAcceptBundle(
@@ -127,6 +138,7 @@ beforeEach(() => {
   mockRejectInvite();
   mutateAsync.mockResolvedValue(undefined);
   useTrackingMock.mockReturnValue({isTracking: false});
+  mockOrganizations([]);
 });
 
 describe('OrganizationInviteReceived', () => {
@@ -170,6 +182,61 @@ describe('OrganizationInviteReceived', () => {
     expect(
       screen.queryByTestId('ORG.invite-decline-btn'),
     ).not.toBeOnTheScreen();
+  });
+
+  test('a locally-held slot keeps a definitive bundle joinable (join-side recovery)', async () => {
+    // Mid-accept failure: slot m joined locally (its invite is terminal),
+    // slot a still pending. The bundle classifies incomplete-definitive,
+    // but the device already holds half the organization — Join stays
+    // reachable and the accept receives the partial bundle.
+    mockOrganizations([
+      {
+        state: 'incomplete',
+        organizationId: ORG_ID,
+        organizationName: 'Local Org',
+        slots: {m: 'project-m'},
+      },
+    ]);
+    mockInvites([makeInvite('m', {state: 'joined'}), makeInvite('a')]);
+    start.mockResolvedValue({
+      ok: true,
+      accepted: [{slot: 'a', projectId: 'project-a'}],
+      activeProjectId: 'project-a',
+    });
+    const user = userEvent.setup();
+    await renderScreen();
+
+    expect(screen.getByText(ORG_NAME)).toBeOnTheScreen();
+    expect(screen.getByTestId('ORG.invite-join-btn')).toBeOnTheScreen();
+
+    await user.press(screen.getByTestId('ORG.invite-join-btn'));
+
+    expect(start).toHaveBeenCalledTimes(1);
+    const [bundle] = start.mock.calls[0]!;
+    expect(bundle.organizationId).toBe(ORG_ID);
+    expect(Object.keys(bundle.invites)).toStrictEqual(['a']);
+  });
+
+  test('a locally-held slot with no invite for the missing slot still shows the definitive error', async () => {
+    // Slot m joined locally, nothing pending for slot a: no bundle can be
+    // grouped, so the "ask the sender again" error remains.
+    mockOrganizations([
+      {
+        state: 'incomplete',
+        organizationId: ORG_ID,
+        organizationName: 'Local Org',
+        slots: {m: 'project-m'},
+      },
+    ]);
+    mockInvites([makeInvite('m', {state: 'joined'})]);
+    await renderScreen();
+
+    expect(
+      screen.getByText(
+        'This invitation is incomplete. Ask the sender to invite you again.',
+      ),
+    ).toBeOnTheScreen();
+    expect(screen.queryByTestId('ORG.invite-join-btn')).not.toBeOnTheScreen();
   });
 
   test('a bundle that cannot be grouped at all shows the error with only Close', async () => {

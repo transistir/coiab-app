@@ -2,6 +2,7 @@ import * as React from 'react';
 import {StyleSheet, View} from 'react-native';
 import {defineMessages, useIntl} from 'react-intl';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
+import {useManyInvites} from '@comapeo/core-react';
 
 import {HeaderText} from '../../sharedComponents/Text/HeaderText';
 import {BodyText} from '../../sharedComponents/Text/BodyText';
@@ -10,6 +11,8 @@ import {SecondaryButton} from '../../sharedComponents/Buttons';
 import {AppStackParamsList} from '../../sharedTypes/navigation';
 import {useOrganizations} from '../../hooks/organization/useOrganizations';
 import {useCreateOrganization} from '../../hooks/organization/useCreateOrganization';
+import {groupPendingInvites} from '../../lib/organization/bundle';
+import {SLOTS} from '../../lib/organization/marker';
 import type {ReconstructedOrganization} from '../../lib/organization/reconstruct';
 
 const m = defineMessages({
@@ -39,7 +42,9 @@ const m = defineMessages({
  * idempotent — it creates only the missing slot, under the reconstructed
  * organization id, so a restart mid-create never bricks the device. Without
  * a name no marker can be minted, so the screen stays passive (fail-closed;
- * manual repair is out of scope).
+ * manual repair is out of scope). The offer is also suppressed while a
+ * pending invite covers a missing slot — the invite sheet completes the
+ * organization instead (join-side recovery).
  */
 export const OrganizationProvisioning = ({
   navigation,
@@ -65,6 +70,25 @@ export const OrganizationProvisioning = ({
         }
       : undefined;
 
+  // Join-side recovery: when a pending invite covers one of the
+  // organization's missing slots, the invite sheet completes the org —
+  // fabricating the slot here would create a private project the invite
+  // flow then has to route around, so the button stays hidden while the
+  // invite is the expected completion path.
+  const {data: invites} = useManyInvites();
+  const {bundles} = groupPendingInvites(invites);
+  const missingSlotCoveredByInvite =
+    incompleteOrganization !== undefined &&
+    bundles.some(
+      bundle =>
+        bundle.organizationId === incompleteOrganization.organizationId &&
+        SLOTS.some(
+          slot =>
+            incompleteOrganization.slots[slot] === undefined &&
+            bundle.invites[slot] !== undefined,
+        ),
+    );
+
   React.useEffect(() => {
     if (isReady) {
       navigation.reset({index: 0, routes: [{name: 'Home'}]});
@@ -80,7 +104,7 @@ export const OrganizationProvisioning = ({
       {isInvalid && (
         <BodyText style={styles.errorText}>{t(m.invalid)}</BodyText>
       )}
-      {retryOrganization && !isCreating && (
+      {retryOrganization && !isCreating && !missingSlotCoveredByInvite && (
         <SecondaryButton
           testID="ORG.provisioning-retry-btn"
           fullSize
