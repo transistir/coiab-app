@@ -120,6 +120,33 @@ hierarchy. They cannot see something covering the screen. A run has reported
 45% of 20 consecutive frames, with every automated check green. A green run
 means the pipeline worked, never that the screenshots are good — open them.
 
+## Consulting approved designs (Figma)
+
+Approved MVP designs live in the Figma file "Kutary App V2":
+
+```
+https://www.figma.com/design/lfGdmeMSB7PoJGIvE0NtTM/Kutary-App---V2?node-id=2668-4449
+```
+
+The same URL is registered on coiab-app#53 and on every `design-pending`
+issue. `node-id` scopes the link to one screen; drop it (or replace it) to
+address a sibling screen in the same file.
+
+Agents read that file through the `figma-pat` MCP server
+(`figma-developer-mcp --stdio`, read-only, personal access token). Before
+fetching anything, read
+[`.agents/skills/figma-pat/SKILL.md`](./.agents/skills/figma-pat/SKILL.md) —
+it covers URL parsing, why `nodeId` must always be passed (a full file
+serializes to hundreds of KB), image/asset downloads, and render gotchas.
+Prefer `figma-pat` for reads; the official Figma server (enabled via
+`.claude/settings.json`) is only needed for current-editor selection, Code
+Connect, or design generation.
+
+Machine setup (per clone, not in the repo): `figma-developer-mcp` on PATH
+(`npm i -g figma-developer-mcp`), `FIGMA_TOKEN` exported in the shell
+(scopes: `file_content:read`), and the server registered as `figma-pat` in
+`~/.claude.json` with `FIGMA_API_KEY: "${FIGMA_TOKEN}"`.
+
 ## Adding a skill
 
 Skills live in `.agents/skills/<name>/SKILL.md`. That is the location Codex,
