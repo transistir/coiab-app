@@ -1,5 +1,6 @@
 // @ts-check
 
+import {existsSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import pluginReact from '@eslint-react/eslint-plugin';
@@ -165,7 +166,9 @@ const frontendConfig = pluginTs.config(
 export default pluginTs.config(
   {ignores: ['e2e/**/*']},
   includeIgnoreFile(gitignorePath),
-  includeIgnoreFile(gitExcludePath),
+  // A linked git worktree has `.git` as a pointer file, not a directory, so
+  // `.git/info/exclude` does not exist there.
+  ...(existsSync(gitExcludePath) ? [includeIgnoreFile(gitExcludePath)] : []),
   pluginJs.configs.recommended,
   toolingConfig,
   backendConfig,
