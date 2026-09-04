@@ -9,8 +9,10 @@
  * composition of two ordinary projects correlated by a marker stored in
  * `projectDescription`:
  *
- *   coiab-org:v1:<organizationId>:m   (Monitoramento)
- *   coiab-org:v1:<organizationId>:a   (Alertas)
+ *   coiab-org:v1:<organizationId>:<slot>:<name>
+ *
+ * with slot m (Monitoramento) or a (Alertas) and name = encoded org name —
+ * the final marker format implemented by src/frontend/lib/organization.
  *
  * The experiments map 1:1 to the mandatory experiments in
  * docs/specs/SPEC-46-organizacao-camada-produto.md (section 14; the SPEC
@@ -19,12 +21,29 @@
  */
 import {MapeoManager, roles} from '@comapeo/core';
 import {KeyManager} from '@mapeo/crypto';
-import {randomUUID} from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import Fastify from 'fastify';
 import RAM from 'random-access-memory';
+
+import {
+  groupPendingInvites,
+  type InviteLike,
+} from '../../src/frontend/lib/organization/bundle';
+import {
+  acceptOrganizationBundle,
+  createOrganization,
+} from '../../src/frontend/lib/organization/fanout';
+import {
+  markerFor,
+  parseMarker,
+  type Slot,
+} from '../../src/frontend/lib/organization/marker';
+import {
+  reconstructOrganizations,
+  type ReconstructedOrganization,
+} from '../../src/frontend/lib/organization/reconstruct';
 
 import {connectPeers, createManager, createTestServer} from './helpers/core';
 
@@ -33,223 +52,21 @@ const {COORDINATOR_ROLE_ID} = roles;
 jest.setTimeout(240_000);
 
 // ---------------------------------------------------------------------------
-// Organization layer (the thing the spike exists to validate)
+// Organization layer — the product implementation under test
+// (src/frontend/lib/organization). Fixed 16-hex ids: the final marker
+// format requires [0-9a-f]{16}.
 // ---------------------------------------------------------------------------
 
-const MARKER_PREFIX = 'coiab-org:v1:';
-type Slot = 'm' | 'a';
+const ORG_NAME = 'Acme';
+const ORG_1 = 'a1b2c3d4e5f60718';
+const ORG_2 = 'ffffffffffffffff';
 
-type OrgMarker = {organizationId: string; slot: Slot};
-
-function markerFor(organizationId: string, slot: Slot): string {
-  return `${MARKER_PREFIX}${organizationId}:${slot}`;
-}
-
-/** Strict parse per SPEC 4.1: versioned, unambiguous, rejects junk. */
-function parseMarker(description: string): OrgMarker | undefined {
-  const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
-  const match = new RegExp(`^coiab-org:v1:(${UUID}):([ma])$`).exec(description);
-  if (!match) return undefined;
-  return {organizationId: match[1]!, slot: match[2]!};
-}
-
-type ReconstructedOrg =
-  | {state: 'ready'; organizationId: string; slots: Record<Slot, string>}
-  | {
-      state: 'incomplete';
-      organizationId: string;
-      slots: Partial<Record<Slot, string>>;
-    }
-  | {
-      // Two local projects claim the same (organization, slot) — e.g. a
-      // retried create or a hand-edited marker. Overwriting one id with the
-      // other would route product actions to an arbitrary project while
-      // reporting the org as fine, so the state is surfaced instead.
-      state: 'invalid';
-      organizationId: string;
-      reason: 'duplicate-slot';
-      slots: Partial<Record<Slot, string>>;
-    };
-
-/**
- * SPEC section 10: rebuild the Organization from local project state alone.
- * Spike scope: returns the FIRST organization found. SPEC section 10 requires
- * a collection in the product layer (multiple orgs may coexist).
- */
-async function reconstructOrganization(
-  manager: MapeoManager,
-): Promise<ReconstructedOrg | undefined> {
-  const projects = await manager.listProjects();
-  const byOrg = new Map<string, Partial<Record<Slot, string>>>();
-  const orgsWithDuplicateSlot = new Set<string>();
-
-  for (const project of projects) {
-    const settings = await (
-      await manager.getProject(project.projectId)
-    ).$getProjectSettings();
-    const marker = parseMarker(settings.projectDescription || '');
-    if (!marker) continue;
-    const slots = byOrg.get(marker.organizationId) ?? {};
-    if (slots[marker.slot] !== undefined) {
-      orgsWithDuplicateSlot.add(marker.organizationId);
-    }
-    slots[marker.slot] = project.projectId;
-    byOrg.set(marker.organizationId, slots);
-  }
-
-  // First Map entry — arbitrary order. Single-org spike shortcut; the product
-  // layer iterates `byOrg` instead (SPEC section 10: a collection, not a
-  // singleton).
-  const [organizationId, slots] = byOrg.entries().next().value ?? [];
-  if (!organizationId) return undefined;
-  if (orgsWithDuplicateSlot.has(organizationId)) {
-    return {state: 'invalid', organizationId, reason: 'duplicate-slot', slots};
-  }
-  return slots.m && slots.a
-    ? {state: 'ready', organizationId, slots: slots as Record<Slot, string>}
-    : {state: 'incomplete', organizationId, slots};
-}
-
-/**
- * SPEC 5: "Criar organização" = one product action that provisions both
- * projects. A failure mid-way leaves the org incomplete; recovery is NOT
- * "call again" (that would mint a new organizationId and recreate the
- * completed slot) — the caller resumes with the organizationId it already
- * has, and `reconstructOrganization` is the source of it on restart
- * (demonstrated in the create-side recovery test in E7).
- */
-async function createOrganization(
-  manager: MapeoManager,
-  slotsToCreate: ReadonlyArray<Slot> = ['m', 'a'],
-  resumeOrganizationId?: string,
-): Promise<{
-  organizationId: string;
-  projectIds: Partial<Record<Slot, string>>;
-}> {
-  const organizationId = resumeOrganizationId ?? randomUUID();
-  const names: Record<Slot, string> = {m: 'Monitoramento', a: 'Alertas'};
-  const projectIds: Partial<Record<Slot, string>> = {};
-
-  for (const slot of slotsToCreate) {
-    projectIds[slot] = await manager.createProject({
-      name: names[slot],
-      projectDescription: markerFor(organizationId, slot),
-    });
-  }
-
-  return {organizationId, projectIds};
-}
-
-/** SPEC 8.5: group pending invites into a validated Organization bundle. */
-type InviteLike = {
-  inviteId: string;
-  projectDescription?: string;
-  invitorDeviceId: string;
-  roleName?: string;
-};
-
-function groupInvitesIntoBundle(invites: ReadonlyArray<InviteLike>):
-  | {
-      organizationId: string;
-      invitorDeviceId: string;
-      invites: Record<Slot, InviteLike>;
-    }
-  | undefined {
-  const parsed = invites
-    .map(invite => ({
-      invite,
-      marker: parseMarker(invite.projectDescription || ''),
-    }))
-    .filter((entry): entry is {invite: InviteLike; marker: OrgMarker} =>
-      Boolean(entry.marker),
-    );
-
-  const byOrgAndInvitor = new Map<string, typeof parsed>();
-  for (const entry of parsed) {
-    const key = `${entry.marker.organizationId}:${entry.invite.invitorDeviceId}`;
-    const group = byOrgAndInvitor.get(key) ?? [];
-    group.push(entry);
-    byOrgAndInvitor.set(key, group);
-  }
-
-  for (const group of byOrgAndInvitor.values()) {
-    // Exactly one invite per slot: duplicates (m, m, a) must NOT group —
-    // silently picking one of the duplicate m invites would make the bundle
-    // depend on invite ordering.
-    if (group.length !== 2) continue;
-    const slots = new Set(group.map(e => e.marker.slot));
-    if (slots.size !== 2) continue; // need distinct m + a
-    const roleNames = new Set(group.map(e => e.invite.roleName));
-    // Same role in both invites — and the role name must actually be present:
-    // `InviteLike` permits `roleName: undefined`, and a Set of two undefineds
-    // has size 1, so without the presence check a role-less pair would group
-    // with no authoritative role tying the two invites together (SPEC 13 Q3).
-    if (roleNames.size !== 1 || !group[0]!.invite.roleName) continue;
-    const {organizationId} = group[0]!.marker;
-    const {invitorDeviceId} = group[0]!.invite;
-    return {
-      organizationId,
-      invitorDeviceId,
-      invites: Object.fromEntries(
-        group.map(e => [e.marker.slot, e.invite]),
-      ) as Record<Slot, InviteLike>,
-    };
-  }
-  return undefined;
-}
-
-/**
- * SPEC 8.2: "Entrar na organização" = accept only the slots not yet local.
- * `invites` may be partial: after an interrupted accept (E7), the consumed
- * slot's invite is gone and re-inviting it answers ALREADY, so no full
- * two-invite bundle can ever form again — recovery passes just the missing
- * slot's invite and the present slot is skipped by the local check.
- */
-async function acceptOrganizationBundle(
-  manager: MapeoManager,
-  bundle: {invites: Partial<Record<Slot, InviteLike>>},
-): Promise<Array<{slot: Slot; projectId: string}>> {
-  const local = await reconstructOrganization(manager);
-  const alreadyLocal = local?.slots ?? {};
-  // Recovery guard: an invite for a missing slot must belong to the SAME
-  // organization as the slots already on this device. Without this check a
-  // second organization's invite could be accepted into the gap, gluing
-  // projects from two organizations into one supposed "org".
-  const expectedOrgId = local?.organizationId;
-  const accepted: Array<{slot: Slot; projectId: string}> = [];
-
-  for (const slot of ['m', 'a'] as const) {
-    if (alreadyLocal[slot]) continue; // never re-accept a present slot
-    const invite = bundle.invites[slot];
-    if (!invite) {
-      throw new Error(`slot ${slot} is missing locally and has no invite`);
-    }
-    const marker = parseMarker(invite.projectDescription || '');
-    if (expectedOrgId && marker?.organizationId !== expectedOrgId) {
-      throw new Error(
-        `slot ${slot} invite is for organization ${marker?.organizationId ?? '(no marker)'}, not the local organization ${expectedOrgId}`,
-      );
-    }
-    // Partial bundles bypass groupInvitesIntoBundle's per-slot validation, so
-    // the slot must be re-checked here: an m-marked invite handed to the 'a'
-    // gap would be accepted, reported as slot a, and duplicate the other
-    // project while reconstruction stays incomplete.
-    if (marker?.slot !== slot) {
-      throw new Error(
-        `invite for slot ${slot} is marked as slot ${marker?.slot ?? '(no marker)'}`,
-      );
-    }
-    // KNOWN SPIKE LIMITATION (docs/OrgLayerSpike.md): a full bundle is pinned
-    // by groupInvitesIntoBundle to one inviter and one role; a recovery
-    // bundle carries only the missing slot's invite, and the consumed
-    // invite's inviter/role left no local trace — so this path validates
-    // organization and slot but cannot re-derive them. The product layer
-    // must persist the bundle identity (inviter + role) at invite time and
-    // validate against it here.
-    const projectId = await manager.invite.accept({inviteId: invite.inviteId});
-    accepted.push({slot, projectId});
-  }
-  return accepted;
+/** Single-org helper: pick the org under test out of the reconstruction. */
+function orgById(
+  orgs: ReadonlyArray<ReconstructedOrganization>,
+  organizationId: string,
+): ReconstructedOrganization | undefined {
+  return orgs.find(org => org.organizationId === organizationId);
 }
 
 // ---------------------------------------------------------------------------
@@ -327,6 +144,44 @@ async function waitForInvites(
   throw new Error('timed out waiting for invites');
 }
 
+/**
+ * Wait until a project row reports status 'joined' — the accepted project's
+ * settings have replicated. Until then the row is a 'joining' ProjectInfo,
+ * which holds no local slot (SPEC 3.10) and is invisible to reconstruction.
+ */
+async function waitForJoined(
+  manager: MapeoManager,
+  projectId: string,
+): Promise<void> {
+  for (let i = 0; i < 240; i++) {
+    const joined = (await manager.listProjects()).some(
+      project => project.projectId === projectId && project.status === 'joined',
+    );
+    if (joined) return;
+    await new Promise(res => setTimeout(res, 500));
+  }
+  throw new Error(`timed out waiting for ${projectId} to be 'joined'`);
+}
+
+/**
+ * Wait until the device's own member record carries a role — role docs
+ * replicate asynchronously after an accept, and asserting earlier would
+ * compare undefined to undefined.
+ */
+async function waitForOwnRoleId(
+  project: Awaited<ReturnType<MapeoManager['getProject']>>,
+  deviceId: string,
+): Promise<string> {
+  for (let i = 0; i < 240; i++) {
+    const members = await project.$member.getMany();
+    const me = members.find(member => member.deviceId === deviceId);
+    // MemberInfo carries the role object — the id lives at `role.roleId`.
+    if (me?.role.roleId) return me.role.roleId;
+    await new Promise(res => setTimeout(res, 500));
+  }
+  throw new Error(`timed out waiting for own member record of ${deviceId}`);
+}
+
 // ---------------------------------------------------------------------------
 // E1 + E2 — create, restart, reconstruct, and use both projects
 // ---------------------------------------------------------------------------
@@ -343,7 +198,11 @@ describe('E1/E2 — Organization composition survives restart (SPEC 14 E1/E2)', 
     // the persistent manager or its temp database folder.
     let managerB: MapeoManager | undefined;
     try {
-      const {organizationId, projectIds} = await createOrganization(managerA);
+      const organizationId = ORG_1;
+      const {projectIds} = await createOrganization(managerA, {
+        organizationId,
+        organizationName: ORG_NAME,
+      });
       expect(projectIds.m).toBeDefined();
       expect(projectIds.a).toBeDefined();
       expect(projectIds.m).not.toBe(projectIds.a);
@@ -356,7 +215,10 @@ describe('E1/E2 — Organization composition survives restart (SPEC 14 E1/E2)', 
         rootKey,
       );
 
-      const org = await reconstructOrganization(managerB);
+      const org = orgById(
+        await reconstructOrganizations(await managerB.listProjects()),
+        organizationId,
+      );
       expect(org).toBeDefined();
       expect(org!.state).toBe('ready');
       expect(org!.organizationId).toBe(organizationId);
@@ -386,9 +248,15 @@ describe('E1/E2 — Organization composition survives restart (SPEC 14 E1/E2)', 
     );
     try {
       // Only one slot of an org, plus an unmarked project.
-      await createOrganization(manager, ['m']);
+      await manager.createProject({
+        name: 'Monitoramento',
+        projectDescription: markerFor(ORG_1, 'm', ORG_NAME),
+      });
       await manager.createProject({name: 'Plain project'});
-      const org = await reconstructOrganization(manager);
+      const org = orgById(
+        await reconstructOrganizations(await manager.listProjects()),
+        ORG_1,
+      );
       expect(org?.state).toBe('incomplete'); // never 'ready' on one slot
       expect(Object.keys(org?.slots ?? {})).toEqual(['m']);
     } finally {
@@ -409,12 +277,19 @@ describe('E1/E2 — Organization composition survives restart (SPEC 14 E1/E2)', 
       // the same (organization, slot). Reconstruction must surface the
       // conflict — reporting 'ready' with an arbitrarily chosen project id
       // would route product actions to an arbitrary project.
-      const {organizationId} = await createOrganization(manager);
+      const organizationId = ORG_1;
+      await createOrganization(manager, {
+        organizationId,
+        organizationName: ORG_NAME,
+      });
       await manager.createProject({
         name: 'Monitoramento (duplicado)',
-        projectDescription: markerFor(organizationId, 'm'),
+        projectDescription: markerFor(organizationId, 'm', ORG_NAME),
       });
-      const org = await reconstructOrganization(manager);
+      const org = orgById(
+        await reconstructOrganizations(await manager.listProjects()),
+        organizationId,
+      );
       expect(org?.state).toBe('invalid');
       expect(org?.state === 'invalid' && org.reason).toBe('duplicate-slot');
       expect(org?.organizationId).toBe(organizationId);
@@ -440,7 +315,11 @@ describe('E3/E4/E5 — one invite action, one accept action (SPEC 14 E3/E4/E5)',
     try {
       disconnect = await connectPeers([a.manager, b.manager]);
 
-      const {organizationId, projectIds} = await createOrganization(a.manager);
+      const organizationId = ORG_1;
+      const {projectIds} = await createOrganization(a.manager, {
+        organizationId,
+        organizationName: ORG_NAME,
+      });
 
       // E4: ONE product action sends BOTH project invites. Fire-and-forget:
       // $member.invite resolves only on the invitee's response, so the
@@ -470,12 +349,14 @@ describe('E3/E4/E5 — one invite action, one accept action (SPEC 14 E3/E4/E5)',
       expect(marked).toHaveLength(2);
 
       // Q3: the two invites group deterministically into one bundle.
-      const bundle = groupInvitesIntoBundle(marked);
-      expect(bundle).toBeDefined();
-      expect(bundle!.organizationId).toBe(organizationId);
-      expect(bundle!.invitorDeviceId).toBe(a.manager.deviceId);
-      expect(bundle!.invites.m).toBeDefined();
-      expect(bundle!.invites.a).toBeDefined();
+      const grouped = groupPendingInvites(marked);
+      expect(grouped.unmarked).toEqual([]);
+      expect(grouped.bundles).toHaveLength(1);
+      const bundle = grouped.bundles[0]!;
+      expect(bundle.organizationId).toBe(organizationId);
+      expect(bundle.invitorDeviceId).toBe(a.manager.deviceId);
+      expect(bundle.invites.m).toBeDefined();
+      expect(bundle.invites.a).toBeDefined();
 
       // E5: ONE product action accepts the whole bundle.
       const accepted = await acceptOrganizationBundle(b.manager, bundle);
@@ -483,9 +364,18 @@ describe('E3/E4/E5 — one invite action, one accept action (SPEC 14 E3/E4/E5)',
       await Promise.all(invitePromises);
       expect(inviteFailures).toEqual([]);
 
+      // The accepted rows must reach 'joined' (settings replicated) before
+      // reconstruction can see them as local slots.
+      await Promise.all(
+        accepted.map(entry => waitForJoined(b.manager, entry.projectId)),
+      );
+
       // Post-accept (post-sync) the marker is readable from the receiver's own
       // project settings — the source reconstruction consumes (SPEC E3).
-      const orgOnB = await reconstructOrganization(b.manager);
+      const orgOnB = orgById(
+        await reconstructOrganizations(await b.manager.listProjects()),
+        organizationId,
+      );
       expect(orgOnB?.state).toBe('ready');
       expect(orgOnB?.organizationId).toBe(organizationId);
       expect(orgOnB?.slots.m).toBe(
@@ -504,12 +394,10 @@ describe('E3/E4/E5 — one invite action, one accept action (SPEC 14 E3/E4/E5)',
       const ownRoleIds = await Promise.all(
         (['m', 'a'] as const).map(async slot => {
           const project = await b.manager.getProject(orgOnB!.slots[slot]!);
-          const members = await project.$member.getMany();
-          const me = members.find(m => m.deviceId === b.manager.deviceId);
-          return me?.roleId;
+          return waitForOwnRoleId(project, b.manager.deviceId);
         }),
       );
-      expect(ownRoleIds[0]).toBe(ownRoleIds[1]);
+      expect(ownRoleIds).toEqual([COORDINATOR_ROLE_ID, COORDINATOR_ROLE_ID]);
       // Q6, asserted: the joining journey ends with EXACTLY the two internal
       // projects — nothing else materializes on the receiver.
       expect(await b.manager.listProjects()).toHaveLength(2);
@@ -533,7 +421,11 @@ describe('E7 — partial failure recovers without duplicating slots (SPEC 14 E7)
     try {
       disconnect = await connectPeers([a.manager, b.manager]);
 
-      const {organizationId, projectIds} = await createOrganization(a.manager);
+      const organizationId = ORG_1;
+      const {projectIds} = await createOrganization(a.manager, {
+        organizationId,
+        organizationName: ORG_NAME,
+      });
       // Fire-and-forget with handlers at creation — same rationale as E3,
       // and the catch records the failing slot for the final assertion.
       const inviteFailures: Array<'m' | 'a'> = [];
@@ -556,13 +448,19 @@ describe('E7 — partial failure recovers without duplicating slots (SPEC 14 E7)
             .length === 2,
       );
       const marked = pending.filter(i => parseMarker(i.projectDescription!));
-      await b.manager.invite.accept({
+      const mProjectId = await b.manager.invite.accept({
         inviteId: marked.find(
           i => parseMarker(i.projectDescription!)!.slot === 'm',
         )!.inviteId,
       });
+      // The joined row counts as a slot only once its settings replicated
+      // ('joining' → 'joined'); wait so the org is genuinely incomplete.
+      await waitForJoined(b.manager, mProjectId);
 
-      const partial = await reconstructOrganization(b.manager);
+      const partial = orgById(
+        await reconstructOrganizations(await b.manager.listProjects()),
+        organizationId,
+      );
       expect(partial?.state).toBe('incomplete'); // never 'ready' prematurely
       expect(Object.keys(partial?.slots ?? {})).toEqual(['m']);
 
@@ -589,17 +487,34 @@ describe('E7 — partial failure recovers without duplicating slots (SPEC 14 E7)
           parseMarker(i.projectDescription!)?.organizationId === organizationId,
       )!;
 
-      const localBefore = await reconstructOrganization(b.manager);
+      const localBefore = orgById(
+        await reconstructOrganizations(await b.manager.listProjects()),
+        organizationId,
+      );
       expect(localBefore?.slots.m).toBeDefined();
-      // Recovery goes through the real helper — never a direct accept.
-      const accepted = await acceptOrganizationBundle(b.manager, {
-        invites: {a: inviteA},
-      });
+      // Recovery goes through the real helper — never a direct accept. A
+      // partial bundle requires the identity persisted at the first accept;
+      // here that is the identity this bundle's invites carry.
+      const accepted = await acceptOrganizationBundle(
+        b.manager,
+        {invites: {a: inviteA}},
+        {
+          persistedIdentity: {
+            invitorDeviceId: a.manager.deviceId,
+            roleName: 'coordinator',
+          },
+        },
+      );
       expect(accepted.map(x => x.slot)).toEqual(['a']); // only the missing slot
       await Promise.all(invitePromises);
       expect(inviteFailures).toEqual([]);
+      // Wait for the Alertas row to reach 'joined' before expecting 'ready'.
+      await waitForJoined(b.manager, accepted[0]!.projectId);
 
-      const complete = await reconstructOrganization(b.manager);
+      const complete = orgById(
+        await reconstructOrganizations(await b.manager.listProjects()),
+        organizationId,
+      );
       expect(complete?.state).toBe('ready');
       expect(complete?.organizationId).toBe(organizationId);
       expect(complete?.slots.m).toBe(localBefore?.slots.m); // not duplicated
@@ -627,28 +542,35 @@ describe('E7 — partial failure recovers without duplicating slots (SPEC 14 E7)
     // from local state.
     const a = await createManager({name: 'creator', deviceType: 'mobile'});
     try {
-      // Interruption after slot m landed.
-      const {organizationId, projectIds} = await createOrganization(a.manager, [
-        'm',
-      ]);
-      const interrupted = await reconstructOrganization(a.manager);
+      // Interruption after slot m landed: only Monitoramento exists, created
+      // directly (the interruption itself is the state under test).
+      const organizationId = ORG_1;
+      const mProjectId = await a.manager.createProject({
+        name: 'Monitoramento',
+        projectDescription: markerFor(organizationId, 'm', ORG_NAME),
+      });
+      const interrupted = orgById(
+        await reconstructOrganizations(await a.manager.listProjects()),
+        organizationId,
+      );
       expect(interrupted?.state).toBe('incomplete');
       expect(interrupted?.organizationId).toBe(organizationId);
 
       // Resume: complete only the missing slot, under the SAME org id (as
       // reconstruction would supply it after a restart).
-      const resumed = await createOrganization(
-        a.manager,
-        ['a'],
-        interrupted?.organizationId,
-      );
-      expect(resumed.organizationId).toBe(organizationId);
-      expect(resumed.projectIds.m).toBeUndefined(); // m was not recreated
+      const resumed = await createOrganization(a.manager, {
+        organizationId: interrupted!.organizationId,
+        organizationName: ORG_NAME,
+      });
+      expect(resumed.projectIds.m).toBe(mProjectId); // m was not recreated
 
-      const complete = await reconstructOrganization(a.manager);
+      const complete = orgById(
+        await reconstructOrganizations(await a.manager.listProjects()),
+        organizationId,
+      );
       expect(complete?.state).toBe('ready');
       expect(complete?.organizationId).toBe(organizationId);
-      expect(complete?.slots.m).toBe(projectIds.m); // original m, untouched
+      expect(complete?.slots.m).toBe(mProjectId); // original m, untouched
       expect(complete?.slots.a).toBe(resumed.projectIds.a);
     } finally {
       await a.manager.close().catch(() => undefined);
@@ -669,9 +591,13 @@ describe('bundle-accept guards — foreign org and slot mismatch are refused', (
       // The invite promises that stay un-accepted never resolve ($member.invite
       // awaits the invitee's response), so each gets its catch at creation —
       // fire-and-forget, never awaited below.
-      const org1 = await createOrganization(a.manager);
+      const org1 = ORG_1;
+      const {projectIds: org1Projects} = await createOrganization(a.manager, {
+        organizationId: org1,
+        organizationName: ORG_NAME,
+      });
       void (['m', 'a'] as const).map(slot =>
-        sendInvite(org1.projectIds[slot]!, a.manager, b.manager.deviceId).catch(
+        sendInvite(org1Projects[slot]!, a.manager, b.manager.deviceId).catch(
           () => undefined,
         ),
       );
@@ -680,21 +606,25 @@ describe('bundle-accept guards — foreign org and slot mismatch are refused', (
         invites =>
           invites.filter(
             i =>
-              parseMarker(i.projectDescription || '')?.organizationId ===
-              org1.organizationId,
+              parseMarker(i.projectDescription || '')?.organizationId === org1,
           ).length === 2,
       );
-      await b.manager.invite.accept({
+      const org1MProjectId = await b.manager.invite.accept({
         inviteId: pending1.find(
           i => parseMarker(i.projectDescription!)!.slot === 'm',
         )!.inviteId,
       });
+      await waitForJoined(b.manager, org1MProjectId);
 
       // Foreign-org guard: c's org-2 'a' invite must not fill org-1's gap —
       // without the guard it would glue two organizations into one.
-      const org2 = await createOrganization(c.manager);
+      const org2 = ORG_2;
+      const {projectIds: org2Projects} = await createOrganization(c.manager, {
+        organizationId: org2,
+        organizationName: ORG_NAME,
+      });
       const foreignInvitePromise = sendInvite(
-        org2.projectIds.a!,
+        org2Projects.a!,
         c.manager,
         b.manager.deviceId,
       ).catch(() => undefined);
@@ -705,14 +635,10 @@ describe('bundle-accept guards — foreign org and slot mismatch are refused', (
             invites.filter(
               i =>
                 parseMarker(i.projectDescription || '')?.organizationId ===
-                org2.organizationId,
+                org2,
             ).length >= 1,
         )
-      ).find(
-        i =>
-          parseMarker(i.projectDescription!)!.organizationId ===
-          org2.organizationId,
-      )!;
+      ).find(i => parseMarker(i.projectDescription!)!.organizationId === org2)!;
       await expect(
         acceptOrganizationBundle(b.manager, {invites: {a: foreign}}),
       ).rejects.toThrow(/not the local organization/);
@@ -722,7 +648,7 @@ describe('bundle-accept guards — foreign org and slot mismatch are refused', (
       // stays incomplete.
       const duplicateSlotProject = await a.manager.createProject({
         name: 'Monitoramento (duplicado)',
-        projectDescription: markerFor(org1.organizationId, 'm'),
+        projectDescription: markerFor(org1, 'm', ORG_NAME),
       });
       const mismatchInvitePromise = sendInvite(
         duplicateSlotProject,
@@ -734,21 +660,22 @@ describe('bundle-accept guards — foreign org and slot mismatch are refused', (
           b.manager,
           invites =>
             invites.filter(
-              i => i.projectDescription === markerFor(org1.organizationId, 'm'),
+              i => i.projectDescription === markerFor(org1, 'm', ORG_NAME),
             ).length >= 1,
         )
-      ).find(
-        i => i.projectDescription === markerFor(org1.organizationId, 'm'),
-      )!;
+      ).find(i => i.projectDescription === markerFor(org1, 'm', ORG_NAME))!;
       await expect(
         acceptOrganizationBundle(b.manager, {invites: {a: mismatched}}),
       ).rejects.toThrow(/invite for slot a is marked as slot m/);
 
       // Both refusals left the partial state untouched: still exactly slot m.
-      const still = await reconstructOrganization(b.manager);
+      const still = orgById(
+        await reconstructOrganizations(await b.manager.listProjects()),
+        org1,
+      );
       expect(still?.state).toBe('incomplete');
       expect(Object.keys(still?.slots ?? {})).toEqual(['m']);
-      expect(still?.organizationId).toBe(org1.organizationId);
+      expect(still?.organizationId).toBe(org1);
     } finally {
       // A failing .rejects assertion is exactly the regression this test
       // exists to catch — it must not also hang Jest on leaked resources.
@@ -762,56 +689,67 @@ describe('bundle-accept guards — foreign org and slot mismatch are refused', (
   });
 });
 
-describe('bundle grouping — duplicate slots never group (SPEC 8.5)', () => {
-  test('three invites with a duplicated slot are rejected, not deduped', () => {
-    // Pure grouping rule: m, m, a with the same org, inviter, and role has
-    // two distinct slots but is NOT a valid bundle — accepting it would make
-    // the chosen m invite depend on list ordering.
+describe('bundle grouping (SPEC 8.5, per-slot collapse)', () => {
+  test('duplicate slot invites collapse to the newest; a lone slot stays incomplete', () => {
+    // Grouping rule: invites for the SAME slot collapse to the newest
+    // receivedAt (tie → larger inviteId), so the bundle never depends on
+    // list ordering; a bundle still needs both distinct slots.
     const invite = (slot: Slot, id: string): InviteLike => ({
       inviteId: id,
-      projectDescription: `coiab-org:v1:11111111-1111-1111-1111-111111111111:${slot}`,
+      projectDescription: `coiab-org:v1:1111111111111111:${slot}:Acme`,
       invitorDeviceId: 'invitor-1',
       roleName: 'coordinator',
+      receivedAt: id === 'm-2' ? 2 : 1,
+      state: 'pending',
     });
 
-    expect(
-      groupInvitesIntoBundle([
-        invite('m', 'm-1'),
-        invite('m', 'm-2'),
-        invite('a', 'a-1'),
-      ]),
-    ).toBeUndefined();
+    const duplicated = groupPendingInvites([
+      invite('m', 'm-1'),
+      invite('m', 'm-2'),
+      invite('a', 'a-1'),
+    ]);
+    expect(duplicated.bundles).toHaveLength(1);
+    expect(duplicated.bundles[0]!.completeness).toBe('complete');
+    expect(duplicated.bundles[0]!.invites.m!.inviteId).toBe('m-2');
 
     // The same invites minus the duplicate still group normally.
-    expect(
-      groupInvitesIntoBundle([invite('m', 'm-1'), invite('a', 'a-1')]),
-    ).toBeDefined();
+    const unduplicated = groupPendingInvites([
+      invite('m', 'm-1'),
+      invite('a', 'a-1'),
+    ]);
+    expect(unduplicated.bundles).toHaveLength(1);
+    expect(unduplicated.bundles[0]!.completeness).toBe('complete');
 
-    // A lone slot never groups, full stop.
-    expect(groupInvitesIntoBundle([invite('a', 'a-1')])).toBeUndefined();
+    // A lone slot groups as an incomplete-transient bundle: joinable, but
+    // the product must not treat it as a complete organization invite.
+    const lone = groupPendingInvites([invite('a', 'a-1')]);
+    expect(lone.bundles).toHaveLength(1);
+    expect(lone.bundles[0]!.completeness).toBe('incomplete-transient');
   });
 
   test('a role-less pair never groups, even though both roles match', () => {
-    // `InviteLike` permits `roleName: undefined`; a Set of two undefineds has
-    // size 1, so the same-role check alone would accept the pair. SPEC 13 Q3
-    // requires a role name — there is no authoritative role to compare.
+    // `InviteLike` permits `roleName: undefined`; a same-role check without a
+    // presence check would accept the pair. SPEC 13 Q3 requires a role name —
+    // there is no authoritative role to compare.
     const roleless = (slot: Slot, id: string): InviteLike => ({
       inviteId: id,
-      projectDescription: `coiab-org:v1:11111111-1111-1111-1111-111111111111:${slot}`,
+      projectDescription: `coiab-org:v1:1111111111111111:${slot}:Acme`,
       invitorDeviceId: 'invitor-1',
+      receivedAt: 1,
+      state: 'pending',
     });
 
     expect(
-      groupInvitesIntoBundle([roleless('m', 'm-1'), roleless('a', 'a-1')]),
-    ).toBeUndefined();
+      groupPendingInvites([roleless('m', 'm-1'), roleless('a', 'a-1')]).bundles,
+    ).toEqual([]);
 
     // Presence on only one side still fails the same-role check.
     expect(
-      groupInvitesIntoBundle([
+      groupPendingInvites([
         {...roleless('m', 'm-1'), roleName: 'coordinator'},
         roleless('a', 'a-1'),
-      ]),
-    ).toBeUndefined();
+      ]).bundles,
+    ).toEqual([]);
   });
 });
 
@@ -846,7 +784,10 @@ describe('E8 — Remote Archive fans out to both projects (SPEC 14 E8)', () => {
     // manager can keep Jest alive at exit.
     let closeServer: (() => void) | undefined;
     try {
-      const {projectIds} = await createOrganization(a.manager);
+      const {projectIds} = await createOrganization(a.manager, {
+        organizationId: ORG_1,
+        organizationName: ORG_NAME,
+      });
       const {serverBaseUrl, close} = await createTestServer({
         allowedProjects: 2,
       });
@@ -887,8 +828,16 @@ describe('E9 — a plain description edit destroys the marker (SPEC 15 risk)', (
   test('saving EditProjectDetails-style settings orphans the slot from the org', async () => {
     const a = await createManager({name: 'coordinator', deviceType: 'mobile'});
     try {
-      const {projectIds} = await createOrganization(a.manager);
-      expect((await reconstructOrganization(a.manager))?.state).toBe('ready');
+      const {projectIds} = await createOrganization(a.manager, {
+        organizationId: ORG_1,
+        organizationName: ORG_NAME,
+      });
+      expect(
+        orgById(
+          await reconstructOrganizations(await a.manager.listProjects()),
+          ORG_1,
+        )?.state,
+      ).toBe('ready');
 
       // Exactly what EditProjectDetails.tsx does on save: the user's text
       // REPLACES projectDescription — marker included. No product guard
@@ -901,7 +850,10 @@ describe('E9 — a plain description edit destroys the marker (SPEC 15 risk)', (
         projectDescription: 'Plano de manejo atualizado',
       });
 
-      const after = await reconstructOrganization(a.manager);
+      const after = orgById(
+        await reconstructOrganizations(await a.manager.listProjects()),
+        ORG_1,
+      );
       expect(after?.state).toBe('incomplete'); // m no longer recognized
       expect(after?.slots.a).toBe(projectIds.a); // a untouched
     } finally {
