@@ -15,7 +15,10 @@ import type {InviteLike} from './bundle';
 import {reconstructOrganizations} from './reconstruct';
 
 export type ProjectLike = {
-  $getProjectSettings(): Promise<{projectDescription?: string}>;
+  $getProjectSettings(): Promise<{
+    name?: string;
+    projectDescription?: string;
+  }>;
 };
 
 export type ManagerLike = {
@@ -301,4 +304,105 @@ export async function acceptOrganizationBundle(
     accepted.push({slot, projectId});
   }
   return accepted;
+}
+
+/**
+ * SPEC 4.4: renaming the Organization is an org-level action that rewrites
+ * the marker in every EXISTING slot (marker-preserving fan-out — only the
+ * name segment of `projectDescription` changes; every other settings field
+ * is written back unchanged). A slot with no invite/local project is
+ * skipped; a slot whose marker does not match the organization and slot it
+ * fills — lost, foreign, or swapped (P6 Q1) — is an error thrown in a
+ * preflight BEFORE any write: renaming must never silently auto-repair a
+ * degraded organization (SPEC 19). Slots are
+ * rewritten sequentially and the first failure aborts the rest; re-running
+ * is safe because the marker rewrite is idempotent.
+ */
+/**
+ * A ManagerLike whose `getProject` exposes the settings write needed by
+ * `renameOrganization`. Declared with `Omit` (not an inline intersection of
+ * the whole manager) so the widened `getProject` return is not shadowed by
+ * the narrower base declaration at call sites.
+ */
+export type RenamableManagerLike = Omit<ManagerLike, 'getProject'> & {
+  getProject(projectId: string): Promise<
+    ProjectLike & {
+      $setProjectSettings(settings: {
+        name?: string;
+        projectDescription?: string;
+      }): Promise<unknown>;
+    }
+  >;
+};
+
+export async function renameOrganization(
+  manager: RenamableManagerLike,
+  opts: {
+    organizationId: string;
+    newName: string;
+    slots: Partial<Record<Slot, string>>;
+  },
+): Promise<void> {
+  if (opts.newName.trim().length === 0) {
+    throw new OrganizationOperationError(
+      'empty-name',
+      'organization name must not be empty or whitespace',
+    );
+  }
+  if (!ORGANIZATION_ID_PATTERN.test(opts.organizationId)) {
+    throw new OrganizationOperationError(
+      'invalid-organization-id',
+      `organization id ${opts.organizationId} must be 16 lowercase hex chars`,
+      {organizationId: opts.organizationId},
+    );
+  }
+
+  // Preflight: read and validate the marker identity of EVERY existing slot
+  // BEFORE any write (P6 Q1) — a lost, wrong-organization, or wrong-slot
+  // marker (swapped or foreign project ids handed in `slots`) aborts the
+  // fan-out with nothing rewritten.
+  const writes: Array<{
+    slot: Slot;
+    project: Awaited<ReturnType<RenamableManagerLike['getProject']>>;
+    settings: {name?: string; projectDescription?: string};
+  }> = [];
+  for (const slot of SLOTS) {
+    const projectId = opts.slots[slot];
+    if (projectId === undefined) continue; // skip a slot that is not local
+
+    const project = await manager.getProject(projectId);
+    const settings = await project.$getProjectSettings();
+    const marker = parseMarker(settings.projectDescription ?? '');
+    if (!marker) {
+      throw new OrganizationOperationError(
+        'invalid-local-state',
+        `slot ${slot} (${projectId}) holds no valid organization marker; renaming would not rewrite it`,
+        {slot, organizationId: opts.organizationId},
+      );
+    }
+    if (marker.organizationId !== opts.organizationId) {
+      throw new OrganizationOperationError(
+        'invalid-local-state',
+        `slot ${slot} (${projectId}) is marked for organization ${marker.organizationId}, not ${opts.organizationId}`,
+        {slot, organizationId: opts.organizationId},
+      );
+    }
+    if (marker.slot !== slot) {
+      throw new OrganizationOperationError(
+        'slot-mismatch',
+        `slot ${slot} (${projectId}) holds a marker for slot ${marker.slot}`,
+        {slot},
+      );
+    }
+    writes.push({slot, project, settings});
+  }
+
+  // All validation passed — rewrite sequentially, first failure aborts the
+  // rest; re-running is safe because the marker rewrite is idempotent.
+  for (const {slot, project, settings} of writes) {
+    await project.$setProjectSettings({
+      ...settings,
+      projectDescription: markerFor(opts.organizationId, slot, opts.newName),
+    });
+  }
 }

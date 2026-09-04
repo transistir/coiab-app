@@ -92,3 +92,22 @@ export function isReservedMarker(description: string): boolean {
 export function isInternalOrgProject(description: string | undefined): boolean {
   return parseMarker(description ?? '') !== undefined;
 }
+
+/**
+ * What the UI may show as a project description (SPEC 3.9/15): a valid
+ * marker renders as the decoded organization name, or nothing when the name
+ * is empty. A description that only CLAIMS the reserved `coiab-org:`
+ * namespace without parsing is a technical value the user must never see
+ * (it is a format this device cannot interpret), so it renders as nothing
+ * too. Any other description passes through unchanged.
+ */
+export function displayDescription(
+  projectDescription: string | undefined,
+): string | undefined {
+  if (projectDescription === undefined) return undefined;
+  // `parseMarker` already rejects empty and whitespace-only names, so a
+  // parsed marker always carries a displayable name.
+  const marker = parseMarker(projectDescription);
+  if (marker) return marker.organizationName;
+  return isReservedMarker(projectDescription) ? undefined : projectDescription;
+}

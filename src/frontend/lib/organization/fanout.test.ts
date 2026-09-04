@@ -1,11 +1,13 @@
-import {markerFor} from './marker';
+import {markerFor, parseMarker, SLOT_PROJECT_NAMES} from './marker';
 import {reconstructOrganizations} from './reconstruct';
 import {
   acceptOrganizationBundle,
   createOrganization,
+  renameOrganization,
   OrganizationOperationError,
   type ManagerLike,
   type OrganizationErrorCode,
+  type RenamableManagerLike,
 } from './fanout';
 import type {InviteLike} from './bundle';
 
@@ -449,5 +451,260 @@ describe('acceptOrganizationBundle', () => {
     });
     expect(accepted.map(entry => entry.slot)).toEqual(['m', 'a']);
     expect(manager.acceptedInviteIds).toHaveLength(2);
+  });
+});
+
+describe('renameOrganization', () => {
+  type StoredSettings = {name?: string; projectDescription?: string};
+
+  type RenamableFakeManager = Omit<FakeManager, 'getProject'> &
+    RenamableManagerLike & {
+      settings: Map<string, StoredSettings>;
+      setSettingsCalls: Array<{projectId: string; settings: StoredSettings}>;
+      failSetFor: Set<string>;
+    };
+
+  /** FakeManager with writable project settings (SPEC 4.4 rename). */
+  function createRenamableFakeManager(): RenamableFakeManager {
+    const manager = createFakeManager() as unknown as RenamableFakeManager;
+    manager.settings = new Map<string, StoredSettings>();
+    manager.setSettingsCalls = [];
+    manager.failSetFor = new Set<string>();
+    const baseGetProject = manager.getProject.bind(manager);
+    manager.getProject = async (projectId: string) => {
+      const project = await baseGetProject(projectId);
+      return {
+        ...project,
+        // Settings read from the writable store, seeded by provisionOrg.
+        async $getProjectSettings(): Promise<StoredSettings> {
+          const stored = manager.settings.get(projectId);
+          if (stored) return {...stored};
+          return project.$getProjectSettings();
+        },
+        async $setProjectSettings(settings: StoredSettings) {
+          if (manager.failSetFor.has(projectId)) {
+            throw new Error(`write failed for ${projectId}`);
+          }
+          manager.setSettingsCalls.push({projectId, settings});
+          const current = manager.settings.get(projectId) ?? {};
+          manager.settings.set(projectId, {...current, ...settings});
+        },
+      };
+    };
+    return manager;
+  }
+
+  async function provisionOrg(manager: RenamableFakeManager) {
+    const {projectIds} = await createOrganization(manager, {
+      organizationId: ORG_A,
+      organizationName: 'Acme',
+    });
+    for (const [slot, projectId] of Object.entries(projectIds)) {
+      manager.settings.set(projectId, {
+        name: SLOT_PROJECT_NAMES[slot as 'm' | 'a'],
+        projectDescription: markerFor(ORG_A, slot as 'm' | 'a', 'Acme'),
+      });
+    }
+    return projectIds;
+  }
+
+  it('rewrites the marker name segment in both slots', async () => {
+    const manager = createRenamableFakeManager();
+    const {m, a} = await provisionOrg(manager);
+
+    await renameOrganization(manager, {
+      organizationId: ORG_A,
+      newName: 'Acme Renomeada',
+      slots: {m, a},
+    });
+
+    expect(parseMarker(manager.settings.get(m)!.projectDescription!)).toEqual({
+      organizationId: ORG_A,
+      slot: 'm',
+      organizationName: 'Acme Renomeada',
+    });
+    expect(parseMarker(manager.settings.get(a)!.projectDescription!)).toEqual({
+      organizationId: ORG_A,
+      slot: 'a',
+      organizationName: 'Acme Renomeada',
+    });
+  });
+
+  it('preserves the other settings fields (e.g. name)', async () => {
+    const manager = createRenamableFakeManager();
+    const {m, a} = await provisionOrg(manager);
+
+    await renameOrganization(manager, {
+      organizationId: ORG_A,
+      newName: 'Acme Dois',
+      slots: {m, a},
+    });
+
+    for (const call of manager.setSettingsCalls) {
+      expect(call.settings.name).toBe(
+        SLOT_PROJECT_NAMES[call.projectId === m ? 'm' : 'a'],
+      );
+    }
+  });
+
+  it('skips a slot that is not local', async () => {
+    const manager = createRenamableFakeManager();
+    const {m} = await provisionOrg(manager);
+
+    await renameOrganization(manager, {
+      organizationId: ORG_A,
+      newName: 'Acme Dois',
+      slots: {m}, // no slot a locally
+    });
+
+    expect(manager.setSettingsCalls).toHaveLength(1);
+    expect(manager.setSettingsCalls[0]!.projectId).toBe(m);
+  });
+
+  it('is idempotent on re-run', async () => {
+    const manager = createRenamableFakeManager();
+    const {m, a} = await provisionOrg(manager);
+    const opts = {
+      organizationId: ORG_A,
+      newName: 'Acme Dois',
+      slots: {m, a},
+    };
+
+    await renameOrganization(manager, opts);
+    const firstCalls = manager.setSettingsCalls.length;
+    await renameOrganization(manager, opts);
+
+    expect(manager.setSettingsCalls.length).toBe(firstCalls * 2);
+    expect(parseMarker(manager.settings.get(m)!.projectDescription!)).toEqual({
+      organizationId: ORG_A,
+      slot: 'm',
+      organizationName: 'Acme Dois',
+    });
+  });
+
+  it('aborts on the first failing slot and re-runs idempotently', async () => {
+    const manager = createRenamableFakeManager();
+    const {m, a} = await provisionOrg(manager);
+    manager.failSetFor.add(a);
+
+    await expect(
+      renameOrganization(manager, {
+        organizationId: ORG_A,
+        newName: 'Acme Dois',
+        slots: {m, a},
+      }),
+    ).rejects.toBeInstanceOf(Error);
+    // Slot m was written before the failure; re-running the rename
+    // rewrites it identically (idempotent) and now succeeds for slot a.
+    expect(manager.setSettingsCalls).toHaveLength(1);
+
+    manager.failSetFor.clear();
+    await renameOrganization(manager, {
+      organizationId: ORG_A,
+      newName: 'Acme Dois',
+      slots: {m, a},
+    });
+    expect(parseMarker(manager.settings.get(a)!.projectDescription!)).toEqual({
+      organizationId: ORG_A,
+      slot: 'a',
+      organizationName: 'Acme Dois',
+    });
+  });
+
+  it('refuses to rename a slot that lost its marker (no auto-repair, SPEC 19)', async () => {
+    const manager = createRenamableFakeManager();
+    const {m, a} = await provisionOrg(manager);
+    manager.settings.set(m, {name: 'Monitoramento', projectDescription: ''});
+
+    await expectOrgError(
+      renameOrganization(manager, {
+        organizationId: ORG_A,
+        newName: 'Acme Dois',
+        slots: {m, a},
+      }),
+      'invalid-local-state',
+      /holds no valid organization marker/,
+    );
+    expect(manager.setSettingsCalls).toHaveLength(0);
+  });
+
+  it('fails closed before any write when a slot is marked for another organization', async () => {
+    const manager = createRenamableFakeManager();
+    const {m, a} = await provisionOrg(manager);
+    // A foreign organization's marker in slot a — the fan-out must never
+    // rewrite it under this organization's id.
+    manager.settings.set(a, {
+      name: 'Alertas',
+      projectDescription: markerFor(ORG_B, 'a', 'Acme'),
+    });
+
+    await expectOrgError(
+      renameOrganization(manager, {
+        organizationId: ORG_A,
+        newName: 'Acme Dois',
+        slots: {m, a},
+      }),
+      'invalid-local-state',
+      /slot a .* is marked for organization/,
+    );
+    expect(manager.setSettingsCalls).toHaveLength(0);
+  });
+
+  it('fails closed before any write when a slot holds another slot marker', async () => {
+    const manager = createRenamableFakeManager();
+    const {m, a} = await provisionOrg(manager);
+    manager.settings.set(m, {
+      name: 'Monitoramento',
+      projectDescription: markerFor(ORG_A, 'a', 'Acme'),
+    });
+
+    await expectOrgError(
+      renameOrganization(manager, {
+        organizationId: ORG_A,
+        newName: 'Acme Dois',
+        slots: {m, a},
+      }),
+      'slot-mismatch',
+      /slot m .* holds a marker for slot a/,
+    );
+    expect(manager.setSettingsCalls).toHaveLength(0);
+  });
+
+  it('fails closed before any write when the slot project ids are swapped', async () => {
+    const manager = createRenamableFakeManager();
+    const {m, a} = await provisionOrg(manager);
+
+    await expectOrgError(
+      renameOrganization(manager, {
+        organizationId: ORG_A,
+        newName: 'Acme Dois',
+        slots: {m: a, a: m},
+      }),
+      'slot-mismatch',
+    );
+    expect(manager.setSettingsCalls).toHaveLength(0);
+  });
+
+  it('rejects an empty name and a malformed organization id', async () => {
+    const manager = createRenamableFakeManager();
+    const {m} = await provisionOrg(manager);
+
+    await expectOrgError(
+      renameOrganization(manager, {
+        organizationId: ORG_A,
+        newName: '   ',
+        slots: {m},
+      }),
+      'empty-name',
+    );
+    await expectOrgError(
+      renameOrganization(manager, {
+        organizationId: 'nothex',
+        newName: 'Acme',
+        slots: {m},
+      }),
+      'invalid-organization-id',
+    );
+    expect(manager.setSettingsCalls).toHaveLength(0);
   });
 });

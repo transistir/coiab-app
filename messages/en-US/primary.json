@@ -677,6 +677,36 @@
   "$1screens.OnboardingPrivacyPolicy.shareDiagnostics": {
     "message": "Share Diagnostic Information"
   },
+  "$1screens.OrganizationInviteReceived.close": {
+    "message": "Close"
+  },
+  "$1screens.OrganizationInviteReceived.coordinatorRole": {
+    "message": "coordinator"
+  },
+  "$1screens.OrganizationInviteReceived.decline": {
+    "message": "Decline"
+  },
+  "$1screens.OrganizationInviteReceived.incompleteDefinitive": {
+    "message": "This invitation is incomplete. Ask the sender to invite you again."
+  },
+  "$1screens.OrganizationInviteReceived.invitedToJoin": {
+    "message": "You've been invited to..."
+  },
+  "$1screens.OrganizationInviteReceived.joinAsRole": {
+    "message": "Join as a {role}?"
+  },
+  "$1screens.OrganizationInviteReceived.joinOrganization": {
+    "message": "Join Organization"
+  },
+  "$1screens.OrganizationInviteReceived.organizationName": {
+    "message": "Organization"
+  },
+  "$1screens.OrganizationInviteReceived.participantRole": {
+    "message": "participant"
+  },
+  "$1screens.OrganizationInviteReceived.preparing": {
+    "message": "Preparing invitation…"
+  },
   "$1screens.OrganizationProvisioning.finishSetup": {
     "message": "Finish setting up"
   },
@@ -750,11 +780,11 @@
   "$1screens.Setting.ProjectSettings.YourTeam.InviteAccepted.done": {
     "message": "Done"
   },
-  "$1screens.Setting.ProjectSettings.YourTeam.InviteAccepted.partOfProject": {
-    "message": "<bold>{deviceName}</bold> is now part of your project."
-  },
   "$1screens.Setting.ProjectSettings.YourTeam.InviteAccepted.partOfOrganization": {
     "message": "<bold>{deviceName}</bold> is now part of your Organization."
+  },
+  "$1screens.Setting.ProjectSettings.YourTeam.InviteAccepted.partOfProject": {
+    "message": "<bold>{deviceName}</bold> is now part of your project."
   },
   "$1screens.Setting.ProjectSettings.YourTeam.ReviewAndInvite.title": {
     "message": "Review Invitation"
@@ -882,11 +912,11 @@
   "$1screens.Settings.YourTeam.InviteDeclined": {
     "message": "Invitation Declined"
   },
-  "$1screens.Settings.YourTeam.inviteDeclinedOrganizationDes": {
-    "message": "This device has declined your invitation. They have not joined the Organization."
-  },
   "$1screens.Settings.YourTeam.close": {
     "message": "Close"
+  },
+  "$1screens.Settings.YourTeam.inviteDeclinedOrganizationDes": {
+    "message": "This device has declined your invitation. They have not joined the Organization."
   },
   "$1screens.ShareProjectStats.shareProjectStats": {
     "message": "Share Project Statistics"

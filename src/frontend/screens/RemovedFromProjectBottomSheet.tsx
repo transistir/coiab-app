@@ -6,7 +6,6 @@ import {NativeRootNavigationProps} from '../sharedTypes/navigation';
 import {HeaderText} from '../sharedComponents/Text/HeaderText';
 import {BLACK} from '../lib/styles';
 import {
-  useCreateProject,
   useLeaveProject,
   useManyProjects,
   useOwnRoleInProject,
@@ -14,10 +13,10 @@ import {
 } from '@comapeo/core-react';
 import {useActiveProject} from '../contexts/ActiveProjectContext';
 import {useActiveProjectIdActions} from '../contexts/ActiveProjectIdStoreContext';
+import {useOrganizations} from '../hooks/organization/useOrganizations';
 import {LoadingIndicator} from '../sharedComponents/LoadingIndicator';
 import {ColorCard} from '../sharedComponents/ColorCard';
 import {DEFAULT_PROJECT_COLOR} from '../constants';
-import {toError} from '../utils/errors';
 
 const m = defineMessages({
   close: {
@@ -46,9 +45,9 @@ export const RemovedFromProjectBottomSheet = ({
     data: {name, projectColor},
   } = useProjectSettings({projectId});
   const {data: projects} = useManyProjects();
-  const defaultProject = projects.find(proj => !proj.name);
-  const {setActiveProjectId} = useActiveProjectIdActions();
-  const createProject = useCreateProject();
+  const organizations = useOrganizations();
+  const {setActiveProjectId, clearActiveProjectId} =
+    useActiveProjectIdActions();
   const leaveProject = useLeaveProject();
 
   return (
@@ -72,8 +71,7 @@ export const RemovedFromProjectBottomSheet = ({
         </ColorCard>
 
         <View style={styles.buttonContainer}>
-          {leaveProject.status === 'pending' ||
-          createProject.status === 'pending' ? (
+          {leaveProject.status === 'pending' ? (
             <LoadingIndicator style={{margin: 20}} />
           ) : (
             <SecondaryButton
@@ -83,32 +81,52 @@ export const RemovedFromProjectBottomSheet = ({
                   {projectId},
                   {
                     onSuccess: () => {
-                      if (!defaultProject) {
-                        // The user should ALWAYS have a default (solo) project. This was not implemented until after v6. So this creates one if it does not exist
-                        createProject.mutate(undefined, {
-                          onError: err => {
-                            const firstProject = projects[0];
-                            if (firstProject) {
-                              setActiveProjectId(firstProject.projectId);
-                              navigation.popToTop();
-                              return;
-                            }
-                            navigation.navigate('ErrorBottomSheet', {
-                              error: toError(
-                                err,
-                                'Error creating default project',
-                              ),
-                            });
-                          },
-                          onSuccess: newDefaultProjectId => {
-                            setActiveProjectId(newDefaultProjectId);
-                            navigation.popToTop();
-                          },
-                        });
-                        return;
+                      // SPEC 3.8/3.10: leaving a project never materializes
+                      // a standalone (unnamed) project — for ANY project, a
+                      // leftover one would resurrect the `solo` role and
+                      // the Collaborate product entry (SPEC 3.11). An org
+                      // project degrades to `incomplete` by switching to
+                      // the surviving slot, or hands off to the startup
+                      // gate with no active project at all.
+                      let noProjectRemains = false;
+                      const leftOrg = organizations.find(
+                        org =>
+                          org.slots.m === projectId ||
+                          org.slots.a === projectId,
+                      );
+                      if (leftOrg) {
+                        const survivingSlot =
+                          leftOrg.slots.m === projectId
+                            ? leftOrg.slots.a
+                            : leftOrg.slots.m;
+                        if (survivingSlot) {
+                          setActiveProjectId(survivingSlot);
+                        } else {
+                          noProjectRemains = true;
+                        }
+                      } else {
+                        const remainingProject = projects.find(
+                          proj => proj.projectId !== projectId,
+                        );
+                        if (remainingProject) {
+                          setActiveProjectId(remainingProject.projectId);
+                        } else {
+                          noProjectRemains = true;
+                        }
                       }
-                      setActiveProjectId(defaultProject.projectId);
-                      navigation.popToTop();
+                      if (noProjectRemains) {
+                        clearActiveProjectId();
+                        // SPEC 10.1: with no project left, the startup
+                        // gate's organization fork is the correct landing —
+                        // navigate there explicitly so a cleared active id
+                        // never drops the user on IntroToCoMapeo.
+                        navigation.reset({
+                          index: 0,
+                          routes: [{name: 'Success'}],
+                        });
+                      } else {
+                        navigation.popToTop();
+                      }
                     },
                   },
                 );

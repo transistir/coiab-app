@@ -1,4 +1,9 @@
-import {isInternalOrgProject, markerFor, parseMarker} from './marker';
+import {
+  displayDescription,
+  isInternalOrgProject,
+  markerFor,
+  parseMarker,
+} from './marker';
 
 const ORG_ID = 'a1b2c3d4e5f60718';
 
@@ -97,5 +102,35 @@ describe('isInternalOrgProject', () => {
     expect(isInternalOrgProject('')).toBe(false);
     expect(isInternalOrgProject('Plano de manejo')).toBe(false);
     expect(isInternalOrgProject(`coiab-org:v2:${ORG_ID}:m:Acme`)).toBe(false);
+  });
+});
+
+describe('displayDescription', () => {
+  it('renders a marker as its decoded organization name', () => {
+    expect(displayDescription(markerFor(ORG_ID, 'm', 'Acme'))).toBe('Acme');
+    expect(displayDescription(markerFor(ORG_ID, 'a', 'Assentamento'))).toBe(
+      'Assentamento',
+    );
+  });
+
+  it('never renders the raw technical value (SPEC 3.9/15)', () => {
+    const result = displayDescription(markerFor(ORG_ID, 'm', 'Acme'));
+    expect(result).not.toContain('coiab-org');
+    expect(result).not.toContain(ORG_ID);
+  });
+
+  it('renders nothing for a description that only claims the reserved namespace', () => {
+    // A format this device cannot parse must not leak to the user either.
+    expect(displayDescription(`coiab-org:v2:${ORG_ID}:m:Acme`)).toBeUndefined();
+    expect(displayDescription(`coiab-org:v1:${ORG_ID}:m:broken%ZZ`)).toBe(
+      undefined,
+    );
+    expect(displayDescription('coiab-org:garbage')).toBeUndefined();
+  });
+
+  it('passes ordinary descriptions through unchanged', () => {
+    expect(displayDescription('Plano de manejo')).toBe('Plano de manejo');
+    expect(displayDescription('')).toBe('');
+    expect(displayDescription(undefined)).toBeUndefined();
   });
 });

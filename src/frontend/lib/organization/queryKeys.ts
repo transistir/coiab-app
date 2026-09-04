@@ -17,5 +17,9 @@ export const projectsQueryKey = [ROOT_QUERY_KEY, 'projects'] as const;
 
 export const invitesQueryKey = [ROOT_QUERY_KEY, 'invites'] as const;
 
+// `useProjectSettings` (12.0.3 `dist/esm/lib/react-query.js:107`).
+export const projectSettingsQueryKey = (projectId: string) =>
+  [ROOT_QUERY_KEY, 'projects', projectId, 'project_settings'] as const;
+
 export const membersQueryKey = (projectId: string) =>
   [ROOT_QUERY_KEY, 'projects', projectId, 'members'] as const;
