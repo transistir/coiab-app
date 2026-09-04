@@ -26,6 +26,11 @@ const m = defineMessages({
     id: '$1screens.Setting.ProjectSettings.YourTeam.InviteAccepted.partOfProject',
     defaultMessage: '<bold>{deviceName}</bold> is now part of your project.',
   },
+  partOfOrganization: {
+    id: '$1screens.Setting.ProjectSettings.YourTeam.InviteAccepted.partOfOrganization',
+    defaultMessage:
+      '<bold>{deviceName}</bold> is now part of your Organization.',
+  },
 });
 
 export const InviteAccepted = ({
@@ -33,7 +38,7 @@ export const InviteAccepted = ({
   route,
 }: NativeRootNavigationProps<'InviteAccepted'>) => {
   const {formatMessage: t} = useIntl();
-  const {name} = route.params;
+  const {name, isOrganization} = route.params;
 
   useFocusEffect(
     React.useCallback(() => {
@@ -55,7 +60,7 @@ export const InviteAccepted = ({
         </HeaderText>
         <BodyText style={{textAlign: 'center', paddingHorizontal: 40}}>
           <FormattedMessage
-            {...m.partOfProject}
+            {...(isOrganization ? m.partOfOrganization : m.partOfProject)}
             values={{
               deviceName: name,
               bold: (chunks: React.ReactNode) => (

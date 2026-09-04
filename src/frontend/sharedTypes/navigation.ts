@@ -108,8 +108,11 @@ export type RootStackParamsList = {
   SelectMapShareDevice: undefined;
   SelectInviteeRole: {name: string; deviceType: DeviceType; deviceId: string};
   ReviewAndInvite: InviteProps;
-  InviteAccepted: {name: string};
-  InviteDeclined: InviteProps;
+  // Organization-scope review step (SPEC 6): same params, fans out to both
+  // slots of the primary organization instead of the active project.
+  ReviewOrganizationInvite: InviteProps;
+  InviteAccepted: {name: string; isOrganization?: boolean};
+  InviteDeclined: InviteProps & {isOrganization?: boolean};
   RemoveDevice: {deviceId: string; deviceName: string};
   DeviceRemovedSuccess: {deviceName: string; projectName: string};
   UnableToCancelInvite: InviteProps;

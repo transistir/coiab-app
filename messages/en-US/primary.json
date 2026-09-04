@@ -387,16 +387,16 @@
     "message": "CoMapeo is private by default."
   },
   "$1screens.DeviceNaming.Success.chooseProject": {
-    "message": "Choose from below to start your first project."
+    "message": "Choose from below to start with an Organization."
+  },
+  "$1screens.DeviceNaming.Success.createOrg": {
+    "message": "Create Organization"
   },
   "$1screens.DeviceNaming.Success.deviceReady": {
     "message": "{deviceName} is ready!"
   },
-  "$1screens.DeviceNaming.Success.joinProject": {
-    "message": "Join a Project"
-  },
-  "$1screens.DeviceNaming.Success.mapOnYourOwn": {
-    "message": "Map On Your Own"
+  "$1screens.DeviceNaming.Success.joinOrg": {
+    "message": "Join an Organization"
   },
   "$1screens.DeviceNaming.description": {
     "message": "Distinct names help collaborators using CoMapeo to recognize you."
@@ -626,6 +626,33 @@
     "message": "Add Observations",
     "description": "Title of observation list view when the user has not yet recorded observations"
   },
+  "$1screens.Onboarding.CreateOrganization.body": {
+    "message": "The Organization is the way {app} organizes mapping. It contains the Monitoramento and Alertas projects."
+  },
+  "$1screens.Onboarding.CreateOrganization.create": {
+    "message": "Create Organization"
+  },
+  "$1screens.Onboarding.CreateOrganization.creating": {
+    "message": "Creating Organization…"
+  },
+  "$1screens.Onboarding.CreateOrganization.placeholder": {
+    "message": "Organization name"
+  },
+  "$1screens.Onboarding.CreateOrganization.title": {
+    "message": "Name your Organization"
+  },
+  "$1screens.Onboarding.CreateOrganization.tooLong": {
+    "message": "Organization name is too long"
+  },
+  "$1screens.Onboarding.JoinOrganizationIntro.body": {
+    "message": "Ask a coordinator of an existing Organization to invite this device. When the invitation arrives it will appear on this screen."
+  },
+  "$1screens.Onboarding.JoinOrganizationIntro.ok": {
+    "message": "OK"
+  },
+  "$1screens.Onboarding.JoinOrganizationIntro.title": {
+    "message": "Join an Organization"
+  },
   "$1screens.Onboarding.MapOnYourOwnIntro.addAudio": {
     "message": "Add audio recordings."
   },
@@ -649,6 +676,15 @@
   },
   "$1screens.OnboardingPrivacyPolicy.shareDiagnostics": {
     "message": "Share Diagnostic Information"
+  },
+  "$1screens.OrganizationProvisioning.finishSetup": {
+    "message": "Finish setting up"
+  },
+  "$1screens.OrganizationProvisioning.invalid": {
+    "message": "Something is wrong with this Organization. Contact support."
+  },
+  "$1screens.OrganizationProvisioning.settingUp": {
+    "message": "Setting up your Organization…"
   },
   "$1screens.PhotoPreviewModal.headerButtonText": {
     "message": "Delete Photo"
@@ -716,6 +752,9 @@
   },
   "$1screens.Setting.ProjectSettings.YourTeam.InviteAccepted.partOfProject": {
     "message": "<bold>{deviceName}</bold> is now part of your project."
+  },
+  "$1screens.Setting.ProjectSettings.YourTeam.InviteAccepted.partOfOrganization": {
+    "message": "<bold>{deviceName}</bold> is now part of your Organization."
   },
   "$1screens.Setting.ProjectSettings.YourTeam.ReviewAndInvite.title": {
     "message": "Review Invitation"
@@ -843,6 +882,9 @@
   "$1screens.Settings.YourTeam.InviteDeclined": {
     "message": "Invitation Declined"
   },
+  "$1screens.Settings.YourTeam.inviteDeclinedOrganizationDes": {
+    "message": "This device has declined your invitation. They have not joined the Organization."
+  },
   "$1screens.Settings.YourTeam.close": {
     "message": "Close"
   },
@@ -933,6 +975,36 @@
   },
   "$1screens.YourTeam.RemoveDevice.title": {
     "message": "Remove Device"
+  },
+  "$1screens.YourTeam.ReviewOrganizationInvite.couldNotReach": {
+    "message": "Could not reach {name} for {project}."
+  },
+  "$1screens.YourTeam.ReviewOrganizationInvite.genericError": {
+    "message": "Something went wrong inviting {name} to {project}."
+  },
+  "$1screens.YourTeam.ReviewOrganizationInvite.goBack": {
+    "message": "Go back"
+  },
+  "$1screens.YourTeam.ReviewOrganizationInvite.noOrganization": {
+    "message": "No Organization found"
+  },
+  "$1screens.YourTeam.ReviewOrganizationInvite.retry": {
+    "message": "Invite Again"
+  },
+  "$1screens.YourTeam.ReviewOrganizationInvite.sendInvite": {
+    "message": "Invite to Organization"
+  },
+  "$1screens.YourTeam.ReviewOrganizationInvite.timer": {
+    "message": "Invite sent {seconds}s ago"
+  },
+  "$1screens.YourTeam.ReviewOrganizationInvite.title": {
+    "message": "Review Invitation"
+  },
+  "$1screens.YourTeam.ReviewOrganizationInvite.waiting": {
+    "message": "Waiting for Device to Accept Invite"
+  },
+  "$1screens.YourTeam.ReviewOrganizationInvite.youAreInviting": {
+    "message": "You are inviting:"
   },
   "$1screens.obsDetail.date": {
     "message": "Date"
