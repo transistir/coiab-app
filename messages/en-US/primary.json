@@ -71,10 +71,6 @@
   "$1ProjectSettings.RemoteArchive.AddRemoteArchive.youAreAdding": {
     "message": "You are adding:"
   },
-  "$1screens.RemoteArchive.AddRemoteArchive.orgHint": {
-    "message": "This archive will be added to both projects of the Organization.",
-    "description": "Shown when adding a Remote Archive that fans out to both projects of the Organization"
-  },
   "$1ProjectSettings.RemoteArchive.RemoteArchiveOff.addArchive": {
     "message": "Add Remote Archive"
   },
@@ -722,6 +718,9 @@
   },
   "$1screens.PhotoPreviewModal.headerButtonText": {
     "message": "Delete Photo"
+  },
+  "$1screens.RemoteArchive.AddRemoteArchive.orgHint": {
+    "message": "This archive will be added to both projects of the Organization."
   },
   "$1screens.RemovedFromProjectBottomSheet.close": {
     "message": "Close"

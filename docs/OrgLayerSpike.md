@@ -2,13 +2,23 @@
 
 Spike for representing an Organization as a **frontend product layer over two
 ordinary CoMapeo projects** (transistir/coiab-app#46), per
-`docs/specs/SPEC-46-organizacao-camada-produto.md` (committed in PR
-transistir/comapeo-mobile-1#76 — open at the time of this writing). This
+`docs/specs/SPEC-46-organizacao-camada-produto.md` (committed alongside this
+document). This
 document is the verdict; the
 executable evidence is `tests/integration/spike-organization.test.ts`, which
 drives `@comapeo/core` directly with two in-process devices connected through
 a real local-peer connection path — explicit `connectLocalPeer`, not mDNS
 discovery (and, for E8, a real `@comapeo/cloud` server in a child process).
+
+**Update — app layer implemented.** The core-half verdict below is unchanged;
+the sections it deferred to "app-layer only" are now implemented in this
+branch (see *App-layer implementation* at the end). The final marker format
+gained the organization name segment (the core-half tables below show the
+older three-segment form used during those runs):
+
+```
+coiab-org:v1:<16-hex organizationId>:<slot>:<encodeURIComponent(name)>
+```
 
 ## Verdict: FRONTEND_ONLY_VIABLE
 
@@ -164,3 +174,37 @@ every marker-bearing organization, not the first `Map` entry. The same
 helper also re-reads settings per project through `$getProjectSettings()`;
 `listProjects()` already returns `projectDescription`, so the product
 version can drop that N+1.
+
+## App-layer implementation (this branch)
+
+The product layer this document called for now exists and is exercised by
+unit/integration tests (90 suites, 934 tests green; `npm run lint` clean).
+What each deferred gap got:
+
+| Deferred gap (above) | Implementation |
+|---|---|
+| E2 UI half (slot switching) | Reuses the existing AllProjects → `setActiveProjectId` switching and the tracking guard unchanged — the org layer adds nothing here and re-tests nothing (still covered only by upstream behavior; #32/#33 own the replacement). |
+| E6 UI half (org-first onboarding) | Startup gate (`Navigation/Stack/index.tsx`): auth → device name → org state (`none` → org fork regardless of any active project id; `incomplete`/`invalid` → fail-closed `OrganizationProvisioning`; `ready` → Home). Fork offers only Create Organization / Join an Organization; `MapOnYourOwnIntro`/`JoinProjectIntro` stay registered but unreachable from onboarding. Real-navigator tests cover none-with-projects, incomplete, duplicate-slot, ready, and active-id correction. |
+| Send-side aggregation (one Convidar button) | `ReviewOrganizationInvite` fans out both invites via `useInviteToOrganization` (concurrent `$member.invite` per slot, no `activeProjectId` switching), aggregates per-slot states, distinguishes timeout from error, and `Invite Again` re-sends only failed slots (SPEC 6.5). |
+| E7 sender half | Still not simulated end-to-end on devices. The mechanics exist and are unit-tested (retry-only-failed, `ALREADY` = success, receiver-side duplicate collapse per slot), but no integration run drives a sender whose second invite fails mid-fan-out. |
+| Marker has no read-only home (finding 4) | `EditProjectDetails` hides description editing for marker projects and round-trips the existing value on save (the E9 hazard is closed for this surface); `ProjectSettings`/`DrawerMenu` never render a raw marker (`displayDescription`). Note the residual risk below. |
+| Recovery identity (finding 6) | Closed: the bundle identity (invitor + role) is persisted at first accept (`OrganizationInviteIdentityStoreContext`), the stored identity wins over any later bundle, and partial/recovery bundles require and match it (`OrganizationOperationError` codes `identity-required` / `identity-mismatch`). |
+| First-org-only reconstruction / N+1 | `reconstructOrganizations` returns the full collection from `listProjects()` rows alone (joined-status rows only), sorted deterministically; duplicate-slot and unsupported-marker states fail closed. |
+| Role parity check (finding 8) | Still roleName-based at grouping (wire limitation), but the sender-side single-role invariant is now structural (`useInviteToOrganization` takes one `roleId` for both slots) and the integration test asserts real `COORDINATOR_ROLE_ID` parity via `role.roleId` post-join. |
+
+### Standalone-surface audit (SPEC 3.11)
+
+No reachable product flow creates a standalone project:
+
+- `MapOnYourOwnIntro` — unreachable from onboarding (P3 fork); route kept for deep links per SPEC 18.
+- `InviteReceived` default-project fallback — deleted; the legacy surface handles only non-marker invites, which the COIAB onboarding never produces.
+- `RemovedFromProjectBottomSheet` / `LeaveProject` — unnamed-project creation removed entirely (org and non-org paths): surviving org slot becomes active, else any remaining project, else the active id is cleared and the app lands on the org fork.
+- Remaining `createProject` sites: `CreateOrNameSoloProject` (reachable only via AllProjects → Collaborate — the debug surface SPEC 18 keeps until #32/#33) and test code. The drawer's Collaborate entry requires the `solo` role, which exists only for an unnamed project — no product flow produces one anymore.
+
+### Residual risks / open items
+
+- **Marker write channel is still `projectSettings`**: any non-COIAB client (upstream CoMapeo app) editing a project's description on another device still erases the marker in the synced doc. The COIAB app can no longer do this to itself; cross-client protection needs a core-side field (deferred, SPEC 12).
+- **Rename divergence**: `renameOrganization` exists (fan-out, marker-preserving, preflighted) but has no UI entry yet (#24); during propagation the two slots can briefly disagree — reconstruction resolves deterministically (slot `m` wins).
+- **Real multi-device/emulator demonstrations** (two phones, Wi-Fi conditions, invite expiry in the field) remain unrun; all executable evidence is in-process (`connectLocalPeer` + real core) or component-level.
+- **E2 UI half and E7 sender-half** as noted above.
+- **`useManyInvites`-driven listener**: invite dedupe on the wire is per-project only (core), so the receiver-side collapse rules (newest `receivedAt`, tie → `inviteId`) are load-bearing; they are unit-pinned in `bundle.test.ts`.
