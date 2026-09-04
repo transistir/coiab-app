@@ -158,6 +158,9 @@ export type RootStackParamsList = {
     createdAt?: string;
   };
   InviteReceived: {inviteId: string};
+  // SPEC 7: single Organization invite surface — the invite id is the bundle
+  // entry point, the organization id the routing key.
+  OrganizationInviteReceived: {organizationId: string; inviteId: string};
   InviteSuccessfullyAccepted: {projectName: string; projectId: string};
   InviteCanceled: {projectName: string};
   RemovedFromProjectBottomSheet: undefined;

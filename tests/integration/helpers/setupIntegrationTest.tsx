@@ -3,6 +3,7 @@ import type {MapeoManager} from '@comapeo/core';
 import type {ComapeoCoreClientApi} from '@comapeo/ipc';
 import {createManager, setUpIPC} from './core';
 import {createAppProvidersWrapper} from './react';
+import type {ActiveProjectIdStore} from '../../../src/frontend/contexts/ActiveProjectIdStoreContext';
 import {MockedAppNavigator} from './navigation';
 import {sleep} from '../../../src/frontend/lib/sleep';
 import {markerFor} from '../../../src/frontend/lib/organization/marker';
@@ -107,6 +108,7 @@ export function setupIntegrationTestWithoutProject() {
   let manager: MapeoManager;
   let client: ComapeoCoreClientApi;
   let onTeardown: Array<() => unknown> = [];
+  let activeProjectIdStore: ActiveProjectIdStore;
 
   beforeEach(async () => {
     onTeardown = [];
@@ -140,6 +142,7 @@ export function setupIntegrationTestWithoutProject() {
       isOnline,
       activeProjectId,
     });
+    activeProjectIdStore = appProviders.activeProjectIdStore;
     onTeardown.push(appProviders.teardown);
 
     const {unmount} = await render(<MockedAppNavigator />, {
@@ -171,6 +174,9 @@ export function setupIntegrationTestWithoutProject() {
     },
     get orgName() {
       return ORG_NAME;
+    },
+    get activeProjectId() {
+      return activeProjectIdStore?.instance.getState().projectId;
     },
   };
 }

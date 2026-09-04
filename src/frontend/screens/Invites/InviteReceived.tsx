@@ -7,8 +7,6 @@ import {
   useAcceptInvite,
   useRejectInvite,
   useSingleInvite,
-  useCreateProject,
-  useManyProjects,
 } from '@comapeo/core-react';
 import {HeaderText} from '../../sharedComponents/Text/HeaderText';
 import {BodyText} from '../../sharedComponents/Text/BodyText';
@@ -66,11 +64,7 @@ export const InviteReceived = ({
 
   const acceptInvite = useAcceptInvite();
   const rejectInvite = useRejectInvite();
-  const createProject = useCreateProject();
   const {isTracking} = useTracking();
-  const {data: allProjects} = useManyProjects();
-
-  const hasDefaultProject = allProjects.some(proj => !proj.name);
 
   const projectColor = invite.projectColor;
   const statsShared = invite.sendStats;
@@ -87,17 +81,6 @@ export const InviteReceived = ({
       {inviteId: inviteId},
       {
         onSuccess: projectId => {
-          // In versions before v6, the user did not have to have a default project
-          // Now we would like the user to always have a default project
-          // This guarantees that
-          if (!hasDefaultProject) {
-            createProject.mutate(undefined, {
-              onError: err => {
-                Sentry.captureException(err);
-              },
-            });
-          }
-
           const isInOnboarding = navigation.getState().routes.find(
             // SPEC E6: the onboarding fork is organization-first — the
             // waiting screen is JoinOrganizationIntro; JoinProjectIntro stays

@@ -11,6 +11,11 @@ import {
   useActiveProjectId,
   type ActiveProjectIdStore,
 } from '../../contexts/ActiveProjectIdStoreContext';
+import {
+  createOrganizationInviteIdentityStore,
+  OrganizationInviteIdentityStoreProvider,
+  type OrganizationInviteIdentityStore,
+} from '../../contexts/OrganizationInviteIdentityStoreContext';
 import type {
   InviteLike,
   OrganizationInviteBundle,
@@ -83,16 +88,20 @@ function createFakeClient(projects: FakeProject[] = []) {
 
 describe('useAcceptOrganizationBundle', () => {
   let store: ActiveProjectIdStore;
+  let identityStore: OrganizationInviteIdentityStore;
 
   beforeEach(() => {
     store = createActiveProjectIdStore();
+    identityStore = createOrganizationInviteIdentityStore();
   });
 
   function createWrapper(clientApi: ComapeoCoreClientApi) {
     return ({children}: {children: ReactNode}) => (
       <MapeoApiWrapper mapeoApi={clientApi}>
         <ActiveProjectIdStoreProvider store={store}>
-          {children}
+          <OrganizationInviteIdentityStoreProvider store={identityStore}>
+            {children}
+          </OrganizationInviteIdentityStoreProvider>
         </ActiveProjectIdStoreProvider>
       </MapeoApiWrapper>
     );
@@ -119,7 +128,9 @@ describe('useAcceptOrganizationBundle', () => {
             fetch={mockFetch}
             queryClient={queryClient}>
             <ActiveProjectIdStoreProvider store={store}>
-              {children}
+              <OrganizationInviteIdentityStoreProvider store={identityStore}>
+                {children}
+              </OrganizationInviteIdentityStoreProvider>
             </ActiveProjectIdStoreProvider>
           </ComapeoCoreProvider>
         </QueryClientProvider>
@@ -223,11 +234,11 @@ describe('useAcceptOrganizationBundle', () => {
     hook.unmount();
   });
 
-  test('a partial bundle without the persisted identity surfaces identity-required', async () => {
+  test('a first-ever accept pins the identity, and a partial bundle fails closed on the absent slot', async () => {
     const {clientApi, accept} = createFakeClient();
-    // Only slot a survived transit: a recovery accept (docs/OrgLayerSpike.md
-    // finding 6) must be pinned by the persisted identity, so without one it
-    // fails closed before accepting anything.
+    // Only slot a survived transit: with no identity yet stored, the hook
+    // pins one from THIS bundle (PLAN-46 decision 6), and the absent slot
+    // still fails closed before anything is accepted.
     const bundle = makeBundle();
     delete bundle.invites.m;
     bundle.completeness = 'incomplete-definitive';
@@ -248,9 +259,154 @@ describe('useAcceptOrganizationBundle', () => {
     expect(
       (hook.result.current.acceptBundle.error as OrganizationOperationError)
         .code,
-    ).toBe('identity-required');
+    ).toBe('missing-invite');
     expect(accept).not.toHaveBeenCalled();
     expect(hook.result.current.activeProjectId).toBeUndefined();
+    // The attempt still pinned the identity for a later recovery accept.
+    expect(identityStore.instance.getState()).toStrictEqual({
+      [ORG_ID]: {invitorDeviceId: 'invitor-1', roleName: 'Coordinator'},
+    });
+
+    hook.unmount();
+  });
+
+  test('a partial bundle diverging from the stored identity fails closed with identity-mismatch', async () => {
+    const {clientApi, accept} = createFakeClient();
+    identityStore.actions.setIdentity(ORG_ID, {
+      invitorDeviceId: 'invitor-original',
+      roleName: 'Coordinator',
+    });
+    // A different device re-invites only slot a: the stored identity wins,
+    // so this bundle must never complete the organization.
+    const bundle = makeBundle();
+    delete bundle.invites.m;
+    bundle.completeness = 'incomplete-definitive';
+
+    const hook = await renderHook(
+      () => ({
+        acceptBundle: useAcceptOrganizationBundle(),
+        activeProjectId: useActiveProjectId(),
+      }),
+      {wrapper: createWrapper(clientApi)},
+    );
+
+    await act(async () => {
+      await hook.result.current.acceptBundle.start(bundle);
+    });
+
+    expect(hook.result.current.acceptBundle.status).toBe('error');
+    expect(
+      (hook.result.current.acceptBundle.error as OrganizationOperationError)
+        .code,
+    ).toBe('identity-mismatch');
+    expect(accept).not.toHaveBeenCalled();
+    expect(identityStore.instance.getState()).toStrictEqual({
+      [ORG_ID]: {invitorDeviceId: 'invitor-original', roleName: 'Coordinator'},
+    });
+
+    hook.unmount();
+  });
+
+  test('a failed accept keeps the pinned identity', async () => {
+    const {clientApi, accept} = createFakeClient();
+    accept.mockRejectedValue(new Error('network gone'));
+
+    const hook = await renderHook(
+      () => ({
+        acceptBundle: useAcceptOrganizationBundle(),
+        activeProjectId: useActiveProjectId(),
+      }),
+      {wrapper: createWrapper(clientApi)},
+    );
+
+    await act(async () => {
+      await hook.result.current.acceptBundle.start(makeBundle());
+    });
+
+    expect(hook.result.current.acceptBundle.status).toBe('error');
+    expect(identityStore.instance.getState()).toStrictEqual({
+      [ORG_ID]: {invitorDeviceId: 'invitor-1', roleName: 'Coordinator'},
+    });
+
+    hook.unmount();
+  });
+
+  test('a successful accept clears the identity once the organization is fully local', async () => {
+    // Core's accept joins the projects, which then show up in listProjects()
+    // — the fresh read the hook reconstructs from.
+    const localProjects: FakeProject[] = [];
+    const accept = jest.fn(async ({inviteId}: {inviteId: string}) => {
+      const projectId =
+        inviteId === 'invite-m' ? 'project-monitoramento' : 'project-alertas';
+      localProjects.push({
+        projectId,
+        projectDescription: markerFor(
+          ORG_ID,
+          inviteId === 'invite-m' ? 'm' : 'a',
+          ORG_NAME,
+        ),
+      });
+      return projectId;
+    });
+    const clientApi = {
+      listProjects: async () =>
+        localProjects.map(project => ({
+          ...project,
+          name: 'fake',
+          createdAt: '',
+          updatedAt: '',
+          status: 'joined' as const,
+        })),
+      invite: {accept, addListener: jest.fn(), removeListener: jest.fn()},
+      on: jest.fn(),
+    } as unknown as ComapeoCoreClientApi;
+
+    const hook = await renderHook(
+      () => ({
+        acceptBundle: useAcceptOrganizationBundle(),
+        activeProjectId: useActiveProjectId(),
+      }),
+      {wrapper: createWrapper(clientApi)},
+    );
+
+    await act(async () => {
+      await hook.result.current.acceptBundle.start(makeBundle());
+    });
+
+    expect(hook.result.current.acceptBundle.status).toBe('success');
+    expect(identityStore.instance.getState()).toStrictEqual({});
+
+    hook.unmount();
+  });
+
+  test('a stale fresh read still clears the identity when the pre-accept read saw the other slot', async () => {
+    // P5 O4: slot a is already local BEFORE the accept; this accept joins
+    // slot m; the fresh read after the accept is stale — it still shows only
+    // the pre-accept slot-a project. The union of reads sees both slots, so
+    // the recovery identity must be cleared anyway.
+    const {clientApi, accept} = createFakeClient([
+      {
+        projectId: 'project-alertas',
+        projectDescription: markerFor(ORG_ID, 'a', ORG_NAME),
+      },
+    ]);
+    accept.mockResolvedValueOnce('project-monitoramento');
+
+    const hook = await renderHook(
+      () => ({
+        acceptBundle: useAcceptOrganizationBundle(),
+        activeProjectId: useActiveProjectId(),
+      }),
+      {wrapper: createWrapper(clientApi)},
+    );
+
+    await act(async () => {
+      await hook.result.current.acceptBundle.start(makeBundle());
+    });
+
+    expect(hook.result.current.acceptBundle.status).toBe('success');
+    expect(accept).toHaveBeenCalledWith({inviteId: 'invite-m'});
+    expect(identityStore.instance.getState()).toStrictEqual({});
 
     hook.unmount();
   });

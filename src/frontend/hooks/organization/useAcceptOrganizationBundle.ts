@@ -3,6 +3,10 @@ import {useQueryClient} from '@tanstack/react-query';
 import {useClientApi} from '@comapeo/core-react';
 
 import {useActiveProjectIdActions} from '../../contexts/ActiveProjectIdStoreContext';
+import {
+  useOrganizationInviteIdentities,
+  useOrganizationInviteIdentityActions,
+} from '../../contexts/OrganizationInviteIdentityStoreContext';
 import type {OrganizationInviteBundle} from '../../lib/organization/bundle';
 import {acceptOrganizationBundle} from '../../lib/organization/fanout';
 import {
@@ -10,11 +14,44 @@ import {
   projectsQueryKey,
 } from '../../lib/organization/queryKeys';
 import {reconstructOrganizations} from '../../lib/organization/reconstruct';
+import {SLOTS, type Slot} from '../../lib/organization/marker';
 
 export type AcceptOrganizationBundleStatus =
   'idle' | 'accepting' | 'success' | 'error';
 
-type PersistedIdentity = {invitorDeviceId: string; roleName: string};
+/**
+ * What `start` settled on: `undefined` when it never ran (a re-entry attempt
+ * while one is in flight) or was superseded mid-flight; `ok: false` carries
+ * the failure the React state also publishes; `ok: true` carries the accepted
+ * slots and the project id that became active (SPEC 8.6 ladder).
+ */
+export type AcceptOrganizationBundleResult =
+  | {
+      ok: true;
+      accepted: Array<{slot: Slot; projectId: string}>;
+      activeProjectId: string | undefined;
+    }
+  | {ok: false; error: unknown};
+
+/**
+ * P5 O4: a slot counts as local when ANY read of the organization saw it —
+ * the post-accept fresh read, the pre-accept local read, or this accept's
+ * own result. The fresh read alone is not authoritative: it can be stale
+ * (still missing a slot this accept just joined) and it can also lose sight
+ * of a slot the pre-accept read held.
+ */
+function bothSlotsPresent(
+  preAcceptSlots: Partial<Record<Slot, string>> | undefined,
+  accepted: Array<{slot: Slot; projectId: string}>,
+  freshSlots: Partial<Record<Slot, string>> | undefined,
+): boolean {
+  const seen = new Set<string>([
+    ...Object.keys(preAcceptSlots ?? {}),
+    ...accepted.map(({slot}) => slot),
+    ...Object.keys(freshSlots ?? {}),
+  ]);
+  return SLOTS.every(slot => seen.has(slot));
+}
 
 /**
  * SPEC 8: "Entrar na organização" — accept an Organization invite bundle
@@ -28,6 +65,8 @@ export function useAcceptOrganizationBundle() {
   const clientApi = useClientApi();
   const queryClient = useQueryClient();
   const {setActiveProjectId} = useActiveProjectIdActions();
+  const {setIdentity, clearIdentity} = useOrganizationInviteIdentityActions();
+  const identities = useOrganizationInviteIdentities();
 
   const [status, setStatus] = useState<AcceptOrganizationBundleStatus>('idle');
   const [error, setError] = useState<unknown>(undefined);
@@ -64,15 +103,35 @@ export function useAcceptOrganizationBundle() {
   const start = useCallback(
     async (
       bundle: OrganizationInviteBundle,
-      opts?: {persistedIdentity?: PersistedIdentity},
-    ) => {
-      if (busyRef.current) return;
+    ): Promise<AcceptOrganizationBundleResult | undefined> => {
+      if (busyRef.current) return undefined;
       busyRef.current = true;
       attemptRef.current += 1;
       const attempt = attemptRef.current;
 
       setStatus('accepting');
       setError(undefined);
+      // PLAN-46 decision 6: the persisted identity pins a recovery accept of
+      // a partial bundle. An identity already stored for this organization
+      // wins untouched — overwriting it would let a DIVERGENT re-invite
+      // (different invitor/role) re-pin the organization to itself — and the
+      // fan-out validates every present invite against it, failing closed on
+      // `identity-mismatch`. Only a first-ever accept mints the identity here.
+      const persistedIdentity =
+        identities[bundle.organizationId] ??
+        ({
+          invitorDeviceId: bundle.invitorDeviceId,
+          roleName: bundle.roleName,
+        } as const);
+      if (identities[bundle.organizationId] === undefined) {
+        setIdentity(bundle.organizationId, persistedIdentity);
+      }
+
+      // P5 O2: compute the outcome WITHOUT publishing any of it — the
+      // screen's vanish-effect must never observe a settled, non-busy state
+      // while the bundle can still disappear under the invalidations below.
+      let outcome: AcceptOrganizationBundleResult;
+      let identityComplete = false;
       try {
         // SPEC 8.6: capture the pre-accept local reconstruction — the read
         // after the accept can lag behind core, and local state known
@@ -82,7 +141,7 @@ export function useAcceptOrganizationBundle() {
         ).find(org => org.organizationId === bundle.organizationId);
 
         const accepted = await acceptOrganizationBundle(clientApi, bundle, {
-          persistedIdentity: opts?.persistedIdentity,
+          persistedIdentity,
         });
 
         // SPEC 8.6: activate the Monitoramento project of the organization,
@@ -101,31 +160,61 @@ export function useAcceptOrganizationBundle() {
           preAcceptOrg?.slots.a ??
           accepted.find(({slot}) => slot === 'a')?.projectId;
 
-        if (attemptRef.current !== attempt) return;
+        // P5 O4: the persisted identity is only needed while the
+        // organization is incomplete — once every slot is local across the
+        // reads, the recovery case it guards is over.
+        identityComplete = bothSlotsPresent(
+          preAcceptOrg?.slots,
+          accepted,
+          freshOrg?.slots,
+        );
 
-        if (activeProjectId !== undefined) {
-          setActiveProjectId(activeProjectId);
-        }
-        setStatus('success');
+        outcome = {ok: true, accepted, activeProjectId};
       } catch (e) {
-        if (attemptRef.current !== attempt) return;
-        setError(e);
-        setStatus('error');
-      } finally {
+        outcome = {ok: false, error: e};
+      }
+
+      try {
         // Direct clientApi calls bypass core-react's own invalidation, so
         // the project-list and invite-list queries must be invalidated by
-        // hand for mounted consumers to see the joins — in a finally,
-        // regardless of outcome: a failed attempt may still have joined a
-        // slot, and cache repair is never token-gated; only the React state
-        // above is.
+        // hand for mounted consumers to see the joins — regardless of
+        // outcome: a failed attempt may still have joined a slot, and cache
+        // repair is never token-gated; only the React state below is.
         await queryClient.invalidateQueries({queryKey: projectsQueryKey});
         await queryClient.invalidateQueries({queryKey: invitesQueryKey});
+
+        // P5 O2: publication is LAST and token-gated — status/error land
+        // only once the invalidations have settled, so a rerender observing
+        // a settled state can no longer have the bundle vanish under it.
+        if (attemptRef.current !== attempt) return undefined;
+
+        if (outcome.ok) {
+          if (outcome.activeProjectId !== undefined) {
+            setActiveProjectId(outcome.activeProjectId);
+          }
+          if (identityComplete) {
+            clearIdentity(bundle.organizationId);
+          }
+          setStatus('success');
+        } else {
+          setError(outcome.error);
+          setStatus('error');
+        }
+        return outcome;
+      } finally {
         if (attemptRef.current === attempt) {
           busyRef.current = false;
         }
       }
     },
-    [clientApi, queryClient, setActiveProjectId],
+    [
+      clientApi,
+      queryClient,
+      setActiveProjectId,
+      identities,
+      setIdentity,
+      clearIdentity,
+    ],
   );
 
   return {start, reset, status, error};

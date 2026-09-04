@@ -30,6 +30,7 @@ import {RootStack} from './RootStack';
 import {InviteSuccessfullyAccepted} from '../../screens/Invites/InviteSuccessfullyAccepted';
 import {ErrorBottomSheet} from '../../sharedComponents/ErrorBottomSheet';
 import {InviteReceived} from '../../screens/Invites/InviteReceived';
+import {OrganizationInviteReceived} from '../../screens/Invites/OrganizationInviteReceived';
 import {InviteCanceled} from '../../screens/Invites/InviteCanceled';
 import {DeepLinkListener} from './DeepLinkListener';
 
@@ -139,6 +140,12 @@ export const RootStackNavigator = () => {
           navigateToInviteScreen={inviteId =>
             navigation.navigate('InviteReceived', {inviteId})
           }
+          navigateToOrgInviteScreen={(organizationId, inviteId) =>
+            navigation.navigate('OrganizationInviteReceived', {
+              organizationId,
+              inviteId,
+            })
+          }
         />
         <PendingMapSharesListener
           currentRouteName={state.routes[state.index]?.name}
@@ -246,6 +253,10 @@ export const RootStackNavigator = () => {
             <RootStack.Screen
               name="InviteReceived"
               component={InviteReceived}
+            />
+            <RootStack.Screen
+              name="OrganizationInviteReceived"
+              component={OrganizationInviteReceived}
             />
             <RootStack.Screen
               name="InviteSuccessfullyAccepted"

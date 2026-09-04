@@ -28,6 +28,7 @@ import {createEarlyAccessStore} from '../../../src/frontend/contexts/EarlyAccess
 import {createAppUsageStatsStore} from '../../../src/frontend/contexts/AppUsageStatsContext';
 import {createUnitSystemStore} from '../../../src/frontend/contexts/UnitSystemStoreContext';
 import {createQADeviceNameStore} from '../../../src/frontend/contexts/QADeviceNameStoreContext';
+import {createOrganizationInviteIdentityStore} from '../../../src/frontend/contexts/OrganizationInviteIdentityStoreContext';
 
 const DEFAULT_LOCAL_DISCOVERY_STATE: LocalDiscoveryState = {
   status: 'started',
@@ -147,6 +148,10 @@ export function createAppProvidersWrapper({
 
   const persistedActiveProjectIdStore = createActiveProjectIdStore();
 
+  const organizationInviteIdentityStore = createOrganizationInviteIdentityStore(
+    {persist: false},
+  );
+
   const persistedSavedLocationStore = createSavedLocationStore({
     persist: false,
   });
@@ -190,6 +195,7 @@ export function createAppProvidersWrapper({
           mapServerApi={mockMapServerApi}
           localDiscoveryController={localDiscoveryController}
           activeProjectIdStore={persistedActiveProjectIdStore}
+          organizationInviteIdentityStore={organizationInviteIdentityStore}
           persistedDrafObservationStore={persistedDraftObservationStore}
           securityStore={persistedSecurityStore}
           manualEntryCoordinateFormatStore={
@@ -215,5 +221,9 @@ export function createAppProvidersWrapper({
     deviceDiagnosticMetrics.setEnabled(false);
   };
 
-  return {wrapper, teardown};
+  return {
+    wrapper,
+    teardown,
+    activeProjectIdStore: persistedActiveProjectIdStore,
+  };
 }
