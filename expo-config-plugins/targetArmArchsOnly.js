@@ -14,7 +14,12 @@ module.exports = function targetArmArchsOnly(config) {
   // involved), so restricting the APK to ARM-only ABIs here would make it
   // uninstallable there (INSTALL_FAILED_NO_MATCHING_ABIS). Skip this plugin
   // for those builds and keep Expo's default multi-ABI output instead.
-  if (process.env.EXPO_PUBLIC_STORYBOOK_ENABLED === 'true') {
+  // INCLUDE_X86_64=1 opts any other build into the same multi-ABI output
+  // (candidate APKs meant for local x86_64 emulator testing).
+  if (
+    process.env.EXPO_PUBLIC_STORYBOOK_ENABLED === 'true' ||
+    process.env.INCLUDE_X86_64 === '1'
+  ) {
     return config;
   }
 

@@ -33,6 +33,11 @@ on:
         options:
           - release-candidate
           - pre-release
+      include_x86_64:
+        description: 'Also build x86_64 ABI (for local emulator testing)'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   apk:
@@ -90,6 +95,7 @@ jobs:
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
           COMAPEO_METRICS_URL: ${{ vars.COMAPEO_METRICS_URL }}
           COMAPEO_METRICS_API_KEY: ${{ secrets.COMAPEO_METRICS_API_KEY }}
+          INCLUDE_X86_64: ${{ inputs.include_x86_64 && '1' || '0' }}
         run: |
           npm run extract-messages
           eas build --platform android --profile "$EAS_PROFILE" --local --non-interactive
