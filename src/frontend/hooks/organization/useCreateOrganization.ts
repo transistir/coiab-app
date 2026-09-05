@@ -5,6 +5,7 @@ import {useClientApi} from '@comapeo/core-react';
 import {useActiveProjectIdActions} from '../../contexts/ActiveProjectIdStoreContext';
 import {createOrganization} from '../../lib/organization/fanout';
 import {projectsQueryKey} from '../../lib/organization/queryKeys';
+import {getOrganizationCreationCompletion} from './useOrganizationCreationCompletion';
 import {generateOrganizationId} from '../../lib/organization/orgId';
 
 export type CreateOrganizationStatus =
@@ -86,15 +87,13 @@ export function useCreateOrganization() {
     setStatus('creating');
     setError(undefined);
 
+    let createdProjectId: string | undefined;
     try {
       const {projectIds} = await createOrganization(clientApi, {
         organizationId: nextOrganizationId,
         organizationName,
       });
-      if (attemptRef.current !== attempt) return;
-      // SPEC 8.6: every organization entry point lands on slot m.
-      setActiveProjectId(projectIds.m);
-      setStatus('success');
+      createdProjectId = projectIds.m;
     } catch (e) {
       if (attemptRef.current !== attempt) return;
       setError(e);
@@ -108,6 +107,16 @@ export function useCreateOrganization() {
       // token-gated; only the React state above is.
       await queryClient.invalidateQueries({queryKey: projectsQueryKey});
       if (attemptRef.current === attempt) {
+        if (createdProjectId) {
+          // Publish the handoff before switching providers: either entry path
+          // can lose its local success effect when the screen remounts.
+          getOrganizationCreationCompletion(queryClient).setState({
+            projectId: createdProjectId,
+          });
+          // SPEC 8.6: every organization entry point lands on slot m.
+          setActiveProjectId(createdProjectId);
+          setStatus('success');
+        }
         busyRef.current = false;
       }
     }
