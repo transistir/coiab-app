@@ -17,6 +17,7 @@ import {LoadingIndicator} from '../../sharedComponents/LoadingIndicator';
 import {BLACK, LIGHT_GREY} from '../../lib/styles';
 import {AppStackParamsList} from '../../sharedTypes/navigation';
 import {useCreateOrganization} from '../../hooks/organization/useCreateOrganization';
+import {OrganizationOperationError} from '../../lib/organization/fanout';
 
 const m = defineMessages({
   title: {
@@ -78,6 +79,17 @@ export const CreateOrganization = ({
     if (status === 'success') {
       navigation.reset({index: 0, routes: [{name: 'Home'}]});
     } else if (status === 'error' && error !== undefined) {
+      // The fan-out refused to create a second organization while an
+      // incomplete one sits on the device (Bug 46): the provisioning screen
+      // owns that repair — it retries under the reconstructed id — so the
+      // error sheet would only dead-end a recoverable state.
+      if (
+        error instanceof OrganizationOperationError &&
+        error.code === 'incomplete-org-blocks-create'
+      ) {
+        navigation.navigate('OrganizationProvisioning');
+        return;
+      }
       navigation.navigate('ErrorBottomSheet', {error: toError(error)});
     }
   }, [status, error, navigation]);

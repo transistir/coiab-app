@@ -52,7 +52,8 @@ export type OrganizationErrorCode =
   | 'missing-invite'
   | 'identity-required'
   | 'identity-mismatch'
-  | 'bundle-inconsistent';
+  | 'bundle-inconsistent'
+  | 'incomplete-org-blocks-create';
 
 export class OrganizationOperationError extends Error {
   readonly code: OrganizationErrorCode;
@@ -108,6 +109,26 @@ export async function createOrganization(
       `local organization ${opts.organizationId} is invalid (${existing.reason}); refusing to modify it`,
       {organizationId: opts.organizationId},
     );
+  }
+
+  // Fail closed (Bug 46): a create whose id matches no local organization
+  // must never mint a second organization while an INCOMPLETE one sits on
+  // the device. That is exactly the restart case — a create whose slot write
+  // mutated-then-rejected loses its organization id with the hook instance,
+  // and a fresh form generates a new one, provisioning a duplicate
+  // Monitoramento/Alertas pair next to the half-finished org. Adopting the
+  // incomplete org under the new id would hide its state from the user
+  // instead, so this surfaces it: the screen routes the error to the
+  // provisioning screen, which resumes under the reconstructed id.
+  if (!existing) {
+    const incomplete = localOrgs.find(org => org.state === 'incomplete');
+    if (incomplete) {
+      throw new OrganizationOperationError(
+        'incomplete-org-blocks-create',
+        `an incomplete organization (${incomplete.organizationId}) is already being set up on this device; finish it before creating another`,
+        {organizationId: opts.organizationId},
+      );
+    }
   }
 
   const projectIds: Partial<Record<Slot, string>> = {};

@@ -16,6 +16,7 @@ import {IntlProvider} from 'react-intl';
 
 import {CreateOrganization} from './CreateOrganization';
 import {useCreateOrganization} from '../../hooks/organization/useCreateOrganization';
+import {OrganizationOperationError} from '../../lib/organization/fanout';
 import type {AppStackParamsList} from '../../sharedTypes/navigation';
 
 jest.mock('../../hooks/organization/useCreateOrganization', () => ({
@@ -43,6 +44,8 @@ const Stack = createNativeStackNavigator<AppStackParamsList>();
 
 const HomeStub = () => <Text>HOME-REACHED</Text>;
 
+const ProvisioningStub = () => <Text>PROVISIONING-REACHED</Text>;
+
 const ErrorStub = ({
   route,
 }: NativeStackScreenProps<AppStackParamsList, 'ErrorBottomSheet'>) => (
@@ -60,6 +63,10 @@ async function renderScreen() {
             options={{headerShown: false}}
           />
           <Stack.Screen name="Home" component={HomeStub} />
+          <Stack.Screen
+            name="OrganizationProvisioning"
+            component={ProvisioningStub}
+          />
           <Stack.Screen
             name="ErrorBottomSheet"
             component={ErrorStub}
@@ -231,5 +238,23 @@ describe('CreateOrganization', () => {
     await renderScreen();
 
     expect(await screen.findByText('ERROR: boom')).toBeOnTheScreen();
+  });
+
+  test('an incomplete-org-blocks-create failure routes to OrganizationProvisioning, not the error sheet', async () => {
+    // The device already holds a half-provisioned organization (the errored
+    // attempt's id was lost): the provisioning screen owns the repair — it
+    // retries the reconstructed id — so this error must not dead-end in the
+    // error sheet, and a naive resubmit here would mint a second org.
+    mockCreateOrganization({
+      status: 'error',
+      error: new OrganizationOperationError(
+        'incomplete-org-blocks-create',
+        'an incomplete organization is already being set up',
+      ),
+    });
+    await renderScreen();
+
+    expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
+    expect(screen.queryByText(/incomplete organization/)).not.toBeOnTheScreen();
   });
 });
