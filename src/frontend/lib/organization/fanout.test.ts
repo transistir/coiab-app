@@ -192,6 +192,102 @@ describe('createOrganization', () => {
     );
     expect(manager.projects).toHaveLength(2); // nothing created
   });
+
+  it('refuses to create a NEW organization while an incomplete one sits on the device', async () => {
+    // The Bug 46 trigger: a create whose slot write mutates-then-rejects loses
+    // its organization id on restart/remount, and a fresh create minted a
+    // whole SECOND organization (2× Monitoramento, 2× Alertas) next to the
+    // half-provisioned one. Failing closed leaves the repair to the
+    // provisioning screen, which retries under the reconstructed id.
+    const manager = createFakeManager();
+    await manager.createProject({
+      name: 'Monitoramento',
+      projectDescription: markerFor(ORG_A, 'm', 'Acme'),
+    });
+
+    await expectOrgError(
+      createOrganization(manager, {
+        organizationId: ORG_B,
+        organizationName: 'Outra',
+      }),
+      'incomplete-org-blocks-create',
+      new RegExp(ORG_A),
+    );
+    expect(manager.projects).toHaveLength(1); // nothing created
+  });
+
+  it('still resumes the incomplete organization when the requested id matches it', async () => {
+    // Regression guard: the block only covers a create whose id does not
+    // match the incomplete org — the recovery path (SPEC 5 / E7) keeps
+    // completing the missing slots of the org it names.
+    const manager = createFakeManager();
+    const mProjectId = await manager.createProject({
+      name: 'Monitoramento',
+      projectDescription: markerFor(ORG_A, 'm', 'Acme'),
+    });
+
+    const resumed = await createOrganization(manager, {
+      organizationId: ORG_A,
+      organizationName: 'Acme',
+    });
+    expect(resumed.projectIds.m).toBe(mProjectId);
+    expect(resumed.projectIds.a).toBeDefined();
+    expect(manager.projects).toHaveLength(2);
+  });
+
+  it('still creates a second organization when every local organization is ready', async () => {
+    // The block is about INCOMPLETE state, not about multi-organization
+    // devices (SPEC 1.3): a ready org never blocks a create.
+    const manager = createFakeManager();
+    await createOrganization(manager, {
+      organizationId: ORG_A,
+      organizationName: 'Acme',
+    });
+
+    const second = await createOrganization(manager, {
+      organizationId: ORG_B,
+      organizationName: 'Outra',
+    });
+    expect(second.projectIds.m).toBeDefined();
+    expect(second.projectIds.a).toBeDefined();
+    expect(manager.projects).toHaveLength(4);
+  });
+
+  it('a create whose slot write mutates then rejects resumes without duplicates on retry', async () => {
+    // The real reject-but-completed shape (Bug 46): createProject's reply
+    // times out while core committed the project. A retry under the SAME
+    // organization id must reuse the committed slot, never mint a duplicate.
+    const manager = createFakeManager();
+    const createProject = manager.createProject.bind(manager);
+    let createCalls = 0;
+    manager.createProject = async opts => {
+      createCalls += 1;
+      if (createCalls === 1) {
+        await createProject(opts); // core commits…
+        throw new Error('SYNC_TIMEOUT'); // …then the reply dies
+      }
+      return createProject(opts);
+    };
+
+    await expect(
+      createOrganization(manager, {
+        organizationId: ORG_A,
+        organizationName: 'Acme',
+      }),
+    ).rejects.toThrow('SYNC_TIMEOUT');
+    expect(manager.projects).toHaveLength(1);
+
+    const resumed = await createOrganization(manager, {
+      organizationId: ORG_A,
+      organizationName: 'Acme',
+    });
+    expect(resumed.projectIds.m).toBe(manager.projects[0]!.projectId);
+    expect(manager.projects).toHaveLength(2);
+    const slots = manager.projects
+      .map(project => parseMarker(project.projectDescription ?? '')?.slot)
+      .sort();
+    expect(slots).toEqual(['a', 'm']);
+  });
 });
 
 describe('acceptOrganizationBundle', () => {
@@ -451,6 +547,61 @@ describe('acceptOrganizationBundle', () => {
     });
     expect(accepted.map(entry => entry.slot)).toEqual(['m', 'a']);
     expect(manager.acceptedInviteIds).toHaveLength(2);
+  });
+
+  it('keeps accepting the remaining slots when an accept rejects after core completed it', async () => {
+    // Reject-but-completed (Bug 46): the ~5s sync/IPC timeout rejects the
+    // call while core finished the join — the slot is local on the next
+    // read. The loop must go on to slot a; aborting would leave the org
+    // half-joined behind a false error, with the slot-a invite still pending
+    // (the dismiss ↔ navigate freeze).
+    const manager = createFakeManager();
+    const mInvite = invite(ORG_A, 'm');
+    const aInvite = invite(ORG_A, 'a');
+    const accept = jest.fn(async ({inviteId}: {inviteId: string}) => {
+      if (inviteId === mInvite.inviteId) {
+        // Core joins the project, then the reply dies.
+        manager.projects.push({
+          projectId: 'project-m-joined',
+          projectDescription: markerFor(ORG_A, 'm', 'Acme'),
+          status: 'joined',
+        });
+        throw new Error('SYNC_TIMEOUT');
+      }
+      manager.acceptedInviteIds.push(inviteId);
+      manager.projects.push({
+        projectId: `accepted-${inviteId}`,
+        status: 'joined',
+      });
+      return `accepted-${inviteId}`;
+    });
+    manager.invite.accept = accept;
+
+    const accepted = await acceptOrganizationBundle(manager, {
+      invites: {m: mInvite, a: aInvite},
+    });
+    expect(accept).toHaveBeenCalledTimes(2); // slot a was still attempted
+    expect(accepted.map(entry => entry.slot)).toEqual(['m', 'a']);
+    expect(accepted.find(entry => entry.slot === 'm')!.projectId).toBe(
+      'project-m-joined',
+    );
+  });
+
+  it('rethrows the original error when the rejected accept left no local slot', async () => {
+    // The recovery read decides: an accept that genuinely failed (nothing
+    // joined) must still surface as a failure — the reject-but-completed
+    // recovery must never mask a real one.
+    const manager = createFakeManager();
+    manager.invite.accept = jest.fn(async () => {
+      throw new Error('NETWORK_GONE'); // no mutation at all
+    });
+
+    await expect(
+      acceptOrganizationBundle(manager, {
+        invites: {m: invite(ORG_A, 'm'), a: invite(ORG_A, 'a')},
+      }),
+    ).rejects.toThrow('NETWORK_GONE');
+    expect(manager.invite.accept).toHaveBeenCalledTimes(1); // loop aborted
   });
 });
 

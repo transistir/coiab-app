@@ -53,6 +53,7 @@ export type OrganizationErrorCode =
   | 'identity-required'
   | 'identity-mismatch'
   | 'bundle-inconsistent'
+  | 'accept-partial'
   | 'incomplete-org-blocks-create';
 
 export class OrganizationOperationError extends Error {
@@ -64,6 +65,8 @@ export class OrganizationOperationError extends Error {
       slot?: Slot;
       organizationId?: string;
       cause?: unknown;
+      /** `accept-partial`: the slots the accept did not get local. */
+      missingSlots?: Slot[];
     },
   ) {
     super(message);
@@ -321,8 +324,30 @@ export async function acceptOrganizationBundle(
     if (localSlots[slot] !== undefined) continue; // never re-accept a present slot
     // The preflight slot-completeness check guarantees an invite exists.
     const invite = bundle.invites[slot]!;
-    const projectId = await manager.invite.accept({inviteId: invite.inviteId});
-    accepted.push({slot, projectId});
+    try {
+      const projectId = await manager.invite.accept({
+        inviteId: invite.inviteId,
+      });
+      accepted.push({slot, projectId});
+    } catch (e) {
+      // Reject-but-completed (Bug 46): the sync/IPC timeout can reject the
+      // call while core completed the join, so the local read decides — a
+      // slot that is now local counts as accepted and the loop goes on to
+      // the remaining slots (aborting here would leave the organization
+      // half-joined behind a false error, its missing slot's invite still
+      // pending); a slot that is still missing rethrows the original error,
+      // so a genuine failure is never masked by the recovery read.
+      let joinedProjectId: string | undefined;
+      try {
+        joinedProjectId = reconstructOrganizations(
+          await manager.listProjects(),
+        ).find(org => org.organizationId === bundleOrgId)?.slots[slot];
+      } catch {
+        joinedProjectId = undefined;
+      }
+      if (joinedProjectId === undefined) throw e;
+      accepted.push({slot, projectId: joinedProjectId});
+    }
   }
   return accepted;
 }
