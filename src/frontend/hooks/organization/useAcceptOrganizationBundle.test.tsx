@@ -493,4 +493,255 @@ describe('useAcceptOrganizationBundle', () => {
 
     hook.unmount();
   });
+
+  test('an accept that rejects after core completed the join still succeeds', async () => {
+    // Reject-but-completed (Bug 46): slot m's accept times out on the reply
+    // while core finished the join. The accept loop recovers that slot from
+    // the local read and goes on to slot a, so the org is complete and the
+    // hook publishes success — not a false partial error.
+    const localProjects: FakeProject[] = [];
+    const accept = jest.fn(async ({inviteId}: {inviteId: string}) => {
+      if (inviteId === 'invite-m') {
+        localProjects.push({
+          projectId: 'project-monitoramento',
+          projectDescription: markerFor(ORG_ID, 'm', ORG_NAME),
+        });
+        throw new Error('SYNC_TIMEOUT');
+      }
+      localProjects.push({
+        projectId: 'project-alertas',
+        projectDescription: markerFor(ORG_ID, 'a', ORG_NAME),
+      });
+      return 'project-alertas';
+    });
+    const clientApi = {
+      listProjects: async () =>
+        localProjects.map(project => ({
+          ...project,
+          name: 'fake',
+          createdAt: '',
+          updatedAt: '',
+          status: 'joined' as const,
+        })),
+      invite: {accept, addListener: jest.fn(), removeListener: jest.fn()},
+      on: jest.fn(),
+    } as unknown as ComapeoCoreClientApi;
+
+    const hook = await renderHook(
+      () => ({
+        acceptBundle: useAcceptOrganizationBundle(),
+        activeProjectId: useActiveProjectId(),
+      }),
+      {wrapper: createWrapper(clientApi)},
+    );
+
+    await act(async () => {
+      await hook.result.current.acceptBundle.start(makeBundle());
+    });
+
+    expect(hook.result.current.acceptBundle.status).toBe('success');
+    expect(hook.result.current.acceptBundle.error).toBeUndefined();
+    expect(accept).toHaveBeenCalledTimes(2);
+    // SPEC 8.6: the org's Monitoramento slot is the active project.
+    expect(hook.result.current.activeProjectId).toBe('project-monitoramento');
+    // Both slots local — the recovery identity is no longer needed.
+    expect(identityStore.instance.getState()).toStrictEqual({});
+
+    hook.unmount();
+  });
+
+  test('a preflight identity-mismatch still errors even when both slots are already local', async () => {
+    // The post-failure reconciliation rescues failures of the invite.accept
+    // call itself only. A preflight identity-mismatch describes a bundle
+    // that must not join — however complete the local organization already
+    // is — so the local-state read must not convert it into a success (which
+    // would also clear the recovery identity a genuine recovery accept
+    // still needs).
+    const {clientApi, accept} = createFakeClient([
+      {
+        projectId: 'project-monitoramento',
+        projectDescription: markerFor(ORG_ID, 'm', ORG_NAME),
+      },
+      {
+        projectId: 'project-alertas',
+        projectDescription: markerFor(ORG_ID, 'a', ORG_NAME),
+      },
+    ]);
+    identityStore.actions.setIdentity(ORG_ID, {
+      invitorDeviceId: 'invitor-original',
+      roleName: 'Coordinator',
+    });
+    // A different device re-invites only slot a: the stored identity wins,
+    // so this bundle is rejected in the preflight — with the org already
+    // complete locally, this is exactly the case the reconciliation must
+    // not swallow.
+    const bundle = makeBundle();
+    delete bundle.invites.m;
+    bundle.invites.a = {
+      ...makeInvite('a', 'invite-a'),
+      invitorDeviceId: 'invitor-divergent',
+    };
+    bundle.completeness = 'incomplete-definitive';
+
+    const hook = await renderHook(
+      () => ({
+        acceptBundle: useAcceptOrganizationBundle(),
+        activeProjectId: useActiveProjectId(),
+      }),
+      {wrapper: createWrapper(clientApi)},
+    );
+
+    await act(async () => {
+      await hook.result.current.acceptBundle.start(bundle);
+    });
+
+    expect(hook.result.current.acceptBundle.status).toBe('error');
+    expect(hook.result.current.acceptBundle.error).toBeInstanceOf(
+      OrganizationOperationError,
+    );
+    expect(
+      (hook.result.current.acceptBundle.error as OrganizationOperationError)
+        .code,
+    ).toBe('identity-mismatch');
+    expect(accept).not.toHaveBeenCalled();
+    // The divergent bundle must not unpin the recovery identity.
+    expect(identityStore.instance.getState()).toStrictEqual({
+      [ORG_ID]: {invitorDeviceId: 'invitor-original', roleName: 'Coordinator'},
+    });
+
+    hook.unmount();
+  });
+
+  test('a preflight invalid-local-state still errors even when both slots are present', async () => {
+    // A duplicate-slot conflict (SPEC 10) is resolved by a human, never
+    // extended: the reconciliation read sees the conflicting slots as
+    // "present" and would otherwise report a success for an organization the
+    // local state says is invalid.
+    const {clientApi, accept} = createFakeClient([
+      {
+        projectId: 'project-m-first',
+        projectDescription: markerFor(ORG_ID, 'm', ORG_NAME),
+      },
+      {
+        projectId: 'project-m-duplicate',
+        projectDescription: markerFor(ORG_ID, 'm', ORG_NAME),
+      },
+      {
+        projectId: 'project-alertas',
+        projectDescription: markerFor(ORG_ID, 'a', ORG_NAME),
+      },
+    ]);
+
+    const hook = await renderHook(
+      () => ({
+        acceptBundle: useAcceptOrganizationBundle(),
+        activeProjectId: useActiveProjectId(),
+      }),
+      {wrapper: createWrapper(clientApi)},
+    );
+
+    await act(async () => {
+      await hook.result.current.acceptBundle.start(makeBundle());
+    });
+
+    expect(hook.result.current.acceptBundle.status).toBe('error');
+    expect(hook.result.current.acceptBundle.error).toBeInstanceOf(
+      OrganizationOperationError,
+    );
+    expect(
+      (hook.result.current.acceptBundle.error as OrganizationOperationError)
+        .code,
+    ).toBe('invalid-local-state');
+    expect(accept).not.toHaveBeenCalled();
+
+    hook.unmount();
+  });
+
+  test('a half-completed accept fails with accept-partial naming the missing slot', async () => {
+    // Slot m's reject-but-completed join landed, but slot a's accept failed
+    // for real: the org is half-joined. The published error must say exactly
+    // that (typed code + the missing slots) instead of the raw timeout, so
+    // the UI can route to recovery instead of reporting a total failure.
+    const localProjects: FakeProject[] = [];
+    const accept = jest.fn(async ({inviteId}: {inviteId: string}) => {
+      if (inviteId === 'invite-m') {
+        localProjects.push({
+          projectId: 'project-monitoramento',
+          projectDescription: markerFor(ORG_ID, 'm', ORG_NAME),
+        });
+        throw new Error('SYNC_TIMEOUT');
+      }
+      throw new Error('NETWORK_GONE'); // slot a fails without joining
+    });
+    const clientApi = {
+      listProjects: async () =>
+        localProjects.map(project => ({
+          ...project,
+          name: 'fake',
+          createdAt: '',
+          updatedAt: '',
+          status: 'joined' as const,
+        })),
+      invite: {accept, addListener: jest.fn(), removeListener: jest.fn()},
+      on: jest.fn(),
+    } as unknown as ComapeoCoreClientApi;
+
+    const hook = await renderHook(
+      () => ({
+        acceptBundle: useAcceptOrganizationBundle(),
+        activeProjectId: useActiveProjectId(),
+      }),
+      {wrapper: createWrapper(clientApi)},
+    );
+
+    await act(async () => {
+      await hook.result.current.acceptBundle.start(makeBundle());
+    });
+
+    expect(hook.result.current.acceptBundle.status).toBe('error');
+    const error = hook.result.current.acceptBundle.error;
+    expect(error).toBeInstanceOf(OrganizationOperationError);
+    expect((error as OrganizationOperationError).code).toBe('accept-partial');
+    expect((error as OrganizationOperationError).details?.missingSlots).toEqual(
+      ['a'],
+    );
+    // The underlying failure stays reachable for diagnostics.
+    expect((error as OrganizationOperationError).details?.cause).toMatchObject({
+      message: 'NETWORK_GONE',
+    });
+    // The org is still incomplete — the recovery identity stays pinned.
+    expect(identityStore.instance.getState()).toStrictEqual({
+      [ORG_ID]: {invitorDeviceId: 'invitor-1', roleName: 'Coordinator'},
+    });
+
+    hook.unmount();
+  });
+
+  test('a failed accept with zero local progress publishes the original error', async () => {
+    // Nothing joined anywhere: there is no progress to reconcile, so the
+    // reconciliation must not replace the failure the user saw with a
+    // synthesized one.
+    const {clientApi, accept} = createFakeClient();
+    accept.mockRejectedValue(new Error('NETWORK_GONE'));
+
+    const hook = await renderHook(
+      () => ({
+        acceptBundle: useAcceptOrganizationBundle(),
+        activeProjectId: useActiveProjectId(),
+      }),
+      {wrapper: createWrapper(clientApi)},
+    );
+
+    await act(async () => {
+      await hook.result.current.acceptBundle.start(makeBundle());
+    });
+
+    expect(hook.result.current.acceptBundle.status).toBe('error');
+    expect(hook.result.current.acceptBundle.error).toMatchObject({
+      message: 'NETWORK_GONE',
+    });
+    expect(hook.result.current.activeProjectId).toBeUndefined();
+
+    hook.unmount();
+  });
 });

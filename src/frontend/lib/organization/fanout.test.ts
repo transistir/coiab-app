@@ -3,10 +3,14 @@ import {reconstructOrganizations} from './reconstruct';
 import {
   acceptOrganizationBundle,
   createOrganization,
+  CREATOR_ROLE_ID,
+  discardIncompleteOrganization,
+  isAcceptOriginError,
   renameOrganization,
   OrganizationOperationError,
   type ManagerLike,
   type OrganizationErrorCode,
+  type ProjectLike,
   type RenamableManagerLike,
 } from './fanout';
 import type {InviteLike} from './bundle';
@@ -25,23 +29,58 @@ async function expectOrgError(
 const ORG_A = 'a1b2c3d4e5f60718';
 const ORG_B = 'ffffffffffffffff';
 
-type FakeManager = ManagerLike & {
-  projects: Array<{
-    projectId: string;
-    projectDescription?: string;
-    status: 'joined' | 'joining' | 'left';
-  }>;
+/** From `@comapeo/core/src/roles.js` — any role that is not the creator's. */
+const MEMBER_ROLE_ID = '012fd2d431c0bf60';
+
+type FakeProjectRow = {
+  projectId: string;
+  projectDescription?: string;
+  status: 'joined' | 'joining' | 'left';
+};
+
+type FakeManager = Omit<ManagerLike, 'getProject'> & {
+  projects: FakeProjectRow[];
   acceptedInviteIds: string[];
+  /** Project ids handed to `leaveProject` — the discard's removal call. */
+  leftProjectIds: string[];
+  ownDeviceId: string;
+  /**
+   * deviceId per project id — ids beyond `ownDeviceId` mean the project has
+   * other members. Defaults to just this device (a locally created project).
+   */
+  memberIdsByProjectId: Map<string, string[]>;
+  /**
+   * Creating device per project id — drives `$getOwnRole`'s creator role, the
+   * discard's provenance gate. `createProject` records this device; a project
+   * this device joined records its invitor instead.
+   */
+  createdByByProjectId: Map<string, string>;
+  getProject(projectId: string): Promise<
+    ProjectLike & {
+      // Mirrors `@comapeo/core`'s `MapeoProject.$getOwnRole` / `$member`.
+      $getOwnRole(): Promise<{roleId: string}>;
+      $member: {getMany(): Promise<Array<{deviceId: string}>>};
+    }
+  >;
+  leaveProject(projectId: string): Promise<void>;
+  getDeviceInfo(): {deviceId: string};
 };
 
 /** In-memory ManagerLike — no @comapeo/core import. */
 function createFakeManager(): FakeManager {
   let projectCounter = 0;
-  const projects: FakeManager['projects'] = [];
+  const projects: FakeProjectRow[] = [];
   const acceptedInviteIds: string[] = [];
+  const leftProjectIds: string[] = [];
+  const memberIdsByProjectId = new Map<string, string[]>();
+  const createdByByProjectId = new Map<string, string>();
   return {
     projects,
     acceptedInviteIds,
+    leftProjectIds,
+    ownDeviceId: 'this-device',
+    memberIdsByProjectId,
+    createdByByProjectId,
     async listProjects() {
       return [...projects];
     },
@@ -52,6 +91,7 @@ function createFakeManager(): FakeManager {
         projectDescription: opts.projectDescription,
         status: 'joined',
       });
+      createdByByProjectId.set(projectId, 'this-device');
       return projectId;
     },
     async getProject(projectId) {
@@ -60,13 +100,38 @@ function createFakeManager(): FakeManager {
         async $getProjectSettings() {
           return {projectDescription: project?.projectDescription};
         },
+        async $getOwnRole() {
+          return {
+            roleId:
+              createdByByProjectId.get(projectId) === 'this-device'
+                ? CREATOR_ROLE_ID
+                : MEMBER_ROLE_ID,
+          };
+        },
+        $member: {
+          async getMany() {
+            const memberIds = memberIdsByProjectId.get(projectId) ?? [
+              'this-device',
+            ];
+            return memberIds.map(deviceId => ({deviceId}));
+          },
+        },
       };
+    },
+    async leaveProject(projectId) {
+      leftProjectIds.push(projectId);
+      const project = projects.find(p => p.projectId === projectId);
+      if (project) project.status = 'left';
+    },
+    getDeviceInfo() {
+      return {deviceId: 'this-device'};
     },
     invite: {
       async accept(invite) {
         acceptedInviteIds.push(invite.inviteId);
         const projectId = `accepted-${invite.inviteId}`;
         projects.push({projectId, status: 'joined'});
+        createdByByProjectId.set(projectId, 'invitor-device');
         return projectId;
       },
     },
@@ -191,6 +256,394 @@ describe('createOrganization', () => {
       /invalid \(duplicate-slot\)/,
     );
     expect(manager.projects).toHaveLength(2); // nothing created
+  });
+
+  it('refuses to create a NEW organization while an incomplete one sits on the device', async () => {
+    // The Bug 46 trigger: a create whose slot write mutates-then-rejects loses
+    // its organization id on restart/remount, and a fresh create minted a
+    // whole SECOND organization (2× Monitoramento, 2× Alertas) next to the
+    // half-provisioned one. Failing closed leaves the repair to the
+    // provisioning screen, which retries under the reconstructed id.
+    const manager = createFakeManager();
+    await manager.createProject({
+      name: 'Monitoramento',
+      projectDescription: markerFor(ORG_A, 'm', 'Acme'),
+    });
+
+    const error = await createOrganization(manager, {
+      organizationId: ORG_B,
+      organizationName: 'Outra',
+    }).then(
+      () => undefined,
+      e => e,
+    );
+
+    expect(error).toBeInstanceOf(OrganizationOperationError);
+    expect(error).toMatchObject({
+      code: 'incomplete-org-blocks-create',
+      // `organizationId` names the BLOCKING org — the one a consumer resumes
+      // or discards; the refused create's id rides along separately.
+      details: {
+        organizationId: ORG_A,
+        requestedOrganizationId: ORG_B,
+      },
+    });
+    expect((error as OrganizationOperationError).message).toMatch(
+      new RegExp(ORG_A),
+    );
+    expect(manager.projects).toHaveLength(1); // nothing created
+  });
+
+  it('still resumes the incomplete organization when the requested id matches it', async () => {
+    // Regression guard: the block only covers a create whose id does not
+    // match the incomplete org — the recovery path (SPEC 5 / E7) keeps
+    // completing the missing slots of the org it names.
+    const manager = createFakeManager();
+    const mProjectId = await manager.createProject({
+      name: 'Monitoramento',
+      projectDescription: markerFor(ORG_A, 'm', 'Acme'),
+    });
+
+    const resumed = await createOrganization(manager, {
+      organizationId: ORG_A,
+      organizationName: 'Acme',
+    });
+    expect(resumed.projectIds.m).toBe(mProjectId);
+    expect(resumed.projectIds.a).toBeDefined();
+    expect(manager.projects).toHaveLength(2);
+  });
+
+  it('still creates a second organization when every local organization is ready', async () => {
+    // The block is about INCOMPLETE state, not about multi-organization
+    // devices (SPEC 1.3): a ready org never blocks a create.
+    const manager = createFakeManager();
+    await createOrganization(manager, {
+      organizationId: ORG_A,
+      organizationName: 'Acme',
+    });
+
+    const second = await createOrganization(manager, {
+      organizationId: ORG_B,
+      organizationName: 'Outra',
+    });
+    expect(second.projectIds.m).toBeDefined();
+    expect(second.projectIds.a).toBeDefined();
+    expect(manager.projects).toHaveLength(4);
+  });
+
+  it('a create whose slot write mutates then rejects resumes without duplicates on retry', async () => {
+    // The real reject-but-completed shape (Bug 46): createProject's reply
+    // times out while core committed the project. A retry under the SAME
+    // organization id must reuse the committed slot, never mint a duplicate.
+    const manager = createFakeManager();
+    const createProject = manager.createProject.bind(manager);
+    let createCalls = 0;
+    manager.createProject = async opts => {
+      createCalls += 1;
+      if (createCalls === 1) {
+        await createProject(opts); // core commits…
+        throw new Error('SYNC_TIMEOUT'); // …then the reply dies
+      }
+      return createProject(opts);
+    };
+
+    await expect(
+      createOrganization(manager, {
+        organizationId: ORG_A,
+        organizationName: 'Acme',
+      }),
+    ).rejects.toThrow('SYNC_TIMEOUT');
+    expect(manager.projects).toHaveLength(1);
+
+    const resumed = await createOrganization(manager, {
+      organizationId: ORG_A,
+      organizationName: 'Acme',
+    });
+    expect(resumed.projectIds.m).toBe(manager.projects[0]!.projectId);
+    expect(manager.projects).toHaveLength(2);
+    const slots = manager.projects
+      .map(project => parseMarker(project.projectDescription ?? '')?.slot)
+      .sort();
+    expect(slots).toEqual(['a', 'm']);
+  });
+});
+
+describe('discardIncompleteOrganization', () => {
+  /** Seeds a half-built organization holding only slot m; returns its id. */
+  async function seedIncompleteOrg(
+    manager: FakeManager,
+    organizationId: string = ORG_A,
+  ): Promise<string> {
+    return manager.createProject({
+      name: SLOT_PROJECT_NAMES.m,
+      projectDescription: markerFor(organizationId, 'm', 'Acme'),
+    });
+  }
+
+  it('leaves the solo slot projects it created and the organization disappears', async () => {
+    const manager = createFakeManager();
+    const mProjectId = await seedIncompleteOrg(manager);
+
+    const result = await discardIncompleteOrganization(manager, {
+      organizationId: ORG_A,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      removed: [{slot: 'm', projectId: mProjectId}],
+      skipped: [],
+    });
+    expect(manager.leftProjectIds).toEqual([mProjectId]);
+    expect(
+      await reconstructOrganizations(await manager.listProjects()),
+    ).toEqual([]);
+  });
+
+  it('skips a slot project it cannot prove this device created', async () => {
+    // Finding 1: "no other member visible" does not prove creation — a
+    // recently ACCEPTED invite project whose roles doc has not synced yet
+    // also looks memberless. Only the creator role (resolved locally from
+    // core ownership) counts as durable proof, so a joined slot is skipped
+    // and the organization stays on the device.
+    const manager = createFakeManager();
+    const joinedProjectId = 'joined-1';
+    manager.projects.push({
+      projectId: joinedProjectId,
+      projectDescription: markerFor(ORG_A, 'm', 'Acme'),
+      status: 'joined',
+    });
+    manager.createdByByProjectId.set(joinedProjectId, 'invitor-device');
+    // Membership alone looks solo: the roles doc has not synced.
+    manager.memberIdsByProjectId.set(joinedProjectId, [manager.ownDeviceId]);
+
+    const result = await discardIncompleteOrganization(manager, {
+      organizationId: ORG_A,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      removed: [],
+      skipped: [
+        {slot: 'm', projectId: joinedProjectId, reason: 'not-created-here'},
+      ],
+    });
+    expect(manager.leftProjectIds).toEqual([]);
+    const orgs = await reconstructOrganizations(await manager.listProjects());
+    expect(orgs).toHaveLength(1); // the organization is still on the device
+    expect(orgs[0]).toMatchObject({state: 'incomplete', organizationId: ORG_A});
+  });
+
+  it('keeps a slot project that has other members and reports the reason', async () => {
+    // A joined slot's invitor (or a device invited mid-setup) is a member of
+    // a live organization someone else can complete — removing it would drop
+    // the user's membership in data this device did not create.
+    const manager = createFakeManager();
+    const mProjectId = await seedIncompleteOrg(manager);
+    manager.memberIdsByProjectId.set(mProjectId, [
+      manager.ownDeviceId,
+      'invitor-device',
+    ]);
+
+    const result = await discardIncompleteOrganization(manager, {
+      organizationId: ORG_A,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      removed: [],
+      skipped: [
+        {
+          slot: 'm',
+          projectId: mProjectId,
+          reason: 'shared-with-other-devices',
+        },
+      ],
+    });
+    expect(manager.leftProjectIds).toEqual([]);
+    const orgs = await reconstructOrganizations(await manager.listProjects());
+    expect(orgs).toHaveLength(1); // the organization is still on the device
+    expect(orgs[0]).toMatchObject({state: 'incomplete', organizationId: ORG_A});
+  });
+
+  it('re-reads membership immediately before the leave and skips a project that gained members', async () => {
+    // TOCTOU: sync can land between the first read and the destructive call.
+    // A project that looked solo must be re-checked right before leaving it —
+    // and the second read decides, not the first.
+    const manager = createFakeManager();
+    const mProjectId = await seedIncompleteOrg(manager);
+    const baseGetProject = manager.getProject.bind(manager);
+    let memberReads = 0;
+    manager.getProject = async projectId => {
+      const project = await baseGetProject(projectId);
+      return {
+        ...project,
+        $member: {
+          async getMany() {
+            memberReads += 1;
+            return memberReads < 2
+              ? [{deviceId: manager.ownDeviceId}]
+              : [
+                  {deviceId: manager.ownDeviceId},
+                  {deviceId: 'late-syncer'}, // lands mid-discard
+                ];
+          },
+        },
+      };
+    };
+
+    const result = await discardIncompleteOrganization(manager, {
+      organizationId: ORG_A,
+    });
+
+    expect(memberReads).toBe(2); // the revalidation read really happened
+    expect(result).toEqual({
+      ok: false,
+      removed: [],
+      skipped: [
+        {
+          slot: 'm',
+          projectId: mProjectId,
+          reason: 'shared-with-other-devices',
+        },
+      ],
+    });
+    expect(manager.leftProjectIds).toEqual([]);
+  });
+
+  it('re-reads the organization right before the leave and skips it once it is no longer incomplete', async () => {
+    // TOCTOU: the missing slot can arrive (an invite accepted, sync landing)
+    // between the initial read and the leave. A READY organization must never
+    // be torn down, however incomplete it looked a moment ago.
+    const manager = createFakeManager();
+    const mProjectId = await seedIncompleteOrg(manager);
+    const baseGetProject = manager.getProject.bind(manager);
+    manager.getProject = async projectId => {
+      const project = await baseGetProject(projectId);
+      return {
+        ...project,
+        async $getOwnRole() {
+          // The concurrent join lands just before the discard's own reads.
+          manager.projects.push({
+            projectId: 'project-a-joined',
+            projectDescription: markerFor(ORG_A, 'a', 'Acme'),
+            status: 'joined',
+          });
+          manager.createdByByProjectId.set(
+            'project-a-joined',
+            'invitor-device',
+          );
+          return {roleId: CREATOR_ROLE_ID};
+        },
+      };
+    };
+
+    const result = await discardIncompleteOrganization(manager, {
+      organizationId: ORG_A,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      removed: [],
+      skipped: [
+        {slot: 'm', projectId: mProjectId, reason: 'no-longer-incomplete'},
+      ],
+    });
+    expect(manager.leftProjectIds).toEqual([]);
+  });
+
+  it('unblocks creating a fresh organization afterwards', async () => {
+    // The escape hatch this function exists for: the fail-closed create
+    // (`incomplete-org-blocks-create`) must not be a permanent lockout.
+    const manager = createFakeManager();
+    await seedIncompleteOrg(manager);
+
+    await discardIncompleteOrganization(manager, {organizationId: ORG_A});
+
+    const fresh = await createOrganization(manager, {
+      organizationId: ORG_B,
+      organizationName: 'Outra',
+    });
+    expect(fresh.projectIds.m).toBeDefined();
+    expect(fresh.projectIds.a).toBeDefined();
+  });
+
+  it('refuses to discard a ready organization', async () => {
+    const manager = createFakeManager();
+    await createOrganization(manager, {
+      organizationId: ORG_A,
+      organizationName: 'Acme',
+    });
+
+    await expectOrgError(
+      discardIncompleteOrganization(manager, {organizationId: ORG_A}),
+      'organization-not-incomplete',
+      /is ready/,
+    );
+    expect(manager.leftProjectIds).toEqual([]);
+    expect(manager.projects).toHaveLength(2); // untouched
+  });
+
+  it('refuses an organization id that is not on the device', async () => {
+    const manager = createFakeManager();
+
+    await expectOrgError(
+      discardIncompleteOrganization(manager, {organizationId: ORG_A}),
+      'organization-not-incomplete',
+      /is absent/,
+    );
+    expect(manager.leftProjectIds).toEqual([]);
+  });
+
+  it('refuses to discard an invalid organization', async () => {
+    // A duplicate-slot conflict needs human diagnosis (SPEC 10) — silently
+    // leaving one of its projects would pick a winner arbitrarily.
+    const manager = createFakeManager();
+    await manager.createProject({
+      name: 'Monitoramento',
+      projectDescription: markerFor(ORG_A, 'm', 'Acme'),
+    });
+    await manager.createProject({
+      name: 'Monitoramento (duplicado)',
+      projectDescription: markerFor(ORG_A, 'm', 'Acme'),
+    });
+
+    await expectOrgError(
+      discardIncompleteOrganization(manager, {organizationId: ORG_A}),
+      'organization-not-incomplete',
+      /is invalid/,
+    );
+    expect(manager.leftProjectIds).toEqual([]);
+  });
+
+  it('removes only the named organization and leaves others untouched', async () => {
+    const manager = createFakeManager();
+    // The ready org first: the incomplete one blocks any create done after.
+    await createOrganization(manager, {
+      organizationId: ORG_B,
+      organizationName: 'Outra',
+    });
+    const mProjectId = await seedIncompleteOrg(manager, ORG_A);
+
+    const result = await discardIncompleteOrganization(manager, {
+      organizationId: ORG_A,
+    });
+
+    expect(result.removed).toEqual([{slot: 'm', projectId: mProjectId}]);
+    expect(manager.leftProjectIds).toEqual([mProjectId]);
+    const orgs = await reconstructOrganizations(await manager.listProjects());
+    expect(orgs).toHaveLength(1);
+    expect(orgs[0]).toMatchObject({state: 'ready', organizationId: ORG_B});
+  });
+
+  it('rejects a malformed organization id', async () => {
+    const manager = createFakeManager();
+    await seedIncompleteOrg(manager);
+
+    await expectOrgError(
+      discardIncompleteOrganization(manager, {organizationId: 'nothex'}),
+      'invalid-organization-id',
+    );
+    expect(manager.leftProjectIds).toEqual([]);
   });
 });
 
@@ -451,6 +904,126 @@ describe('acceptOrganizationBundle', () => {
     });
     expect(accepted.map(entry => entry.slot)).toEqual(['m', 'a']);
     expect(manager.acceptedInviteIds).toHaveLength(2);
+  });
+
+  it('keeps accepting the remaining slots when an accept rejects after core completed it', async () => {
+    // Reject-but-completed (Bug 46): the ~5s sync/IPC timeout rejects the
+    // call while core finished the join — the slot is local on the next
+    // read. The loop must go on to slot a; aborting would leave the org
+    // half-joined behind a false error, with the slot-a invite still pending
+    // (the dismiss ↔ navigate freeze).
+    const manager = createFakeManager();
+    const mInvite = invite(ORG_A, 'm');
+    const aInvite = invite(ORG_A, 'a');
+    const accept = jest.fn(async ({inviteId}: {inviteId: string}) => {
+      if (inviteId === mInvite.inviteId) {
+        // Core joins the project, then the reply dies.
+        manager.projects.push({
+          projectId: 'project-m-joined',
+          projectDescription: markerFor(ORG_A, 'm', 'Acme'),
+          status: 'joined',
+        });
+        throw new Error('SYNC_TIMEOUT');
+      }
+      manager.acceptedInviteIds.push(inviteId);
+      manager.projects.push({
+        projectId: `accepted-${inviteId}`,
+        status: 'joined',
+      });
+      return `accepted-${inviteId}`;
+    });
+    manager.invite.accept = accept;
+
+    const accepted = await acceptOrganizationBundle(manager, {
+      invites: {m: mInvite, a: aInvite},
+    });
+    expect(accept).toHaveBeenCalledTimes(2); // slot a was still attempted
+    expect(accepted.map(entry => entry.slot)).toEqual(['m', 'a']);
+    expect(accepted.find(entry => entry.slot === 'm')!.projectId).toBe(
+      'project-m-joined',
+    );
+  });
+
+  it('rethrows the original error when the rejected accept left no local slot', async () => {
+    // The recovery read decides: an accept that genuinely failed (nothing
+    // joined) must still surface as a failure — the reject-but-completed
+    // recovery must never mask a real one.
+    const manager = createFakeManager();
+    manager.invite.accept = jest.fn(async () => {
+      throw new Error('NETWORK_GONE'); // no mutation at all
+    });
+
+    await expect(
+      acceptOrganizationBundle(manager, {
+        invites: {m: invite(ORG_A, 'm'), a: invite(ORG_A, 'a')},
+      }),
+    ).rejects.toThrow('NETWORK_GONE');
+    expect(manager.invite.accept).toHaveBeenCalledTimes(1); // loop aborted
+  });
+});
+
+describe('acceptOrganizationBundle error origin', () => {
+  it('marks a genuine accept failure as accept-origin', async () => {
+    // The hook reconciles local state after a failure ONLY for errors thrown
+    // by the invite.accept call itself (the reject-but-completed family) —
+    // this is the marker it keys on.
+    const manager = createFakeManager();
+    const failure = new Error('NETWORK_GONE');
+    manager.invite.accept = jest.fn(async () => {
+      throw failure; // no mutation at all — the rethrow carries the original
+    });
+
+    await expect(
+      acceptOrganizationBundle(manager, {
+        invites: {m: invite(ORG_A, 'm'), a: invite(ORG_A, 'a')},
+      }),
+    ).rejects.toThrow('NETWORK_GONE');
+    expect(isAcceptOriginError(failure)).toBe(true);
+  });
+
+  it('wraps a non-Error accept rejection so reconciliation still recognizes it', async () => {
+    // Finding 3: `invite.accept` can reject with a primitive (a string, null)
+    // — a WeakSet cannot mark it, and an unmarked failure would skip the
+    // hook's reject-but-completed reconciliation entirely. It must come back
+    // as an Error carrying the marker, with the original as `cause`.
+    for (const rejection of ['SYNC_TIMEOUT', null] as const) {
+      const manager = createFakeManager();
+      manager.invite.accept = jest.fn(async () => {
+        throw rejection;
+      });
+
+      const error = await acceptOrganizationBundle(manager, {
+        invites: {m: invite(ORG_A, 'm'), a: invite(ORG_A, 'a')},
+      }).then(
+        () => undefined,
+        e => e,
+      );
+
+      expect(error).toBeInstanceOf(Error);
+      expect(isAcceptOriginError(error)).toBe(true);
+      expect((error as Error).message).toContain(String(rejection));
+      expect((error as {cause?: unknown}).cause).toBe(rejection);
+      // The rethrow still aborts the loop — nothing is masked as a success.
+      expect(manager.invite.accept).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('leaves a preflight validation error unmarked', async () => {
+    // A preflight error describes a bundle that must not join, however
+    // complete the local organization looks — the hook must surface it, so
+    // it must never carry the accept-origin marker.
+    const manager = createFakeManager();
+    // The slot-a invite carries a slot-m marker — rejected in the preflight.
+    const error = await acceptOrganizationBundle(manager, {
+      invites: {m: invite(ORG_A, 'm'), a: invite(ORG_A, 'm')},
+    }).then(
+      () => undefined,
+      e => e,
+    );
+
+    expect(error).toBeInstanceOf(OrganizationOperationError);
+    expect(isAcceptOriginError(error)).toBe(false);
+    expect(manager.acceptedInviteIds).toEqual([]); // accept never called
   });
 });
 

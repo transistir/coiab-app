@@ -8,12 +8,19 @@ import {
   useOrganizationInviteIdentityActions,
 } from '../../contexts/OrganizationInviteIdentityStoreContext';
 import type {OrganizationInviteBundle} from '../../lib/organization/bundle';
-import {acceptOrganizationBundle} from '../../lib/organization/fanout';
+import {
+  acceptOrganizationBundle,
+  isAcceptOriginError,
+  OrganizationOperationError,
+} from '../../lib/organization/fanout';
 import {
   invitesQueryKey,
   projectsQueryKey,
 } from '../../lib/organization/queryKeys';
-import {reconstructOrganizations} from '../../lib/organization/reconstruct';
+import {
+  reconstructOrganizations,
+  type ReconstructedOrganization,
+} from '../../lib/organization/reconstruct';
 import {SLOTS, type Slot} from '../../lib/organization/marker';
 
 export type AcceptOrganizationBundleStatus =
@@ -132,11 +139,14 @@ export function useAcceptOrganizationBundle() {
       // while the bundle can still disappear under the invalidations below.
       let outcome: AcceptOrganizationBundleResult;
       let identityComplete = false;
+      // Hoisted for the catch: the reconciliation reads the same
+      // reconstruction the success ladder uses.
+      let preAcceptOrg: ReconstructedOrganization | undefined;
       try {
         // SPEC 8.6: capture the pre-accept local reconstruction — the read
         // after the accept can lag behind core, and local state known
         // before the accept must still outrank this accept's own result.
-        const preAcceptOrg = reconstructOrganizations(
+        preAcceptOrg = reconstructOrganizations(
           await clientApi.listProjects(),
         ).find(org => org.organizationId === bundle.organizationId);
 
@@ -171,7 +181,68 @@ export function useAcceptOrganizationBundle() {
 
         outcome = {ok: true, accepted, activeProjectId};
       } catch (e) {
-        outcome = {ok: false, error: e};
+        // Bug 46: a rejecting accept is not necessarily a failed accept —
+        // the sync/IPC timeout rejects the call while core completes the
+        // join (reject-but-completed). Re-read the local state and classify:
+        // every slot present across the reads is a completed organization
+        // the rejection must not report as a failure; some progress is a
+        // typed `accept-partial` failure naming the slots still missing
+        // (the original error kept as `cause`); no progress at all leaves
+        // the original error untouched — there is nothing to reconcile.
+        //
+        // Only a failure of the invite.accept call itself is reconciled
+        // (marked by `acceptOrganizationBundle`): the preflight errors it
+        // also throws (identity-mismatch, invalid-local-state, ...) describe
+        // a bundle that must not join however complete the local
+        // organization looks, so they surface untouched instead of being
+        // read into a success that also unpins the recovery identity.
+        if (isAcceptOriginError(e)) {
+          try {
+            const freshOrg = reconstructOrganizations(
+              await clientApi.listProjects(),
+            ).find(org => org.organizationId === bundle.organizationId);
+
+            const accepted = SLOTS.flatMap(slot => {
+              const projectId =
+                freshOrg?.slots[slot] ?? preAcceptOrg?.slots[slot];
+              return projectId === undefined ? [] : [{slot, projectId}];
+            });
+            const missingSlots = SLOTS.filter(slot =>
+              accepted.every(entry => entry.slot !== slot),
+            );
+
+            if (missingSlots.length === 0) {
+              identityComplete = true;
+              // SPEC 8.6 ladder over the same two reads.
+              outcome = {
+                ok: true,
+                accepted,
+                activeProjectId:
+                  freshOrg?.slots.m ??
+                  preAcceptOrg?.slots.m ??
+                  freshOrg?.slots.a ??
+                  preAcceptOrg?.slots.a,
+              };
+            } else if (accepted.length > 0) {
+              outcome = {
+                ok: false,
+                error: new OrganizationOperationError(
+                  'accept-partial',
+                  `the accept ended before completing: slots ${missingSlots.join(', ')} are still missing (the joined slots may have completed despite the failure)`,
+                  {cause: e, missingSlots},
+                ),
+              };
+            } else {
+              outcome = {ok: false, error: e};
+            }
+          } catch {
+            // The reconciliation read failed too — the original error is all
+            // we know.
+            outcome = {ok: false, error: e};
+          }
+        } else {
+          outcome = {ok: false, error: e};
+        }
       }
 
       try {

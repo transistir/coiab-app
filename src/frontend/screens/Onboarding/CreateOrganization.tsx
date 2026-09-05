@@ -17,6 +17,8 @@ import {LoadingIndicator} from '../../sharedComponents/LoadingIndicator';
 import {BLACK, LIGHT_GREY} from '../../lib/styles';
 import {AppStackParamsList} from '../../sharedTypes/navigation';
 import {useCreateOrganization} from '../../hooks/organization/useCreateOrganization';
+import {OrganizationOperationError} from '../../lib/organization/fanout';
+import {markerFor} from '../../lib/organization/marker';
 
 const m = defineMessages({
   title: {
@@ -49,14 +51,21 @@ const m = defineMessages({
 // SPEC 4.1/E3: the name's real bound is the minted marker's, not the
 // input's — `coiab-org:v1:<16-hex>:<slot>:<encoded-name>` must fit 60 chars,
 // and the encoded name can be much longer than the raw one (accents, emoji),
-// so the guard runs on `encodeURIComponent(name)`.
-const MARKER_OVERHEAD = 'coiab-org:v1:'.length + 16 + 1 + 1;
+// so the guard runs on `encodeURIComponent(name)`. The overhead is measured
+// off the real format rather than counted by hand (a hand count missed the
+// colon after the slot and let 61-char markers through), so a format change
+// cannot desynchronize them again.
+const MARKER_OVERHEAD = markerFor('0123456789abcdef', 'm', 'x').length - 1;
 const MARKER_MAX_LENGTH = 60;
+// The longest encoded name that still mints a 60-char marker.
+const MAX_ENCODED_NAME_LENGTH = MARKER_MAX_LENGTH - MARKER_OVERHEAD;
+
+function encodedNameLength(name: string): number {
+  return encodeURIComponent(name.trim()).length;
+}
 
 function isNameTooLong(name: string): boolean {
-  return (
-    MARKER_OVERHEAD + encodeURIComponent(name.trim()).length > MARKER_MAX_LENGTH
-  );
+  return encodedNameLength(name) > MAX_ENCODED_NAME_LENGTH;
 }
 
 function toError(error: unknown): Error {
@@ -78,6 +87,17 @@ export const CreateOrganization = ({
     if (status === 'success') {
       navigation.reset({index: 0, routes: [{name: 'Home'}]});
     } else if (status === 'error' && error !== undefined) {
+      // The fan-out refused to create a second organization while an
+      // incomplete one sits on the device (Bug 46): the provisioning screen
+      // owns that repair — it retries under the reconstructed id — so the
+      // error sheet would only dead-end a recoverable state.
+      if (
+        error instanceof OrganizationOperationError &&
+        error.code === 'incomplete-org-blocks-create'
+      ) {
+        navigation.navigate('OrganizationProvisioning');
+        return;
+      }
       navigation.navigate('ErrorBottomSheet', {error: toError(error)});
     }
   }, [status, error, navigation]);
@@ -115,7 +135,7 @@ export const CreateOrganization = ({
                 </BodyText>
               )}
               <BodyText variant="smallMeta" style={styles.counterText}>
-                {`${name.length}/${MARKER_MAX_LENGTH}`}
+                {`${encodedNameLength(name)}/${MAX_ENCODED_NAME_LENGTH}`}
               </BodyText>
             </View>
           </View>

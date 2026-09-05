@@ -360,4 +360,49 @@ describe('useCreateOrganization', () => {
 
     hook.unmount();
   });
+
+  test('a fresh create with an incomplete organization on the device fails closed', async () => {
+    // The Bug 46 restart: the errored attempt's organization id is gone, so
+    // a fresh `start` would mint a whole second organization (2×
+    // Monitoramento, 2× Alertas) next to the half-provisioned one. The
+    // fan-out must fail closed instead, and the screen routes the typed
+    // error to the provisioning screen (which retries the reconstructed id).
+    const {clientApi, createProject, projects} = createFakeCreateClient();
+    const interruptedOrganizationId = '0123456789abcdef';
+    await createProject({
+      name: 'Monitoramento',
+      projectDescription: markerFor(
+        interruptedOrganizationId,
+        'm',
+        'Org Antiga',
+      ),
+    });
+
+    const hook = await renderHook(() => useCreateOrganization(), {
+      wrapper: createWrapper(clientApi),
+    });
+
+    await waitFor(() => {
+      expect(hook.result.current).not.toBeNull();
+    });
+
+    await act(async () => {
+      await hook.result.current!.start('Org Nova');
+    });
+
+    expect(hook.result.current!.status).toBe('error');
+    const error = hook.result.current!.error;
+    expect(error).toBeInstanceOf(OrganizationOperationError);
+    expect((error as OrganizationOperationError).code).toBe(
+      'incomplete-org-blocks-create',
+    );
+    // Nothing was created: the half-provisioned org is untouched and no
+    // duplicate Monitoramento/Alertas pair appeared next to it.
+    expect(projects).toHaveLength(1);
+    expect(
+      parseMarker(projects[0]!.projectDescription ?? '')!.organizationId,
+    ).toBe(interruptedOrganizationId);
+
+    hook.unmount();
+  });
 });
