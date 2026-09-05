@@ -19,6 +19,15 @@ to `no-push`, so any write attempt fails loudly. Read-only operations
 and CI workflows may freely consume `digidem/*` GitHub Actions (e.g.
 `digidem/npm-lockfile-version`) — using a published Action is a read.
 
+### Repo of record for COIAB work
+
+All COIAB product implementation lives in **`transistir/coiab-app`** — create
+branches, commit, and push here (or in a worktree of this repo's branch). The
+`transistir/comapeo-mobile-1` fork exists for CoMapeo/upstream work only; it is
+never the implementation home for COIAB features, even when a spike started
+there. If work history left code only in the fork, mirror it into coiab-app
+first, then continue from coiab-app and stop using the fork for that feature.
+
 ### Upstream sync order
 
 When `digidem/comapeo-mobile` has new commits, they land in two steps, in
