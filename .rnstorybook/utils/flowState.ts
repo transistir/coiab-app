@@ -255,7 +255,11 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
         return;
       }
 
-      if (spec_.project === 'none' && activeProjectId) {
+      // With an organization spec present, the org axis owns the active
+      // project id (it sets Monitoramento below) — the project:'none' clear
+      // must not fight it, or the two axes would clear/set in an endless
+      // alternation and the state would never converge.
+      if (spec_.project === 'none' && activeProjectId && !spec_.organization) {
         setReady(null);
         clearActiveProjectId();
         return;
