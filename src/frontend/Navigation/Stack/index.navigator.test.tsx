@@ -1,3 +1,26 @@
+import type {NavigationContainerRef} from '@react-navigation/native';
+import type {AppStackParamsList} from '../../sharedTypes/navigation';
+
+let mockNavigation: NavigationContainerRef<AppStackParamsList>;
+jest.mock('../../../../tests/integration/helpers/navigation', () => {
+  const {AppNavigator} = require('../../AppNavigator');
+  return {
+    MockedAppNavigator: () => {
+      return (
+        <AppNavigator
+          permissionAsked
+          navigationIntegration={{
+            registerNavigationContainer: (ref: {
+              current: NavigationContainerRef<AppStackParamsList>;
+            }) => {
+              mockNavigation = ref.current;
+            },
+          }}
+        />
+      );
+    },
+  };
+});
 import {act, fireEvent, screen, waitFor} from '@testing-library/react-native';
 
 // The full navigator mounts the real Home tabs (MapScreen included) — the
@@ -149,6 +172,43 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       spy.mockRestore();
     }
   });
+
+  test('Home creation returns to Home after creating a second organization', async () => {
+    await orgSetup.renderNavigation();
+    expect(await screen.findByTestId('MAIN.map-screen')).toBeOnTheScreen();
+    const navigation = mockNavigation;
+    await act(async () => navigation.navigate('CreateOrganization'));
+    expect(screen.getByTestId('ORG.create-name-inp')).toBeOnTheScreen();
+    expect(navigation.getRootState().routes.map(route => route.name)).toEqual([
+      'Home',
+      'CreateOrganization',
+    ]);
+    expect(screen.queryByTestId('MAIN.map-screen')).not.toBeOnTheScreen();
+    await fireEvent.changeText(
+      screen.getByTestId('ORG.create-name-inp'),
+      'Second Org',
+    );
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+    await waitFor(async () =>
+      expect(await orgSetup.manager.listProjects()).toHaveLength(4),
+    );
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('MAIN.map-screen')).toBeOnTheScreen();
+        expect(
+          screen.queryByTestId('ORG.create-name-inp'),
+        ).not.toBeOnTheScreen();
+      },
+      {timeout: 5000},
+    );
+    expect(navigation.getRootState().routes.map(route => route.name)).toEqual([
+      'Home',
+    ]);
+    // Completion is consumed: opening another form must not dismiss it.
+    await act(async () => navigation.navigate('CreateOrganization'));
+    expect(screen.getByTestId('ORG.create-name-inp')).toBeOnTheScreen();
+    expect(screen.queryByTestId('MAIN.map-screen')).not.toBeOnTheScreen();
+  }, 15000);
 
   test('an unmarked project with an active id lands on the Success fork (none-with-projects)', async () => {
     // e.g. a legacy invite accept: a plain project, no Organization.

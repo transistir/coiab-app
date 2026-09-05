@@ -5,6 +5,7 @@ import {useClientApi} from '@comapeo/core-react';
 import {useActiveProjectIdActions} from '../../contexts/ActiveProjectIdStoreContext';
 import {createOrganization} from '../../lib/organization/fanout';
 import {projectsQueryKey} from '../../lib/organization/queryKeys';
+import {getOrganizationCreationCompletion} from './useOrganizationCreationCompletion';
 import {generateOrganizationId} from '../../lib/organization/orgId';
 
 export type CreateOrganizationStatus =
@@ -107,9 +108,11 @@ export function useCreateOrganization() {
       await queryClient.invalidateQueries({queryKey: projectsQueryKey});
       if (attemptRef.current === attempt) {
         if (createdProjectId) {
-          // Reconcile the list before switching the provider/screen set. The
-          // navigator owns the first onboarding reset if that switch unmounts
-          // this hook before its success state can reach the creation screen.
+          // Publish the handoff before switching providers: either entry path
+          // can lose its local success effect when the screen remounts.
+          getOrganizationCreationCompletion(queryClient).setState({
+            projectId: createdProjectId,
+          });
           // SPEC 8.6: every organization entry point lands on slot m.
           setActiveProjectId(createdProjectId);
           setStatus('success');

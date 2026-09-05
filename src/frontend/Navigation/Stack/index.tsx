@@ -33,6 +33,7 @@ import {InviteReceived} from '../../screens/Invites/InviteReceived';
 import {OrganizationInviteReceived} from '../../screens/Invites/OrganizationInviteReceived';
 import {InviteCanceled} from '../../screens/Invites/InviteCanceled';
 import {DeepLinkListener} from './DeepLinkListener';
+import {useOrganizationCreationCompletion} from '../../hooks/organization/useOrganizationCreationCompletion';
 
 export type NavigatorLayout = NonNullable<
   React.ComponentProps<typeof RootStack.Navigator>['layout']
@@ -83,29 +84,55 @@ export function getInitialRoute(
   return 'Home';
 }
 
-// Lives outside ActiveProjectProvider: adding that provider can remount the
-// creation screen and lose its local success effect during the first handoff.
-function OnboardingCompletion({
+// Lives outside ActiveProjectProvider: adding or changing the active project
+// can remount the creation screen and lose its local success effect.
+function OrganizationCompletion({
   state,
   navigation,
   ready,
+  activeProjectId,
 }: Pick<Parameters<NavigatorLayout>[0], 'state' | 'navigation'> & {
   ready: boolean;
+  activeProjectId: string | undefined;
 }) {
   const isOnboarding = state.routes.some(route => route.name === 'Success');
   const hasHome = state.routeNames.includes('Home');
+  const isCreating = state.routes.some(
+    route => route.name === 'CreateOrganization',
+  );
+  const {projectId: completedProjectId, store} =
+    useOrganizationCreationCompletion();
+  const creationComplete =
+    completedProjectId !== undefined && completedProjectId === activeProjectId;
+  // An existing ready organization must never dismiss a newly opened form.
+  const shouldComplete = isCreating ? creationComplete : isOnboarding;
   React.useEffect(() => {
-    if (!ready || !hasHome || !isOnboarding) return;
+    // A screen-local completion (e.g. provisioning) may already have reset
+    // the stack. Consume its handoff too, so a later form stays open.
+    if (!isCreating && completedProjectId !== undefined) {
+      store.setState({projectId: undefined});
+    }
+    if (!ready || !hasHome || !shouldComplete) return;
     // The layout effect runs before the navigator commits its changed screen
     // set. Dispatch after that commit so Home is registered by the router.
     let cancelled = false;
     Promise.resolve().then(() => {
-      if (!cancelled) navigation.reset({index: 0, routes: [{name: 'Home'}]});
+      if (cancelled) return;
+      navigation.reset({index: 0, routes: [{name: 'Home'}]});
+      store.setState({projectId: undefined});
     });
     return () => {
       cancelled = true;
     };
-  }, [ready, hasHome, isOnboarding, navigation]);
+  }, [
+    ready,
+    hasHome,
+    shouldComplete,
+    navigation,
+    store,
+    isCreating,
+    completedProjectId,
+  ]);
   return null;
 }
 
@@ -160,8 +187,9 @@ export const RootStackNavigator = () => {
     <SafeAreaView
       edges={['bottom']}
       style={{flex: 1, backgroundColor: MEDIUM_GREY}}>
-      <OnboardingCompletion
+      <OrganizationCompletion
         state={state}
+        activeProjectId={activeProjectId}
         navigation={navigation}
         ready={
           !!deviceInfo.name &&
@@ -250,9 +278,8 @@ export const RootStackNavigator = () => {
           {/* Keep fork/creation routes stable through the active-ID handoff.
               Pruning them makes StackRouter fall back to its original initial
               route (Success); it does not recompute the startup gate.
-              OnboardingCompletion resets the fork stack once the refreshed
-              organization and active slot agree. Home-initiated creation has
-              no Success route and retains its own completion effect. */}
+              OrganizationCompletion consumes the creation handoff for both
+              entry paths once the refreshed organization and active slot agree. */}
           <RootStack.Group
             screenOptions={{
               presentation: 'card',
