@@ -21,15 +21,15 @@ const m = defineMessages({
   },
   chooseProject: {
     id: '$1screens.DeviceNaming.Success.chooseProject',
-    defaultMessage: 'Choose from below to start your first project.',
+    defaultMessage: 'Choose from below to start with an Organization.',
   },
-  joinProject: {
-    id: '$1screens.DeviceNaming.Success.joinProject',
-    defaultMessage: 'Join a Project',
+  createOrg: {
+    id: '$1screens.DeviceNaming.Success.createOrg',
+    defaultMessage: 'Create Organization',
   },
-  mapOnYourOwn: {
-    id: '$1screens.DeviceNaming.Success.mapOnYourOwn',
-    defaultMessage: 'Map On Your Own',
+  joinOrg: {
+    id: '$1screens.DeviceNaming.Success.joinOrg',
+    defaultMessage: 'Join an Organization',
   },
 });
 export const Success = ({
@@ -60,12 +60,12 @@ export const Success = ({
 
       <View style={styles.actions}>
         <PrimaryButton
-          testID="ONBOARDING.join-project-btn"
+          testID="ONBOARDING.create-org-btn"
           fullSize
-          text={t(m.joinProject)}
+          text={t(m.createOrg)}
           iconPosition="left"
           renderIcon={({size}) => (
-            <ProjectParticipantIcon
+            <ProjectCoordinatorIcon
               width={size}
               height={size}
               color={WHITE}
@@ -73,16 +73,16 @@ export const Success = ({
             />
           )}
           onPress={() => {
-            navigation.navigate('JoinProjectIntro');
+            navigation.navigate('CreateOrganization');
           }}
         />
         <SecondaryButton
-          testID="ONBOARDING.map-on-your-own-btn"
+          testID="ONBOARDING.join-org-btn"
           fullSize
-          text={t(m.mapOnYourOwn)}
+          text={t(m.joinOrg)}
           iconPosition="left"
           renderIcon={({size}) => (
-            <ProjectCoordinatorIcon
+            <ProjectParticipantIcon
               width={size}
               height={size}
               color={COMAPEO_BLUE}
@@ -90,7 +90,7 @@ export const Success = ({
             />
           )}
           onPress={() => {
-            navigation.navigate('MapOnYourOwnIntro');
+            navigation.navigate('JoinOrganizationIntro');
           }}
         />
       </View>

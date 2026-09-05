@@ -129,10 +129,11 @@ describe('On QA Device require existence of a QA Device name', () => {
     );
     await user.press(screen.getByText('Save Name'));
 
-    // Gate is cleared — mock has device name but no project, so lands on Success screen.
+    // Gate is cleared — mock has device name but no project, so lands on the
+    // Success fork (org-first, SPEC 10.1).
     await waitFor(() => {
       expect(screen.queryByText('Set QA Device Name')).not.toBeOnTheScreen();
     });
-    expect(screen.getByText('Map On Your Own')).toBeOnTheScreen();
+    expect(screen.getByTestId('ONBOARDING.create-org-btn')).toBeOnTheScreen();
   });
 });

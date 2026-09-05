@@ -3,15 +3,24 @@ import type {MapeoManager} from '@comapeo/core';
 import type {ComapeoCoreClientApi} from '@comapeo/ipc';
 import {createManager, setUpIPC} from './core';
 import {createAppProvidersWrapper} from './react';
+import type {ActiveProjectIdStore} from '../../../src/frontend/contexts/ActiveProjectIdStoreContext';
 import {MockedAppNavigator} from './navigation';
 import {sleep} from '../../../src/frontend/lib/sleep';
+import {markerFor} from '../../../src/frontend/lib/organization/marker';
 import React from 'react';
+
+// The P3 onboarding gate (SPEC 10.1) requires an Organization before Home, so
+// the shared helper seeds the two internal projects of a fixed test org. The
+// default active project is the Monitoramento (slot m) project.
+const ORG_ID = '0123456789abcdef';
+const ORG_NAME = 'Test Org';
 
 export function setupIntegrationTest() {
   let manager: MapeoManager;
   let client: ComapeoCoreClientApi;
   let onTeardown: Array<() => unknown> = [];
   let projectId: string;
+  let alertasProjectId: string;
 
   beforeEach(async () => {
     onTeardown = [];
@@ -30,7 +39,14 @@ export function setupIntegrationTest() {
 
     await fastifyController.start();
     onTeardown.push(() => fastifyController.stop());
-    projectId = await client.createProject({name: undefined});
+    projectId = await client.createProject({
+      name: 'Monitoramento',
+      projectDescription: markerFor(ORG_ID, 'm', ORG_NAME),
+    });
+    alertasProjectId = await client.createProject({
+      name: 'Alertas',
+      projectDescription: markerFor(ORG_ID, 'a', ORG_NAME),
+    });
   });
 
   afterEach(async () => {
@@ -70,6 +86,15 @@ export function setupIntegrationTest() {
     get projectId() {
       return projectId;
     },
+    get alertasProjectId() {
+      return alertasProjectId;
+    },
+    get orgId() {
+      return ORG_ID;
+    },
+    get orgName() {
+      return ORG_NAME;
+    },
     get client() {
       return client;
     },
@@ -83,6 +108,7 @@ export function setupIntegrationTestWithoutProject() {
   let manager: MapeoManager;
   let client: ComapeoCoreClientApi;
   let onTeardown: Array<() => unknown> = [];
+  let activeProjectIdStore: ActiveProjectIdStore;
 
   beforeEach(async () => {
     onTeardown = [];
@@ -109,11 +135,14 @@ export function setupIntegrationTestWithoutProject() {
 
   const renderNavigationAsync = async ({
     isOnline = true,
-  }: Readonly<{isOnline?: boolean}> = {}) => {
+    activeProjectId,
+  }: Readonly<{isOnline?: boolean; activeProjectId?: string}> = {}) => {
     const appProviders = createAppProvidersWrapper({
       mapeoApi: client,
       isOnline,
+      activeProjectId,
     });
+    activeProjectIdStore = appProviders.activeProjectIdStore;
     onTeardown.push(appProviders.teardown);
 
     const {unmount} = await render(<MockedAppNavigator />, {
@@ -139,6 +168,15 @@ export function setupIntegrationTestWithoutProject() {
     },
     get manager() {
       return manager;
+    },
+    get orgId() {
+      return ORG_ID;
+    },
+    get orgName() {
+      return ORG_NAME;
+    },
+    get activeProjectId() {
+      return activeProjectIdStore?.instance.getState().projectId;
     },
   };
 }

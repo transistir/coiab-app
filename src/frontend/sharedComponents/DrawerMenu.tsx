@@ -33,6 +33,7 @@ import {useManyProjects} from '@comapeo/core-react';
 import {buttonStyles, PrimaryButton} from '../sharedComponents/Buttons.tsx';
 import DownArrow from '../images/DownArrow.svg';
 import {isLowStorage, calcUsedPercentage} from '../lib/storage';
+import {displayDescription} from '../lib/organization/marker';
 import {useEarlyAccessState} from '../contexts/EarlyAccessContext';
 
 const m = defineMessages({
@@ -102,6 +103,9 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
   const projectDetails = useProjectRoleAndDetails(projectId);
   const {role, projectColor, projectDescription, projectHeader} =
     projectDetails;
+  // SPEC 3.9/15: a marker description displays as the organization name,
+  // never the raw technical value.
+  const displayableDescription = displayDescription(projectDescription);
   const {data} = useStorageReadingQuery();
   const {freeBytes, totalBytes} = data;
   const isLow = isLowStorage(freeBytes);
@@ -169,11 +173,11 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
                       : formatMessage(m.participant)}
                 </BodyText>
               </View>
-              {(role === 'solo' || projectDescription) && (
+              {(role === 'solo' || displayableDescription) && (
                 <BodyText style={{color: NEW_DARK_GREY}}>
                   {role === 'solo'
                     ? formatMessage(m.mappingOnOwn)
-                    : projectDescription}
+                    : displayableDescription}
                 </BodyText>
               )}
               {allProjects.length > 1 && (

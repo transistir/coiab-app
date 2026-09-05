@@ -25,6 +25,7 @@ import {
 import {expoToCoreDeviceType} from '../../src/frontend/lib/deviceTypeMap';
 import {
   useSeedObservations,
+  useSeedOrganization,
   useSeedPointPreset,
   useSeedProject,
 } from './seedData';
@@ -39,6 +40,13 @@ export type FlowStateSpec = {
   /** `null` clears the device name (see Open Question 1 in the PRD — confirmed clearable). */
   deviceName?: string | null;
   project?: 'none' | {name: string; observations?: number};
+  /**
+   * Seed a two-slot Organization (markers in projectDescription, active
+   * project = Monitoramento). Alternative to `project` — presets that use it
+   * set `project: 'none'`. `slots: 'monitoramento'` seeds a one-slot
+   * (incomplete) Organization for the provisioning state.
+   */
+  organization?: {name: string; slots?: 'both' | 'monitoramento'};
   draftObservation?: DraftObservationSpec;
 };
 
@@ -77,6 +85,18 @@ export const FLOW_STATES = {
     deviceName: 'Test Device',
     project: {name: 'Storybook Project', observations: 5},
   },
+  namedWithOrganization: {
+    auth: 'authenticated',
+    deviceName: 'Test Device',
+    project: 'none',
+    organization: {name: 'Test Organization'},
+  },
+  orgProvisioning: {
+    auth: 'authenticated',
+    deviceName: 'Test Device',
+    project: 'none',
+    organization: {name: 'Test Organization', slots: 'monitoramento'},
+  },
 } satisfies Record<string, FlowStateSpec>;
 
 // 5 digits, not the reserved obscure code — see PasscodeInputSchema in
@@ -100,6 +120,12 @@ function buildKey(spec?: FlowStateSpec) {
         : project
           ? {name: project.name, observations: project.observations ?? 0}
           : null,
+    organization: spec.organization
+      ? {
+          name: spec.organization.name,
+          slots: spec.organization.slots ?? 'both',
+        }
+      : null,
     draftObservation: spec.draftObservation ?? null,
   });
 }
@@ -148,6 +174,12 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
   const projectName =
     typeof spec?.project === 'object' ? spec.project.name : '';
   const {ensure: ensureProject} = useSeedProject(projectName);
+
+  const orgSpec = spec?.organization;
+  const {ensure: ensureOrganization} = useSeedOrganization(
+    orgSpec?.name ?? '',
+    orgSpec?.slots ?? 'both',
+  );
 
   const observationsCount =
     typeof spec?.project === 'object' ? (spec.project.observations ?? 0) : 0;
@@ -223,7 +255,11 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
         return;
       }
 
-      if (spec_.project === 'none' && activeProjectId) {
+      // With an organization spec present, the org axis owns the active
+      // project id (it sets Monitoramento below) — the project:'none' clear
+      // must not fight it, or the two axes would clear/set in an endless
+      // alternation and the state would never converge.
+      if (spec_.project === 'none' && activeProjectId && !spec_.organization) {
         setReady(null);
         clearActiveProjectId();
         return;
@@ -244,6 +280,18 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
 
         observationIds = await ensureObservations(projectId);
         if (cancelled) return;
+      }
+
+      if (spec_.organization) {
+        setReady(null);
+        const monitoramentoId = await ensureOrganization();
+        if (cancelled) return;
+
+        if (monitoramentoId !== activeProjectId) {
+          setActiveProjectId(monitoramentoId);
+          return;
+        }
+        projectId = monitoramentoId;
       }
 
       const draftSpec = spec_.draftObservation;
@@ -340,6 +388,7 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
     deviceInfo.name,
     draftState,
     ensureObservations,
+    ensureOrganization,
     ensureProject,
     isReadyForCurrentSpec,
     passcode,

@@ -177,7 +177,14 @@ export async function inviteToProject(
   ]);
 }
 
-export const createTestServer = (): Promise<{
+export const createTestServer = (opts?: {
+  /**
+   * How many projects the server agrees to host (`allowedProjects` in
+   * `@comapeo/cloud`; the library default is 1). Tests that add the server
+   * to more than one project need to raise this.
+   */
+  allowedProjects?: number;
+}): Promise<{
   serverBaseUrl: string;
   close: () => void;
 }> =>
@@ -186,6 +193,10 @@ export const createTestServer = (): Promise<{
       require.resolve('../../../tests/integration/helpers/startTestCloudServer.mjs');
     const childProcess = spawn('node', [startServerPath], {
       stdio: ['ignore', 'pipe', 'inherit'],
+      env: {
+        ...process.env,
+        TEST_SERVER_ALLOWED_PROJECTS: String(opts?.allowedProjects ?? 1),
+      },
     });
 
     childProcess.unref();
