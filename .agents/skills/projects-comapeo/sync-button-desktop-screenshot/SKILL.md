@@ -5,6 +5,17 @@ description: Use when screenshotting a comapeo component with no story.
 
 # Screenshot a comapeo component without a Storybook story
 
+## Scope
+
+This is a historical desktop/cloud-app recipe, not the COIAB React Native
+capture path. Preserve the exact identifiers below for that environment;
+first confirm the target actually contains `src/app/styles.css`, Vite and the
+listed providers/store. Do not introduce desktop scaffolding into coiab-app
+to make this recipe fit. COIAB implementation belongs only in
+`transistir/coiab-app`; use `comapeo-storybook-capture` and
+`comapeo-storybook-capture-gate` for native UI evidence. Never write to
+`digidem/*`. Open every produced image before accepting it.
+
 ## Pattern
 
 1. Check for a `.stories.tsx` first; if none, build a fixture HTML page **inside the worktree root** (e.g. `index-shot.html`) so vite serves it and resolves `/src/...` imports.

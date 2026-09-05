@@ -16,7 +16,8 @@ For the capture pipeline's own mechanics and CI gotchas, see the
 ([`../comapeo-storybook-capture/SKILL.md`](../comapeo-storybook-capture/SKILL.md)).
 This skill is the PR-cycle wrapper around it.
 
-**Remote safety:** every `gh` write targets `transistir/coiab-app`.
+**Repo of record:** COIAB code, branches, PRs and runs belong only in
+`transistir/coiab-app`. **Remote safety:** every `gh` write targets that repo.
 See AGENTS.md — never write to `digidem/*`.
 
 **Screenshots mandatory when the PR touches `src/frontend/flows/`,
@@ -39,32 +40,37 @@ good".
 This is the deliverables stage. It runs **after** the PR's required checks
 (`all`, `frontend`) are green and the bot threads are resolved — a capture run
 costs 30-50 minutes, so do not spend one on a branch that CI has not accepted
-yet. Its output feeds the merge-readiness verdict (`pr-readiness-check`,
+yet. Poll the exact head's check-runs as described in `AGENTS.md`; zero
+checks or a pending state is not acceptance, and `ci.yml` cannot be manually
+dispatched. Independent fresh-context verification review is mandatory before
+readiness is declared; visual review does not replace code review.
+Its output feeds the merge-readiness verdict (`pr-readiness-check`,
 "Screenshots" dimension), the testing APK in step 7, and the Telegram delivery
 in step 8 below.
 
 ## 1. Preflight — seconds, before burning a run
 
 ```sh
-# Repo secrets: the workflow's first step consumes secrets.EXPO_TOKEN.
+# Repo secrets: Setup EAS consumes secrets.EXPO_TOKEN.
 gh secret list -R transistir/coiab-app     # EXPO_TOKEN must appear
 gh variable list -R transistir/coiab-app   # EAS_PROJECT_URL must appear
 
 npm run lint
 
 # Every manifest story id must resolve against the source story index.
-node -e "const {buildIndex}=require('@storybook/react-native/node');const fs=require('fs');const ids=fs.readFileSync('.rnstorybook/capture-manifest.tsv','utf8').trim().split('\n').map(l=>l.split('\t')[1]);buildIndex({configPath:'.rnstorybook'}).then(i=>{const m=ids.filter(id=>!(id in i.entries));console.log(m.length?'MISSING: '+m.join(', '):'ALL '+ids.length+' IDS PRESENT')})"
+node -e "const {buildIndex}=require('@storybook/react-native/node');const fs=require('fs');const ids=fs.readFileSync('.rnstorybook/capture-manifest.tsv','utf8').trim().split('\n').map(l=>l.split('\t')[1]);buildIndex({configPath:'.rnstorybook'}).then(i=>{const m=ids.filter(id=>!(id in i.entries));console.log(m.length?'MISSING: '+m.join(', '):'ALL '+ids.length+' IDS PRESENT');if(m.length)process.exitCode=1})"
 
 # Manifest shape: 5 tab-separated columns, unique ids, valid targets/delays.
-awk -F'\t' 'NF!=5{print "BAD COLS line "NR; bad=1} {if(seen[$2]++){print "DUP id "$2; bad=1} if($3 !~ /^(route:[A-Za-z][A-Za-z0-9]*|testID:[A-Za-z0-9][A-Za-z0-9._:-]*)$/){print "BAD target "NR": "$3; bad=1} if($4 !~ /^[0-9]+([.][0-9]+)?$/){print "BAD delay "NR; bad=1}} END{if(!bad) print "MANIFEST OK ("NR" rows)"}' .rnstorybook/capture-manifest.tsv
+awk -F'\t' 'NF!=5{print "BAD COLS line "NR; bad=1} {if(seen[$2]++){print "DUP id "$2; bad=1} if($3 !~ /^(route:[A-Za-z][A-Za-z0-9]*|testID:[A-Za-z0-9][A-Za-z0-9._:-]*)$/){print "BAD target "NR": "$3; bad=1} if($4 !~ /^[0-9]+([.][0-9]+)?$/){print "BAD delay "NR; bad=1}} END{if(!bad) print "MANIFEST OK ("NR" rows)"; exit bad}' .rnstorybook/capture-manifest.tsv
 ```
 
 Also confirm every route name used in an `initialState` is really registered
 in `Navigation/Stack/AppScreens.tsx`. `RootStackParamsList` declares at least
 one key (`Settings`) that is never registered and is not navigable.
 
-`EAS_PROJECT_URL` is set on the repo. **`EXPO_TOKEN` is not**, and no agent can
-mint one — it is an Expo account token. Without it the `Setup EAS` step fails
+At initial setup, `EAS_PROJECT_URL` was set and `EXPO_TOKEN` was missing;
+recheck rather than treating this as live inventory. No agent can mint an
+Expo account token. Without it the `Setup EAS` step fails
 and the whole run is wasted. Stop and hand the user the exact command:
 
 ```sh
@@ -80,43 +86,54 @@ step's toolchain builds.
 ```sh
 gh workflow run storybook-capture.yml -R transistir/coiab-app --ref <branch>
 sleep 15
-RUN=$(gh run list -R transistir/coiab-app --workflow storybook-capture.yml --limit 1 --json databaseId -q '.[0].databaseId')
+gh run list -R transistir/coiab-app --workflow storybook-capture.yml --branch <branch> --event workflow_dispatch --limit 5 --json databaseId,headSha,createdAt,status,url
+# Set RUN to the new run matching the intended SHA and dispatch time.
 ```
 
 Wait in the background rather than blocking a foreground call for the whole
 run:
 
 ```sh
-until [ "$(gh run view $RUN -R transistir/coiab-app --json status -q .status)" = "completed" ]; do sleep 120; done
+until [ "$(gh run view $RUN -R transistir/coiab-app --json status -q .status)" = "completed" ]; do sleep 30; done
 gh run view $RUN -R transistir/coiab-app --json conclusion -q .conclusion
 ```
 
 ## 3. If the run fails, classify before re-running
 
 Do not blindly retry, and do not assume a failure means the code is wrong.
-Download the partial artifact and look:
+Verify the artifact inventory (step 6), then download any partial artifact
+into a fresh directory and look:
 
 ```sh
-gh run download $RUN -R transistir/coiab-app -D ./caps
-gh run view $RUN -R transistir/coiab-app --log-failed | grep -iE "storybook-capture" | tail -25
+gh run download $RUN -R transistir/coiab-app -D ./caps/$RUN
+gh run view $RUN -R transistir/coiab-app --log-failed | rg -i "storybook-capture" | tail -25
 ```
 
-- **The last captured frame is correct but the run failed on the identity
-  check** — a logcat line was evicted, not a real defect. Re-run. Look for
-  the retained `*.failure-reactnative-logcat.txt` next to the frame.
-- **Repeated ANR dialogs in the log** — emulator resource pressure. Re-run.
-- **A frame shows `FlowStatePlaceholder`, the wrong screen, or a readiness
-  timeout** — a real defect in the story or its flow state. Fix it.
+- **Correct frame, failed identity check** — inspect retained
+  `*.failure-reactnative-logcat.txt`; log eviction is a known cause, not a
+  diagnosis to assume from the image alone.
+- **Repeated ANR dialogs** — emulator resource pressure may justify a retry.
+- **Wrong screen or `FlowStatePlaceholder`** — fix the story/flow defect.
+- **Readiness timeout with the correct final screen** — inspect the failure
+  screenshot, UI dump and logcat before blaming app state. Three same-row
+  failures showed `onActivityRestartAttempt` mid-wait despite correct frames.
 
-Retry budget: 2. If three runs fail the same way at the same position, stop
-and report rather than burning more cycles.
+Retry budget: two retries (three runs total) for an unchanged failure. A
+documented flake with N same-position failures and correct frames is grounds
+to stop and escalate; do not spend further CI hours without a new diagnosis
+or intervention. Report N, run URLs/SHAs, manifest row/story id, failing gate,
+reviewed diagnostic frames, relevant logcat timestamps and UI dumps, plus
+uncaptured rows. This is a partial/blocked capture verdict, never a pass.
+Artifact-loss rebuilds also need a bound: one replacement, then escalate if
+its artifact is absent too.
 
 ## 4. Vision review — every frame, not a sample
 
 ```sh
-gh run download $RUN -R transistir/coiab-app -D ./caps
-D=$(find ./caps -name captures.tsv | head -1 | xargs dirname)
-find "$D" -name '*.png' | wc -l          # must equal the manifest row count
+gh run download $RUN -R transistir/coiab-app -D ./caps/$RUN
+D=$(find ./caps/$RUN -name captures.tsv | head -1 | xargs dirname)
+awk 'END {print NR-1}' "$D/captures.tsv" # must equal the manifest row count
+node scripts/storybook-report.mjs "$D"    # validates ledger and referenced PNGs
 find "$D" -name '*failure*'              # must be empty
 awk -F'\t' 'NR>1{print $1, $3, $6}' "$D/captures.tsv"
 ```
@@ -153,13 +170,23 @@ have not actually looked at.
 
 ## 6. Comment on the PR
 
-Only after the frames pass review. Include the artifact download link —
+Post a pass only after every frame passes review; an escalation comment must
+clearly state partial/blocked status and missing coverage. Comment only when
+posting to the PR is authorized by the task. Before sharing any artifact link,
+verify the inventory again and successfully download the expected artifact.
+Upload-success logs are not proof: the API has returned 404 for artifacts
+that logs claimed were uploaded. Require `total_count >= 1` and an expected,
+unexpired entry. If missing, re-dispatch the producing build (step 2), verify
+its SHA and replacement artifact, and review that run's frames. Never reuse
+the vanished artifact's link. Include the verified download link —
 `https://github.com/transistir/coiab-app/actions/runs/<RUN>/artifacts/<ARTIFACT_ID>`:
 
 ```sh
-ART=$(gh api repos/transistir/coiab-app/actions/runs/$RUN/artifacts -q '.artifacts[0].id')
-NAME=$(gh api repos/transistir/coiab-app/actions/runs/$RUN/artifacts -q '.artifacts[0].name')
-gh pr comment <PR> -R transistir/coiab-app --body "..."
+gh api repos/transistir/coiab-app/actions/runs/$RUN/artifacts \
+  --jq '{total_count, artifacts: [.artifacts[] | {id, name, expired}]}'
+# Set ART and NAME from the expected unexpired entry, not blindly artifacts[0].
+gh run download $RUN -R transistir/coiab-app -n "$NAME" -D ./verified-caps/$RUN
+gh pr comment <PR> -R transistir/coiab-app --body-file <review-comment.md>
 ```
 
 The comment must state:
@@ -210,7 +237,7 @@ eas build:view <BUILD_ID> --json | jq -r '.artifacts.buildUrl'
 
 The RC path consumes:
 
-| Name | Kind | Status today |
+| Name | Kind | Initial setup status (recheck) |
 |---|---|---|
 | `EXPO_TOKEN` | secret | **missing** |
 | `RELEASE_BOT_PRIVATE_KEY` | secret | **missing** |
@@ -232,19 +259,22 @@ gh secret set RELEASE_BOT_PRIVATE_KEY -R transistir/coiab-app --body "$(cat <app
 gh variable set RELEASE_BOT_APP_ID -R transistir/coiab-app --body '<github-app-id>'
 ```
 
-### ⚠️ AUTHORIZATION GATE — the `release/**` PR is a SECOND PR
+### Authorization gate — the `release/**` PR is a second PR
 
 **"implemente issue X" authorizes exactly one branch and one PR to `develop`. It
 does NOT cover the `release/**` PR.** That PR is a separate, outward-facing
 mutation that starts a cloud build under the project's Expo account.
 
-**Ask the human and get an explicit yes before creating it.** No inference from
-"they asked for an APK earlier", from a green PR, or from silence. If consent is
-not given, report the APK as not built and say what is waiting on approval.
+Check existing session authorization before creating it. If the release PR
+and its build are already authorized, proceed; otherwise ask once, explaining
+that this second PR starts an Expo cloud build. A green PR or silence does not
+grant consent. Report an unbuilt APK and the missing authorization accurately.
 
 ## 8. Deliver to the Telegram group — the agent posts, not CI
 
-No workflow posts to Telegram, and none should. **Delivery is the orchestrating
+Use this delivery path only when the user explicitly authorized sending to
+that group and the Hermes transport is available; otherwise report local
+artifacts to the user. No workflow posts to Telegram, and none should. **Delivery is the orchestrating
 agent's job, never a GitHub Actions step.** The Hermes agent running profile
 `coiab-app` posts to the Telegram group **"CoiabApp Group"**
 (`-1004294281081`) by writing `MEDIA:/absolute/path` lines in its reply:

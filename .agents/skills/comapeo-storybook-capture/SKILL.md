@@ -11,6 +11,9 @@ Android app, or collecting the documented user-flow screenshots.
 **Screenshots mandatory when the PR touches `src/frontend/flows/`,
 `.rnstorybook/`, or UI components; explicitly N/A with reason otherwise.**
 
+Read `AGENTS.md` first. COIAB implementation and capture runs belong only in
+`transistir/coiab-app`; the CoMapeo fork is for general CoMapeo/upstream work.
+
 ## Golden path
 
 1. Generate the Storybook index:
@@ -33,17 +36,22 @@ Android app, or collecting the documented user-flow screenshots.
    readiness checks:
 
    ```sh
-   STORYBOOK_PACKAGE_ID=com.comapeo.dev \
+   STORYBOOK_PACKAGE_ID=org.coiab.dev \
      scripts/storybook-capture-all.sh /tmp/storybook-captures-<run>
    node scripts/storybook-report.mjs /tmp/storybook-captures-<run>
    ```
 
+   Use the installed package: local development is `org.coiab.dev`; CI's
+   Storybook profile uses `org.coiab.rc`. The wrapper's historical default,
+   `com.comapeo.dev`, does not match COIAB, so set the override explicitly.
+
 4. A usable run contains one PNG per manifest row — never a fixed number, the
    manifest is the source of truth and grows — plus `captures.tsv`, the flow
-   reports, `cold-start-provenance.txt`, and the leaf-recovery PNG:
+   reports and `cold-start-provenance.txt`. Historical acceptance also included
+   a leaf-recovery PNG; the current wrapper does not generate that extra PNG:
 
    ```sh
-   find /tmp/storybook-captures-<run> -name '*.png' | wc -l
+   awk 'END {print NR-1}' /tmp/storybook-captures-<run>/captures.tsv
    wc -l < .rnstorybook/capture-manifest.tsv   # must match
    ```
 
@@ -68,7 +76,9 @@ Android app, or collecting the documented user-flow screenshots.
 - A capture that stops at a current native readiness check is partial, even
   when earlier PNGs exist. Preserve that directory and record the first
   failing story; do not report it as a complete generation. A generation is
-  complete only when its PNG count equals the manifest row count.
+  complete only when every manifest row has a matching ledger entry and PNG,
+  and all gates pass. Count ledger rows excluding the header; auxiliary
+  recovery/failure PNGs must not inflate the coverage count.
 
 ## Known failure handling
 
@@ -93,8 +103,9 @@ gh secret list -R transistir/coiab-app     # EXPO_TOKEN must appear
 gh variable list -R transistir/coiab-app   # EAS_PROJECT_URL must appear
 ```
 
-`EAS_PROJECT_URL` is set. **`EXPO_TOKEN` is not**, and an agent cannot mint one
-— it is an Expo account token. When it is missing, stop and give the user the
+Initial setup had `EAS_PROJECT_URL` set and `EXPO_TOKEN` missing. Recheck the
+live inventory; successful later runs may mean provisioning has changed.
+An agent cannot mint an Expo account token. When it is missing, give the user the
 exact command:
 
 ```sh
@@ -116,7 +127,7 @@ workflow.
 
 The GitHub-Actions paths that do produce an installable APK, and what each needs:
 
-| Path | Trigger | Produces | Missing today |
+| Path | Trigger | Produces | Initial setup gap (recheck) |
 |---|---|---|---|
 | `build-rc.yml` | opening a PR whose base matches `release/**`, or `/build-rc` on such a PR via `build-bot.yml` | EAS **cloud** build, `release-candidate` profile → `.apk`, link commented on the PR | `EXPO_TOKEN`, `RELEASE_BOT_APP_ID` (var), `RELEASE_BOT_PRIVATE_KEY` (secret) |
 | `build-release.yml` | merging a PR into `release/**` | production build + GitHub Release | same |
@@ -189,13 +200,14 @@ before re-debugging from scratch:
 
 A full capture run costs roughly 30-50 minutes (a local EAS build plus one
 emulator interaction per manifest row; 12 rows ran in ~29 min, 38 rows fits
-inside a 90-minute job). Both offline checks below run in seconds and catch
+inside a 90-minute job). The story-index check below and the manifest-shape check in the gate skill run
+in seconds and catch
 the mistakes that otherwise fail the run at row 1:
 
 ```sh
 # Every manifest story id must resolve against the source story index —
 # the same check the capture wrapper runs before it touches a device.
-node -e "const {buildIndex}=require('@storybook/react-native/node');const fs=require('fs');const ids=fs.readFileSync('.rnstorybook/capture-manifest.tsv','utf8').trim().split('\n').map(l=>l.split('\t')[1]);buildIndex({configPath:'.rnstorybook'}).then(i=>{const m=ids.filter(id=>!(id in i.entries));console.log(m.length?'MISSING: '+m.join(', '):'ALL '+ids.length+' IDS PRESENT')})"
+node -e "const {buildIndex}=require('@storybook/react-native/node');const fs=require('fs');const ids=fs.readFileSync('.rnstorybook/capture-manifest.tsv','utf8').trim().split('\n').map(l=>l.split('\t')[1]);buildIndex({configPath:'.rnstorybook'}).then(i=>{const m=ids.filter(id=>!(id in i.entries));console.log(m.length?'MISSING: '+m.join(', '):'ALL '+ids.length+' IDS PRESENT');if(m.length)process.exitCode=1})"
 ```
 
 A runtime story id is the kebab-cased meta `title` path plus `--` plus the
@@ -223,6 +235,22 @@ wrong without looking at all of them:
 Note also that some frames are legitimately not byte-stable between runs, so
 compare those by eye rather than by size: any screen showing native
 device-info values (About) or live location (the coordinate-format examples).
+
+## Artifact delivery and repeated readiness flakes
+
+Before delivering a link, query
+`gh api repos/transistir/coiab-app/actions/runs/$RUN/artifacts` and require
+`total_count >= 1`, the expected unexpired capture artifact, and a successful
+download. Upload logs have claimed success while the artifact API returned
+404. Re-dispatch the build on the intended branch/SHA if the artifact is
+absent, then verify the replacement; stop if it also disappears.
+
+A readiness timeout alone does not prove a story defect. Three runs failed
+at the same row with the final screen correct; logcat showed
+`onActivityRestartAttempt` mid-wait. Preserve the diagnostic PNG, UI dump,
+logcat and row identity. Follow the gate skill's two-retry budget: repeated
+same-position failures with correct frames warrant escalation with evidence,
+not unlimited reruns or a passing verdict.
 
 ## Provenance
 
