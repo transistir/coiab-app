@@ -1,4 +1,4 @@
-import {screen} from '@testing-library/react-native';
+import {act, fireEvent, screen, waitFor} from '@testing-library/react-native';
 
 // The full navigator mounts the real Home tabs (MapScreen included) — the
 // map stack is stubbed exactly like MapScreen.lowStorage.test.tsx does.
@@ -96,6 +96,59 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
   // beforeEach/afterEach that boot and tear down a real core manager per test.
   const freshSetup = setupIntegrationTestWithoutProject();
   const orgSetup = setupIntegrationTest();
+
+  test('creation with a delayed project refresh stays on Home without offering creation again', async () => {
+    await freshSetup.renderNavigationAsync();
+    await fireEvent.press(
+      await screen.findByTestId('ONBOARDING.create-org-btn'),
+    );
+    await fireEvent.changeText(
+      screen.getByTestId('ORG.create-name-inp'),
+      'New Org',
+    );
+
+    const listProjects = freshSetup.manager.listProjects.bind(
+      freshSetup.manager,
+    );
+    let releaseRefresh!: () => void;
+    const refreshGate = new Promise<void>(resolve => {
+      releaseRefresh = resolve;
+    });
+    let refreshWaiting = false;
+    const spy = jest
+      .spyOn(freshSetup.manager, 'listProjects')
+      .mockImplementation(async () => {
+        const projects = await listProjects();
+        if (projects.length === 2) {
+          refreshWaiting = true;
+          await refreshGate;
+        }
+        return projects;
+      });
+    try {
+      await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+      await waitFor(() => expect(refreshWaiting).toBe(true));
+      expect(await listProjects()).toHaveLength(2);
+      expect(screen.getByText('Creating Organization…')).toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('ONBOARDING.create-org-btn'),
+      ).not.toBeOnTheScreen();
+      await act(async () => releaseRefresh());
+      expect(await screen.findByTestId('MAIN.map-screen')).toBeOnTheScreen();
+      await act(async () => {
+        await listProjects();
+      });
+      expect(screen.getByTestId('MAIN.map-screen')).toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('ONBOARDING.create-org-btn'),
+      ).not.toBeOnTheScreen();
+      expect(screen.queryByTestId('ORG.create-btn')).not.toBeOnTheScreen();
+      expect(await listProjects()).toHaveLength(2);
+    } finally {
+      releaseRefresh();
+      spy.mockRestore();
+    }
+  });
 
   test('an unmarked project with an active id lands on the Success fork (none-with-projects)', async () => {
     // e.g. a legacy invite accept: a plain project, no Organization.

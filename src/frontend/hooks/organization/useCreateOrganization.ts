@@ -86,15 +86,13 @@ export function useCreateOrganization() {
     setStatus('creating');
     setError(undefined);
 
+    let createdProjectId: string | undefined;
     try {
       const {projectIds} = await createOrganization(clientApi, {
         organizationId: nextOrganizationId,
         organizationName,
       });
-      if (attemptRef.current !== attempt) return;
-      // SPEC 8.6: every organization entry point lands on slot m.
-      setActiveProjectId(projectIds.m);
-      setStatus('success');
+      createdProjectId = projectIds.m;
     } catch (e) {
       if (attemptRef.current !== attempt) return;
       setError(e);
@@ -108,6 +106,14 @@ export function useCreateOrganization() {
       // token-gated; only the React state above is.
       await queryClient.invalidateQueries({queryKey: projectsQueryKey});
       if (attemptRef.current === attempt) {
+        if (createdProjectId) {
+          // Reconcile the list before switching the provider/screen set. The
+          // navigator owns the first onboarding reset if that switch unmounts
+          // this hook before its success state can reach the creation screen.
+          // SPEC 8.6: every organization entry point lands on slot m.
+          setActiveProjectId(createdProjectId);
+          setStatus('success');
+        }
         busyRef.current = false;
       }
     }

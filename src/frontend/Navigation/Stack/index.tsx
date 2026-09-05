@@ -83,6 +83,32 @@ export function getInitialRoute(
   return 'Home';
 }
 
+// Lives outside ActiveProjectProvider: adding that provider can remount the
+// creation screen and lose its local success effect during the first handoff.
+function OnboardingCompletion({
+  state,
+  navigation,
+  ready,
+}: Pick<Parameters<NavigatorLayout>[0], 'state' | 'navigation'> & {
+  ready: boolean;
+}) {
+  const isOnboarding = state.routes.some(route => route.name === 'Success');
+  const hasHome = state.routeNames.includes('Home');
+  React.useEffect(() => {
+    if (!ready || !hasHome || !isOnboarding) return;
+    // The layout effect runs before the navigator commits its changed screen
+    // set. Dispatch after that commit so Home is registered by the router.
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (!cancelled) navigation.reset({index: 0, routes: [{name: 'Home'}]});
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, hasHome, isOnboarding, navigation]);
+  return null;
+}
+
 export const RootStackNavigator = () => {
   const security = useAuthContext();
   const {data: deviceInfo} = useOwnDeviceInfo();
@@ -112,7 +138,7 @@ export const RootStackNavigator = () => {
   // getInitialRoute stays pure; this effect corrects the stored id to the
   // primary organization's Monitoramento slot instead.
   React.useEffect(() => {
-    if (orgStatus !== 'ready' || !activeProjectId) return;
+    if (orgStatus !== 'ready') return;
     const activeIsReadyOrgSlot = organizations.some(
       org =>
         org.state === 'ready' &&
@@ -134,6 +160,19 @@ export const RootStackNavigator = () => {
     <SafeAreaView
       edges={['bottom']}
       style={{flex: 1, backgroundColor: MEDIUM_GREY}}>
+      <OnboardingCompletion
+        state={state}
+        navigation={navigation}
+        ready={
+          !!deviceInfo.name &&
+          organizations.some(
+            org =>
+              org.state === 'ready' &&
+              (org.slots.m === activeProjectId ||
+                org.slots.a === activeProjectId),
+          )
+        }
+      />
       <React.Suspense fallback={<FullScreenCenteredLoader />}>
         <PendingInvitesListener
           currentRouteName={state.routes[state.index]?.name}
@@ -208,17 +247,13 @@ export const RootStackNavigator = () => {
           {!deviceInfo.name || !activeProjectId
             ? createOnboardingScreens({intl: formatMessage})
             : createAppScreens({intl: formatMessage})}
-          {/* Organization-fork screens, shared between the onboarding and app
-              screen sets (the gate can land on any of them with or without an
-              active project, SPEC 10.1): normal cards, registered
-              unconditionally. The navigationKey remounts the group when the
-              screen set flips (active project appears/disappears), so stale
-              routes on these screens are pruned and the gate re-decides —
-              same mechanic the shared invite-sheet group relies on. */}
+          {/* Keep fork/creation routes stable through the active-ID handoff.
+              Pruning them makes StackRouter fall back to its original initial
+              route (Success); it does not recompute the startup gate.
+              OnboardingCompletion resets the fork stack once the refreshed
+              organization and active slot agree. Home-initiated creation has
+              no Success route and retains its own completion effect. */}
           <RootStack.Group
-            navigationKey={
-              activeProjectId ? 'org-screens-app' : 'org-screens-onboarding'
-            }
             screenOptions={{
               presentation: 'card',
               headerShown: false,
