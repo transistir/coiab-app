@@ -1,0 +1,117 @@
+# Summary:
+#
+# Builds the APK on GitHub CI with a single dispatched command — the
+# canonical, reproducible way to get a COIAB App candidate APK
+# (transistir/coiab-app#13).
+#
+# Triggers:
+#
+# - Manual dispatch (`workflow_dispatch`)
+#
+# Effects:
+#
+# - Builds an Android APK with `eas build --local` on the GitHub runner,
+#   using the same mechanics as the proven Storybook Flow Capture build
+#   (no EAS cloud build, no local toolchain required).
+# - Uploads the APK as a workflow artifact.
+#
+# Canonical invocation (see docs/ApkBuild.md) — coiab-app is the working
+# repo; until this workflow syncs there, dispatch it on the fork:
+#
+#   gh workflow run build-apk.yml --repo transistir/coiab-app --ref develop
+#   gh workflow run build-apk.yml --repo transistir/comapeo-mobile-1 --ref develop
+name: Build APK
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'eas.json build profile (APK-producing only)'
+        required: false
+        default: 'release-candidate'
+        type: choice
+        options:
+          - release-candidate
+          - pre-release
+      include_x86_64:
+        description: 'Also build x86_64 ABI (for local emulator testing)'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  apk:
+    name: Build APK (EAS local)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      EAS_PROFILE: ${{ inputs.profile || 'release-candidate' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Free up space
+        run: |
+          echo "Disk space before cleanup:"
+          df -h
+          sudo rm -rf /usr/local/.ghcup
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo apt-get clean
+          echo "Disk space after cleanup:"
+          df -h
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The EAS prebuild generates android/gradle.properties with
+      # -XX:MaxMetaspaceSize=512m, and the Gradle daemon died in a metaspace
+      # OOM loop with that cap (run 33746516366). GRADLE_USER_HOME properties
+      # take precedence over the project-root file, so raise the cap here
+      # instead of tracking a generated file.
+      - name: Give the Gradle daemon metaspace headroom
+        run: |
+          mkdir -p "$HOME/.gradle"
+          printf 'org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m\n' >> "$HOME/.gradle/gradle.properties"
+
+      - name: Build APK
+        env:
+          SENTRY_DISABLE_AUTO_UPLOAD: 'true'
+          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
+          COMAPEO_METRICS_URL: ${{ vars.COMAPEO_METRICS_URL }}
+          COMAPEO_METRICS_API_KEY: ${{ secrets.COMAPEO_METRICS_API_KEY }}
+          INCLUDE_X86_64: ${{ inputs.include_x86_64 && '1' || '0' }}
+        run: |
+          npm run extract-messages
+          eas build --platform android --profile "$EAS_PROFILE" --local --non-interactive
+
+      - name: Verify APK exists
+        run: |
+          find . -maxdepth 1 -name 'build-*.apk' -printf '%T@ %p\n' | sort -rn | head -n 1
+          test -n "$(find . -maxdepth 1 -name 'build-*.apk' -print -quit)"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coiab-apk
+          path: build-*.apk
+          if-no-files-found: error
+          retention-days: 30
