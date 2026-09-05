@@ -19,6 +19,10 @@ This skill is the PR-cycle wrapper around it.
 **Remote safety:** every `gh` write targets `transistir/coiab-app`.
 See AGENTS.md — never write to `digidem/*`.
 
+**Screenshots mandatory when the PR touches `src/frontend/flows/`,
+`.rnstorybook/`, or UI components; explicitly N/A with reason otherwise.** State
+which case applies before deciding whether to spend a capture run.
+
 ## Why the vision pass is the point
 
 The capture pipeline's readiness checks assert that a story's marker and its
@@ -30,9 +34,22 @@ gate was green. The only thing that caught it was opening the images.
 Treat a green run as "the pipeline worked", never as "the screenshots are
 good".
 
+## 0. Where this sits in the issue→PR pipeline
+
+This is the deliverables stage. It runs **after** the PR's required checks
+(`all`, `frontend`) are green and the bot threads are resolved — a capture run
+costs 30-50 minutes, so do not spend one on a branch that CI has not accepted
+yet. Its output feeds the merge-readiness verdict (`pr-readiness-check`,
+"Screenshots" dimension), the testing APK in step 7, and the Telegram delivery
+in step 8 below.
+
 ## 1. Preflight — seconds, before burning a run
 
 ```sh
+# Repo secrets: the workflow's first step consumes secrets.EXPO_TOKEN.
+gh secret list -R transistir/coiab-app     # EXPO_TOKEN must appear
+gh variable list -R transistir/coiab-app   # EAS_PROJECT_URL must appear
+
 npm run lint
 
 # Every manifest story id must resolve against the source story index.
@@ -45,6 +62,18 @@ awk -F'\t' 'NF!=5{print "BAD COLS line "NR; bad=1} {if(seen[$2]++){print "DUP id
 Also confirm every route name used in an `initialState` is really registered
 in `Navigation/Stack/AppScreens.tsx`. `RootStackParamsList` declares at least
 one key (`Settings`) that is never registered and is not navigable.
+
+`EAS_PROJECT_URL` is set on the repo. **`EXPO_TOKEN` is not**, and no agent can
+mint one — it is an Expo account token. Without it the `Setup EAS` step fails
+and the whole run is wasted. Stop and hand the user the exact command:
+
+```sh
+gh secret set EXPO_TOKEN -R transistir/coiab-app --body '<expo-access-token>'
+# token from https://expo.dev/accounts/joarez/settings/access-tokens
+```
+
+Do not edit the workflow to skip the EAS step — the capture needs the APK that
+step's toolchain builds.
 
 ## 2. Trigger and wait
 
@@ -144,3 +173,116 @@ The comment must state:
 - If earlier runs failed, what they were and why they were not regressions.
 
 A verdict with no stated limits is a weaker signal than one that names them.
+
+## 7. Testing APK (release-candidate)
+
+**The deliverable APK is the release-candidate build. There is no other
+installable APK from CI.**
+
+The `test` profile builds are uploaded straight to BrowserStack by
+`e2e-appium-browserstack.yml` and produce **no downloadable APK** — never
+promise one from that path. The storybook capture workflow builds an APK on the
+runner but uploads only `storybook-captures/`.
+
+### The path
+
+1. A PR whose **base matches `release/**`** is opened (created from the merged
+   develop PR's branch, or from `develop`).
+2. `build-rc.yml` runs **automatically** on that PR. It has **no
+   `workflow_dispatch`** — you cannot dispatch it. The other entry point is an
+   admin commenting the `/build-rc` trigger (`BUILD_COMMENT_TRIGGER`) on such a
+   PR, which `build-bot.yml` picks up.
+3. It starts an EAS `release-candidate` cloud build and comments the **EAS
+   build-page URL** on the PR. **No APK artifact is uploaded to GitHub.**
+4. Get the download URL from EAS, taking `BUILD_ID` from the run logs or from
+   the EAS page URL the bot commented:
+
+```sh
+gh run list -R transistir/coiab-app --workflow build-rc.yml --limit 3 \
+  --json databaseId,headBranch,conclusion,url
+
+eas build:view <BUILD_ID> --json | jq -r '.artifacts.buildUrl'
+```
+
+`.artifacts.buildUrl` is the APK download URL. That is the link to deliver.
+
+### Required secrets and variables
+
+The RC path consumes:
+
+| Name | Kind | Status today |
+|---|---|---|
+| `EXPO_TOKEN` | secret | **missing** |
+| `RELEASE_BOT_PRIVATE_KEY` | secret | **missing** |
+| `RELEASE_BOT_APP_ID` | variable | **missing** |
+| `EAS_PROJECT_URL` | variable | set |
+
+(`RELEASE_BOT_USER_ID` is only used by `build-bot.yml`'s `workflow_call` path,
+for the release-notes commit identity.)
+
+Check, and **hard stop** if any is missing — do not open the PR, do not edit the
+workflow to route around it. Hand the user the exact commands:
+
+```sh
+gh secret list -R transistir/coiab-app
+gh variable list -R transistir/coiab-app
+
+gh secret set EXPO_TOKEN -R transistir/coiab-app --body '<expo-access-token>'
+gh secret set RELEASE_BOT_PRIVATE_KEY -R transistir/coiab-app --body "$(cat <app-private-key.pem>)"
+gh variable set RELEASE_BOT_APP_ID -R transistir/coiab-app --body '<github-app-id>'
+```
+
+### ⚠️ AUTHORIZATION GATE — the `release/**` PR is a SECOND PR
+
+**"implemente issue X" authorizes exactly one branch and one PR to `develop`. It
+does NOT cover the `release/**` PR.** That PR is a separate, outward-facing
+mutation that starts a cloud build under the project's Expo account.
+
+**Ask the human and get an explicit yes before creating it.** No inference from
+"they asked for an APK earlier", from a green PR, or from silence. If consent is
+not given, report the APK as not built and say what is waiting on approval.
+
+## 8. Deliver to the Telegram group — the agent posts, not CI
+
+No workflow posts to Telegram, and none should. **Delivery is the orchestrating
+agent's job, never a GitHub Actions step.** The Hermes agent running profile
+`coiab-app` posts to the Telegram group **"CoiabApp Group"**
+(`-1004294281081`) by writing `MEDIA:/absolute/path` lines in its reply:
+
+```
+MEDIA:/absolute/path/to/coiab-rc.apk        # .apk  → sent as a document
+MEDIA:/absolute/path/to/frames/01-home.png  # .png  → sent as a photo
+MEDIA:/absolute/path/to/frames/02-map.png
+```
+
+One `MEDIA:` line per file, absolute paths only. `.apk` goes as a document,
+`.png` as photos. Send once, after the PR comment exists, so the message and the
+audit trail on the PR agree.
+
+Alongside the media, the message carries:
+
+1. Issue and PR number, with the **PR link**.
+2. Required-check status (`all`, `frontend`) and the **run link**.
+3. The **EAS build URL** and the APK download URL from
+   `eas build:view <BUILD_ID> --json` (`.artifacts.buildUrl`). If no RC build
+   exists, say so plainly and name what is missing — a `release/**` PR that was
+   not authorized, or `EXPO_TOKEN` / `RELEASE_BOT_APP_ID` /
+   `RELEASE_BOT_PRIVATE_KEY` — rather than shipping a message that implies an
+   APK exists.
+4. **The relevant frames themselves** as `MEDIA:` lines — the screens the issue
+   actually changed, two or three of them. A group chat will not download a zip.
+   Keep the artifact link in the text as the full record.
+5. The frame count, the fact that they were reviewed by eye, and any limits that
+   were accepted.
+
+Attach images from the downloaded artifact directory (`$D/*.png`); do not
+re-host them anywhere else.
+
+**Delivery is confirmed only when the message actually appears in the group.** A
+send that returns nothing is not a delivery. On a send failure — flood control,
+"chat not found" — retry **once after 60 s**; if that also fails, save the
+artifact paths locally and report the failure with those paths. Never claim a
+delivery you did not see land.
+
+If the frames failed review, deliver that instead — what failed, at which row,
+and what is being fixed. A silent gate is worse than a bad one.
