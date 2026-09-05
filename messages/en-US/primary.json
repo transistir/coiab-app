@@ -707,6 +707,21 @@
   "$1screens.OrganizationInviteReceived.preparing": {
     "message": "Preparing invitation…"
   },
+  "$1screens.OrganizationProvisioning.cancel": {
+    "message": "Cancel"
+  },
+  "$1screens.OrganizationProvisioning.discardConfirmBody": {
+    "message": "The projects created on this device for this setup will be removed. Projects shared with other devices are not affected."
+  },
+  "$1screens.OrganizationProvisioning.discardConfirmTitle": {
+    "message": "Discard this Organization setup?"
+  },
+  "$1screens.OrganizationProvisioning.discardFailed": {
+    "message": "Something went wrong while discarding this setup. It was not fully removed — you can try again."
+  },
+  "$1screens.OrganizationProvisioning.discardSetup": {
+    "message": "Discard and start over"
+  },
   "$1screens.OrganizationProvisioning.finishSetup": {
     "message": "Finish setting up"
   },
@@ -715,6 +730,15 @@
   },
   "$1screens.OrganizationProvisioning.settingUp": {
     "message": "Setting up your Organization…"
+  },
+  "$1screens.OrganizationProvisioning.skippedNotCreatedHere": {
+    "message": "{projectName} was not created on this device, so it was kept."
+  },
+  "$1screens.OrganizationProvisioning.skippedShared": {
+    "message": "{projectName} is shared with other devices, so it was kept."
+  },
+  "$1screens.OrganizationProvisioning.skippedStale": {
+    "message": "{projectName} changed while it was being discarded, so it was kept."
   },
   "$1screens.PhotoPreviewModal.headerButtonText": {
     "message": "Delete Photo"
