@@ -8,6 +8,9 @@ description: Generate and verify CoMapeo React Native Storybook flow screenshots
 Use this skill when regenerating the Storybook bundle, launching the
 Android app, or collecting the documented user-flow screenshots.
 
+**Screenshots mandatory when the PR touches `src/frontend/flows/`,
+`.rnstorybook/`, or UI components; explicitly N/A with reason otherwise.**
+
 ## Golden path
 
 1. Generate the Storybook index:
@@ -78,6 +81,59 @@ Android app, or collecting the documented user-flow screenshots.
 - Do not treat a Storybook linking identity or historical route log alone as
   proof that the screenshot shows the target. The wrapper's current native
   marker/UI readiness checks must pass immediately around each screenshot.
+
+## CI preflight — repo secrets and variables
+
+`storybook-capture.yml` is `workflow_dispatch` only and its first real step,
+`Setup EAS`, consumes `secrets.EXPO_TOKEN`. Without that secret the run dies
+there, minutes in, having built nothing. Check before dispatching:
+
+```sh
+gh secret list -R transistir/coiab-app     # EXPO_TOKEN must appear
+gh variable list -R transistir/coiab-app   # EAS_PROJECT_URL must appear
+```
+
+`EAS_PROJECT_URL` is set. **`EXPO_TOKEN` is not**, and an agent cannot mint one
+— it is an Expo account token. When it is missing, stop and give the user the
+exact command:
+
+```sh
+gh secret set EXPO_TOKEN -R transistir/coiab-app --body '<expo-access-token>'
+# token from https://expo.dev/accounts/joarez/settings/access-tokens
+```
+
+Do not work around it by disabling the EAS step; the capture needs the APK that
+step's toolchain builds. A fresh fork starts with zero secrets — `APP_VARIANT`
+and `RELEASE_BOT_*` are missing for the same reason.
+
+## The capture APK is not an artifact
+
+The workflow builds a standalone Storybook APK on the runner
+(`eas build --platform android --profile storybook --local --non-interactive`,
+located into `$APK_PATH`) and installs it on the emulator, but the only thing it
+uploads is `storybook-captures/`. There is no APK download link from this
+workflow.
+
+The GitHub-Actions paths that do produce an installable APK, and what each needs:
+
+| Path | Trigger | Produces | Missing today |
+|---|---|---|---|
+| `build-rc.yml` | opening a PR whose base matches `release/**`, or `/build-rc` on such a PR via `build-bot.yml` | EAS **cloud** build, `release-candidate` profile → `.apk`, link commented on the PR | `EXPO_TOKEN`, `RELEASE_BOT_APP_ID` (var), `RELEASE_BOT_PRIVATE_KEY` (secret) |
+| `build-release.yml` | merging a PR into `release/**` | production build + GitHub Release | same |
+| `e2e-appium-browserstack.yml` | PR / `workflow_dispatch` | `test`-profile APK uploaded **to BrowserStack**, not as an artifact | BrowserStack credentials |
+
+`build-rc.yml` has no `workflow_dispatch`, and it uploads no GitHub artifact —
+it comments the EAS build page on the PR. Get the download URL with
+`eas build:view <BUILD_ID> --json | jq -r '.artifacts.buildUrl'`.
+
+So a testing APK for a `develop`-targeted feature PR means opening a second PR
+from the same branch into a `release/**` branch and letting `build-rc.yml` run,
+once those three values exist. That second PR needs explicit human consent —
+see `comapeo-storybook-capture-gate` §7. Installable profiles in `eas.json` are
+`release-candidate` (`org.coiab.rc`), `development` and `test`; `production`
+builds an AAB, not an APK. Report the gap rather than inventing a path around
+it — and never add or edit a workflow to route around a missing secret without
+asking.
 
 ## CI build gotchas (`.github/workflows/storybook-capture.yml`, `ci.yml`)
 
