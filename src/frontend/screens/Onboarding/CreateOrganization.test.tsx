@@ -17,6 +17,7 @@ import {IntlProvider} from 'react-intl';
 import {CreateOrganization} from './CreateOrganization';
 import {useCreateOrganization} from '../../hooks/organization/useCreateOrganization';
 import {OrganizationOperationError} from '../../lib/organization/fanout';
+import {markerFor} from '../../lib/organization/marker';
 import type {AppStackParamsList} from '../../sharedTypes/navigation';
 
 jest.mock('../../hooks/organization/useCreateOrganization', () => ({
@@ -85,9 +86,23 @@ beforeEach(() => {
 
 describe('CreateOrganization', () => {
   // The real bound is the minted marker `coiab-org:v1:<16>:<slot>:<name>`
-  // (SPEC 4.1/E3): 31 overhead chars, so the encoded name must fit 29.
-  const MARKER_OVERHEAD = 'coiab-org:v1:'.length + 16 + 1 + 1;
+  // (SPEC 4.1/E3): 32 overhead chars — the format has a colon after the slot
+  // too — so the encoded name must fit 28. Measured off the real format so
+  // this suite fails if the guard and the marker ever disagree again.
+  const MARKER_OVERHEAD = markerFor('0123456789abcdef', 'm', 'x').length - 1;
   const MAX_ENCODED_NAME = 60 - MARKER_OVERHEAD;
+
+  test('the guard bound mints a marker of exactly 60 chars, never 61', () => {
+    // Pins the overhead: both colons after the slot count, so 28 encoded
+    // chars land the marker on exactly 60 and the 29th overflows it.
+    expect(MAX_ENCODED_NAME).toBe(28);
+    expect(
+      markerFor('0123456789abcdef', 'm', 'a'.repeat(MAX_ENCODED_NAME)),
+    ).toHaveLength(60);
+    expect(
+      markerFor('0123456789abcdef', 'm', 'a'.repeat(MAX_ENCODED_NAME + 1)),
+    ).toHaveLength(61);
+  });
 
   test('renders title, name input and create button', async () => {
     await renderScreen();
@@ -114,7 +129,7 @@ describe('CreateOrganization', () => {
 
     await user.type(
       screen.getByTestId('ORG.create-name-inp'),
-      '  Minha Organização  ',
+      '  Órgão Teste  ',
     );
 
     const button = screen.getByTestId('ORG.create-btn');
@@ -124,7 +139,7 @@ describe('CreateOrganization', () => {
     await user.press(button);
 
     await waitFor(() => {
-      expect(start).toHaveBeenCalledWith('Minha Organização');
+      expect(start).toHaveBeenCalledWith('Órgão Teste');
     });
   });
 
@@ -143,7 +158,7 @@ describe('CreateOrganization', () => {
   test('an ASCII name at the exact encoded-marker boundary stays enabled', async () => {
     await renderScreen();
 
-    // 31 + 29 = 60 — the marker fits exactly.
+    // 32 + 28 = 60 — the marker fits exactly.
     await fireEvent.changeText(
       screen.getByTestId('ORG.create-name-inp'),
       'a'.repeat(MAX_ENCODED_NAME),
@@ -166,30 +181,30 @@ describe('CreateOrganization', () => {
   test('an accented name is guarded by its encoded length, not the raw one', async () => {
     await renderScreen();
 
-    // 'Minha Organização' encodes to 27 chars (ç and ã become %XX%XX):
-    // 31 + 27 = 58, inside the bound.
+    // 'Órganização' is 11 raw chars but encodes to 26 (each accented char
+    // becomes %XX%XX): 32 + 26 = 58, inside the bound. Pinned so the
+    // boundary walk below stays meaningful.
+    expect(encodeURIComponent('Órganização')).toHaveLength(26);
     await fireEvent.changeText(
       screen.getByTestId('ORG.create-name-inp'),
-      'Minha Organização',
+      'Órganização',
     );
     expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
 
     // Appending ASCII chars walks the encoded length onto the boundary:
-    // 27 + 2 = 29 still fits exactly; +3 overflows.
+    // 26 + 2 = 28 still fits exactly; +1 more overflows.
     await fireEvent.changeText(
       screen.getByTestId('ORG.create-name-inp'),
-      'Minha Organização' +
-        'x'.repeat(
-          MAX_ENCODED_NAME - encodeURIComponent('Minha Organização').length,
-        ),
+      'Órganização' +
+        'x'.repeat(MAX_ENCODED_NAME - encodeURIComponent('Órganização').length),
     );
     expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
 
     await fireEvent.changeText(
       screen.getByTestId('ORG.create-name-inp'),
-      'Minha Organização' +
+      'Órganização' +
         'x'.repeat(
-          MAX_ENCODED_NAME - encodeURIComponent('Minha Organização').length + 1,
+          MAX_ENCODED_NAME - encodeURIComponent('Órganização').length + 1,
         ),
     );
     expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
@@ -200,7 +215,7 @@ describe('CreateOrganization', () => {
     await renderScreen();
 
     // Each 🌴 encodes to 12 chars (%F0%9F%8C%B4, 4 bytes × 3): two fit the
-    // 29-char encoded-name bound, three do not — both far below the raw
+    // 28-char encoded-name bound, three do not — both far below the raw
     // 60-char input maxLength.
     await fireEvent.changeText(
       screen.getByTestId('ORG.create-name-inp'),
@@ -214,6 +229,31 @@ describe('CreateOrganization', () => {
     );
     expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
     expect(screen.getByText('Organization name is too long')).toBeOnTheScreen();
+  });
+
+  test('the character counter reads the encoded length against the guard bound', async () => {
+    await renderScreen();
+
+    // ASCII only: encoded and raw lengths agree, and the denominator is the
+    // encoded-name bound (28), not the marker length (60).
+    await fireEvent.changeText(
+      screen.getByTestId('ORG.create-name-inp'),
+      'Minha Organizacao',
+    );
+    expect(encodeURIComponent('Minha Organizacao')).toHaveLength(19);
+    expect(screen.getByText(`19/${MAX_ENCODED_NAME}`)).toBeOnTheScreen();
+
+    // Accents expand under encoding, and the guard counts the encoded form —
+    // so the counter must too, or it would read 11 while the guard counts 29.
+    await fireEvent.changeText(
+      screen.getByTestId('ORG.create-name-inp'),
+      'Órganização',
+    );
+    expect(
+      screen.getByText(
+        `${encodeURIComponent('Órganização').length}/${MAX_ENCODED_NAME}`,
+      ),
+    ).toBeOnTheScreen();
   });
 
   test('shows the loading state instead of the button while creating', async () => {
