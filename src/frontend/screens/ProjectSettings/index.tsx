@@ -5,6 +5,7 @@ import Fontisto from '@react-native-vector-icons/fontisto';
 
 import {useActiveProject} from '../../contexts/ActiveProjectContext';
 import {useProjectRoleAndDetails} from '../../hooks/useProjectRoleAndDetails';
+import {displayDescription} from '../../lib/organization/marker';
 import {HeaderText} from '../../sharedComponents/Text/HeaderText';
 import {BodyText} from '../../sharedComponents/Text/BodyText';
 import NoProjectIcon from '../../images/NoProjectIcon.svg';
@@ -108,7 +109,9 @@ export const ProjectSettings = () => {
         subtitle={
           isSolo
             ? formatMessage(m.soloDescription)
-            : projectInfo.projectDescription
+            : // SPEC 3.9/15: a marker description displays as the
+              // organization name, never the raw technical value.
+              displayDescription(projectInfo.projectDescription)
         }
         buttonText={
           isSolo

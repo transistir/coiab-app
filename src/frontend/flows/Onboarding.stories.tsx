@@ -53,6 +53,16 @@ const mapOnYourOwnIntroState: InitialState = {
   index: 1,
 };
 
+const joinOrganizationIntroState: InitialState = {
+  routes: [{name: 'Success'}, {name: 'JoinOrganizationIntro'}],
+  index: 1,
+};
+
+const createOrganizationState: InitialState = {
+  routes: [{name: 'Success'}, {name: 'CreateOrganization'}],
+  index: 1,
+};
+
 /**
  * The complete first-launch journey. The canonical walkthrough follows the
  * Map On Your Own branch after Success. Completing DeviceNaming mutates real
@@ -107,9 +117,35 @@ export const Success: Story = {
   },
 };
 
-/** The branch reached when the user chooses Join a Project at Success. */
+/** The branch reached when the user chooses Join an Organization at Success. */
+export const JoinOrganizationIntro: Story = {
+  name: '06a Join Organization Intro',
+  parameters: {
+    flow: {
+      state: FLOW_STATES.namedNoProject,
+      initialState: joinOrganizationIntroState,
+    },
+  },
+};
+
+/** The branch reached when the user chooses Create Organization at Success. */
+export const CreateOrganization: Story = {
+  name: '06b Create Organization',
+  parameters: {
+    flow: {
+      state: FLOW_STATES.namedNoProject,
+      initialState: createOrganizationState,
+    },
+  },
+};
+
+/**
+ * The legacy standalone-project branches. Still registered as routes for
+ * deep links/debug (SPEC-46 §18) but no longer reachable from the onboarding
+ * fork, which offers only the two Organization journeys.
+ */
 export const JoinProjectIntro: Story = {
-  name: '06a Join Project Intro',
+  name: '07a Join Project Intro (legacy)',
   parameters: {
     flow: {
       state: FLOW_STATES.namedNoProject,
@@ -118,9 +154,9 @@ export const JoinProjectIntro: Story = {
   },
 };
 
-/** The canonical branch reached when the user chooses Map On Your Own. */
+/** Legacy standalone-project branch (see JoinProjectIntro). */
 export const MapOnYourOwnIntro: Story = {
-  name: '06b Map On Your Own Intro',
+  name: '07b Map On Your Own Intro (legacy)',
   parameters: {
     flow: {
       state: FLOW_STATES.namedNoProject,

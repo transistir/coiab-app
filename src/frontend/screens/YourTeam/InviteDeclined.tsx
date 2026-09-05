@@ -19,6 +19,11 @@ const m = defineMessages({
     defaultMessage:
       'This device has declined your invitation. They have not joined the project.',
   },
+  inviteDeclinedOrganizationDes: {
+    id: '$1screens.Settings.YourTeam.inviteDeclinedOrganizationDes',
+    defaultMessage:
+      'This device has declined your invitation. They have not joined the Organization.',
+  },
   close: {
     id: '$1screens.Settings.YourTeam.close',
     defaultMessage: 'Close',
@@ -30,7 +35,7 @@ export const InviteDeclined = ({
   route,
 }: NativeRootNavigationProps<'InviteDeclined'>) => {
   const {formatMessage} = useIntl();
-  const {name, deviceType, deviceId} = route.params;
+  const {name, deviceType, deviceId, isOrganization} = route.params;
 
   useFocusEffect(
     React.useCallback(() => {
@@ -51,7 +56,11 @@ export const InviteDeclined = ({
           {formatMessage(m.inviteDeclined)}
         </Text>
         <Text style={{marginTop: 10, textAlign: 'center'}}>
-          {formatMessage(m.inviteDeclinedDes)}
+          {formatMessage(
+            isOrganization
+              ? m.inviteDeclinedOrganizationDes
+              : m.inviteDeclinedDes,
+          )}
         </Text>
         <DeviceNameWithIcon
           name={name}

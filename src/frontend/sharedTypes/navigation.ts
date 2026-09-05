@@ -108,8 +108,11 @@ export type RootStackParamsList = {
   SelectMapShareDevice: undefined;
   SelectInviteeRole: {name: string; deviceType: DeviceType; deviceId: string};
   ReviewAndInvite: InviteProps;
-  InviteAccepted: {name: string};
-  InviteDeclined: InviteProps;
+  // Organization-scope review step (SPEC 6): same params, fans out to both
+  // slots of the primary organization instead of the active project.
+  ReviewOrganizationInvite: InviteProps;
+  InviteAccepted: {name: string; isOrganization?: boolean};
+  InviteDeclined: InviteProps & {isOrganization?: boolean};
   RemoveDevice: {deviceId: string; deviceName: string};
   DeviceRemovedSuccess: {deviceName: string; projectName: string};
   UnableToCancelInvite: InviteProps;
@@ -155,6 +158,9 @@ export type RootStackParamsList = {
     createdAt?: string;
   };
   InviteReceived: {inviteId: string};
+  // SPEC 7: single Organization invite surface — the invite id is the bundle
+  // entry point, the organization id the routing key.
+  OrganizationInviteReceived: {organizationId: string; inviteId: string};
   InviteSuccessfullyAccepted: {projectName: string; projectId: string};
   InviteCanceled: {projectName: string};
   RemovedFromProjectBottomSheet: undefined;
@@ -208,6 +214,9 @@ export type RootStackParamsList = {
   TurnOffPasscodeBottomSheet: undefined;
   ConfirmDeleteObservationBottomSheet: {observationId: string};
   ConfirmDeleteTrackBottomSheet: {trackId: string};
+  // Shared with the onboarding screen set (registered in a RootStack.Group
+  // outside the onboarding/app conditional) — routable from both.
+  OrganizationProvisioning: undefined;
 };
 
 export type OnboardingParamsList = {
@@ -216,6 +225,9 @@ export type OnboardingParamsList = {
   DeviceNaming: undefined;
   OnboardingPrivacyPolicy: undefined;
   Success: undefined;
+  CreateOrganization: undefined;
+  JoinOrganizationIntro: undefined;
+  OrganizationProvisioning: undefined;
   JoinProjectIntro: undefined;
   MapOnYourOwnIntro: undefined;
   ErrorBottomSheet: {error: Error};

@@ -20,6 +20,10 @@ import {
   ActiveProjectIdStoreProvider,
 } from './ActiveProjectIdStoreContext';
 import {
+  type OrganizationInviteIdentityStore,
+  OrganizationInviteIdentityStoreProvider,
+} from './OrganizationInviteIdentityStoreContext';
+import {
   type CoordinateFormatStore,
   CoordinateFormatStoreProvider,
 } from './CoordinateFormatStoreContext';
@@ -64,6 +68,7 @@ type AppProvidersProps = {
   coordinateFormatStore: CoordinateFormatStore;
   manualEntryCoordinateFormatStore: ManualEntryCoordinateFormatStore;
   activeProjectIdStore: ActiveProjectIdStore;
+  organizationInviteIdentityStore: OrganizationInviteIdentityStore;
   savedLocationStore: SavedLocationStore;
   queryClient: QueryClient;
   lowStorageBannerStore: LowStorageBannerStore;
@@ -84,6 +89,7 @@ export const AppProviders = ({
   coordinateFormatStore,
   manualEntryCoordinateFormatStore,
   activeProjectIdStore,
+  organizationInviteIdentityStore,
   savedLocationStore,
   queryClient,
   lowStorageBannerStore,
@@ -114,18 +120,21 @@ export const AppProviders = ({
                               queryClient={queryClient}>
                               <ActiveProjectIdStoreProvider
                                 store={activeProjectIdStore}>
-                                <DraftObservationProvider
-                                  draftObservationStore={
-                                    persistedDrafObservationStore
-                                  }>
-                                  <EarlyAccessStoreProvider
-                                    value={earlyAccessStore}>
-                                    <QADeviceNameStoreContext
-                                      value={qaDeviceNameStore}>
-                                      <AuthProvider>{children}</AuthProvider>
-                                    </QADeviceNameStoreContext>
-                                  </EarlyAccessStoreProvider>
-                                </DraftObservationProvider>
+                                <OrganizationInviteIdentityStoreProvider
+                                  store={organizationInviteIdentityStore}>
+                                  <DraftObservationProvider
+                                    draftObservationStore={
+                                      persistedDrafObservationStore
+                                    }>
+                                    <EarlyAccessStoreProvider
+                                      value={earlyAccessStore}>
+                                      <QADeviceNameStoreContext
+                                        value={qaDeviceNameStore}>
+                                        <AuthProvider>{children}</AuthProvider>
+                                      </QADeviceNameStoreContext>
+                                    </EarlyAccessStoreProvider>
+                                  </DraftObservationProvider>
+                                </OrganizationInviteIdentityStoreProvider>
                               </ActiveProjectIdStoreProvider>
                             </ComapeoCoreProvider>
                           </LocalDiscoveryProvider>

@@ -40,14 +40,12 @@ describe('Onboarding - Device Naming Test', () => {
     );
     await expect(deviceReadyMessage).toBeDisplayed();
 
-    const joinProjectButton = await $(
-      byResourceId('ONBOARDING.join-project-btn'),
-    );
-    await expect(joinProjectButton).toBeDisplayed();
+    // SPEC 10.1: the Success fork is organization-first — Create Organization
+    // (primary) and Join an Organization (secondary).
+    const createOrgButton = await $(byResourceId('ONBOARDING.create-org-btn'));
+    await expect(createOrgButton).toBeDisplayed();
 
-    const mapOnYourOwnButton = await $(
-      byResourceId('ONBOARDING.map-on-your-own-btn'),
-    );
-    await expect(mapOnYourOwnButton).toBeDisplayed();
+    const joinOrgButton = await $(byResourceId('ONBOARDING.join-org-btn'));
+    await expect(joinOrgButton).toBeDisplayed();
   });
 });
