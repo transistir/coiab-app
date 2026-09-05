@@ -21,6 +21,16 @@ import {type BBox} from 'geojson';
 import type {Preset} from '@comapeo/schema';
 
 import type {Metadata} from '../../src/frontend/sharedTypes';
+import {
+  markerFor,
+  parseMarker,
+} from '../../src/frontend/lib/organization/marker';
+
+/**
+ * Fixed 16-hex organization id for flow stories — deterministic across
+ * capture runs so org seeding is idempotent (looked up by marker, not name).
+ */
+const STORYBOOK_ORG_ID = '0123456789abcdef';
 
 const DISTANCE_BUFFER_KM = 50;
 
@@ -44,6 +54,63 @@ export function useSeedProject(name: string) {
     if (existing) return existing.projectId;
     return clientApi.createProject({name});
   }, [clientApi, name]);
+
+  return {ensure};
+}
+
+/**
+ * Ensure at least `count` observations exist in the project passed to
+ * `ensure(projectId)` and return the docIds of the first `count` of them
+ * (existing ones first, then any newly created ones).
+ *
+ * `projectId` is a parameter of `ensure()` rather than of the hook itself so
+ * callers can seed a project id that was only just resolved (e.g. by
+ * `useSeedProject`) in the same async sequence, without a stale closure.
+ *
+ * Idempotent: only creates the shortfall between what already exists and
+ * `count`, so re-running with the same count is a no-op after the first run.
+ */
+export function useSeedOrganization(
+  orgName: string,
+  slots: 'both' | 'monitoramento' = 'both',
+) {
+  const clientApi = useClientApi();
+
+  const ensure = React.useCallback(async (): Promise<string> => {
+    const projects = await clientApi.listProjects();
+    const marked = projects
+      .map(project => ({
+        project,
+        marker: parseMarker(project.projectDescription ?? ''),
+      }))
+      .filter(
+        entry =>
+          entry.marker !== undefined &&
+          entry.marker.organizationId === STORYBOOK_ORG_ID,
+      );
+
+    const monitoramento = marked.find(entry => entry.marker?.slot === 'm')
+      ?.project.projectId;
+    const alertas = marked.find(entry => entry.marker?.slot === 'a')?.project
+      .projectId;
+
+    const mId =
+      monitoramento ??
+      (await clientApi.createProject({
+        name: 'Monitoramento',
+        projectDescription: markerFor(STORYBOOK_ORG_ID, 'm', orgName),
+      }));
+    // A 'monitoramento'-only spec intentionally leaves slot `a` absent (the
+    // OrganizationProvisioning state); never create it in that case.
+    if (slots === 'both' && alertas === undefined) {
+      await clientApi.createProject({
+        name: 'Alertas',
+        projectDescription: markerFor(STORYBOOK_ORG_ID, 'a', orgName),
+      });
+    }
+
+    return mId;
+  }, [clientApi, orgName, slots]);
 
   return {ensure};
 }
