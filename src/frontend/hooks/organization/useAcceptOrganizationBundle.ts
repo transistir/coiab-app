@@ -10,6 +10,7 @@ import {
 import type {OrganizationInviteBundle} from '../../lib/organization/bundle';
 import {
   acceptOrganizationBundle,
+  isAcceptOriginError,
   OrganizationOperationError,
 } from '../../lib/organization/fanout';
 import {
@@ -188,47 +189,58 @@ export function useAcceptOrganizationBundle() {
         // typed `accept-partial` failure naming the slots still missing
         // (the original error kept as `cause`); no progress at all leaves
         // the original error untouched — there is nothing to reconcile.
-        try {
-          const freshOrg = reconstructOrganizations(
-            await clientApi.listProjects(),
-          ).find(org => org.organizationId === bundle.organizationId);
+        //
+        // Only a failure of the invite.accept call itself is reconciled
+        // (marked by `acceptOrganizationBundle`): the preflight errors it
+        // also throws (identity-mismatch, invalid-local-state, ...) describe
+        // a bundle that must not join however complete the local
+        // organization looks, so they surface untouched instead of being
+        // read into a success that also unpins the recovery identity.
+        if (isAcceptOriginError(e)) {
+          try {
+            const freshOrg = reconstructOrganizations(
+              await clientApi.listProjects(),
+            ).find(org => org.organizationId === bundle.organizationId);
 
-          const accepted = SLOTS.flatMap(slot => {
-            const projectId =
-              freshOrg?.slots[slot] ?? preAcceptOrg?.slots[slot];
-            return projectId === undefined ? [] : [{slot, projectId}];
-          });
-          const missingSlots = SLOTS.filter(slot =>
-            accepted.every(entry => entry.slot !== slot),
-          );
+            const accepted = SLOTS.flatMap(slot => {
+              const projectId =
+                freshOrg?.slots[slot] ?? preAcceptOrg?.slots[slot];
+              return projectId === undefined ? [] : [{slot, projectId}];
+            });
+            const missingSlots = SLOTS.filter(slot =>
+              accepted.every(entry => entry.slot !== slot),
+            );
 
-          if (missingSlots.length === 0) {
-            identityComplete = true;
-            // SPEC 8.6 ladder over the same two reads.
-            outcome = {
-              ok: true,
-              accepted,
-              activeProjectId:
-                freshOrg?.slots.m ??
-                preAcceptOrg?.slots.m ??
-                freshOrg?.slots.a ??
-                preAcceptOrg?.slots.a,
-            };
-          } else if (accepted.length > 0) {
-            outcome = {
-              ok: false,
-              error: new OrganizationOperationError(
-                'accept-partial',
-                `the accept ended before completing: slots ${missingSlots.join(', ')} are still missing (the joined slots may have completed despite the failure)`,
-                {cause: e, missingSlots},
-              ),
-            };
-          } else {
+            if (missingSlots.length === 0) {
+              identityComplete = true;
+              // SPEC 8.6 ladder over the same two reads.
+              outcome = {
+                ok: true,
+                accepted,
+                activeProjectId:
+                  freshOrg?.slots.m ??
+                  preAcceptOrg?.slots.m ??
+                  freshOrg?.slots.a ??
+                  preAcceptOrg?.slots.a,
+              };
+            } else if (accepted.length > 0) {
+              outcome = {
+                ok: false,
+                error: new OrganizationOperationError(
+                  'accept-partial',
+                  `the accept ended before completing: slots ${missingSlots.join(', ')} are still missing (the joined slots may have completed despite the failure)`,
+                  {cause: e, missingSlots},
+                ),
+              };
+            } else {
+              outcome = {ok: false, error: e};
+            }
+          } catch {
+            // The reconciliation read failed too — the original error is all
+            // we know.
             outcome = {ok: false, error: e};
           }
-        } catch {
-          // The reconciliation read failed too — the original error is all
-          // we know.
+        } else {
           outcome = {ok: false, error: e};
         }
       }

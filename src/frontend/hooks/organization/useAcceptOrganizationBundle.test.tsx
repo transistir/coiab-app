@@ -550,6 +550,113 @@ describe('useAcceptOrganizationBundle', () => {
     hook.unmount();
   });
 
+  test('a preflight identity-mismatch still errors even when both slots are already local', async () => {
+    // The post-failure reconciliation rescues failures of the invite.accept
+    // call itself only. A preflight identity-mismatch describes a bundle
+    // that must not join — however complete the local organization already
+    // is — so the local-state read must not convert it into a success (which
+    // would also clear the recovery identity a genuine recovery accept
+    // still needs).
+    const {clientApi, accept} = createFakeClient([
+      {
+        projectId: 'project-monitoramento',
+        projectDescription: markerFor(ORG_ID, 'm', ORG_NAME),
+      },
+      {
+        projectId: 'project-alertas',
+        projectDescription: markerFor(ORG_ID, 'a', ORG_NAME),
+      },
+    ]);
+    identityStore.actions.setIdentity(ORG_ID, {
+      invitorDeviceId: 'invitor-original',
+      roleName: 'Coordinator',
+    });
+    // A different device re-invites only slot a: the stored identity wins,
+    // so this bundle is rejected in the preflight — with the org already
+    // complete locally, this is exactly the case the reconciliation must
+    // not swallow.
+    const bundle = makeBundle();
+    delete bundle.invites.m;
+    bundle.invites.a = {
+      ...makeInvite('a', 'invite-a'),
+      invitorDeviceId: 'invitor-divergent',
+    };
+    bundle.completeness = 'incomplete-definitive';
+
+    const hook = await renderHook(
+      () => ({
+        acceptBundle: useAcceptOrganizationBundle(),
+        activeProjectId: useActiveProjectId(),
+      }),
+      {wrapper: createWrapper(clientApi)},
+    );
+
+    await act(async () => {
+      await hook.result.current.acceptBundle.start(bundle);
+    });
+
+    expect(hook.result.current.acceptBundle.status).toBe('error');
+    expect(hook.result.current.acceptBundle.error).toBeInstanceOf(
+      OrganizationOperationError,
+    );
+    expect(
+      (hook.result.current.acceptBundle.error as OrganizationOperationError)
+        .code,
+    ).toBe('identity-mismatch');
+    expect(accept).not.toHaveBeenCalled();
+    // The divergent bundle must not unpin the recovery identity.
+    expect(identityStore.instance.getState()).toStrictEqual({
+      [ORG_ID]: {invitorDeviceId: 'invitor-original', roleName: 'Coordinator'},
+    });
+
+    hook.unmount();
+  });
+
+  test('a preflight invalid-local-state still errors even when both slots are present', async () => {
+    // A duplicate-slot conflict (SPEC 10) is resolved by a human, never
+    // extended: the reconciliation read sees the conflicting slots as
+    // "present" and would otherwise report a success for an organization the
+    // local state says is invalid.
+    const {clientApi, accept} = createFakeClient([
+      {
+        projectId: 'project-m-first',
+        projectDescription: markerFor(ORG_ID, 'm', ORG_NAME),
+      },
+      {
+        projectId: 'project-m-duplicate',
+        projectDescription: markerFor(ORG_ID, 'm', ORG_NAME),
+      },
+      {
+        projectId: 'project-alertas',
+        projectDescription: markerFor(ORG_ID, 'a', ORG_NAME),
+      },
+    ]);
+
+    const hook = await renderHook(
+      () => ({
+        acceptBundle: useAcceptOrganizationBundle(),
+        activeProjectId: useActiveProjectId(),
+      }),
+      {wrapper: createWrapper(clientApi)},
+    );
+
+    await act(async () => {
+      await hook.result.current.acceptBundle.start(makeBundle());
+    });
+
+    expect(hook.result.current.acceptBundle.status).toBe('error');
+    expect(hook.result.current.acceptBundle.error).toBeInstanceOf(
+      OrganizationOperationError,
+    );
+    expect(
+      (hook.result.current.acceptBundle.error as OrganizationOperationError)
+        .code,
+    ).toBe('invalid-local-state');
+    expect(accept).not.toHaveBeenCalled();
+
+    hook.unmount();
+  });
+
   test('a half-completed accept fails with accept-partial naming the missing slot', async () => {
     // Slot m's reject-but-completed join landed, but slot a's accept failed
     // for real: the org is half-joined. The published error must say exactly

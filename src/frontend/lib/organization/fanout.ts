@@ -54,7 +54,8 @@ export type OrganizationErrorCode =
   | 'identity-mismatch'
   | 'bundle-inconsistent'
   | 'accept-partial'
-  | 'incomplete-org-blocks-create';
+  | 'incomplete-org-blocks-create'
+  | 'organization-not-incomplete';
 
 export class OrganizationOperationError extends Error {
   readonly code: OrganizationErrorCode;
@@ -64,6 +65,8 @@ export class OrganizationOperationError extends Error {
     readonly details?: {
       slot?: Slot;
       organizationId?: string;
+      /** `incomplete-org-blocks-create`: the create the block refused. */
+      requestedOrganizationId?: string;
       cause?: unknown;
       /** `accept-partial`: the slots the accept did not get local. */
       missingSlots?: Slot[];
@@ -73,6 +76,50 @@ export class OrganizationOperationError extends Error {
     this.name = 'OrganizationOperationError';
     this.code = code;
   }
+}
+
+/**
+ * Failures thrown by the `invite.accept` call itself (the reject-but-completed
+ * family, Bug 46) — the only errors a caller may reconcile against local
+ * state after the fact. `acceptOrganizationBundle` also throws preflight
+ * validation errors (`identity-mismatch`, `invalid-local-state`, ...) that
+ * describe a bundle which must not join however complete the local
+ * organization looks, so those never carry the marker and always surface as
+ * errors. Errors are marked, not wrapped, so the original failure stays the
+ * one callers see.
+ */
+const acceptOriginErrors = new WeakSet<object>();
+
+function markAcceptOrigin(error: unknown): unknown {
+  if (typeof error === 'object' && error !== null) {
+    acceptOriginErrors.add(error);
+  }
+  return error;
+}
+
+/** True when `error` was thrown by the `invite.accept` call itself. */
+export function isAcceptOriginError(error: unknown): boolean {
+  return (
+    typeof error === 'object' && error !== null && acceptOriginErrors.has(error)
+  );
+}
+
+/**
+ * Finding 3: `invite.accept` can reject with a non-Error value (a string,
+ * null) — a WeakSet cannot mark those, and an unmarked failure would skip
+ * the hook's reject-but-completed reconciliation entirely. Errors pass
+ * through untouched (the original failure stays the one callers see);
+ * anything else is wrapped, the original rejection kept as `cause`.
+ */
+function normalizeAcceptFailure(error: unknown): Error {
+  if (error instanceof Error) return error;
+  const wrapped = new Error(
+    `invite.accept rejected with a non-error value: ${String(error)}`,
+  );
+  // `cause` is only typed under the es2022.error lib, which this project
+  // does not target — assigned directly so the value still rides along.
+  (wrapped as Error & {cause?: unknown}).cause = error;
+  return wrapped;
 }
 
 /**
@@ -129,7 +176,13 @@ export async function createOrganization(
       throw new OrganizationOperationError(
         'incomplete-org-blocks-create',
         `an incomplete organization (${incomplete.organizationId}) is already being set up on this device; finish it before creating another`,
-        {organizationId: opts.organizationId},
+        // `organizationId` names the BLOCKING org — the one a consumer
+        // resumes or discards; the refused create's id rides along
+        // separately, so the two never get conflated.
+        {
+          organizationId: incomplete.organizationId,
+          requestedOrganizationId: opts.organizationId,
+        },
       );
     }
   }
@@ -152,6 +205,144 @@ export async function createOrganization(
   }
 
   return {projectIds: projectIds as Record<Slot, string>};
+}
+
+/**
+ * A ManagerLike extended with what `discardIncompleteOrganization` needs,
+ * mirroring `@comapeo/core`'s real API surface (`leaveProject`,
+ * `getDeviceInfo` — sync on the manager, promised through the client-api
+ * wrapper, hence the union — and `getProject(id).$getOwnRole()` /
+ * `$member.getMany()`), so the client api satisfies it as-is.
+ */
+export type DiscardableManagerLike = Omit<ManagerLike, 'getProject'> & {
+  leaveProject(projectId: string): Promise<void>;
+  getDeviceInfo(): {deviceId: string} | Promise<{deviceId: string}>;
+  getProject(projectId: string): Promise<
+    ProjectLike & {
+      $getOwnRole(): Promise<{roleId: string}>;
+      $member: {getMany(): Promise<Array<{deviceId: string}>>};
+    }
+  >;
+};
+
+/**
+ * Copied from `@comapeo/core/src/roles.js`, like `sharedTypes`' copy (the
+ * constant is not exported by the package — digidem/mapeo-core-next#532).
+ * `fanout.ts` keeps no `@comapeo/core` import so it stays unit-testable, so
+ * the literal lives here too; if the two copies ever diverge, a discard can
+ * only fail CLOSED (every project skipped), never delete a shared project.
+ */
+export const CREATOR_ROLE_ID = 'a12a6702b93bd7ff';
+
+/** Why a discard did NOT remove a slot project it found. */
+export type DiscardSkipReason =
+  'not-created-here' | 'shared-with-other-devices' | 'no-longer-incomplete';
+
+/** What a discard settled on: the slots removed, and those it refused to. */
+export type DiscardResult = {
+  /** True when every slot project was removed — creation is unblocked. */
+  ok: boolean;
+  removed: Array<{slot: Slot; projectId: string}>;
+  skipped: Array<{slot: Slot; projectId: string; reason: DiscardSkipReason}>;
+};
+
+/**
+ * The escape hatch for the fail-closed create (`incomplete-org-blocks-create`,
+ * which would otherwise be a permanent creation lockout on a device whose
+ * half-built organization can never be completed): removes the incomplete
+ * organization's slot projects, so creation can restart fresh. The
+ * organization state itself is derived from the project list, so leaving the
+ * slot projects IS clearing it.
+ *
+ * Finding 1: a slot project is only removed when this device can PROVE it
+ * created it — the project's creator role (`$getOwnRole`), which core
+ * resolves locally from core ownership (the creator's auth core IS the
+ * project key), so it is durable on the creating device and can never be
+ * held by a device that joined. "No other member visible" alone proves
+ * nothing: a project joined moments ago whose roles doc has not synced yet
+ * looks memberless, and deleting it would destroy a shared project. A slot
+ * whose provenance cannot be established is SKIPPED — neither removed nor
+ * left behind silently — and reported in `skipped`, so the UI can say why
+ * the discard did not finish and the organization stays on the device.
+ *
+ * Because the reads above take real time over IPC while sync runs, each
+ * leave is revalidated immediately before it: the organization must still be
+ * incomplete and the project still memberless (both re-read), or the slot is
+ * skipped with the same reporting (TOCTOU).
+ *
+ * A read failure (IPC, storage) is not a skip — it throws, since an
+ * unclassifiable project must fail closed just as loudly.
+ */
+export async function discardIncompleteOrganization(
+  manager: DiscardableManagerLike,
+  opts: {organizationId: string},
+): Promise<DiscardResult> {
+  if (!ORGANIZATION_ID_PATTERN.test(opts.organizationId)) {
+    throw new OrganizationOperationError(
+      'invalid-organization-id',
+      `organization id ${opts.organizationId} must be 16 lowercase hex chars`,
+      {organizationId: opts.organizationId},
+    );
+  }
+
+  const localOrgs = reconstructOrganizations(await manager.listProjects());
+  const org = localOrgs.find(o => o.organizationId === opts.organizationId);
+  // Fail closed (SPEC 10): only a HALF-BUILT organization may be discarded —
+  // never a ready one, never an invalid one (a duplicate-slot conflict needs
+  // human diagnosis, and leaving one project would pick a winner
+  // arbitrarily), never one that does not exist.
+  if (org === undefined || org.state !== 'incomplete') {
+    const observed = org?.state ?? 'absent';
+    throw new OrganizationOperationError(
+      'organization-not-incomplete',
+      `organization ${opts.organizationId} is ${observed}; only an incomplete organization can be discarded`,
+      {organizationId: opts.organizationId},
+    );
+  }
+
+  const ownDeviceId = (await manager.getDeviceInfo()).deviceId;
+  const hasOtherMembers = (members: Array<{deviceId: string}>) =>
+    members.some(member => member.deviceId !== ownDeviceId);
+
+  const removed: DiscardResult['removed'] = [];
+  const skipped: DiscardResult['skipped'] = [];
+  for (const slot of SLOTS) {
+    const projectId = org.slots[slot];
+    if (projectId === undefined) continue; // nothing built for this slot
+    const project = await manager.getProject(projectId);
+
+    // Creation provenance first: without durable proof this device created
+    // the project, nothing else about it matters — it is not ours to delete.
+    const {roleId} = await project.$getOwnRole();
+    if (roleId !== CREATOR_ROLE_ID) {
+      skipped.push({slot, projectId, reason: 'not-created-here'});
+      continue;
+    }
+
+    const members = await project.$member.getMany();
+    if (hasOtherMembers(members)) {
+      skipped.push({slot, projectId, reason: 'shared-with-other-devices'});
+      continue;
+    }
+
+    // Revalidation, immediately before the destructive call (TOCTOU): the
+    // reads above are not instantaneous, and sync does not pause for them.
+    const fresh = reconstructOrganizations(await manager.listProjects()).find(
+      o => o.organizationId === opts.organizationId,
+    );
+    if (fresh === undefined || fresh.state !== 'incomplete') {
+      skipped.push({slot, projectId, reason: 'no-longer-incomplete'});
+      continue;
+    }
+    if (hasOtherMembers(await project.$member.getMany())) {
+      skipped.push({slot, projectId, reason: 'shared-with-other-devices'});
+      continue;
+    }
+
+    await manager.leaveProject(projectId);
+    removed.push({slot, projectId});
+  }
+  return {ok: skipped.length === 0, removed, skipped};
 }
 
 /**
@@ -345,7 +536,9 @@ export async function acceptOrganizationBundle(
       } catch {
         joinedProjectId = undefined;
       }
-      if (joinedProjectId === undefined) throw e;
+      if (joinedProjectId === undefined) {
+        throw markAcceptOrigin(normalizeAcceptFailure(e));
+      }
       accepted.push({slot, projectId: joinedProjectId});
     }
   }
