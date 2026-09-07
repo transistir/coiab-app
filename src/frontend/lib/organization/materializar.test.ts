@@ -762,10 +762,24 @@ describe('validação real dos pacotes (#30 / SPEC B §5.2 CA5)', () => {
       })),
       ...(categoria.icon ? {iconRef: {docId: `icone-${categoria.icon}`}} : {}),
     }));
-    const camposCore = conteudo.campos.map(campo => ({
-      docId: `campo-${campo.id}`,
-      tagKey: campo.tagKey,
-    }));
+    // Core creates icon and field documents ONLY for the ones categories
+    // reference, and each icon document carries the package icon id as `name`.
+    const idsReferenciados = new Set(
+      conteudo.categorias.flatMap(categoria => categoria.fields),
+    );
+    const camposCore = conteudo.campos
+      .filter(campo => idsReferenciados.has(campo.id))
+      .map(campo => ({
+        docId: `campo-${campo.id}`,
+        tagKey: campo.tagKey,
+      }));
+    const icones = [
+      ...new Set(
+        conteudo.categorias
+          .map(categoria => categoria.icon)
+          .filter((icone): icone is string => typeof icone === 'string'),
+      ),
+    ].map(nome => ({docId: `icone-${nome}`, name: nome}));
     const settings: SettingsCore = {
       defaultPresets: {
         point: conteudo.selecao.observation.map(id => `preset-${id}`),
@@ -777,7 +791,7 @@ describe('validação real dos pacotes (#30 / SPEC B §5.2 CA5)', () => {
         fileVersion: conteudo.fileVersion,
       },
     };
-    return {presets, campos: camposCore, settings};
+    return {presets, campos: camposCore, icones, settings};
   }
 
   async function harnessComPacotes({
@@ -797,6 +811,7 @@ describe('validação real dos pacotes (#30 / SPEC B §5.2 CA5)', () => {
     type EstadoProjeto = {
       presets: object[];
       campos: object[];
+      icones: object[];
       settings: SettingsCore;
     };
     const estados = new Map<string, EstadoProjeto>();
@@ -822,7 +837,7 @@ describe('validação real dos pacotes (#30 / SPEC B §5.2 CA5)', () => {
       getProject: jest.fn(async (id: string) => {
         let estado = estados.get(id);
         if (!estado) {
-          estado = {presets: [], campos: [], settings: {}};
+          estado = {presets: [], campos: [], icones: [], settings: {}};
           estados.set(id, estado);
         }
         const estadoDoProjeto = estado;
@@ -838,6 +853,7 @@ describe('validação real dos pacotes (#30 / SPEC B §5.2 CA5)', () => {
             }
             estadoDoProjeto.presets = importado.presets;
             estadoDoProjeto.campos = importado.campos;
+            estadoDoProjeto.icones = importado.icones;
             estadoDoProjeto.settings = {
               ...estadoDoProjeto.settings,
               defaultPresets: importado.settings.defaultPresets,
@@ -857,6 +873,7 @@ describe('validação real dos pacotes (#30 / SPEC B §5.2 CA5)', () => {
           },
           preset: {getMany: jest.fn(async () => estadoDoProjeto.presets)},
           field: {getMany: jest.fn(async () => estadoDoProjeto.campos)},
+          icon: {getMany: jest.fn(async () => estadoDoProjeto.icones)},
         };
       }),
     };

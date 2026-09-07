@@ -172,6 +172,17 @@ export type CampoImportado = {
   deleted?: boolean;
 };
 
+/**
+ * Icon document as @comapeo/core `$importCategories` writes it: `name` is the
+ * package icon id (`import-categories.js` → `project.$icons.create({name})`),
+ * and it is that document's `docId` a preset's `iconRef` points to.
+ */
+export type IconeImportado = {
+  docId?: string;
+  name?: string;
+  deleted?: boolean;
+};
+
 export type ConfiguracoesProjeto = {
   name?: string;
   sendStats?: boolean;
@@ -183,8 +194,32 @@ export type ConfiguracoesProjeto = {
 export type ProjetoComPresets = {
   preset?: {getMany(): Promise<PresetImportado[]>};
   field?: {getMany(): Promise<CampoImportado[]>};
+  icon?: {getMany(): Promise<IconeImportado[]>};
   $getProjectSettings?: () => Promise<ConfiguracoesProjeto>;
 };
+
+/**
+ * The SPECIFIC divergence that made a conferência fail — the package is only
+ * `ready` when `conferirImportacao` returns `null`. A partial or interrupted
+ * import can leave the project looking complete (every category resolves) and
+ * still diverge from the approved configuration: leftover active fields the
+ * package never declared (`campos_divergentes`) or an `iconRef` resolving to
+ * another icon document (`icone_divergente`).
+ */
+export type MotivoDivergencia =
+  | 'pacote_ausente'
+  | 'pacote_hash_mismatch'
+  | 'pacote_sem_categorias'
+  | 'superficie_ausente'
+  | 'quantidade_de_presets'
+  | 'preset_ausente'
+  | 'preset_nome_divergente'
+  | 'campos_divergentes'
+  | 'campo_referencia_invalida'
+  | 'icone_divergente'
+  | 'selecao_divergente'
+  | 'metadata_divergente'
+  | 'leitura_falhou';
 
 /** Canonical key of a tag record: sorted entries, order-independent. */
 function chaveTags(tags: TagsPacote | undefined | null): string | null {
@@ -212,48 +247,99 @@ function mesmoConjunto(a: readonly string[], b: readonly string[]): boolean {
  * - presets (non-deleted) match the categories in a strict bijection via
  *   their canonical `tags` (@comapeo/schema shape) and carry the same `name`
  *   — never translated labels, counts alone or generated ids;
+ * - the WHOLE set of active fields is a bijection with the package fields the
+ *   categories reference (Core deletes every pre-existing field and creates
+ *   ONLY the referenced ones — `import-categories.js`), so a leftover active
+ *   field the package never declared can never pass as `ready`;
  * - every `fieldRefs` entry resolves to an existing non-deleted field whose
  *   `tagKey` set equals the tagKeys of the category's package fields;
- * - `iconRef` presence mirrors the category's `icon`;
+ * - `iconRef` mirrors the category's `icon` AND resolves: its docId must be an
+ *   active icon document whose `name` is the category's package icon — a
+ *   reference to another (or missing) icon document is a divergence;
  * - the default selection (`defaultPresets.point/line`) equals the preset
  *   docIds of the package `categorySelection` (observation/track);
  * - `configMetadata` (name/version/fileVersion) equals the package metadata.
  *
  * Any missing read surface, empty-fallback settings read or divergence
- * returns false — verification never throws.
+ * returns the SPECIFIC `MotivoDivergencia` — verification never throws.
  */
-export async function verificarImportacao(
+export async function conferirImportacao(
   project: ProjetoComPresets,
   pacote: Pacote,
   ler?: LeitorArquivo,
-): Promise<boolean> {
+): Promise<MotivoDivergencia | null> {
   try {
     const lerArquivo = ler ?? leitorPadrao;
     const bytes = await lerArquivo(pacote.filePath);
-    if (bytes === null || bytes.byteLength === 0) return false;
-    if ((await sha256Hex(bytes)) !== pacote.ref.hash) return false;
-    const conteudo = pacote.conteudo;
-    if (conteudo.categorias.length === 0) return false;
-    if (!project.preset || !project.field || !project.$getProjectSettings) {
-      return false;
+    if (bytes === null || bytes.byteLength === 0) return 'pacote_ausente';
+    if ((await sha256Hex(bytes)) !== pacote.ref.hash) {
+      return 'pacote_hash_mismatch';
     }
-    const [presetsBrutos, camposBrutos, settings] = await Promise.all([
-      project.preset.getMany(),
-      project.field.getMany(),
-      project.$getProjectSettings(),
-    ]);
+    const conteudo = pacote.conteudo;
+    if (conteudo.categorias.length === 0) return 'pacote_sem_categorias';
+    if (!project.preset || !project.field || !project.$getProjectSettings) {
+      return 'superficie_ausente';
+    }
+    // Icons the categories reference: without the icon read surface their
+    // references cannot be proven, so the import cannot be declared complete.
+    const iconesDoPacote = new Set(
+      conteudo.categorias
+        .map(categoria => categoria.icon)
+        .filter((icone): icone is string => typeof icone === 'string'),
+    );
+    if (iconesDoPacote.size > 0 && !project.icon) return 'superficie_ausente';
+    const lerIcones = project.icon;
+    const [presetsBrutos, camposBrutos, iconesBrutos, settings] =
+      await Promise.all([
+        project.preset.getMany(),
+        project.field.getMany(),
+        lerIcones ? lerIcones.getMany() : Promise.resolve([]),
+        project.$getProjectSettings(),
+      ]);
     const presets = presetsBrutos.filter(preset => !preset.deleted);
     const campos = camposBrutos.filter(campo => !campo.deleted);
-    if (presets.length !== conteudo.categorias.length) return false;
+    if (presets.length !== conteudo.categorias.length) {
+      return 'quantidade_de_presets';
+    }
 
     const camposPacote = new Map(
       conteudo.campos.map(campo => [campo.id, campo.tagKey]),
     );
+
+    // The FULL active field set (not only the referenced ones) must match the
+    // package: extra/missing/duplicated field documents are a divergence.
+    const tagKeysDoPacote: string[] = [];
+    for (const id of new Set(
+      conteudo.categorias.flatMap(categoria => categoria.fields),
+    )) {
+      const tagKey = camposPacote.get(id);
+      if (typeof tagKey !== 'string') return 'campos_divergentes';
+      tagKeysDoPacote.push(tagKey);
+    }
+    const tagKeysImportadosTodos: string[] = [];
+    for (const campo of campos) {
+      if (typeof campo.docId !== 'string' || typeof campo.tagKey !== 'string') {
+        return 'campos_divergentes';
+      }
+      tagKeysImportadosTodos.push(campo.tagKey);
+    }
+    if (!mesmoConjunto(tagKeysDoPacote, tagKeysImportadosTodos)) {
+      return 'campos_divergentes';
+    }
     const camposPorDocId = new Map(
-      campos
-        .filter(campo => typeof campo.docId === 'string')
-        .map(campo => [campo.docId as string, campo]),
+      campos.map(campo => [campo.docId as string, campo]),
     );
+    if (camposPorDocId.size !== campos.length) return 'campos_divergentes';
+
+    // Active icon documents by docId: `name` is the package icon id.
+    const nomePorIconeDocId = new Map<string, string>();
+    for (const icone of iconesBrutos) {
+      if (icone.deleted) continue;
+      if (typeof icone.docId !== 'string' || typeof icone.name !== 'string') {
+        continue;
+      }
+      nomePorIconeDocId.set(icone.docId, icone.name);
+    }
 
     // Strict bijection categories ↔ presets via canonical tags.
     const usados = new Set<number>();
@@ -261,33 +347,46 @@ export async function verificarImportacao(
       [];
     for (const categoria of conteudo.categorias) {
       const chave = chaveTags(categoria.tags);
-      if (chave === null) return false;
+      if (chave === null) return 'preset_ausente';
       const indice = presets.findIndex(
         (preset, index) =>
           !usados.has(index) && chaveTags(preset.tags) === chave,
       );
-      if (indice === -1) return false;
+      if (indice === -1) return 'preset_ausente';
       const preset = presets[indice]!;
       usados.add(indice);
-      if (preset.name !== categoria.name) return false;
-      if ((preset.iconRef == null) !== (categoria.icon == null)) return false;
+      if (preset.name !== categoria.name) return 'preset_nome_divergente';
+      if ((preset.iconRef == null) !== (categoria.icon == null)) {
+        return 'icone_divergente';
+      }
+      if (categoria.icon != null) {
+        const docIdIcone = preset.iconRef?.docId;
+        if (typeof docIdIcone !== 'string') return 'icone_divergente';
+        if (nomePorIconeDocId.get(docIdIcone) !== categoria.icon) {
+          return 'icone_divergente';
+        }
+      }
       const tagKeysEsperados = categoria.fields.map(id => camposPacote.get(id));
       if (tagKeysEsperados.some(tagKey => typeof tagKey !== 'string')) {
-        return false;
+        return 'campos_divergentes';
       }
       const refs = preset.fieldRefs ?? [];
-      if (refs.length !== tagKeysEsperados.length) return false;
+      if (refs.length !== tagKeysEsperados.length) {
+        return 'campo_referencia_invalida';
+      }
       const tagKeysImportados: string[] = [];
       for (const ref of refs) {
         const campo =
           typeof ref.docId === 'string'
             ? camposPorDocId.get(ref.docId)
             : undefined;
-        if (!campo || typeof campo.tagKey !== 'string') return false;
+        if (!campo || typeof campo.tagKey !== 'string') {
+          return 'campo_referencia_invalida';
+        }
         tagKeysImportados.push(campo.tagKey);
       }
       if (!mesmoConjunto(tagKeysEsperados as string[], tagKeysImportados)) {
-        return false;
+        return 'campo_referencia_invalida';
       }
       pares.push({categoria, preset});
     }
@@ -307,23 +406,42 @@ export async function verificarImportacao(
     };
     const point = docIdsSelecionados(conteudo.selecao.observation);
     const line = docIdsSelecionados(conteudo.selecao.track);
-    if (!point || !line) return false;
+    if (!point || !line) return 'selecao_divergente';
     const defaultPresets = settings.defaultPresets;
-    if (!defaultPresets) return false;
-    if (!mesmoConjunto(point, defaultPresets.point ?? [])) return false;
-    if (!mesmoConjunto(line, defaultPresets.line ?? [])) return false;
+    if (!defaultPresets) return 'selecao_divergente';
+    if (!mesmoConjunto(point, defaultPresets.point ?? [])) {
+      return 'selecao_divergente';
+    }
+    if (!mesmoConjunto(line, defaultPresets.line ?? [])) {
+      return 'selecao_divergente';
+    }
 
     // Import metadata: the project must carry the package's own metadata.
     const configMetadata = settings.configMetadata;
-    if (!configMetadata) return false;
-    if (configMetadata.name !== conteudo.metadata.name) return false;
-    if (configMetadata.version !== conteudo.metadata.version) return false;
-    if (configMetadata.fileVersion !== conteudo.fileVersion) return false;
-    return true;
+    if (!configMetadata) return 'metadata_divergente';
+    if (configMetadata.name !== conteudo.metadata.name) {
+      return 'metadata_divergente';
+    }
+    if (configMetadata.version !== conteudo.metadata.version) {
+      return 'metadata_divergente';
+    }
+    if (configMetadata.fileVersion !== conteudo.fileVersion) {
+      return 'metadata_divergente';
+    }
+    return null;
   } catch {
     // A package that cannot be re-read cannot prove a successful import.
-    return false;
+    return 'leitura_falhou';
   }
+}
+
+/** Boolean face of `conferirImportacao`: true ONLY when nothing diverges. */
+export async function verificarImportacao(
+  project: ProjetoComPresets,
+  pacote: Pacote,
+  ler?: LeitorArquivo,
+): Promise<boolean> {
+  return (await conferirImportacao(project, pacote, ler)) === null;
 }
 
 /**

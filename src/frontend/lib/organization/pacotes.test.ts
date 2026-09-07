@@ -13,6 +13,7 @@ import {
   verificarImportacao,
   type CampoImportado,
   type ConfiguracoesProjeto,
+  type IconeImportado,
   type LeitorArquivo,
   type ManifestoPacote,
   type Pacote,
@@ -158,6 +159,10 @@ function pacoteMonitoramentoBytes(): Promise<Uint8Array> {
  * @comapeo/schema field — NOT `tagKey`), fieldRefs and iconRef;
  * categorySelection becomes `defaultPresets.point/line` (preset docIds);
  * metadata becomes `configMetadata` with the package `fileVersion`.
+ *
+ * Core creates icon and field documents ONLY for the ones categories
+ * reference (`import-categories.js`: `iconsToAdd`/`fieldsToAdd`), and each
+ * icon document carries the package icon id as its `name`.
  */
 async function emularImportacaoCore(bytes: Uint8Array) {
   const {conteudo} = await extrairManifesto(bytes);
@@ -170,10 +175,22 @@ async function emularImportacaoCore(bytes: Uint8Array) {
     })),
     ...(categoria.icon ? {iconRef: {docId: `icone-${categoria.icon}`}} : {}),
   }));
-  const camposCore = conteudo.campos.map(campo => ({
-    docId: `campo-${campo.id}`,
-    tagKey: campo.tagKey,
-  }));
+  const idsReferenciados = new Set(
+    conteudo.categorias.flatMap(categoria => categoria.fields),
+  );
+  const camposCore = conteudo.campos
+    .filter(campo => idsReferenciados.has(campo.id))
+    .map(campo => ({
+      docId: `campo-${campo.id}`,
+      tagKey: campo.tagKey,
+    }));
+  const icones = [
+    ...new Set(
+      conteudo.categorias
+        .map(categoria => categoria.icon)
+        .filter((icone): icone is string => typeof icone === 'string'),
+    ),
+  ].map(nome => ({docId: `icone-${nome}`, name: nome}));
   const settings = {
     defaultPresets: {
       point: conteudo.selecao.observation.map(id => `preset-${id}`),
@@ -185,7 +202,7 @@ async function emularImportacaoCore(bytes: Uint8Array) {
       fileVersion: conteudo.fileVersion,
     },
   };
-  return {presets, campos: camposCore, settings};
+  return {presets, campos: camposCore, icones, settings};
 }
 
 /**
@@ -207,6 +224,7 @@ async function manifestoDe(bytes: Uint8Array): Promise<ManifestoPacote> {
 function projetoCore(importado: {
   presets: readonly object[];
   campos: readonly object[];
+  icones?: readonly object[];
   settings: object;
 }) {
   return {
@@ -215,6 +233,11 @@ function projetoCore(importado: {
     },
     field: {
       getMany: jest.fn(async () => importado.campos as CampoImportado[]),
+    },
+    icon: {
+      getMany: jest.fn(
+        async () => (importado.icones ?? []) as IconeImportado[],
+      ),
     },
     $getProjectSettings: jest.fn(
       async () => importado.settings as ConfiguracoesProjeto,
@@ -553,6 +576,96 @@ describe('verificarImportacao (Core preset shape + §5.4 canonical conferência 
             tagKey: 'species',
           })),
         }),
+        pacote,
+        leitor,
+      ),
+    ).resolves.toBe(false);
+  });
+
+  test('extra active field beyond the package (interrupted/partial import leftovers) → false', async () => {
+    // Core DELETES every pre-existing field before importing
+    // (`import-categories.js`: `fieldsToDelete`), so an active field the
+    // package never declares proves the published project diverges from the
+    // approved configuration — even though every category still resolves.
+    const {pacote, leitor, importado} = await abrir();
+    await expect(
+      verificarImportacao(
+        projetoCore({
+          ...importado,
+          campos: [
+            ...importado.campos,
+            {docId: 'campo-extra', tagKey: 'extra'},
+          ],
+        }),
+        pacote,
+        leitor,
+      ),
+    ).resolves.toBe(false);
+  });
+
+  test('iconRef resolving to a document that is NOT the package icon → false', async () => {
+    // The icon document exists and is active, but carries another name: the
+    // published category would show an icon the approved package never had.
+    const {pacote, leitor, importado} = await abrir();
+    await expect(
+      verificarImportacao(
+        projetoCore({
+          ...importado,
+          presets: importado.presets.map(preset =>
+            preset.docId === 'preset-arvore'
+              ? {...preset, iconRef: {docId: 'icone-outro'}}
+              : preset,
+          ),
+          icones: [...importado.icones, {docId: 'icone-outro', name: 'outro'}],
+        }),
+        pacote,
+        leitor,
+      ),
+    ).resolves.toBe(false);
+  });
+
+  test('iconRef pointing to a docId with no icon document → false', async () => {
+    const {pacote, leitor, importado} = await abrir();
+    await expect(
+      verificarImportacao(
+        projetoCore({
+          ...importado,
+          presets: importado.presets.map(preset =>
+            preset.docId === 'preset-arvore'
+              ? {...preset, iconRef: {docId: 'icone-inexistente'}}
+              : preset,
+          ),
+        }),
+        pacote,
+        leitor,
+      ),
+    ).resolves.toBe(false);
+  });
+
+  test('deleted icon document behind an active iconRef → false', async () => {
+    const {pacote, leitor, importado} = await abrir();
+    await expect(
+      verificarImportacao(
+        projetoCore({
+          ...importado,
+          icones: importado.icones.map(icone => ({...icone, deleted: true})),
+        }),
+        pacote,
+        leitor,
+      ),
+    ).resolves.toBe(false);
+  });
+
+  test('project without the icon read surface cannot prove the package icons → false', async () => {
+    const {pacote, leitor, importado} = await abrir();
+    const projeto = projetoCore(importado);
+    await expect(
+      verificarImportacao(
+        {
+          preset: projeto.preset,
+          field: projeto.field,
+          $getProjectSettings: projeto.$getProjectSettings,
+        },
         pacote,
         leitor,
       ),

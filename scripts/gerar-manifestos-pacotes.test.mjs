@@ -64,10 +64,14 @@ function novaRaiz() {
 
 /** Executa o gerador copiado na raiz temporária e devolve o stdout. */
 function executarGerador(raiz, args = []) {
-  return execFileSync(process.execPath, [path.join(raiz, GERADOR_REL), ...args], {
-    cwd: raiz,
-    encoding: 'utf8',
-  });
+  return execFileSync(
+    process.execPath,
+    [path.join(raiz, GERADOR_REL), ...args],
+    {
+      cwd: raiz,
+      encoding: 'utf8',
+    },
+  );
 }
 
 function caminhoSaida(raiz) {
@@ -171,6 +175,52 @@ describe('gerar-manifestos-pacotes: determinismo do arquivo gerado', () => {
     expect(manifestos.monitoramento.ref.versao).toBe('2.0.0');
     expect(manifestos.alertas.ref.versao).toBe('2.0.0');
     expect(manifestos.monitoramento.ref.hash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  test('invocação parcial (só --monitoramento) falha e não escreve manifesto misto', async () => {
+    // Greptile P1: com apenas um dos dois pacotes reais, a área ausente era
+    // reconstruída a partir da FIXTURE de teste — o build publicaria um
+    // manifesto misturando pacote de produção com conteúdo inventado.
+    const raiz = novaRaiz();
+    fs.writeFileSync(
+      path.join(raiz, 'mon.comapeocat'),
+      await construirPacoteReal('2.0.0'),
+    );
+
+    /** @type {any} */
+    let erro;
+    try {
+      executarGerador(raiz, ['--monitoramento', 'mon.comapeocat']);
+    } catch (e) {
+      erro = e;
+    }
+    expect(erro).toBeDefined();
+    expect(String(erro.stderr)).toContain(
+      '--monitoramento e --alertas devem ser informados juntos',
+    );
+    expect(fs.existsSync(caminhoSaida(raiz))).toBe(false);
+  });
+
+  test('invocação parcial (só --alertas) falha e não sobrescreve o manifesto existente', async () => {
+    const raiz = novaRaiz();
+    fs.writeFileSync(
+      path.join(raiz, 'ale.comapeocat'),
+      await construirPacoteReal('2.0.0'),
+    );
+    fs.writeFileSync(caminhoSaida(raiz), '{"sentinela": true}\n');
+
+    /** @type {any} */
+    let erro;
+    try {
+      executarGerador(raiz, ['--alertas', 'ale.comapeocat']);
+    } catch (e) {
+      erro = e;
+    }
+    expect(erro).toBeDefined();
+    expect(String(erro.stderr)).toContain(
+      '--monitoramento e --alertas devem ser informados juntos',
+    );
+    expect(lerManifestos(raiz).sentinela).toBe(true);
   });
 
   test('caso d: --regenerar explícito força regeneração sem args', () => {

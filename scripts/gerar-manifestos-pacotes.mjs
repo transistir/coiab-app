@@ -16,12 +16,13 @@ import {extrairManifesto} from './lib/manifesto-pacote.mjs';
  *
  * Uso:
  *   node ./scripts/gerar-manifestos-pacotes.mjs \
- *     [--monitoramento <arquivo.comapeocat>] [--alertas <arquivo.comapeocat>] \
+ *     [--monitoramento <arquivo.comapeocat> --alertas <arquivo.comapeocat>] \
  *     [--regenerar]
  *
  * Quando os dois pacotes aprovados de #30 forem entregues, aponte
  * `--monitoramento`/`--alertas` para os arquivos reais (aí a geração SEMPRE
- * acontece). Enquanto não chegam, o gerador constrói as FIXTURES canônicas de
+ * acontece). Os dois andam JUNTOS: informar só um seria misturar pacote real
+ * com fixture de teste na área ausente, então a invocação parcial é recusada. Enquanto não chegam, o gerador constrói as FIXTURES canônicas de
  * teste (idênticas às de `pacotes.test.ts`) com o Writer real do comapeocat —
  * o JSON gerado é provisório e será regenerado a partir dos pacotes reais sem
  * mudança de formato. NB: o Writer carimba `buildDateValue: Date.now()` no
@@ -159,7 +160,7 @@ for (let indice = 0; indice < argv.length; indice += 1) {
   const area = AREAS.find(candidata => argumento === `--${candidata}`);
   if (!area) {
     throw new Error(
-      `Argumento desconhecido: '${argumento}'. Uso: --monitoramento <arquivo.comapeocat> [--alertas <arquivo.comapeocat>] [--regenerar]`,
+      `Argumento desconhecido: '${argumento}'. Uso: [--monitoramento <arquivo.comapeocat> --alertas <arquivo.comapeocat>] [--regenerar]`,
     );
   }
   const caminho = argv[indice + 1];
@@ -170,10 +171,22 @@ for (let indice = 0; indice < argv.length; indice += 1) {
   indice += 1;
 }
 
+// Invocação parcial é RECUSADA: com só um dos dois pacotes reais, a área
+// ausente cairia no fallback de FIXTURE de teste e o manifesto publicado
+// misturaria pacote de produção com conteúdo inventado. Ou os dois, ou nenhum.
+const quantidadePacotesReais = AREAS.filter(
+  area => caminhosPorArea[area] !== undefined,
+).length;
+if (quantidadePacotesReais === 1) {
+  throw new Error(
+    '--monitoramento e --alertas devem ser informados juntos (os dois pacotes reais) ou nenhum dos dois — invocação parcial geraria um manifesto misturando pacote real com fixture de teste',
+  );
+}
+
 // Determinismo do arquivo versionado: sem pacotes reais e sem --regenerar,
 // NÃO reconstruir as fixtures (o Writer carimba buildDateValue: Date.now() e o
 // ref.hash mudaria a cada `npm start`). Pacote ausente → fallback normal.
-const temPacotesReais = AREAS.some(area => caminhosPorArea[area] !== undefined);
+const temPacotesReais = quantidadePacotesReais > 0;
 if (!temPacotesReais && !regenerar && (await arquivoExiste(OUTPUT_FILE))) {
   console.log(
     'manifestos.generated.json já existe, pulando (use --regenerar para forçar)',
