@@ -120,6 +120,7 @@ export const OrganizationProvisioning = ({
     reset: resetDiscard,
     status: discardStatus,
     result: discardResult,
+    discardedOrganizationId,
   } = useDiscardIncompleteOrganization();
 
   const isReady = organizations.some(org => org.state === 'ready');
@@ -183,19 +184,39 @@ export const OrganizationProvisioning = ({
     }
   }, [isReady, hasDegradedOrganization, navigation]);
 
-  // A settled discard either freed the device (`ok` — everything removed, so
-  // the start-over fork owns the next decision, like the startup gate's
-  // `none` state) or refused to remove something: then the setup is still
-  // here, the lines below say which projects were kept and why, and the
-  // result stays published so those lines remain on screen. A failure stays
-  // too, with its error line. Neither resets the hook — the user can retry.
+  // A settled discard either freed the device (`ok`) or refused to remove
+  // something: then the setup is still here, the lines below say which
+  // projects were kept and why, and the result stays published so those
+  // lines remain on screen. A failure stays too, with its error line.
+  // Neither resets the hook — the user can retry. A successful discard
+  // hands the next decision to the start-over fork only when nothing on
+  // the device is degraded anymore; while another organization still
+  // needs repair, THIS screen is that organization's repair surface, so
+  // it stays (the discarded setup itself is gone — it is filtered out of
+  // the collection the check runs on).
   React.useEffect(() => {
     if (discardStatus !== 'success') return;
     if (discardResult?.ok) {
-      navigation.reset({index: 0, routes: [{name: 'Success'}]});
-      resetDiscard();
+      const remainingDegraded = organizations.some(
+        org =>
+          org.state !== 'ready' &&
+          org.organizationId !== discardedOrganizationId,
+      );
+      if (remainingDegraded) {
+        resetDiscard();
+      } else {
+        navigation.reset({index: 0, routes: [{name: 'Success'}]});
+        resetDiscard();
+      }
     }
-  }, [discardStatus, discardResult, resetDiscard, navigation]);
+  }, [
+    discardStatus,
+    discardResult,
+    discardedOrganizationId,
+    organizations,
+    resetDiscard,
+    navigation,
+  ]);
 
   // Say why the resume is not on offer — but not while an invite is the
   // expected completion path, where finishing was never the answer anyway.

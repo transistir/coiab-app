@@ -710,6 +710,9 @@
   "$1screens.OrganizationProvisioning.cancel": {
     "message": "Cancel"
   },
+  "$1screens.OrganizationProvisioning.cannotFinish": {
+    "message": "This Organization was not left half-created on this device, so its setup cannot be finished here."
+  },
   "$1screens.OrganizationProvisioning.discardConfirmBody": {
     "message": "The projects created on this device for this setup will be removed. Projects shared with other devices are not affected."
   },
@@ -1071,6 +1074,9 @@
   },
   "$1sharedComponents.ErrorBottomSheet.somethingWrong": {
     "message": "Something Went Wrong"
+  },
+  "$1sharedComponents.OrganizationRepairBanner.needsAttention": {
+    "message": "An Organization on this device needs attention"
   },
   "$1soloProject.startNewProject.title": {
     "message": "Start New Project"

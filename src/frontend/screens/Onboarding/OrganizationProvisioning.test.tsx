@@ -74,6 +74,7 @@ function mockDiscard(
     status: 'idle',
     error: undefined,
     result: undefined,
+    discardedOrganizationId: undefined,
     ...overrides,
   });
 }
@@ -339,6 +340,7 @@ describe('OrganizationProvisioning', () => {
     mockOrganizations([namelessIncompleteOrganization]);
     mockDiscard({
       status: 'success',
+      discardedOrganizationId: 'd'.repeat(16),
       result: {
         ok: true,
         removed: [{slot: 'a', projectId: 'project-a'}],
@@ -350,6 +352,35 @@ describe('OrganizationProvisioning', () => {
     expect(
       await screen.findByText('START-OVER-FORK-REACHED'),
     ).toBeOnTheScreen();
+  });
+
+  test('a successful discard stays on the repair surface while another degraded organization remains', async () => {
+    // Greptile P1: a discard that frees the device must not hide another
+    // organization that still needs repair — the start-over fork only owns
+    // the next decision when NOTHING on the device is degraded anymore.
+    const user = userEvent.setup();
+    mockOrganizations([incompleteOrganization, invalidOrganization]);
+    mockDiscard({
+      status: 'success',
+      result: {
+        ok: true,
+        removed: [{slot: 'm', projectId: 'project-m'}],
+        skipped: [],
+      } satisfies DiscardResult,
+    });
+    await renderScreen();
+
+    await user.press(screen.getByTestId('ORG.provisioning-discard-btn'));
+    pressAlertButton('Discard and start over');
+
+    // The discarded setup is gone; the remaining invalid organization's
+    // diagnosis stays on screen — no automatic hop to the start-over fork.
+    expect(
+      await screen.findByText(
+        'Something is wrong with this Organization. Contact support.',
+      ),
+    ).toBeOnTheScreen();
+    expect(screen.queryByText('START-OVER-FORK-REACHED')).not.toBeOnTheScreen();
   });
 
   test('a partial discard names each skipped project and why, and stays put', async () => {
