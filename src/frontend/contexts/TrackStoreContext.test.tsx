@@ -176,6 +176,8 @@ describe('useTrackActions()', () => {
     });
 
     expect(stateHook.result.current).toStrictEqual({
+      // clearCurrentTrack drops the work origin along with the track.
+      projectId: undefined,
       description: '',
       distance: 0,
       isTracking: false,
@@ -292,5 +294,61 @@ describe('useTrackActions()', () => {
       calculateTotalDistance(stateHook.result.current.locationHistory),
       1,
     );
+  });
+});
+
+describe('setTracking() e origem do trabalho (CA09)', () => {
+  test('retomar trilha persistida de A-m com resolver B-m é recusado', () => {
+    const trackStore = createTrackStore();
+    trackStore.setProjectResolver(() => 'B-m');
+    trackStore.instance.setState({
+      projectId: 'A-m',
+      description: 'trilha de A',
+      locationHistory: [{latitude: 0, longitude: 0, timestamp: 1}],
+      distance: 10,
+    });
+
+    expect(() => trackStore.actions.setTracking(true)).toThrow(
+      'work-origin-mismatch',
+    );
+
+    const state = trackStore.instance.getState();
+    expect(state.isTracking).toBe(false);
+    expect(state.projectId).toBe('A-m');
+    expect(state.locationHistory).toHaveLength(1);
+  });
+
+  test('retomar trilha com mesma origem preserva projectId e pontos', () => {
+    const trackStore = createTrackStore();
+    trackStore.setProjectResolver(() => 'A-m');
+    trackStore.instance.setState({
+      projectId: 'A-m',
+      locationHistory: [{latitude: 0, longitude: 0, timestamp: 1}],
+      distance: 10,
+    });
+
+    trackStore.actions.setTracking(true);
+
+    expect(trackStore.instance.getState()).toMatchObject({
+      isTracking: true,
+      projectId: 'A-m',
+    });
+    expect(trackStore.instance.getState().locationHistory).toHaveLength(1);
+  });
+
+  test('trilha legada sem projectId retoma com origem do resolver', () => {
+    const trackStore = createTrackStore();
+    trackStore.setProjectResolver(() => 'B-m');
+    trackStore.instance.setState({
+      description: 'legada',
+      locationHistory: [{latitude: 0, longitude: 0, timestamp: 1}],
+    });
+
+    trackStore.actions.setTracking(true);
+
+    expect(trackStore.instance.getState()).toMatchObject({
+      isTracking: true,
+      projectId: 'B-m',
+    });
   });
 });

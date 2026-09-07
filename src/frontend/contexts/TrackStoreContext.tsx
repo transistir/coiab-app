@@ -25,6 +25,7 @@ export const PresetSchema = v.object({
 
 const TrackStateSchema = v.intersect([
   v.object({
+    projectId: v.optional(v.string()),
     description: v.string(),
     distance: v.number(),
     preset: v.nullable(PresetSchema),
@@ -77,6 +78,7 @@ function createInitialState(): TrackState {
 
 export function createTrackStore({persist} = {persist: false}) {
   let store: StoreApi<TrackState>;
+  let getProjectId: () => string | undefined = () => undefined;
 
   if (persist) {
     store = createStore(
@@ -122,6 +124,10 @@ export function createTrackStore({persist} = {persist: false}) {
   }
 
   const actions = {
+    assertOrigin: (projectId: string) => {
+      if (store.getState().projectId !== projectId)
+        throw new Error('work-origin-mismatch');
+    },
     setTrackPreset: (preset: Preset) => {
       store.setState({preset});
     },
@@ -152,6 +158,8 @@ export function createTrackStore({persist} = {persist: false}) {
     },
     clearCurrentTrack: () => {
       store.setState({
+        projectId: undefined,
+        docId: null,
         description: '',
         distance: 0,
         isTracking: false,
@@ -162,15 +170,30 @@ export function createTrackStore({persist} = {persist: false}) {
       });
     },
     setTracking: (isTracking: boolean) => {
-      store.setState(
-        isTracking
-          ? {isTracking: true, trackingSince: new Date()}
-          : {isTracking: false, trackingSince: null},
-      );
+      if (!isTracking) {
+        store.setState({isTracking: false, trackingSince: null});
+        return;
+      }
+      // SPEC A CA09: resuming a persisted track never rewrites its origin.
+      // An existing projectId that differs from the active project refuses
+      // the resume; only a legacy track without origin adopts the resolver's.
+      const {projectId} = store.getState();
+      const origin = getProjectId();
+      if (projectId && origin && projectId !== origin) {
+        throw new Error('work-origin-mismatch');
+      }
+      store.setState({
+        isTracking: true,
+        trackingSince: new Date(),
+        ...(projectId || !origin ? {} : {projectId: origin}),
+      });
     },
   };
 
   return {
+    setProjectResolver: (resolver: () => string | undefined) => {
+      getProjectId = resolver;
+    },
     instance: store,
     actions,
   };

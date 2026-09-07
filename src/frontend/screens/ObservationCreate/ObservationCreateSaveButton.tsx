@@ -80,7 +80,7 @@ export const ObservationCreateSaveButton = () => {
   );
   const preset = useDraftObservationState(store => store.value?.presetRef);
   const {authState} = useAuthContext();
-  const {clearDraft} = useDraftObservationActions();
+  const {clearDraft, assertOrigin} = useDraftObservationActions();
   const navigation = useNavigationFromRoot();
   const {projectId} = useActiveProject();
   const isTracking = useTrackState(state => state.isTracking);
@@ -152,6 +152,11 @@ export const ObservationCreateSaveButton = () => {
 
     let newAttachments: Attachment[] = [];
     try {
+      // SPEC A CA09 / FIX-F: validate the draft's origin against the ACTIVE
+      // operational projectId BEFORE writing to core — a diverged origin
+      // (e.g. after an organization switch) throws 'work-origin-mismatch',
+      // which the catch below reports and surfaces without saving.
+      assertOrigin(projectId);
       if (attachments) {
         const photoAttachments = attachments.filter(att =>
           isUnsavedPhotoAttachment(att),

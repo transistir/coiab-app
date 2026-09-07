@@ -54,6 +54,7 @@ export function convertPosition(
 
 export function createDraftObservationStore({persist}: {persist: boolean}) {
   let nextAttachmentId = 0;
+  let getProjectId: () => string | undefined = () => undefined;
   // Abort controller cannot be serialized, and thereofore cannot be saved to persisted state
   // We create an abortController in memory which allows us to abort photos being processed
   const abortControllers = new Map<number, AbortController>();
@@ -291,6 +292,7 @@ export function createDraftObservationStore({persist}: {persist: boolean}) {
     if (observation) {
       instance.setState(
         {
+          ...(getProjectId() ? {projectId: getProjectId()} : {}),
           value: valueOf(observation),
           id: {docId: observation.docId, versionId: observation.versionId},
           unsavedAttachments: [],
@@ -301,6 +303,7 @@ export function createDraftObservationStore({persist}: {persist: boolean}) {
     } else {
       instance.setState(
         {
+          ...(getProjectId() ? {projectId: getProjectId()} : {}),
           value: createEmptyObservationValue(),
           id: null,
           unsavedAttachments: [],
@@ -400,6 +403,10 @@ export function createDraftObservationStore({persist}: {persist: boolean}) {
   }
 
   const actions = {
+    assertOrigin: (projectId: string) => {
+      if (instance.getState().projectId !== projectId)
+        throw new Error('work-origin-mismatch');
+    },
     addPhoto,
     addAudio,
     deleteUnsavedAttachment,
@@ -410,7 +417,13 @@ export function createDraftObservationStore({persist}: {persist: boolean}) {
     updatePreset,
   };
 
-  return {instance, actions};
+  return {
+    instance,
+    actions,
+    setProjectResolver: (resolver: () => string | undefined) => {
+      getProjectId = resolver;
+    },
+  };
 }
 
 type ObservationTagValue = Observation['tags'][number];
@@ -468,6 +481,7 @@ export type UnsavedAudioAttachment = {
 type UnsavedAttachment = UnsavedPhotoAttachment | UnsavedAudioAttachment;
 
 type DraftStateEmpty = {
+  projectId?: string;
   value: null;
   id: null;
   unsavedAttachments: null;
@@ -483,6 +497,7 @@ type ObservationValueWithPreset = Exclude<ObservationValue, 'presetRef'> & {
 };
 
 type DraftStatePopulated = {
+  projectId?: string;
   value: ObservationValueWithPreset;
   id: {docId: string; versionId: string} | null;
   unsavedAttachments: UnsavedAttachment[];
