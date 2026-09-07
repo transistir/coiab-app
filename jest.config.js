@@ -60,7 +60,17 @@ const NODE_MODULE_PATTERNS_TO_TRANSFORM = [
 /** @type {import('jest').Config} */
 const config = {
   preset: 'jest-expo',
-  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
+  // `mjs` por último: não muda a resolução dos imports existentes; apenas
+  // permite que o haste-map enxergue os testes Node-only de scripts `.mjs`.
+  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node', 'mjs'],
+  // Defaults do jest (.[jt]s?(x)) + descoberta de testes `.test.mjs`
+  // (scripts/gerar-manifestos-pacotes.test.mjs roda o gerador como processo
+  // node filho; sem isto o padrão de testPath do gate não casa com nada).
+  testMatch: [
+    '**/__tests__/**/*.[jt]s?(x)',
+    '**/?(*.)+(spec|test).[tj]s?(x)',
+    '**/?(*.)+(spec|test).mjs',
+  ],
   resolver: './node_modules/react-native-worklets/jest/resolver.js',
   // https://react-native-documents.github.io/docs/sponsor-only/jest-mocks
   setupFiles: [
@@ -68,7 +78,10 @@ const config = {
   ],
   setupFilesAfterEnv: ['./jest.setup.js'],
   transform: {
-    '\\.[jt]sx?$': [
+    // `[cm]?` also matches the Node-only `.mjs` helpers under `scripts/` that
+    // tests import (e.g. scripts/lib/manifesto-pacote.mjs — package-manifest
+    // extraction stays out of the RN bundle).
+    '\\.[cm]?[jt]sx?$': [
       'babel-jest',
       {
         extends: './babel.config.js',

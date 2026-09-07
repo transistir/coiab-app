@@ -6,7 +6,7 @@
   "scripts": {
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "prestart": "npm run build:translations && npm run build:intl-polyfills",
+    "prestart": "npm run build:manifestos-pacotes && npm run build:translations && npm run build:intl-polyfills",
     "start": "expo start --dev-client",
     "lint:prettier": "prettier \"src/**/*.{js,ts,jsx,tsx}\" --check",
     "lint:eslint": "eslint --cache .",
@@ -18,9 +18,10 @@
     "deep-clean": "./scripts/deep-clean.sh",
     "build:android:e2e": "dotenv -- eas build --platform android --profile test --local --clear-cache && mkdir -p build && mv build-*.apk build/ && mv build/build-*.apk build/Comapeo-e2e.apk",
     "build:translations": "node ./scripts/build-translations.mjs",
+    "build:manifestos-pacotes": "node ./scripts/gerar-manifestos-pacotes.mjs",
     "build:intl-polyfills": "node ./scripts/build-intl-polyfills.mjs",
     "extract-messages": "node scripts/extract-messages.mjs",
-    "eas-build-post-install": "npm run build:translations && npm run build:intl-polyfills && node ./scripts/storybook-generate-if-enabled.mjs",
+    "eas-build-post-install": "npm run build:manifestos-pacotes && npm run build:translations && npm run build:intl-polyfills && node ./scripts/storybook-generate-if-enabled.mjs",
     "//eas-build-on-success": "scripts/upload-release.sh (desativado: requer storage MinIO/R2 com credenciais AWS — reativar/remover quando houver storage próprio)",
     "upgrade-deps:all": "npm-check --update --save-exact",
     "upgrade-deps:production": "npm-check --update --save-exact --production",
@@ -175,6 +176,7 @@
     "babel-plugin-transform-import-meta": "2.3.3",
     "babel-plugin-transform-inline-environment-variables": "0.4.4",
     "babel-preset-expo": "56.0.17",
+    "comapeocat": "1.2.0",
     "date-fns": "4.4.0",
     "dotenv-cli": "11.0.0",
     "eslint": "10.6.0",
@@ -206,6 +208,7 @@
     "typescript-eslint": "8.62.1",
     "undici": "6.25.0",
     "webdriverio": "9.29.1",
+    "yauzl-promise": "4.0.0",
     "zod-validation-error": "4.0.2"
   },
   "overrides": {
