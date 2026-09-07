@@ -24,12 +24,17 @@ import {
 } from '../../contexts/TrackStoreContext';
 import {SaveTrackButton} from './SaveTrackButton';
 
-async function setup(activeProjectId: string) {
+async function setup(
+  activeProjectId: string,
+  origemDaTrilha: string | null = 'A-m',
+) {
   mockActiveProjectId = activeProjectId;
   const trackStore = createTrackStore();
-  // Trilha persistida com origem A-m (carimbada quando A era o projeto ativo).
+  // Trilha persistida com a origem informada (carimbada quando aquele projeto
+  // era o ativo); `undefined` reproduz uma trilha parada LEGADA, persistida
+  // antes da camada de organização, sem carimbo de origem.
   trackStore.instance.setState({
-    projectId: 'A-m',
+    projectId: origemDaTrilha ?? undefined,
     description: 'trilha de A',
     locationHistory: [{latitude: 0, longitude: 0, timestamp: 1}],
     distance: 10,
@@ -78,6 +83,19 @@ describe('assertOrigin no handler real de salvamento da trilha (FIX-F)', () => {
 
     await fireEvent.press(screen.getByLabelText('Save track.'));
 
+    expect(mockCreateTrack).toHaveBeenCalledTimes(1);
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+    expect(mockNavigation.navigate).not.toHaveBeenCalled();
+  });
+
+  test('trilha legada sem origem continua salvável no projeto ativo', async () => {
+    const {trackStore} = await setup('B-m', null);
+    // Trilha parada anterior a este PR: nenhuma origem persistida.
+    expect(trackStore.instance.getState().projectId).toBeUndefined();
+
+    await fireEvent.press(screen.getByLabelText('Save track.'));
+
+    // Ausência de origem NÃO é divergência: a escrita no core acontece.
     expect(mockCreateTrack).toHaveBeenCalledTimes(1);
     expect(Sentry.captureException).not.toHaveBeenCalled();
     expect(mockNavigation.navigate).not.toHaveBeenCalled();

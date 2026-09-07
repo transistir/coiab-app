@@ -7,6 +7,7 @@ import {
 import * as v from 'valibot';
 
 import {MMKVStoreInitializer} from '../hooks/persistedState/createPersistedState';
+import {assertWorkOrigin} from '../lib/organization/workOrigin';
 import {LocationHistoryPoint} from '../sharedTypes/location';
 import {calculateTotalDistance} from '../utils/distance';
 import {Preset} from '@comapeo/schema';
@@ -125,8 +126,7 @@ export function createTrackStore({persist} = {persist: false}) {
 
   const actions = {
     assertOrigin: (projectId: string) => {
-      if (store.getState().projectId !== projectId)
-        throw new Error('work-origin-mismatch');
+      assertWorkOrigin(store.getState().projectId, projectId);
     },
     setTrackPreset: (preset: Preset) => {
       store.setState({preset});

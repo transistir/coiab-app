@@ -186,7 +186,8 @@ export function createCoiabOrganizationsStore({persist} = {persist: false}) {
      * one write: `pronta` + `confirmacaoPendente: true`, both areas
      * journaled as `verificado`. The pair must be complete and exclusive —
      * a missing or duplicated projectId (here or in another local
-     * organization) leaves the document untouched.
+     * organization) leaves the document untouched, and so does an id that
+     * contradicts a non-null journaled one.
      */
     publicarPronta: (organizacaoId: string, par: ParMaterializado) => {
       store.setState(state => {
@@ -217,6 +218,21 @@ export function createCoiabOrganizationsStore({persist} = {persist: false}) {
             par.monitoramento.projectId,
           ) ||
           !projetoSemAssociacao(state, organizacaoId, par.alertas.projectId)
+        ) {
+          return state;
+        }
+
+        // An area whose journal already holds a projectId is bound to the
+        // project created in core: publishing a different id for it would
+        // overwrite the journal, orphan that project and lose the recovery
+        // link. Only an area with a null journal accepts the supplied id.
+        const journalDivergente = (area: Area): boolean => {
+          const journalizado = organizacao.materializacao[area].projectId;
+          return !!journalizado && journalizado !== par[area].projectId;
+        };
+        if (
+          journalDivergente('monitoramento') ||
+          journalDivergente('alertas')
         ) {
           return state;
         }

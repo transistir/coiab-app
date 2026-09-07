@@ -27,7 +27,8 @@ export const SaveTrackButton: FC = () => {
       // SPEC A CA09 / FIX-F: validate the persisted track's origin against
       // the ACTIVE operational projectId BEFORE writing to core — a diverged
       // origin (e.g. after an organization switch) throws
-      // 'work-origin-mismatch' and prevents the save.
+      // 'work-origin-mismatch' and prevents the save. A legacy track with no
+      // stamped origin is not diverged and stays saveable.
       assertOrigin(projectId);
     } catch (err) {
       Sentry.captureException(err);

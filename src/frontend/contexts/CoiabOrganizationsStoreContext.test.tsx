@@ -305,6 +305,88 @@ describe('CoiabOrganizationsStore.publicarPronta (SPEC A §4.2 regras 2, 3 e 9)'
     expect(publish).not.toHaveBeenCalled();
   });
 
+  // P1 (greptile it2): uma organização recuperável já tem projectId
+  // journalizado; publicar com outro ID apagaria o vínculo com o projeto já
+  // criado no core (vazamento de projeto órfão + perda da recuperação).
+  test('ID divergente do journal não-nulo não publica nem sobrescreve o journal', () => {
+    const store = storeComOrganizacao(
+      criarOrganizacaoPreparando({
+        estado: 'falha_recuperavel',
+        materializacao: {
+          monitoramento: {
+            ...criarEtapaAreaAusente(),
+            etapa: 'criado',
+            projectId: 'journaled-monitoring-project',
+          },
+          alertas: criarEtapaAreaAusente(),
+        },
+      }),
+    );
+    const publish = jest.fn();
+    store.instance.subscribe(publish);
+
+    store.actions.publicarPronta('org-1', {
+      monitoramento: {
+        projectId: 'recovered-monitoring-project',
+        template: {versao: '1', hash: 'h1'},
+      },
+      alertas: parValido.alertas,
+    });
+
+    const organizacao = store.instance.getState().organizacoes[0];
+    expect(organizacao?.estado).toBe('falha_recuperavel');
+    expect(organizacao?.confirmacaoPendente).toBe(false);
+    // O journal permanece intacto: o vínculo de recuperação não é perdido.
+    expect(organizacao?.materializacao.monitoramento).toStrictEqual({
+      etapa: 'criado',
+      projectId: 'journaled-monitoring-project',
+      template: null,
+      idsAntesDaCriacao: null,
+    });
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  test('journal nulo nas duas áreas aceita os IDs fornecidos (comportamento normal)', () => {
+    const store = storeComOrganizacao(criarOrganizacaoPreparando());
+
+    store.actions.publicarPronta('org-1', parValido);
+
+    const organizacao = store.instance.getState().organizacoes[0];
+    expect(organizacao?.estado).toBe('pronta');
+    expect(organizacao?.materializacao.monitoramento.projectId).toBe(
+      'proj-m-1',
+    );
+    expect(organizacao?.materializacao.alertas.projectId).toBe('proj-a-1');
+  });
+
+  test('IDs idênticos ao journal não-nulo das duas áreas publicam pronta', () => {
+    const store = storeComOrganizacao(
+      criarOrganizacaoPreparando({
+        estado: 'falha_recuperavel',
+        materializacao: {
+          monitoramento: {
+            ...criarEtapaAreaAusente(),
+            etapa: 'criado',
+            projectId: 'proj-m-1',
+          },
+          alertas: {
+            ...criarEtapaAreaAusente(),
+            etapa: 'importando',
+            projectId: 'proj-a-1',
+          },
+        },
+      }),
+    );
+
+    store.actions.publicarPronta('org-1', parValido);
+
+    const organizacao = store.instance.getState().organizacoes[0];
+    expect(organizacao?.estado).toBe('pronta');
+    expect(organizacao?.confirmacaoPendente).toBe(true);
+    expect(organizacao?.materializacao.monitoramento.etapa).toBe('verificado');
+    expect(organizacao?.materializacao.alertas.etapa).toBe('verificado');
+  });
+
   test('template nulo ou somente whitespace não grava pronta', () => {
     const store = storeComOrganizacao(criarOrganizacaoPreparando());
 

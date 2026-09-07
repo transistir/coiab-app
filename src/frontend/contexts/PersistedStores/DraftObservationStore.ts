@@ -15,6 +15,7 @@ import {manipulateAsync} from 'expo-image-manipulator';
 import {excludeKeys} from 'filter-obj';
 import type {Attachment, Position} from '../../sharedTypes/index.ts';
 import {throwIfAborted} from '../../lib/throwIfAborted.ts';
+import {assertWorkOrigin} from '../../lib/organization/workOrigin';
 import {parse} from 'valibot';
 import {PhotoEXIFSchema} from '../../lib/exif.ts';
 import * as Sentry from '@sentry/react-native';
@@ -404,8 +405,7 @@ export function createDraftObservationStore({persist}: {persist: boolean}) {
 
   const actions = {
     assertOrigin: (projectId: string) => {
-      if (instance.getState().projectId !== projectId)
-        throw new Error('work-origin-mismatch');
+      assertWorkOrigin(instance.getState().projectId, projectId);
     },
     addPhoto,
     addAudio,

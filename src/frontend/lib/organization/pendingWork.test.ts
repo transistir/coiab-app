@@ -14,13 +14,15 @@ describe('trabalho com origem persistida (CA08/CA09)', () => {
     );
     expect(() => restored.actions.assertOrigin('A-m')).not.toThrow();
   });
-  test('rascunho legado sem origem não recebe ID da nova organização', () => {
+  test('rascunho legado sem origem não recebe ID da nova organização, mas continua salvável', () => {
     const draft = createDraftObservationStore({persist: false});
     draft.actions.createDraft();
     draft.setProjectResolver(() => 'B-m');
-    expect(() => draft.actions.assertOrigin('B-m')).toThrow(
-      'work-origin-mismatch',
-    );
+    // A origem do rascunho não é reescrita pelo projeto ativo...
+    expect(draft.instance.getState().projectId).toBeUndefined();
+    // ...e a ausência de carimbo não bloqueia o salvamento (trabalho pendente
+    // anterior à camada de organização não fica preso após a atualização).
+    expect(() => draft.actions.assertOrigin('B-m')).not.toThrow();
   });
   test('trilha parada continua pendente e mantém origem até salvar ou descartar', () => {
     const track = createTrackStore({persist: true});

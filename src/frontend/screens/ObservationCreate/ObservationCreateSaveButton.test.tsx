@@ -97,11 +97,18 @@ function createMockLocationStore() {
   }));
 }
 
-async function setup(activeProjectId: string) {
+async function setup(
+  activeProjectId: string,
+  origemDoRascunho: string | null = 'A-m',
+) {
   mockActiveProjectId = activeProjectId;
   const draftStore = createDraftObservationStore({persist: false});
-  // Rascunho carimbado com a origem A-m (projeto ativo quando foi criado).
-  draftStore.setProjectResolver(() => 'A-m');
+  // Rascunho carimbado com a origem informada (projeto ativo quando foi
+  // criado); `undefined` reproduz um rascunho LEGADO, persistido antes da
+  // camada de organização, que nunca recebeu carimbo de origem.
+  if (origemDoRascunho) {
+    draftStore.setProjectResolver(() => origemDoRascunho);
+  }
   draftStore.actions.createDraft();
   // manualLocation faz handlePressSave salvar direto (sem diálogo de GPS).
   draftStore.actions.updatePosition({
@@ -178,6 +185,23 @@ describe('assertOrigin no handler real de salvamento da observação (FIX-F)', (
     expect(mockNavigation.popTo).toHaveBeenCalledWith('Home', {
       screen: 'Map',
     });
+  });
+});
+
+describe('rascunho legado sem origem (compatibilidade pré-multi-projeto)', () => {
+  test('rascunho sem projectId continua salvável no projeto ativo', async () => {
+    const {draftStore} = await setup('B-m', null);
+    // Rascunho anterior a este PR: nenhuma origem persistida.
+    expect(draftStore.instance.getState().projectId).toBeUndefined();
+
+    await fireEvent.press(screen.getByTestId('OBS.edit-save-btn'));
+
+    // Ausência de origem NÃO é divergência: a escrita no core acontece.
+    await waitFor(() => {
+      expect(mockCreateObservationAsync).toHaveBeenCalledTimes(1);
+    });
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+    expect(mockNavigation.navigate).not.toHaveBeenCalled();
   });
 });
 

@@ -155,7 +155,8 @@ export const ObservationCreateSaveButton = () => {
       // SPEC A CA09 / FIX-F: validate the draft's origin against the ACTIVE
       // operational projectId BEFORE writing to core — a diverged origin
       // (e.g. after an organization switch) throws 'work-origin-mismatch',
-      // which the catch below reports and surfaces without saving.
+      // which the catch below reports and surfaces without saving. A legacy
+      // draft with no stamped origin is not diverged and stays saveable.
       assertOrigin(projectId);
       if (attachments) {
         const photoAttachments = attachments.filter(att =>
