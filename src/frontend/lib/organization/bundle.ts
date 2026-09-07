@@ -93,73 +93,101 @@ export function groupPendingInvites(invites: ReadonlyArray<InviteLike>): {
 
   const bundles: OrganizationInviteBundle[] = [];
   for (const group of groups.values()) {
-    // Collapse duplicate invites per slot. The representative is chosen
-    // among PENDING entries only: a newer canceled/rejected duplicate must
-    // never hide an older still-pending invite. Non-pending entries are
-    // consulted solely to classify a missing slot as definitive.
-    const pendingReps = new Map<
-      Slot,
-      {invite: InviteLike; marker: OrgMarker}
+    // Collapse duplicate invites per slot, WITHIN a role (SPEC 13 Q3): a
+    // role-blind collapse let a newer Participant invite evict the older
+    // Coordinator one for the same slot, and the surviving pair then failed
+    // the role-consistency check below — hiding a joinable Coordinator
+    // bundle. The representative is chosen among PENDING entries only: a
+    // newer canceled/rejected duplicate must never hide an older
+    // still-pending invite. Non-pending entries are consulted solely to
+    // classify a missing slot as definitive.
+    const pendingRepsByRole = new Map<
+      string,
+      Map<Slot, {invite: InviteLike; marker: OrgMarker}>
     >();
     for (const entry of group) {
       if (entry.invite.state !== 'pending') continue;
+      // A role-less invite keeps a partition of its own instead of joining
+      // another role's: it has no authoritative role tying it to anything,
+      // but it still makes the group role-inconsistent.
+      const roleKey = entry.invite.roleName ?? '';
+      const pendingReps =
+        pendingRepsByRole.get(roleKey) ??
+        new Map<Slot, {invite: InviteLike; marker: OrgMarker}>();
+      pendingRepsByRole.set(roleKey, pendingReps);
       const pendingIncumbent = pendingReps.get(entry.marker.slot);
       if (!pendingIncumbent || isNewer(entry.invite, pendingIncumbent.invite)) {
         pendingReps.set(entry.marker.slot, entry);
       }
     }
 
-    const pending = [...pendingReps.values()];
-    if (pending.length === 0) continue; // nothing joinable in this group
+    // A single role keeps the previous semantics (an incomplete bundle is
+    // still emitted, transient or definitive). Several roles are reconciled
+    // only by a COMPLETE pair: a group covering one slot per role is the
+    // role-inconsistent invitation this has always refused to join.
+    const roleCandidates = [...pendingRepsByRole.values()];
+    const emitted =
+      roleCandidates.length <= 1
+        ? roleCandidates
+        : roleCandidates.filter(reps =>
+            SLOTS.every(slot => reps.get(slot) !== undefined),
+          );
 
-    // Same non-empty role across the pending slots (SPEC 13 Q3): a role-less
-    // pair has no authoritative role tying the invites together.
-    const roleName = pending[0]!.invite.roleName;
-    if (!roleName) continue;
-    if (pending.some(entry => entry.invite.roleName !== roleName)) continue;
+    for (const pendingReps of emitted) {
+      const pending = [...pendingReps.values()];
+      if (pending.length === 0) continue; // nothing joinable in this group
 
-    const organizationId = pending[0]!.marker.organizationId;
-    const invitorDeviceId = pending[0]!.invite.invitorDeviceId;
-    const invites: Partial<Record<Slot, InviteLike>> = {};
-    for (const entry of pending) invites[entry.marker.slot] = entry.invite;
-    const allInviteIds = group
-      .filter(entry => entry.invite.roleName === roleName)
-      .map(entry => entry.invite.inviteId);
+      // A non-empty role (SPEC 13 Q3): a role-less pair has no authoritative
+      // role tying the invites together. Sameness across the slots is
+      // guaranteed by the partition they were collapsed in.
+      const roleName = pending[0]!.invite.roleName;
+      if (!roleName) continue;
 
-    const missingSlots = SLOTS.filter(slot => !invites[slot]);
-    let completeness: OrganizationInviteBundle['completeness'];
-    if (missingSlots.length === 0) {
-      completeness = 'complete';
-    } else {
-      // Definitive only when EVERY invite grouped for the missing slot is in
-      // a terminal state — a single in-flight or non-representative entry
-      // keeps the slot transient (the accept may still land).
-      completeness = missingSlots.every(slot => {
-        const entriesForSlot = group.filter(
-          entry => entry.marker.slot === slot,
-        );
-        return (
-          entriesForSlot.length > 0 &&
-          entriesForSlot.every(entry =>
-            INVITE_TERMINAL_STATES.includes(entry.invite.state),
-          )
-        );
-      })
-        ? 'incomplete-definitive'
-        : 'incomplete-transient';
+      const organizationId = pending[0]!.marker.organizationId;
+      const invitorDeviceId = pending[0]!.invite.invitorDeviceId;
+      const invites: Partial<Record<Slot, InviteLike>> = {};
+      for (const entry of pending) invites[entry.marker.slot] = entry.invite;
+      // Role-filtered, so declining THIS bundle never rejects the same
+      // inviter's invites for another role.
+      const allInviteIds = group
+        .filter(entry => entry.invite.roleName === roleName)
+        .map(entry => entry.invite.inviteId);
+
+      const missingSlots = SLOTS.filter(slot => !invites[slot]);
+      let completeness: OrganizationInviteBundle['completeness'];
+      if (missingSlots.length === 0) {
+        completeness = 'complete';
+      } else {
+        // Definitive only when EVERY invite grouped for the missing slot is
+        // in a terminal state — a single in-flight or non-representative
+        // entry keeps the slot transient (the accept may still land).
+        completeness = missingSlots.every(slot => {
+          const entriesForSlot = group.filter(
+            entry => entry.marker.slot === slot,
+          );
+          return (
+            entriesForSlot.length > 0 &&
+            entriesForSlot.every(entry =>
+              INVITE_TERMINAL_STATES.includes(entry.invite.state),
+            )
+          );
+        })
+          ? 'incomplete-definitive'
+          : 'incomplete-transient';
+      }
+
+      bundles.push({
+        organizationId,
+        organizationName:
+          pendingReps.get('m')?.marker.organizationName ??
+          pendingReps.get('a')?.marker.organizationName,
+        invitorDeviceId,
+        roleName,
+        invites,
+        allInviteIds,
+        completeness,
+      });
     }
-
-    bundles.push({
-      organizationId,
-      organizationName:
-        pendingReps.get('m')?.marker.organizationName ??
-        pendingReps.get('a')?.marker.organizationName,
-      invitorDeviceId,
-      roleName,
-      invites,
-      allInviteIds,
-      completeness,
-    });
   }
 
   bundles.sort((a, b) => a.organizationId.localeCompare(b.organizationId));

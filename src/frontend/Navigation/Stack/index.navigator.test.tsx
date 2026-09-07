@@ -107,6 +107,10 @@ import {
   setupIntegrationTestWithoutProject,
 } from '../../../../tests/integration/helpers/setupIntegrationTest';
 import {markerFor} from '../../lib/organization/marker';
+import {
+  organizationCreationProvenanceStore,
+  recordOrganizationCreationProvenance,
+} from '../../lib/organization/creationProvenance';
 
 /**
  * The startup gate mounted for real (SPEC 10.1): getInitialRoute picks the
@@ -119,6 +123,12 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
   // beforeEach/afterEach that boot and tear down a real core manager per test.
   const freshSetup = setupIntegrationTestWithoutProject();
   const orgSetup = setupIntegrationTest();
+
+  beforeEach(() => {
+    // The provenance record is durable by design — it must not leak from the
+    // test that wrote it into the next device state.
+    organizationCreationProvenanceStore.setState({organizationIds: []});
+  });
 
   test('creation with a delayed project refresh stays on Home without offering creation again', async () => {
     await freshSetup.renderNavigationAsync();
@@ -226,6 +236,8 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       name: 'Monitoramento',
       projectDescription: markerFor(freshSetup.orgId, 'm', freshSetup.orgName),
     });
+    // The create this device started was interrupted before the second slot.
+    recordOrganizationCreationProvenance(freshSetup.orgId);
     await freshSetup.renderNavigationAsync({activeProjectId: mProjectId});
 
     expect(
@@ -235,6 +247,88 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     // so the screen offers to finish the interrupted provisioning.
     expect(screen.getByTestId('ORG.provisioning-retry-btn')).toBeOnTheScreen();
   });
+
+  test('a one-slot organization with no creation provenance refuses to finish', async () => {
+    // Same local state as the test above WITHOUT the record: this is what a
+    // leave or a remote removal leaves behind, and finishing it would create
+    // an unrelated project in the missing slot and call the organization
+    // ready without the original slot's data or members.
+    const mProjectId = await freshSetup.client.createProject({
+      name: 'Monitoramento',
+      projectDescription: markerFor(freshSetup.orgId, 'm', freshSetup.orgName),
+    });
+    await freshSetup.renderNavigationAsync({activeProjectId: mProjectId});
+
+    expect(
+      await screen.findByText(
+        'This Organization was not left half-created on this device, so its setup cannot be finished here.',
+      ),
+    ).toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('ORG.provisioning-retry-btn'),
+    ).not.toBeOnTheScreen();
+    // The escape hatch stays reachable: no permanent creation lockout.
+    expect(
+      screen.getByTestId('ORG.provisioning-discard-btn'),
+    ).toBeOnTheScreen();
+  });
+
+  test('leaving a slot of the only organization lands on the provisioning gate', async () => {
+    // SPEC 3.8/10.1: the surviving slot reconstructs as `incomplete`, which
+    // Home may not operate — the runtime gate must route there even though
+    // `initialRouteName` was read when the navigator mounted on Home.
+    await orgSetup.renderNavigation();
+    expect(await screen.findByTestId('MAIN.map-screen')).toBeOnTheScreen();
+    const navigation = mockNavigation;
+    await act(async () =>
+      navigation.navigate('LeaveProject', {memberType: 'participant'}),
+    );
+    await fireEvent.press(await screen.findByText('Yes, Leave'));
+
+    await waitFor(async () => {
+      const joined = (await orgSetup.manager.listProjects()).filter(
+        project => project.status === 'joined',
+      );
+      expect(joined).toHaveLength(1);
+    });
+    expect(
+      await screen.findByText('Setting up your Organization…'),
+    ).toBeOnTheScreen();
+    expect(navigation.getRootState().routes.map(route => route.name)).toEqual([
+      'OrganizationProvisioning',
+    ]);
+    expect(screen.queryByTestId('MAIN.map-screen')).not.toBeOnTheScreen();
+  }, 15000);
+
+  test('an invalid organization stays reachable from Home while another is ready', async () => {
+    // Mixed state: `some(ready)` sends the device to Home, so the invalid
+    // organization's diagnosis has to be reachable FROM Home — and must not
+    // bounce back to it the moment it renders.
+    const duplicateSlotMarker = markerFor('f'.repeat(16), 'm', 'Broken Org');
+    await orgSetup.client.createProject({
+      name: 'Monitoramento',
+      projectDescription: duplicateSlotMarker,
+    });
+    await orgSetup.client.createProject({
+      name: 'Monitoramento (duplicado)',
+      projectDescription: duplicateSlotMarker,
+    });
+    await orgSetup.renderNavigation();
+
+    expect(await screen.findByTestId('MAIN.map-screen')).toBeOnTheScreen();
+    const navigation = mockNavigation;
+    await fireEvent.press(await screen.findByTestId('HOME.org-repair-btn'));
+
+    expect(
+      await screen.findByText(
+        'Something is wrong with this Organization. Contact support.',
+      ),
+    ).toBeOnTheScreen();
+    expect(navigation.getRootState().routes.map(route => route.name)).toEqual([
+      'Home',
+      'OrganizationProvisioning',
+    ]);
+  }, 15000);
 
   test('a duplicate-slot organization lands on OrganizationProvisioning and fails closed without crashing', async () => {
     const duplicateSlotMarker = markerFor(

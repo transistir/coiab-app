@@ -11,6 +11,10 @@ import {useOrganizations} from '../../hooks/organization/useOrganizations';
 import {useCreateOrganization} from '../../hooks/organization/useCreateOrganization';
 import {useDiscardIncompleteOrganization} from '../../hooks/organization/useDiscardIncompleteOrganization';
 import {markerFor} from '../../lib/organization/marker';
+import {
+  organizationCreationProvenanceStore,
+  recordOrganizationCreationProvenance,
+} from '../../lib/organization/creationProvenance';
 import type {DiscardResult} from '../../lib/organization/fanout';
 import type {InviteLike} from '../../lib/organization/bundle';
 import type {ReconstructedOrganization} from '../../lib/organization/reconstruct';
@@ -158,6 +162,7 @@ let alertSpy: jest.SpyInstance;
 
 beforeEach(() => {
   jest.clearAllMocks();
+  organizationCreationProvenanceStore.setState({organizationIds: []});
   mockOrganizations([]);
   mockCreateOrganization();
   mockDiscard();
@@ -189,8 +194,45 @@ describe('OrganizationProvisioning', () => {
     expect(screen.queryByText('HOME-REACHED')).not.toBeOnTheScreen();
   });
 
+  test('refuses to finish a setup this device cannot prove it started', async () => {
+    // An organization degraded by a leave/removal is `incomplete` with a name
+    // too — indistinguishable from an interrupted create without durable
+    // provenance. Finishing it would fabricate an unrelated project and mark
+    // the organization ready without the original slot's data or members.
+    const user = userEvent.setup();
+    mockOrganizations([incompleteOrganization]);
+    await renderScreen();
+
+    expect(
+      screen.queryByTestId('ORG.provisioning-retry-btn'),
+    ).not.toBeOnTheScreen();
+    expect(
+      screen.getByText(
+        'This Organization was not left half-created on this device, so its setup cannot be finished here.',
+      ),
+    ).toBeOnTheScreen();
+    // The escape hatch stays: the setup is not a permanent lockout.
+    await user.press(screen.getByTestId('ORG.provisioning-discard-btn'));
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  test('stays on the repair surface while another organization is ready', async () => {
+    // Mixed state: `some(ready)` must not send the invalid organization's
+    // only diagnosis surface back to Home the moment it renders.
+    mockOrganizations([readyOrganization, invalidOrganization]);
+    await renderScreen();
+
+    expect(screen.queryByText('HOME-REACHED')).not.toBeOnTheScreen();
+    expect(
+      screen.getByText(
+        'Something is wrong with this Organization. Contact support.',
+      ),
+    ).toBeOnTheScreen();
+  });
+
   test('offers to finish setting up for an incomplete organization with a name', async () => {
     mockOrganizations([incompleteOrganization]);
+    recordOrganizationCreationProvenance(incompleteOrganization.organizationId);
     await renderScreen();
 
     expect(screen.getByTestId('ORG.provisioning-retry-btn')).toBeOnTheScreen();
@@ -200,6 +242,7 @@ describe('OrganizationProvisioning', () => {
   test('pressing the retry resumes the reconstructed organization (idempotent fan-out)', async () => {
     const user = userEvent.setup();
     mockOrganizations([incompleteOrganization]);
+    recordOrganizationCreationProvenance(incompleteOrganization.organizationId);
     await renderScreen();
 
     await user.press(screen.getByTestId('ORG.provisioning-retry-btn'));
@@ -222,6 +265,7 @@ describe('OrganizationProvisioning', () => {
     // The invite sheet completes the organization — fabricating the slot
     // here would create a private project alongside it.
     mockOrganizations([incompleteOrganization]);
+    recordOrganizationCreationProvenance(incompleteOrganization.organizationId);
     mockInvites([
       {
         inviteId: 'invite-a',
@@ -242,6 +286,7 @@ describe('OrganizationProvisioning', () => {
 
   test('hides the retry button while the fan-out is running', async () => {
     mockOrganizations([incompleteOrganization]);
+    recordOrganizationCreationProvenance(incompleteOrganization.organizationId);
     mockCreateOrganization({status: 'creating'});
     await renderScreen();
 

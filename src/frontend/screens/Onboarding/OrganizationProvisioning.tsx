@@ -16,6 +16,7 @@ import {useOrganizations} from '../../hooks/organization/useOrganizations';
 import {useCreateOrganization} from '../../hooks/organization/useCreateOrganization';
 import {useDiscardIncompleteOrganization} from '../../hooks/organization/useDiscardIncompleteOrganization';
 import {groupPendingInvites} from '../../lib/organization/bundle';
+import {useHasOrganizationCreationProvenance} from '../../lib/organization/creationProvenance';
 import {SLOTS, SLOT_PROJECT_NAMES} from '../../lib/organization/marker';
 import type {ReconstructedOrganization} from '../../lib/organization/reconstruct';
 
@@ -64,6 +65,11 @@ const m = defineMessages({
     id: '$1screens.OrganizationProvisioning.skippedNotCreatedHere',
     defaultMessage:
       '{projectName} was not created on this device, so it was kept.',
+  },
+  cannotFinish: {
+    id: '$1screens.OrganizationProvisioning.cannotFinish',
+    defaultMessage:
+      'This Organization was not left half-created on this device, so its setup cannot be finished here.',
   },
   skippedStale: {
     id: '$1screens.OrganizationProvisioning.skippedStale',
@@ -125,7 +131,18 @@ export const OrganizationProvisioning = ({
     (org): org is Extract<ReconstructedOrganization, {state: 'incomplete'}> =>
       org.state === 'incomplete',
   );
+  // Durable creation provenance (Bug 46 follow-up): an organization degraded
+  // by a leave or a remote removal reconstructs as `incomplete` with a name
+  // too, so the local state alone cannot tell it from an interrupted create.
+  // Resuming the wrong one creates an unrelated project in the missing slot
+  // and calls the organization ready without the original slot's data or
+  // members, so the offer fails CLOSED without proof that this device started
+  // that create and never saw it finish.
+  const hasCreationProvenance = useHasOrganizationCreationProvenance(
+    incompleteOrganization?.organizationId,
+  );
   const retryOrganization =
+    hasCreationProvenance &&
     incompleteOrganization?.organizationName !== undefined &&
     incompleteOrganization.organizationName.length > 0
       ? {
@@ -153,11 +170,18 @@ export const OrganizationProvisioning = ({
         ),
     );
 
+  // Another organization being ready does not repair THIS one: in a mixed
+  // state the screen is the degraded organization's only diagnosis and
+  // recovery surface (reached from Home), so it stays until nothing on the
+  // device is degraded. The common case — everything ready — advances.
+  const hasDegradedOrganization = organizations.some(
+    org => org.state !== 'ready',
+  );
   React.useEffect(() => {
-    if (isReady) {
+    if (isReady && !hasDegradedOrganization) {
       navigation.reset({index: 0, routes: [{name: 'Home'}]});
     }
-  }, [isReady, navigation]);
+  }, [isReady, hasDegradedOrganization, navigation]);
 
   // A settled discard either freed the device (`ok` — everything removed, so
   // the start-over fork owns the next decision, like the startup gate's
@@ -173,6 +197,13 @@ export const OrganizationProvisioning = ({
     }
   }, [discardStatus, discardResult, resetDiscard, navigation]);
 
+  // Say why the resume is not on offer — but not while an invite is the
+  // expected completion path, where finishing was never the answer anyway.
+  const cannotFinishSetup =
+    incompleteOrganization !== undefined &&
+    !hasCreationProvenance &&
+    !missingSlotCoveredByInvite;
+
   const canDiscard =
     incompleteOrganization !== undefined &&
     !isCreating &&
@@ -187,6 +218,9 @@ export const OrganizationProvisioning = ({
       </HeaderText>
       {isInvalid && (
         <BodyText style={styles.errorText}>{t(m.invalid)}</BodyText>
+      )}
+      {cannotFinishSetup && (
+        <BodyText style={styles.errorText}>{t(m.cannotFinish)}</BodyText>
       )}
       {discardStatus === 'error' && (
         <BodyText style={styles.errorText}>{t(m.discardFailed)}</BodyText>

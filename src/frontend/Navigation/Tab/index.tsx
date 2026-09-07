@@ -20,6 +20,7 @@ import {DownloadIcon} from '../../sharedComponents/icons';
 import {useObservations} from '../../hooks/server/observations';
 import {useTracks} from '../../hooks/server/track';
 import {useAuthContext} from '../../contexts/AuthContext';
+import {OrganizationRepairBanner} from '../../sharedComponents/OrganizationRepairBanner';
 
 const Tab = createBottomTabNavigator<HomeTabsParamsList>();
 
@@ -43,6 +44,11 @@ export const HomeTabs = ({navigation}: NativeRootNavigationProps<'Home'>) => {
   return (
     <>
       <ProjectRemovalListener />
+      <React.Suspense fallback={null}>
+        <OrganizationRepairBanner
+          onPress={() => navigation.navigate('OrganizationProvisioning')}
+        />
+      </React.Suspense>
       <Drawer
         open={drawerOpen}
         onClose={() => {

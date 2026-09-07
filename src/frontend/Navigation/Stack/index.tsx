@@ -136,6 +136,37 @@ function OrganizationCompletion({
   return null;
 }
 
+/**
+ * SPEC 10.1 at runtime: `initialRouteName` is read once, when the navigator
+ * mounts, and React Navigation ignores later changes to it — so an
+ * Organization that degrades WHILE the app runs (a leave, a removal by
+ * another device) would leave the user on Home operating a broken
+ * organization. When the last ready organization goes away, the stack resets
+ * to the fail-closed surface the startup gate would have picked. A MIXED
+ * state (something else still ready) keeps Home: there the degraded
+ * organization is reached through its repair entry instead.
+ */
+function OrganizationDegradationGate({
+  state,
+  navigation,
+  enabled,
+  orgStatus,
+}: Pick<Parameters<NavigatorLayout>[0], 'state' | 'navigation'> & {
+  enabled: boolean;
+  orgStatus: OrgGateStatus;
+}) {
+  const previousOrgStatus = React.useRef(orgStatus);
+  React.useEffect(() => {
+    const previous = previousOrgStatus.current;
+    previousOrgStatus.current = orgStatus;
+    if (!enabled) return;
+    if (previous !== 'ready' || orgStatus !== 'provisioning') return;
+    if (state.routes[state.index]?.name === 'OrganizationProvisioning') return;
+    navigation.reset({index: 0, routes: [{name: 'OrganizationProvisioning'}]});
+  }, [enabled, orgStatus, state, navigation]);
+  return null;
+}
+
 export const RootStackNavigator = () => {
   const security = useAuthContext();
   const {data: deviceInfo} = useOwnDeviceInfo();
@@ -200,6 +231,12 @@ export const RootStackNavigator = () => {
                 org.slots.a === activeProjectId),
           )
         }
+      />
+      <OrganizationDegradationGate
+        state={state}
+        navigation={navigation}
+        orgStatus={orgStatus}
+        enabled={security.authState === 'authenticated' && !!deviceInfo.name}
       />
       <React.Suspense fallback={<FullScreenCenteredLoader />}>
         <PendingInvitesListener

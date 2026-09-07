@@ -66,6 +66,7 @@ const Stack = createNativeStackNavigator<AppStackParamsList>();
 
 const HomeStub = () => <Text>HOME-REACHED</Text>;
 const SuccessStub = () => <Text>SUCCESS-REACHED</Text>;
+const ProvisioningStub = () => <Text>PROVISIONING-REACHED</Text>;
 const LeftConfirmationStub = ({
   route,
 }: {
@@ -79,6 +80,10 @@ async function renderScreen() {
         <Stack.Navigator initialRouteName="LeaveProject">
           <Stack.Screen name="Home" component={HomeStub} />
           <Stack.Screen name="Success" component={SuccessStub} />
+          <Stack.Screen
+            name="OrganizationProvisioning"
+            component={ProvisioningStub}
+          />
           <Stack.Screen
             name="LeaveProject"
             component={LeaveProject}
@@ -113,7 +118,7 @@ beforeEach(() => {
 });
 
 describe('LeaveProject', () => {
-  test('an org project with a surviving slot activates it', async () => {
+  test('an org project with a surviving slot degrades to the provisioning surface', async () => {
     mockOrganizations([
       {
         state: 'ready',
@@ -130,9 +135,13 @@ describe('LeaveProject', () => {
       {projectId: mockLeftProjectId},
       expect.anything(),
     );
-    expect(mockSetActiveProjectId).toHaveBeenCalledWith(mockSurvivingSlotId);
-    expect(mockClearActiveProjectId).not.toHaveBeenCalled();
-    expect(await screen.findByText('LEFT-Projeto X')).toBeOnTheScreen();
+    // SPEC 3.10/10.1 (greploop it2): a leave that degrades a ready
+    // organization to `incomplete` must not leave the user operating the
+    // degraded organization from Home — the survivor is activated only
+    // indirectly (reconstruction), never as a Home landing.
+    expect(mockSetActiveProjectId).not.toHaveBeenCalled();
+    expect(mockClearActiveProjectId).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
   });
 
   test('an org project with no surviving slot clears the active id and resets to the org fork', async () => {

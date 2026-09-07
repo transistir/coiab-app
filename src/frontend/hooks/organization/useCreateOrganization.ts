@@ -7,6 +7,10 @@ import {createOrganization} from '../../lib/organization/fanout';
 import {projectsQueryKey} from '../../lib/organization/queryKeys';
 import {getOrganizationCreationCompletion} from './useOrganizationCreationCompletion';
 import {generateOrganizationId} from '../../lib/organization/orgId';
+import {
+  clearOrganizationCreationProvenance,
+  recordOrganizationCreationProvenance,
+} from '../../lib/organization/creationProvenance';
 
 export type CreateOrganizationStatus =
   'idle' | 'creating' | 'success' | 'error';
@@ -87,6 +91,11 @@ export function useCreateOrganization() {
     setStatus('creating');
     setError(undefined);
 
+    // Durable creation provenance, written BEFORE the fan-out: an attempt
+    // interrupted at any point (a killed app, a rejected slot write) is the
+    // only organization the provisioning screen may offer to finish.
+    recordOrganizationCreationProvenance(nextOrganizationId);
+
     let createdProjectId: string | undefined;
     try {
       const {projectIds} = await createOrganization(clientApi, {
@@ -94,6 +103,10 @@ export function useCreateOrganization() {
         organizationName,
       });
       createdProjectId = projectIds.m;
+      // The organization is whole: this device no longer holds an unfinished
+      // creation for it, so a later degradation (leave, removal) can never
+      // pass for one.
+      clearOrganizationCreationProvenance(nextOrganizationId);
     } catch (e) {
       if (attemptRef.current !== attempt) return;
       setError(e);
