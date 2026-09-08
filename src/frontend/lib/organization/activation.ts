@@ -92,18 +92,33 @@ export function createOrganizationActivation({
   // republish 'ready' without any revalidation in the failing attempt.
   let origemValidada: {projectId: string; generation: number} | undefined;
   let inFlight: Promise<boolean> | undefined;
+  let inFlightKey: string | undefined;
   // A-v4-4 (M-2): EVERY entry point — activate, initialize, retryPreparation
-  // and the pending-work recovery — shares this single lock. A concurrent call
-  // JOINS the running operation instead of starting a second one that would
-  // carry its own exemptions into the first one's checks. `perform` runs
+  // and the pending-work recovery — shares this single lock. `perform` runs
   // synchronously up to its first await: its entry guards must decide on the
   // state that exists when the caller asks for the change, not a later one.
-  function runExclusive(perform: () => Promise<boolean>): Promise<boolean> {
-    if (inFlight) return inFlight;
+  //
+  // review round 2 (§5.2): the lock distinguishes by intent identity. A
+  // concurrent call with the SAME key (double-tap: same target + operation)
+  // JOINS the running operation. A DIFFERENT key is a distinct intent and is
+  // rejected outright with `false` — it must never be silently aliased to the
+  // in-flight result (which would drop the second request and report the
+  // first one's outcome as if it were the second's).
+  function runExclusive(
+    key: string,
+    perform: () => Promise<boolean>,
+  ): Promise<boolean> {
+    if (inFlight) {
+      return inFlightKey === key ? inFlight : Promise.resolve(false);
+    }
     const operation = perform();
     inFlight = operation;
+    inFlightKey = key;
     void operation.finally(() => {
-      if (inFlight === operation) inFlight = undefined;
+      if (inFlight === operation) {
+        inFlight = undefined;
+        inFlightKey = undefined;
+      }
     });
     return operation;
   }
@@ -112,7 +127,7 @@ export function createOrganizationActivation({
     id: string,
     options: ActivationOptions = {},
   ): Promise<boolean> {
-    return runExclusive(() => performActivation(id, options));
+    return runExclusive(`activate:${id}`, () => performActivation(id, options));
   }
 
   async function performActivation(
@@ -275,7 +290,7 @@ export function createOrganizationActivation({
 
   const automaticallyResumed = new Set<string>();
   function retryPreparation(id: string) {
-    return runExclusive(() => performPreparation(id));
+    return runExclusive('retryPreparation', () => performPreparation(id));
   }
 
   async function performPreparation(id: string) {
@@ -331,7 +346,7 @@ export function createOrganizationActivation({
   }
 
   function initialize() {
-    return runExclusive(performInitialization);
+    return runExclusive('initialize', performInitialization);
   }
 
   async function performInitialization() {
@@ -407,7 +422,7 @@ export function createOrganizationActivation({
   // Explicit recovery revalidates the origin pair and selects its exact area.
   // It cannot be used as a general bypass of the in-session pending-work guard.
   function recoverPendingWork() {
-    return runExclusive(async () => {
+    return runExclusive('recoverPendingWork', async () => {
       const state = instance.getState();
       const origin = pendingWorkOrigin(store.instance.getState().organizacoes);
       if (

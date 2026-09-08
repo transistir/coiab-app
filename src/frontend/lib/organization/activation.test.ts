@@ -195,6 +195,47 @@ describe('troca serializada e encerramento da origem (CA06/CA08/CA11/CA14)', () 
     expect(store.instance.getState().ativa?.organizacaoId).toBe('A');
   });
 
+  test('ativação concorrente de outro alvo é rejeitada (false), nunca aliased à intenção em voo (§5.2)', async () => {
+    const {activation, getProject, store} = switchSetup();
+    store.instance.setState({
+      organizacoes: [
+        readyOrganization('A'),
+        readyOrganization('B'),
+        readyOrganization('C'),
+      ],
+    });
+    await activation.initialize();
+    const original = getProject.getMockImplementation()!;
+    let release!: () => void;
+    const delay = new Promise<void>(resolve => {
+      release = resolve;
+    });
+    getProject.mockImplementation(async id => {
+      if (id === 'B-m') await delay;
+      return original(id);
+    });
+
+    // B fica em voo (suspensa no primeiro await do core); C é pedido em
+    // seguida — intenção DIFERENTE, não um duplo toque.
+    const toB = activation.activate('B');
+    const toC = activation.activate('C');
+    release();
+    const [bResult, cResult] = await Promise.all([toB, toC]);
+
+    // C não pode herdar o resultado de B: é recusada com false.
+    expect(cResult).toBe(false);
+    expect(bResult).toBe(true);
+    // C nunca é consultada no core nem publicada.
+    expect(getProject.mock.calls.some(([id]) => id.startsWith('C'))).toBe(
+      false,
+    );
+    // A troca em voo conclui a sua própria intenção, intacta.
+    expect(store.instance.getState().ativa).toEqual({
+      organizacaoId: 'B',
+      area: 'monitoramento',
+    });
+  });
+
   test('perda de acesso à própria organização encaminha à recuperação', async () => {
     const {activation, getProject, store} = switchSetup();
     await activation.initialize();
