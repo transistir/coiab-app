@@ -8,6 +8,7 @@ import {
   STORAGE_KEY,
   useCoiabOrganizationsDocument,
   useCoiabOrganizationsActions,
+  type CoiabOrganizationsState,
   type CoiabOrganizationsStore,
 } from './CoiabOrganizationsStoreContext';
 import {
@@ -30,7 +31,7 @@ const TEMPLATES = {
 function createWrapper(store: CoiabOrganizationsStore) {
   return function Wrapper({children}: {children: React.ReactNode}) {
     return (
-      <CoiabOrganizationsStoreProvider store={store} persistPlaceholder={false}>
+      <CoiabOrganizationsStoreProvider store={store}>
         {children}
       </CoiabOrganizationsStoreProvider>
     );
@@ -77,6 +78,39 @@ describe('CoiabOrganizations document store (SPEC B §5.3)', () => {
     };
     // hidratacaoFalhou is runtime-only; the durable document shape matches.
     expect(store.instance.getState()).toMatchObject(initial);
+  });
+
+  test('atomicSetState replace:true replaces the whole document, keeping only the runtime flag (from current)', async () => {
+    const store = createCoiabOrganizationsStore();
+    // Seed an `ativa` pointer via a full-state replace.
+    await act(async () => {
+      store.instance.setState(
+        {
+          versao: 1,
+          organizacoes: [],
+          ativa: {organizacaoId: '0123456789abcdef', area: 'monitoramento'},
+        },
+        true,
+      );
+    });
+    expect(store.instance.getState().ativa).toEqual({
+      organizacaoId: '0123456789abcdef',
+      area: 'monitoramento',
+    });
+
+    // A later full-state replace that OMITS `ativa` must clear it — and the
+    // replace payload cannot smuggle in the runtime-only `hidratacaoFalhou`.
+    const semAtiva: Partial<CoiabOrganizationsState> = {
+      versao: 1,
+      organizacoes: [],
+      hidratacaoFalhou: true,
+    };
+    await act(async () => {
+      store.instance.setState(semAtiva as CoiabOrganizationsState, true);
+    });
+    const state = store.instance.getState();
+    expect(state.ativa).toBeUndefined();
+    expect(state.hidratacaoFalhou).toBe(false);
   });
 
   test('iniciarOrganizacao persists the intent with estado preparando before any project exists', async () => {
@@ -328,6 +362,47 @@ describe('CoiabOrganizations document store (SPEC B §5.3)', () => {
     // The persisted record is PRESERVED untouched — never fixed by deleting.
     expect(MMKVStoreInitializer.getItem(STORAGE_KEY)).toBe(raw);
     expect(store.actions.publicarPronta()).toBe(false);
+  });
+
+  test('a shape-valid pronta document that breaks the D9 activation invariant fails hydration and preserves storage (SPEC B §6)', () => {
+    const prontaComArea = (
+      monitoramento: OrganizacaoLocal['materializacao']['monitoramento'],
+      alertas: OrganizacaoLocal['materializacao']['alertas'],
+    ): EstadoOrganizacoes => ({
+      versao: 1,
+      organizacoes: [
+        {
+          id: '0123456789abcdef',
+          nome: 'Inválida',
+          estado: 'pronta',
+          confirmacaoPendente: true,
+          materializacao: {monitoramento, alertas},
+          areaEmExecucao: null,
+          ultimoErro: null,
+        },
+      ],
+      ativa: null,
+    });
+    const areaVerificada = (
+      projectId: string | null,
+    ): OrganizacaoLocal['materializacao']['monitoramento'] => ({
+      etapa: 'verificado',
+      projectId,
+      template: {versao: '1.0.0', hash: 'hash-x'},
+      idsAntesDaCriacao: null,
+    });
+
+    // A pronta org whose monitoramento area has no projectId — shape is valid
+    // (isEtapaArea allows projectId: null) but D9 requires two distinct real
+    // ids, so hydration must fail and leave the raw record in place.
+    const raw = JSON.stringify(
+      prontaComArea(areaVerificada(null), areaVerificada('p-a-1')),
+    );
+    MMKVStoreInitializer.setItem(STORAGE_KEY, raw);
+    const store = createCoiabOrganizationsStore({persist: true});
+    expect(store.instance.getState().hidratacaoFalhou).toBe(true);
+    expect(store.instance.getState().organizacoes).toEqual([]);
+    expect(MMKVStoreInitializer.getItem(STORAGE_KEY)).toBe(raw);
   });
 
   test('resolverFalhaHidratacao clears the record, resets the document and unblocks writes', () => {

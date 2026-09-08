@@ -203,8 +203,28 @@ export function createMaterializer<
       for (const area of AREAS) {
         assertViva(op);
         const entry = current().materializacao[area];
-        if (entry.etapa === 'verificado') continue;
         let projectId = entry.projectId;
+        if (entry.etapa === 'verificado') {
+          // §242: a completed area is never re-created or re-imported. A
+          // resume/retry still re-applies the idempotent project settings and
+          // re-verifies the import, so settings that drifted after the
+          // `verificado` checkpoint (external interference) get repaired here
+          // instead of failing conferenciaFinal on every retry forever.
+          if (!projectId) throw new Error('verified-area-missing-project');
+          const verified = await client.getProject(projectId);
+          assertViva(op);
+          await verified.$setProjectSettings({
+            name: NAMES[area],
+            sendStats: false,
+          });
+          assertViva(op);
+          if (!(await templates.verify(verified, packages[area], projectId))) {
+            throw new Error('template-incomplete');
+          }
+          assertViva(op);
+          checkpoint(op, area, {etapa: 'verificado'});
+          continue;
+        }
         if (!projectId) {
           const ids = (await client.listProjects()).map(
             project => project.projectId,

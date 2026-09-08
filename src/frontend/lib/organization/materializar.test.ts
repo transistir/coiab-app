@@ -372,7 +372,7 @@ describe('materialização da organização', () => {
     expect(h.document.organizacoes[0]?.estado).toBe('pronta');
   });
 
-  test('§5.4 step 6: resuming a document with both areas verified executes the final conferência in Core before publishing pronta', async () => {
+  test('§5.4 step 6: resuming a document with both areas verified re-applies idempotent settings then executes the final conferência before publishing pronta', async () => {
     const h = harness();
     h.repository.write(documentoAmbosVerificados());
     h.projects.push('id-0', 'id-1');
@@ -402,18 +402,24 @@ describe('materialização da organização', () => {
     await h.service.resume();
     expect(h.document.organizacoes[0]?.estado).toBe('pronta');
     expect(h.document.organizacoes[0]?.confirmacaoPendente).toBe(true);
-    // Both projects were REOPENED by public id, settings read and own member
-    // checked — the conferência happened with zero Core writes.
-    expect(h.client.getProject).toHaveBeenCalledTimes(2);
+    // Each project is reopened TWICE: once for the §242 settings repair pass
+    // over the already-verificado area, once for the final conferência.
+    expect(h.client.getProject).toHaveBeenCalledTimes(4);
     expect(h.client.getProject).toHaveBeenCalledWith('id-0');
     expect(h.client.getProject).toHaveBeenCalledWith('id-1');
+    // The repair re-applies the canonical settings idempotently (same args as
+    // the normal path) — never a re-import or a re-create.
+    expect(h.events.filter(event => event.startsWith('settings:'))).toEqual([
+      'settings:{"name":"Monitoramento","sendStats":false}',
+      'settings:{"name":"Alertas","sendStats":false}',
+    ]);
     expect(conferencia).toEqual([
       'settings:id-0',
       'member:id-0',
       'settings:id-1',
       'member:id-1',
     ]);
-    // NO full re-import: the journal was already verificado.
+    // NO full re-import and NO re-create: the journal was already verificado.
     expect(h.client.createProject).not.toHaveBeenCalled();
     expect(h.client.setDeviceInfo).not.toHaveBeenCalled();
     expect(h.events.filter(event => event.startsWith('import:'))).toEqual([]);
@@ -464,6 +470,104 @@ describe('materialização da organização', () => {
       'import:/local/m',
       'import:/local/a',
     ]);
+  });
+
+  test('§242/CA9: retry re-applies settings on a verificado area to repair post-checkpoint drift, without re-importing', async () => {
+    const h = harness();
+    const journal = documentoAmbosVerificados();
+    journal.organizacoes[0]!.estado = 'falha_recuperavel';
+    journal.organizacoes[0]!.ultimoErro = {
+      codigo: 'preparation-failed',
+      area: null,
+      ocorridoEm: '2026-01-01T00:00:00.000Z',
+    };
+    h.repository.write(journal);
+    h.projects.push('id-0', 'id-1');
+    h.imported.add('id-0');
+    h.imported.add('id-1');
+
+    // id-0's name drifted after its `verificado` checkpoint (external change).
+    const nomeAtual = new Map<string, string>([
+      ['id-0', 'Renomeado por engano'],
+      ['id-1', 'Alertas'],
+    ]);
+    const base = h.client.getProject.getMockImplementation()!;
+    h.client.getProject.mockImplementation(async (id: string) => {
+      const project = await base(id);
+      return {
+        ...project,
+        $setProjectSettings: jest.fn(async (settings: unknown) => {
+          nomeAtual.set(id, (settings as {name: string}).name);
+        }),
+        $getProjectSettings: jest.fn(async () => ({
+          name: nomeAtual.get(id)!,
+          sendStats: false,
+        })),
+      };
+    });
+
+    await h.service.retry();
+
+    // A completed area is never re-imported (§242); its settings ARE
+    // re-applied idempotently, so conferenciaFinal now passes and the op
+    // reaches pronta instead of looping in falha_recuperavel forever.
+    expect(h.events.filter(event => event.startsWith('import:'))).toEqual([]);
+    expect(h.client.createProject).not.toHaveBeenCalled();
+    expect(nomeAtual.get('id-0')).toBe('Monitoramento');
+    expect(h.document.organizacoes[0]?.estado).toBe('pronta');
+    expect(h.document.organizacoes[0]?.confirmacaoPendente).toBe(true);
+  });
+
+  test('§242/CA9: resume from importando with an already-complete import re-verifies without re-importing', async () => {
+    const h = harness();
+    const template: Record<Area, TemplateRef> = {
+      monitoramento: {versao: '1', hash: 'm'},
+      alertas: {versao: '1', hash: 'a'},
+    };
+    h.repository.write({
+      versao: 1,
+      organizacoes: [
+        {
+          id: 'org-local',
+          nome: 'Associação',
+          estado: 'preparando',
+          confirmacaoPendente: false,
+          materializacao: {
+            monitoramento: {
+              etapa: 'importando',
+              projectId: 'id-0',
+              template: template.monitoramento,
+              idsAntesDaCriacao: [],
+            },
+            alertas: {
+              etapa: 'importando',
+              projectId: 'id-1',
+              template: template.alertas,
+              idsAntesDaCriacao: [],
+            },
+          },
+          areaEmExecucao: 'monitoramento',
+          ultimoErro: null,
+        },
+      ],
+      ativa: null,
+    });
+    h.projects.push('id-0', 'id-1');
+    // The import finished in Core before the `importando` checkpoint was lost.
+    h.imported.add('id-0');
+    h.imported.add('id-1');
+
+    await h.service.resume();
+
+    expect(h.events.filter(event => event.startsWith('import:'))).toEqual([]);
+    expect(h.client.createProject).not.toHaveBeenCalled();
+    expect(h.document.organizacoes[0]?.materializacao.monitoramento.etapa).toBe(
+      'verificado',
+    );
+    expect(h.document.organizacoes[0]?.materializacao.alertas.etapa).toBe(
+      'verificado',
+    );
+    expect(h.document.organizacoes[0]?.estado).toBe('pronta');
   });
 
   test('R4: retry routes a failed "preparando" checkpoint write to falha_recuperavel instead of rejecting', async () => {

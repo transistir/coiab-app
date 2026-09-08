@@ -106,6 +106,25 @@ function parseEstadoOrganizacoes(value: unknown): EstadoOrganizacoes | null {
     if (typeof value.ativa.organizacaoId !== 'string') return null;
     if (!AREAS.includes(value.ativa.area as Area)) return null;
   }
+  // A `pronta` record must still satisfy the D9 activation invariant it was
+  // published under: both areas `verificado` with two distinct, real project
+  // ids. A shape-valid but semantically broken `pronta` doc (null/identical
+  // ids, an unverified area) surfaces as a hydration failure with storage
+  // preserved (SPEC B §6) — never rehydrated as something the confirmation
+  // flow can activate.
+  for (const org of value.organizacoes as OrganizacaoLocal[]) {
+    if (org.estado !== 'pronta') continue;
+    const {monitoramento, alertas} = org.materializacao;
+    if (
+      monitoramento.etapa !== 'verificado' ||
+      alertas.etapa !== 'verificado' ||
+      !monitoramento.projectId ||
+      !alertas.projectId ||
+      monitoramento.projectId === alertas.projectId
+    ) {
+      return null;
+    }
+  }
   return value as unknown as EstadoOrganizacoes;
 }
 
@@ -169,13 +188,15 @@ export function createCoiabOrganizationsStore({persist} = {persist: false}) {
     if (current.hidratacaoFalhou) return;
     const value = typeof partial === 'function' ? partial(current) : partial;
     if (Object.is(value, current)) return;
-    // The runtime flag always survives, even on a full-state replace.
-    const next = {
-      ...current,
-      ...(replace
-        ? (value as CoiabOrganizationsState)
-        : {...current, ...value}),
-    } as CoiabOrganizationsState;
+    // `replace` truly replaces the document — an omitted key is cleared, not
+    // merged over from `current`. Only `hidratacaoFalhou` (runtime-only, never
+    // in the payload) is carried across, always taken from `current`.
+    const next: CoiabOrganizationsState = replace
+      ? {
+          ...(value as CoiabOrganizationsState),
+          hidratacaoFalhou: current.hidratacaoFalhou,
+        }
+      : {...current, ...value};
     if (persist) {
       // The durable record keeps the exact §5.3 document shape.
       const documento = {...next};
@@ -404,13 +425,6 @@ export const CoiabOrganizationsStoreProvider = ({
 }: {
   children: ReactNode;
   store: CoiabOrganizationsStore;
-  /**
-   * Reserved for an async-persistence handshake: MMKV rehydration is
-   * synchronous and completes inside `createCoiabOrganizationsStore`, so the
-   * document is always ready before the first render and no loading
-   * placeholder is needed (SPEC B §3.3 rule 1 resolves before mounting).
-   */
-  persistPlaceholder?: boolean;
 }) => {
   return (
     <CoiabOrganizationsStoreContext value={store}>
