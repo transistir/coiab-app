@@ -114,7 +114,7 @@ describe('carimbo explícito de origem: legado migrado × trabalho novo (M-1)', 
     describe(String(fixture.name), () => {
       test.each([undefined, ''])(
         'trabalho novo com origem não resolvida (%j) é recusado ao salvar',
-        projectId => {
+        (projectId: string | undefined) => {
           fixture.createWork(projectId);
           const restored = fixture.restore();
           expect(restored.instance.getState().projectId).toBeUndefined();

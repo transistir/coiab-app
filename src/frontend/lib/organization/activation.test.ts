@@ -647,11 +647,14 @@ describe('co-revisÃ£o: recheque de trabalho pendente e endurecimento da hidrataÃ
       $sync: {stop: jest.fn(async () => {})},
       disconnectServers: jest.fn(async () => {}),
     };
-    const getProject = jest.fn(
-      async (_id: string): Promise<typeof project> => project,
-    ); // eslint-disable-line @typescript-eslint/no-unused-vars
+    const getProject = jest.fn(async (id: string): Promise<typeof project> => {
+      void id;
+      return project;
+    });
     const hasPendingWork = jest.fn(() => false);
-    const cancelPresentation = jest.fn(async (_ids: string[]) => {}); // eslint-disable-line @typescript-eslint/no-unused-vars
+    const cancelPresentation = jest.fn(async (ids: string[]) => {
+      void ids;
+    });
     const activation = createOrganizationActivation({
       store,
       getProject,
