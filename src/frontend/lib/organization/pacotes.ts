@@ -64,7 +64,8 @@ export type CodigoErroPacote =
   | 'pacote_ausente'
   | 'pacote_corrompido'
   | 'pacote_hash_mismatch'
-  | 'pacote_versao_mismatch';
+  | 'pacote_versao_mismatch'
+  | 'pacote_retencao_falhou';
 
 /** Typed package failure: `{codigo, filePath}` — never carries package content. */
 export class ErroPacote extends Error {
@@ -621,13 +622,21 @@ export function criarTemplateSourceDePacotes<P extends ProjetoComPresets>({
     }
   }
 
-  /** Copies the opened pair next to the installed one (best effort). */
+  /**
+   * Copies the opened pair next to the installed one. Retention is MANDATORY:
+   * without the versioned pair, an app update replaces the installed bytes and
+   * a journal pinned to the original hashes can never resume
+   * (`pacote_hash_mismatch` forever). A storage refusal therefore fails
+   * preparation (`pacote_retencao_falhou`) instead of degrading silently.
+   */
   async function reter(area: Area, pacote: Pacote): Promise<Pacote> {
     if (!gravarArquivo) return pacote;
     const caminho = caminhoRetido(area, pacote.ref, '.comapeocat');
+    const bytes = await lerArquivo(pacote.filePath);
+    if (bytes === null || bytes.byteLength === 0) {
+      throw new ErroPacote('pacote_retencao_falhou', pacote.filePath);
+    }
     try {
-      const bytes = await lerArquivo(pacote.filePath);
-      if (bytes === null || bytes.byteLength === 0) return pacote;
       await gravarArquivo(caminho, bytes);
       await gravarArquivo(
         caminhoRetido(area, pacote.ref, '.manifesto.json'),
@@ -639,9 +648,7 @@ export function criarTemplateSourceDePacotes<P extends ProjetoComPresets>({
         ),
       );
     } catch {
-      // Storage may refuse the copy; creation still proceeds with the
-      // installed pair (only recovery ACROSS an update is then at risk).
-      return pacote;
+      throw new ErroPacote('pacote_retencao_falhou', caminho);
     }
     return {...pacote, filePath: caminho};
   }

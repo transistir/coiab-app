@@ -1191,6 +1191,30 @@ describe('criarTemplateSourceDePacotes (real adapter behind TemplateSource)', ()
     });
   });
 
+  test('M-2/r1: prepare fails typed when storage refuses the retained pair', async () => {
+    const {bytesM, bytesA, refs, manifestos} = await fontes();
+    const source = criarTemplateSourceDePacotes({
+      caminhos: CAMINHOS,
+      refs,
+      manifestos,
+      ler: leitorEmMemoria({
+        [CAMINHOS.monitoramento]: bytesM,
+        [CAMINHOS.alertas]: bytesA,
+      }),
+      gravar: async (filePath: string) => {
+        void filePath;
+        throw new Error('storage full');
+      },
+    });
+    // A silent fallback to the unversioned installed path would let creation
+    // proceed WITHOUT a recovery pair: an app update then replaces the
+    // installed bytes and a journal pinned to the original hashes can never
+    // resume (pacote_hash_mismatch forever). Retention is mandatory.
+    await expect(source.prepare()).rejects.toMatchObject({
+      codigo: 'pacote_retencao_falhou',
+    });
+  });
+
   test('verify delegates to verificarImportacao against the imported project', async () => {
     const {bytesM, bytesA, refs, manifestos} = await fontes();
     const source = criarTemplateSourceDePacotes({
