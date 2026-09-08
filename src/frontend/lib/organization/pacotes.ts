@@ -51,6 +51,12 @@ export type {
 /** Returns the original bytes of `filePath`, or `null` when the file is absent. */
 export type LeitorArquivo = (filePath: string) => Promise<Uint8Array | null>;
 
+/** Writes the original bytes of `filePath` (retention of versioned pairs). */
+export type GravadorArquivo = (
+  filePath: string,
+  bytes: Uint8Array,
+) => Promise<void>;
+
 /** An opened package: the pinned ref, its local path and the canonical content. */
 export type Pacote = TemplatePackage & {conteudo: ConteudoPacote};
 
@@ -84,6 +90,14 @@ export const leitorPadrao: LeitorArquivo = async filePath => {
     // Unreadable file behaves as absent: the flow fails before creating.
     return null;
   }
+};
+
+export const gravadorPadrao: GravadorArquivo = async (filePath, bytes) => {
+  await FileSystem.writeAsStringAsync(
+    filePath,
+    Buffer.from(bytes).toString('base64'),
+    {encoding: FileSystem.EncodingType.Base64},
+  );
 };
 
 /** Zero-copy Buffer view over the bytes (yauzl-promise asserts `instanceof Buffer`). */
@@ -161,6 +175,8 @@ export type PresetImportado = {
   docId?: string;
   name?: string;
   tags?: TagsPacote;
+  /** @comapeo/schema geometry, derived by Core from the category `appliesTo`. */
+  geometry?: string[];
   fieldRefs?: Array<{docId?: string}>;
   iconRef?: {docId?: string} | null;
   deleted?: boolean;
@@ -169,6 +185,8 @@ export type PresetImportado = {
 export type CampoImportado = {
   docId?: string;
   tagKey?: string;
+  type?: string;
+  options?: Array<{label?: string; value?: string | number | boolean | null}>;
   deleted?: boolean;
 };
 
@@ -214,6 +232,7 @@ export type MotivoDivergencia =
   | 'quantidade_de_presets'
   | 'preset_ausente'
   | 'preset_nome_divergente'
+  | 'geometria_divergente'
   | 'campos_divergentes'
   | 'campo_referencia_invalida'
   | 'icone_divergente'
@@ -231,6 +250,37 @@ function chaveTags(tags: TagsPacote | undefined | null): string | null {
   );
 }
 
+/**
+ * Canonical key of a field DEFINITION: `tagKey` + `type` + select options (in
+ * order). Core creates each field document from the package entry verbatim, so
+ * the same key must appear on both sides — a field that kept the name but
+ * changed type or options collects different answers than the approved
+ * package. Absent options and an empty list are the same definition.
+ */
+function chaveCampo(campo: {
+  tagKey?: string;
+  type?: string;
+  options?: ReadonlyArray<{label?: string; value?: unknown}>;
+}): string {
+  const opcoes = campo.options ?? [];
+  return JSON.stringify([
+    campo.tagKey ?? null,
+    campo.type ?? null,
+    opcoes.length === 0
+      ? null
+      : opcoes.map(opcao => [opcao.label ?? null, opcao.value ?? null]),
+  ]);
+}
+
+/**
+ * Geometry Core derives from a category's `appliesTo` (@comapeo/core
+ * `import-categories.js`: `APPLIES_TO_TO_GEOMETRY`). The flow's choosers read
+ * the default selection BY GEOMETRY — `ObservationCategoryChooser` (via
+ * `usePresetsSelection`) lists `point` presets — so a preset that lost the
+ * geometry its category applies to silently disappears from the flow.
+ */
+const GEOMETRIA_POR_APLICACAO = {observation: 'point', track: 'line'} as const;
+
 function mesmoConjunto(a: readonly string[], b: readonly string[]): boolean {
   if (a.length !== b.length) return false;
   const ordenado = [...b].sort();
@@ -247,12 +297,17 @@ function mesmoConjunto(a: readonly string[], b: readonly string[]): boolean {
  * - presets (non-deleted) match the categories in a strict bijection via
  *   their canonical `tags` (@comapeo/schema shape) and carry the same `name`
  *   — never translated labels, counts alone or generated ids;
+ * - each preset's `geometry` equals the one DERIVED from the category
+ *   `appliesTo` (Core's `APPLIES_TO_TO_GEOMETRY`), and every selected category
+ *   reaches its chooser (observation → `point`, track → `line`): a preset
+ *   without the required geometry disappears from the flow;
  * - the WHOLE set of active fields is a bijection with the package fields the
  *   categories reference (Core deletes every pre-existing field and creates
  *   ONLY the referenced ones — `import-categories.js`), so a leftover active
  *   field the package never declared can never pass as `ready`;
  * - every `fieldRefs` entry resolves to an existing non-deleted field whose
- *   `tagKey` set equals the tagKeys of the category's package fields;
+ *   canonical DEFINITIONS (tagKey, type and select options — never the names
+ *   alone) equal those of the category's package fields;
  * - `iconRef` mirrors the category's `icon` AND resolves: its docId must be an
  *   active icon document whose `name` is the category's package icon — a
  *   reference to another (or missing) icon document is a divergence;
@@ -302,28 +357,29 @@ export async function conferirImportacao(
       return 'quantidade_de_presets';
     }
 
+    // Canonical DEFINITION of each package field, not only its name.
     const camposPacote = new Map(
-      conteudo.campos.map(campo => [campo.id, campo.tagKey]),
+      conteudo.campos.map(campo => [campo.id, chaveCampo(campo)]),
     );
 
     // The FULL active field set (not only the referenced ones) must match the
     // package: extra/missing/duplicated field documents are a divergence.
-    const tagKeysDoPacote: string[] = [];
+    const definicoesDoPacote: string[] = [];
     for (const id of new Set(
       conteudo.categorias.flatMap(categoria => categoria.fields),
     )) {
-      const tagKey = camposPacote.get(id);
-      if (typeof tagKey !== 'string') return 'campos_divergentes';
-      tagKeysDoPacote.push(tagKey);
+      const definicao = camposPacote.get(id);
+      if (definicao === undefined) return 'campos_divergentes';
+      definicoesDoPacote.push(definicao);
     }
-    const tagKeysImportadosTodos: string[] = [];
+    const definicoesImportadas: string[] = [];
     for (const campo of campos) {
       if (typeof campo.docId !== 'string' || typeof campo.tagKey !== 'string') {
         return 'campos_divergentes';
       }
-      tagKeysImportadosTodos.push(campo.tagKey);
+      definicoesImportadas.push(chaveCampo(campo));
     }
-    if (!mesmoConjunto(tagKeysDoPacote, tagKeysImportadosTodos)) {
+    if (!mesmoConjunto(definicoesDoPacote, definicoesImportadas)) {
       return 'campos_divergentes';
     }
     const camposPorDocId = new Map(
@@ -356,6 +412,17 @@ export async function conferirImportacao(
       const preset = presets[indice]!;
       usados.add(indice);
       if (preset.name !== categoria.name) return 'preset_nome_divergente';
+      // Geometry is DERIVED from `appliesTo`, never read from the preset: a
+      // category that applies to observations must keep a `point` preset.
+      const geometriaEsperada = categoria.appliesTo.map(
+        aplicacao => GEOMETRIA_POR_APLICACAO[aplicacao],
+      );
+      if (
+        geometriaEsperada.length === 0 ||
+        !mesmoConjunto(geometriaEsperada, preset.geometry ?? [])
+      ) {
+        return 'geometria_divergente';
+      }
       if ((preset.iconRef == null) !== (categoria.icon == null)) {
         return 'icone_divergente';
       }
@@ -366,15 +433,17 @@ export async function conferirImportacao(
           return 'icone_divergente';
         }
       }
-      const tagKeysEsperados = categoria.fields.map(id => camposPacote.get(id));
-      if (tagKeysEsperados.some(tagKey => typeof tagKey !== 'string')) {
+      const definicoesEsperadas = categoria.fields.map(id =>
+        camposPacote.get(id),
+      );
+      if (definicoesEsperadas.some(definicao => definicao === undefined)) {
         return 'campos_divergentes';
       }
       const refs = preset.fieldRefs ?? [];
-      if (refs.length !== tagKeysEsperados.length) {
+      if (refs.length !== definicoesEsperadas.length) {
         return 'campo_referencia_invalida';
       }
-      const tagKeysImportados: string[] = [];
+      const definicoesReferenciadas: string[] = [];
       for (const ref of refs) {
         const campo =
           typeof ref.docId === 'string'
@@ -383,15 +452,18 @@ export async function conferirImportacao(
         if (!campo || typeof campo.tagKey !== 'string') {
           return 'campo_referencia_invalida';
         }
-        tagKeysImportados.push(campo.tagKey);
+        definicoesReferenciadas.push(chaveCampo(campo));
       }
-      if (!mesmoConjunto(tagKeysEsperados as string[], tagKeysImportados)) {
+      if (
+        !mesmoConjunto(definicoesEsperadas as string[], definicoesReferenciadas)
+      ) {
         return 'campo_referencia_invalida';
       }
       pares.push({categoria, preset});
     }
 
     // Default selection: categorySelection ↔ defaultPresets docIds.
+    const parPorCategoria = new Map(pares.map(par => [par.categoria.id, par]));
     const docIdPorCategoria = new Map(
       pares.map(({categoria, preset}) => [categoria.id, preset.docId]),
     );
@@ -414,6 +486,21 @@ export async function conferirImportacao(
     }
     if (!mesmoConjunto(line, defaultPresets.line ?? [])) {
       return 'selecao_divergente';
+    }
+    // The geometry the FLOW requires: each selected category must reach its
+    // chooser (observation → `point`, track → `line`). A selection whose
+    // preset lacks that geometry is invisible in the app, never "verified".
+    for (const [aplicacao, ids] of [
+      ['observation', conteudo.selecao.observation],
+      ['track', conteudo.selecao.track],
+    ] as const) {
+      const geometria = GEOMETRIA_POR_APLICACAO[aplicacao];
+      for (const id of ids) {
+        const preset = parPorCategoria.get(id)?.preset;
+        if (preset && !(preset.geometry ?? []).includes(geometria)) {
+          return 'geometria_divergente';
+        }
+      }
     }
 
     // Import metadata: the project must carry the package's own metadata.
@@ -456,40 +543,128 @@ export const manifestosEmbarcados = manifestosGeradosJson as unknown as Record<
   ManifestoPacote
 >;
 
+/** Filename-safe form of a package version (the hash already disambiguates). */
+function versaoSegura(versao: string): string {
+  return versao.replace(/[^\w.-]/g, '_') || 'sem-versao';
+}
+
 /**
  * Builds the real `TemplateSource` injected into `createMaterializer`
  * (materializar.ts): `prepare` opens BOTH packages before any project is
  * created — against the EMBEDDED manifests (`manifestos.generated.json` by
  * default) and honouring journal-pinned refs on retry so versions never mix
  * (SPEC B §6) — and `verify` delegates to `verificarImportacao`.
+ *
+ * RETENTION of versioned pairs (SPEC B §6 "atualização do app com criação
+ * pendente" / CA16): the installed package paths hold only the CURRENT app
+ * version, so an update that replaces them would orphan the references a
+ * pending journal pinned at creation time and no retry could ever find its
+ * pair again. Each opened pair (package bytes + its manifest, keyed by
+ * version AND hash) is therefore COPIED next to the installed one and the
+ * returned `filePath` points at that copy; a pinned ref resolves against the
+ * retained pairs first, so a creation interrupted before an update completes
+ * with the very bytes and canonical content it was approved with. Retention
+ * needs a writer over the SAME storage the reader sees: it is active when
+ * `gravar` is injected, or when neither `ler` nor `gravar` is (both default to
+ * the device filesystem); an injected read-only `ler` disables it.
  */
 export function criarTemplateSourceDePacotes<P extends ProjetoComPresets>({
   caminhos,
   refs,
   manifestos = manifestosEmbarcados,
   ler,
+  gravar,
 }: {
   caminhos: Record<Area, string>;
   refs: Record<Area, TemplateRef>;
   /** Embedded manifests; default: the generated `manifestos.generated.json`. */
   manifestos?: Record<Area, ManifestoPacote>;
   ler?: LeitorArquivo;
+  gravar?: GravadorArquivo;
 }): TemplateSource<P, Pacote> {
+  const lerArquivo = ler ?? leitorPadrao;
+  const gravarArquivo = gravar ?? (ler ? null : gravadorPadrao);
+
+  /** `<instalado>-<versao>-<hash>[.manifesto].comapeocat|json` */
+  const caminhoRetido = (area: Area, ref: TemplateRef, sufixo: string) => {
+    const caminho = caminhos[area];
+    const ponto = caminho.lastIndexOf('.');
+    const base =
+      ponto > caminho.lastIndexOf('/') ? caminho.slice(0, ponto) : caminho;
+    return `${base}-${versaoSegura(ref.versao)}-${ref.hash}${sufixo}`;
+  };
+
+  /** The retained pair of `ref`, or null when it was never retained. */
+  async function abrirRetido(
+    area: Area,
+    ref: TemplateRef,
+  ): Promise<Pacote | null> {
+    if (!gravarArquivo) return null;
+    try {
+      const bytes = await lerArquivo(
+        caminhoRetido(area, ref, '.manifesto.json'),
+      );
+      if (bytes === null || bytes.byteLength === 0) return null;
+      const manifesto = JSON.parse(
+        Buffer.from(bytes).toString('utf8'),
+      ) as ManifestoPacote;
+      return await abrirPacote(
+        caminhoRetido(area, ref, '.comapeocat'),
+        ref,
+        manifesto,
+        lerArquivo,
+      );
+    } catch {
+      // An unreadable/corrupted retained copy is not a package failure: fall
+      // back to the installed pair, which reports its own typed ErroPacote.
+      return null;
+    }
+  }
+
+  /** Copies the opened pair next to the installed one (best effort). */
+  async function reter(area: Area, pacote: Pacote): Promise<Pacote> {
+    if (!gravarArquivo) return pacote;
+    const caminho = caminhoRetido(area, pacote.ref, '.comapeocat');
+    try {
+      const bytes = await lerArquivo(pacote.filePath);
+      if (bytes === null || bytes.byteLength === 0) return pacote;
+      await gravarArquivo(caminho, bytes);
+      await gravarArquivo(
+        caminhoRetido(area, pacote.ref, '.manifesto.json'),
+        new Uint8Array(
+          Buffer.from(
+            JSON.stringify({ref: pacote.ref, conteudo: pacote.conteudo}),
+            'utf8',
+          ),
+        ),
+      );
+    } catch {
+      // Storage may refuse the copy; creation still proceeds with the
+      // installed pair (only recovery ACROSS an update is then at risk).
+      return pacote;
+    }
+    return {...pacote, filePath: caminho};
+  }
+
   return {
     async prepare(pinned) {
       const pacotes = {} as Record<Area, Pacote>;
       for (const area of AREAS) {
-        pacotes[area] = await abrirPacote(
-          caminhos[area],
-          pinned?.[area] ?? refs[area],
-          manifestos[area],
-          ler,
+        const ref = pinned?.[area] ?? refs[area];
+        const retido = await abrirRetido(area, ref);
+        if (retido) {
+          pacotes[area] = retido;
+          continue;
+        }
+        pacotes[area] = await reter(
+          area,
+          await abrirPacote(caminhos[area], ref, manifestos[area], lerArquivo),
         );
       }
       return pacotes;
     },
     verify(project, pacote) {
-      return verificarImportacao(project, pacote, ler);
+      return verificarImportacao(project, pacote, lerArquivo);
     },
   };
 }

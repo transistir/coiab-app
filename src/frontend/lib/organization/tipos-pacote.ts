@@ -22,7 +22,27 @@ export type CategoriaPacote = {
   color?: string;
 };
 
-export type CampoPacote = {id: string; tagKey: string};
+/** One choice of a `selectOne`/`selectMultiple` field (`fields.json`). */
+export type OpcaoCampoPacote = {
+  label: string;
+  value: string | number | boolean | null;
+};
+
+/**
+ * Canonical field as stored in the package (`fields.json`). The DEFINITION —
+ * not only the name — is canonical: `@comapeo/core` `$importCategories`
+ * creates each field document from the package entry verbatim
+ * (`import-categories.js`: `{...field, schemaName: 'field'}`), so a project
+ * whose fields carry the same `tagKey` with another `type` (or other
+ * `options`) collects different answers than the approved package.
+ */
+export type CampoPacote = {
+  id: string;
+  tagKey: string;
+  type: 'text' | 'number' | 'selectOne' | 'selectMultiple' | 'date';
+  /** Only for `selectOne`/`selectMultiple`; order is part of the definition. */
+  options?: OpcaoCampoPacote[];
+};
 
 /** The canonical content of an opened `.comapeocat` package. */
 export type ConteudoPacote = {

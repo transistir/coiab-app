@@ -4,7 +4,13 @@ import {Writer} from 'comapeocat/writer.js';
 
 import {extrairManifesto} from '../../../../scripts/lib/manifesto-pacote.mjs';
 
-import type {Area, TemplateRef} from './documento';
+import {
+  documentoInicial,
+  type Area,
+  type EstadoOrganizacoes,
+  type TemplateRef,
+} from './documento';
+import {createMaterializer} from './materializar';
 import manifestosGerados from './manifestos.generated.json';
 import {
   ErroPacote,
@@ -39,10 +45,18 @@ type CategoriaFixture = {
   color?: string;
 };
 
+type CampoFixture = {
+  id: string;
+  tagKey: string;
+  label: string;
+  type?: 'text' | 'selectOne';
+  options?: Array<{label: string; value: string}>;
+};
+
 type PacoteFixture = {
   metadata: {name: string; version?: string};
   categorias: CategoriaFixture[];
-  campos?: Array<{id: string; tagKey: string; label: string}>;
+  campos?: CampoFixture[];
   icones?: Array<{id: string; svg: string}>;
   selecao: {observation: string[]; track: string[]};
 };
@@ -96,12 +110,22 @@ async function construirPacote(fixture: PacoteFixture): Promise<Uint8Array> {
     await writer.addIcon(icone.id, icone.svg);
   }
   for (const campo of fixture.campos ?? []) {
-    writer.addField(campo.id, {
-      type: 'text',
-      tagKey: campo.tagKey,
-      label: campo.label,
-      appearance: 'singleline',
-    });
+    writer.addField(
+      campo.id,
+      campo.type === 'selectOne'
+        ? {
+            type: 'selectOne',
+            tagKey: campo.tagKey,
+            label: campo.label,
+            options: campo.options!,
+          }
+        : {
+            type: 'text',
+            tagKey: campo.tagKey,
+            label: campo.label,
+            appearance: 'singleline',
+          },
+    );
   }
   for (const categoria of fixture.categorias) {
     writer.addCategory(categoria.id, {
@@ -152,11 +176,14 @@ function pacoteMonitoramentoBytes(): Promise<Uint8Array> {
   return bytesMonitoramento;
 }
 
+/** Core maps `appliesTo` to the preset geometry (`import-categories.js`). */
+const GEOMETRIA_POR_APLICACAO = {observation: 'point', track: 'line'} as const;
+
 /**
  * Emulates @comapeo/core `import-categories.js` against the real package
  * bytes — read through `extrairManifesto` (the REAL comapeocat Reader, on the
  * jest Node side): categories become presets carrying `tags` (the
- * @comapeo/schema field — NOT `tagKey`), fieldRefs and iconRef;
+ * @comapeo/schema field — NOT `tagKey`), `geometry`, fieldRefs and iconRef;
  * categorySelection becomes `defaultPresets.point/line` (preset docIds);
  * metadata becomes `configMetadata` with the package `fileVersion`.
  *
@@ -170,6 +197,9 @@ async function emularImportacaoCore(bytes: Uint8Array) {
     docId: `preset-${categoria.id}`,
     name: categoria.name,
     tags: {...categoria.tags},
+    geometry: categoria.appliesTo.map(
+      aplicacao => GEOMETRIA_POR_APLICACAO[aplicacao],
+    ),
     fieldRefs: categoria.fields.map(campoId => ({
       docId: `campo-${campoId}`,
     })),
@@ -178,11 +208,15 @@ async function emularImportacaoCore(bytes: Uint8Array) {
   const idsReferenciados = new Set(
     conteudo.categorias.flatMap(categoria => categoria.fields),
   );
+  // Core creates each field document from the package entry verbatim
+  // (`{...field, schemaName: 'field'}`): type and options included.
   const camposCore = conteudo.campos
     .filter(campo => idsReferenciados.has(campo.id))
     .map(campo => ({
       docId: `campo-${campo.id}`,
       tagKey: campo.tagKey,
+      type: campo.type,
+      ...(campo.options ? {options: campo.options} : {}),
     }));
   const icones = [
     ...new Set(
@@ -281,7 +315,7 @@ describe('abrirPacote (real .comapeocat bytes + embedded manifesto — SPEC B §
       },
     ]);
     expect(pacote.conteudo.campos).toEqual([
-      {id: 'especie', tagKey: 'especie'},
+      {id: 'especie', tagKey: 'especie', type: 'text'},
     ]);
     expect(pacote.conteudo.icones).toEqual(['arvore']);
     expect(pacote.conteudo.selecao).toEqual({
@@ -582,6 +616,129 @@ describe('verificarImportacao (Core preset shape + §5.4 canonical conferência 
     ).resolves.toBe(false);
   });
 
+  test('M-3: imported field keeping the name but changing type → false', async () => {
+    // Same tagKey, another `type`: the published category collects answers in
+    // a form the approved package never defined.
+    const {pacote, leitor, importado} = await abrir();
+    await expect(
+      verificarImportacao(
+        projetoCore({
+          ...importado,
+          campos: importado.campos.map(campo => ({...campo, type: 'number'})),
+        }),
+        pacote,
+        leitor,
+      ),
+    ).resolves.toBe(false);
+  });
+
+  test('M-3: imported select field with divergent options → false', async () => {
+    const bytes = await construirPacote({
+      ...FIXTURE_MONITORAMENTO,
+      campos: [
+        {
+          id: 'especie',
+          tagKey: 'especie',
+          label: 'Espécie',
+          type: 'selectOne',
+          options: [
+            {label: 'Castanheira', value: 'castanheira'},
+            {label: 'Seringueira', value: 'seringueira'},
+          ],
+        },
+      ],
+    });
+    const leitor = leitorEmMemoria({[CAMINHO]: bytes});
+    const manifesto = await manifestoDe(bytes);
+    const pacote = await abrirPacote(CAMINHO, manifesto.ref, manifesto, leitor);
+    const importado = await emularImportacaoCore(bytes);
+    await expect(
+      verificarImportacao(projetoCore(importado), pacote, leitor),
+    ).resolves.toBe(true);
+    await expect(
+      verificarImportacao(
+        projetoCore({
+          ...importado,
+          campos: importado.campos.map(campo => ({
+            ...campo,
+            options: [{label: 'Castanheira', value: 'outra'}],
+          })),
+        }),
+        pacote,
+        leitor,
+      ),
+    ).resolves.toBe(false);
+  });
+
+  test('M-3: preset without the geometry its category applies to → false', async () => {
+    // `Árvore` applies to observations, so Core gives it `point` geometry; a
+    // preset that lost it vanishes from the observation chooser.
+    const {pacote, leitor, importado} = await abrir();
+    await expect(
+      verificarImportacao(
+        projetoCore({
+          ...importado,
+          presets: importado.presets.map(preset =>
+            preset.docId === 'preset-arvore'
+              ? {...preset, geometry: ['line']}
+              : preset,
+          ),
+        }),
+        pacote,
+        leitor,
+      ),
+    ).resolves.toBe(false);
+  });
+
+  test('M-3: preset missing geometry entirely (legacy import) → false', async () => {
+    const {pacote, leitor, importado} = await abrir();
+    await expect(
+      verificarImportacao(
+        projetoCore({
+          ...importado,
+          presets: importado.presets.map(preset => {
+            const {geometry, ...resto} = preset;
+            void geometry;
+            return resto;
+          }),
+        }),
+        pacote,
+        leitor,
+      ),
+    ).resolves.toBe(false);
+  });
+
+  test('M-3: category selected for observations that no longer applies to them → false', async () => {
+    // The selection still points at `Árvore` and its preset matches the (now
+    // track-only) category, yet the observation chooser would show nothing.
+    const {pacote, leitor, importado} = await abrir();
+    const soTrack: Pacote = {
+      ...pacote,
+      conteudo: {
+        ...pacote.conteudo,
+        categorias: pacote.conteudo.categorias.map(categoria =>
+          categoria.id === 'arvore'
+            ? {...categoria, appliesTo: ['track' as const]}
+            : categoria,
+        ),
+      },
+    };
+    await expect(
+      verificarImportacao(
+        projetoCore({
+          ...importado,
+          presets: importado.presets.map(preset =>
+            preset.docId === 'preset-arvore'
+              ? {...preset, geometry: ['line']}
+              : preset,
+          ),
+        }),
+        soTrack,
+        leitor,
+      ),
+    ).resolves.toBe(false);
+  });
+
   test('extra active field beyond the package (interrupted/partial import leftovers) → false', async () => {
     // Core DELETES every pre-existing field before importing
     // (`import-categories.js`: `fieldsToDelete`), so an active field the
@@ -872,6 +1029,132 @@ describe('criarTemplateSourceDePacotes (real adapter behind TemplateSource)', ()
     ).toEqual(['alerta-fogo', 'alerta-rio']);
   });
 
+  test('M-2: retry after an app update resumes the journal with its retained package and manifest pair', async () => {
+    const old = await fontes();
+    const arquivos: Record<string, Uint8Array> = {
+      [CAMINHOS.monitoramento]: old.bytesM,
+      [CAMINHOS.alertas]: old.bytesA,
+    };
+    const storage = {
+      ler: leitorEmMemoria(arquivos),
+      gravar: async (filePath: string, bytes: Uint8Array) => {
+        arquivos[filePath] = bytes;
+      },
+    };
+    let document = documentoInicial();
+    const repository = {
+      read: () => document,
+      write: (next: EstadoOrganizacoes) => {
+        document = JSON.parse(JSON.stringify(next));
+      },
+    };
+    const imports: string[] = [];
+    function makeProject(name: string) {
+      const project = {
+        ...projetoCore({presets: [], campos: [], settings: {}}),
+        $member: {
+          getById: async () => ({
+            name: 'Device',
+            deviceType: 'mobile',
+            role: {roleId: 'a12a6702b93bd7ff'},
+          }),
+        },
+        $setProjectSettings: async () => {},
+        $importCategories: async ({filePath}: {filePath: string}) => {
+          imports.push(filePath);
+          const imported = await emularImportacaoCore(arquivos[filePath]!);
+          Object.assign(
+            project,
+            projetoCore({
+              ...imported,
+              settings: {...imported.settings, name, sendStats: false},
+            }),
+          );
+        },
+      };
+      return project;
+    }
+    const projects = new Map<string, ReturnType<typeof makeProject>>();
+    let failSecond = true;
+    const client = {
+      getDeviceInfo: async () => ({
+        deviceId: 'device',
+        name: 'Device',
+        deviceType: 'mobile' as const,
+      }),
+      setDeviceInfo: async () => {},
+      listProjects: async () =>
+        [...projects.keys()].map(projectId => ({projectId})),
+      createProject: jest.fn(async ({name}: {name: string}) => {
+        if (projects.size === 1 && failSecond) {
+          failSecond = false;
+          throw new Error('interrupted');
+        }
+        const id = `project-${projects.size}`;
+        projects.set(id, makeProject(name));
+        return id;
+      }),
+      getProject: async (id: string) => projects.get(id)!,
+    };
+    const templates = criarTemplateSourceDePacotes({
+      caminhos: CAMINHOS,
+      refs: old.refs,
+      manifestos: old.manifestos,
+      ...storage,
+    });
+    await createMaterializer({
+      client,
+      repository,
+      templates,
+      generateId: () => 'org',
+    }).start('Associação');
+    expect(document.organizacoes[0]?.estado).toBe('falha_recuperavel');
+    expect(projects.size).toBe(1);
+    const journal = JSON.stringify(document);
+
+    // A fresh adapter and rehydrated journal model process death/app update.
+    // The unversioned installed paths now contain only the NEW packages.
+    arquivos[CAMINHOS.monitoramento] = await construirPacote({
+      ...FIXTURE_MONITORAMENTO,
+      metadata: {name: 'Monitoramento V2', version: '2.0.0'},
+    });
+    arquivos[CAMINHOS.alertas] = await construirPacote({
+      ...FIXTURE_ALERTAS,
+      metadata: {name: 'Alertas V2', version: '2.0.0'},
+    });
+    const updated = {
+      monitoramento: await manifestoDe(arquivos[CAMINHOS.monitoramento]!),
+      alertas: await manifestoDe(arquivos[CAMINHOS.alertas]!),
+    };
+    const afterUpdate = criarTemplateSourceDePacotes({
+      caminhos: CAMINHOS,
+      refs: {
+        monitoramento: updated.monitoramento.ref,
+        alertas: updated.alertas.ref,
+      },
+      manifestos: updated,
+      ...storage,
+    });
+    await afterUpdate.prepare();
+    document = JSON.parse(journal);
+    await createMaterializer({
+      client: {...client},
+      repository,
+      templates: afterUpdate,
+      generateId: () => 'unused',
+    }).retry();
+
+    expect(document.organizacoes[0]?.estado).toBe('pronta');
+    expect(projects.size).toBe(2);
+    expect(document.organizacoes[0]?.materializacao).toMatchObject({
+      monitoramento: {projectId: 'project-0', template: old.refs.monitoramento},
+      alertas: {projectId: 'project-1', template: old.refs.alertas},
+    });
+    expect(imports).toHaveLength(2);
+    expect(sha256(arquivos[imports[0]!]!)).toBe(old.refs.monitoramento.hash);
+    expect(sha256(arquivos[imports[1]!]!)).toBe(old.refs.alertas.hash);
+  });
+
   test('prepare fails typed when either package is missing', async () => {
     const {bytesM, refs, manifestos} = await fontes();
     const source = criarTemplateSourceDePacotes({
@@ -980,7 +1263,7 @@ describe('extrairManifesto (extração Node — R1 bundling, anti-drift)', () =>
           fields: [],
         },
       ],
-      campos: [{id: 'especie', tagKey: 'especie'}],
+      campos: [{id: 'especie', tagKey: 'especie', type: 'text'}],
       icones: ['arvore'],
       selecao: {observation: ['arvore'], track: ['rio']},
     });

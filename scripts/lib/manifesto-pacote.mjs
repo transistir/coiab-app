@@ -83,8 +83,23 @@ export async function extrairManifesto(bytes) {
             ...(categoria.color !== undefined ? {color: categoria.color} : {}),
           }))
           .sort(porId),
+        // The canonical field DEFINITION (type and select options), not only
+        // its name: `$importCategories` creates the field documents from these
+        // entries verbatim, so verification can compare them one to one.
         campos: [...campos.entries()]
-          .map(([id, campo]) => ({id, tagKey: campo.tagKey}))
+          .map(([id, campo]) => ({
+            id,
+            tagKey: campo.tagKey,
+            type: campo.type,
+            ...('options' in campo && campo.options !== undefined
+              ? {
+                  options: campo.options.map(opcao => ({
+                    label: opcao.label,
+                    value: opcao.value,
+                  })),
+                }
+              : {}),
+          }))
           .sort(porId),
         icones: [...icones].sort(),
         selecao: {

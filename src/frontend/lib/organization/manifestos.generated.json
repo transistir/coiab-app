@@ -3,7 +3,7 @@
   "monitoramento": {
     "ref": {
       "versao": "1.0.0",
-      "hash": "b605730e79efb52c5c96536c2c037af6f1f8d8930ab56b48a400c5d126c92513"
+      "hash": "3f869378216be88a12b5fbdb9405d5ea7c3f12b405b9e34122b1e1afb1912d5b"
     },
     "conteudo": {
       "fileVersion": "1.0",
@@ -42,7 +42,8 @@
       "campos": [
         {
           "id": "especie",
-          "tagKey": "especie"
+          "tagKey": "especie",
+          "type": "text"
         }
       ],
       "icones": [
@@ -61,7 +62,7 @@
   "alertas": {
     "ref": {
       "versao": "1.0.0",
-      "hash": "193b9bf7866d97b84fe00f307b572217f1d1d1e394f366b8f39cafce875b9957"
+      "hash": "af7398b61af67a75c1613cf74541b2152528b35c588073d6b0fda9b827122a30"
     },
     "conteudo": {
       "fileVersion": "1.0",

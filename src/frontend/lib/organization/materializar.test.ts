@@ -228,6 +228,64 @@ describe('materialização da organização', () => {
     expect(h.client.createProject).toHaveBeenCalledTimes(2);
     expect(h.document.organizacoes[0]?.nome).toBe('Original');
   });
+  test('M-1: start and resume through two client wrappers share the repository operation and journal exactly two projects', async () => {
+    const h = harness();
+    let releaseCreation!: () => void;
+    let creationEntered!: () => void;
+    const blocked = new Promise<void>(resolve => {
+      releaseCreation = resolve;
+    });
+    const entered = new Promise<void>(resolve => {
+      creationEntered = resolve;
+    });
+    const names = new Map<string, string>();
+    h.client.createProject.mockImplementation(async ({name}) => {
+      if (h.client.createProject.mock.calls.length === 1) {
+        creationEntered();
+        await blocked;
+      }
+      const id = `id-${h.projects.length}`;
+      h.projects.push(id);
+      names.set(id, name);
+      return id;
+    });
+    const getProject = h.client.getProject.getMockImplementation()!;
+    h.client.getProject.mockImplementation(async id => ({
+      ...(await getProject(id)),
+      $getProjectSettings: jest.fn(async () => ({
+        name: names.get(id)!,
+        sendStats: false,
+      })),
+    }));
+    const other = createMaterializer({
+      client: {...h.client},
+      templates: h.templates,
+      repository: h.repository,
+      generateId: () => 'other-org',
+    });
+    const started = h.service.start('Original');
+    await entered;
+    const resumed = other.resume();
+    const outcomes = [started, resumed].map(operation =>
+      operation.then(() => h.document),
+    );
+    // Give resume every opportunity to create while the first native call
+    // has not returned an id or made its project visible to listProjects.
+    await new Promise(resolve => setTimeout(resolve, 0));
+    releaseCreation();
+    const [startOutcome, resumeOutcome] = await Promise.all(outcomes);
+
+    expect(h.projects).toHaveLength(2);
+    expect(h.client.createProject).toHaveBeenCalledTimes(2);
+    expect(resumed).toBe(started);
+    expect(resumeOutcome).toBe(startOutcome);
+    expect(h.document.organizacoes[0]?.estado).toBe('pronta');
+    expect(
+      Object.values(h.document.organizacoes[0]!.materializacao).map(
+        entry => entry.projectId,
+      ),
+    ).toEqual(h.projects);
+  });
   test.each([
     '',
     '   ',
@@ -513,10 +571,11 @@ describe('materialização da organização', () => {
       estado: 'preparando',
     });
 
-    // The journal is superseded externally (the abandoned intent is resolved)
-    // and operation 2 — a DIFFERENT client, so a different mutex — creates a
-    // new organization end to end.
-    repository.write(documentoInicial());
+    // The journal is replaced externally. The in-flight callback must leave
+    // the replacement intact, and another client must wait for it to settle.
+    const replacement = documentoAmbosVerificados();
+    replacement.organizacoes[0]!.id = 'org-replacement';
+    repository.write(replacement);
     const projetosB: string[] = [];
     const clientB = {
       listProjects: jest.fn(async () =>
@@ -537,24 +596,24 @@ describe('materialização da organização', () => {
       repository,
       generateId: () => 'org-2',
     });
+    const waiting = serviceB.start('Órgão Dois');
+    expect(waiting).toBe(operacao1);
+    const antes = JSON.stringify(document);
+    resolverCriacao!('id-late');
+    await Promise.all([operacao1, waiting]);
+    expect(JSON.stringify(document)).toBe(antes);
+    expect(JSON.stringify(document)).not.toContain('id-late');
+    expect(clientA.getProject).not.toHaveBeenCalled();
+    expect(clientA.setDeviceInfo).not.toHaveBeenCalled();
+    expect(clientB.createProject).not.toHaveBeenCalled();
+
+    repository.write(documentoInicial());
     await serviceB.start('Órgão Dois');
     expect(document.organizacoes[0]).toMatchObject({
       id: 'org-2',
       estado: 'pronta',
       confirmacaoPendente: true,
     });
-
-    // The late callback from operation 1 finally arrives: it must be ignored
-    // — the journal of operation 2 stays byte-for-byte intact.
-    const antes = JSON.stringify(document);
-    resolverCriacao!('id-late');
-    await operacao1;
-    expect(JSON.stringify(document)).toBe(antes);
-    expect(JSON.stringify(document)).not.toContain('id-late');
-    expect(document.organizacoes[0]?.id).toBe('org-2');
-    expect(document.organizacoes[0]?.estado).toBe('pronta');
-    expect(clientA.getProject).not.toHaveBeenCalled();
-    expect(clientA.setDeviceInfo).not.toHaveBeenCalled();
   });
 });
 
@@ -757,6 +816,10 @@ describe('validação real dos pacotes (#30 / SPEC B §5.2 CA5)', () => {
       docId: `preset-${categoria.id}`,
       name: categoria.name,
       tags: {...categoria.tags},
+      // Core derives the preset geometry from `appliesTo`.
+      geometry: categoria.appliesTo.map(aplicacao =>
+        aplicacao === 'observation' ? 'point' : 'line',
+      ),
       fieldRefs: categoria.fields.map(campoId => ({
         docId: `campo-${campoId}`,
       })),
@@ -772,6 +835,9 @@ describe('validação real dos pacotes (#30 / SPEC B §5.2 CA5)', () => {
       .map(campo => ({
         docId: `campo-${campo.id}`,
         tagKey: campo.tagKey,
+        // Core creates the field documents from the package entries verbatim.
+        type: campo.type,
+        ...(campo.options ? {options: campo.options} : {}),
       }));
     const icones = [
       ...new Set(

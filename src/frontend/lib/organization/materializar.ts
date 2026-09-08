@@ -57,13 +57,14 @@ const NAMES = {monitoramento: 'Monitoramento', alertas: 'Alertas'} as const;
 
 // Shared across hook instances/remounts, scoped to the native client process.
 const running = new WeakMap<object, Promise<void>>();
+const runningRepositories = new WeakMap<object, Promise<void>>();
 
 /**
  * Identity of a creation operation (SPEC B §5.4): every operation started
  * through `exclusive()` carries the organization it belongs to. The object
  * REFERENCE is the operation token; the repository-keyed registry below makes
- * only the LATEST operation on a journal alive, so a late Core callback from
- * a superseded operation can never be attributed to the new journal.
+ * only the active operation on a journal alive, so a late Core callback from
+ * an externally replaced journal can never be attributed to the new journal.
  */
 type Operacao = {organizacaoId: string | null};
 const operacoes = new WeakMap<object, Operacao>();
@@ -375,18 +376,22 @@ export function createMaterializer<
     await resume(op);
   }
   function exclusive(work: (op: Operacao) => Promise<void>) {
-    const existing = running.get(client);
+    const existing = running.get(client) ?? runningRepositories.get(repository);
     if (existing) return existing;
-    // Registering the operation token on the repository makes every previous
-    // operation stale: its late callbacks fail `assertViva` and are ignored.
+    // Different client wrappers over the same journal share this operation;
+    // none may supersede its token while a native write is still in flight.
     const op: Operacao = {organizacaoId: null};
     const operation = Promise.resolve()
       .then(() => work(op))
       .finally(() => {
         if (running.get(client) === operation) running.delete(client);
+        if (runningRepositories.get(repository) === operation) {
+          runningRepositories.delete(repository);
+        }
         if (operacoes.get(repository) === op) operacoes.delete(repository);
       });
     running.set(client, operation);
+    runningRepositories.set(repository, operation);
     operacoes.set(repository, op);
     return operation;
   }
