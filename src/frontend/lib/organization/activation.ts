@@ -290,7 +290,7 @@ export function createOrganizationActivation({
 
   const automaticallyResumed = new Set<string>();
   function retryPreparation(id: string) {
-    return runExclusive('retryPreparation', () => performPreparation(id));
+    return runExclusive(`retryPreparation:${id}`, () => performPreparation(id));
   }
 
   async function performPreparation(id: string) {

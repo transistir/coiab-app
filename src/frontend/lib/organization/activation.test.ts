@@ -525,6 +525,90 @@ describe('recuperação de journal (CA03)', () => {
         .projectId,
     ).toBe('A-a');
   });
+
+  test('retry de preparação de outra organização é recusado (false), nunca aliased à operação em voo', async () => {
+    const store = createCoiabOrganizationsStore();
+    // A e B ambas em falha durável: um retry pode retomar qualquer uma.
+    store.instance.setState({
+      versao: 1,
+      organizacoes: [
+        {
+          ...readyOrganization('A'),
+          estado: 'falha_recuperavel',
+          areaEmExecucao: null,
+          ultimoErro: {
+            codigo: 'preparation-failed',
+            area: 'alertas',
+            ocorridoEm: new Date().toISOString(),
+          },
+        },
+        {
+          ...readyOrganization('B'),
+          estado: 'falha_recuperavel',
+          areaEmExecucao: null,
+          ultimoErro: {
+            codigo: 'preparation-failed',
+            area: 'alertas',
+            ocorridoEm: new Date().toISOString(),
+          },
+        },
+      ],
+      ativa: null,
+    });
+    let releaseA!: () => void;
+    const aEmVoo = new Promise<void>(resolve => {
+      releaseA = resolve;
+    });
+    const resumePreparation = jest.fn(async (id: string) => {
+      // A preparação de A fica suspensa até o teste liberá-la na limpeza.
+      await aEmVoo;
+      store.instance.setState(state => ({
+        organizacoes: state.organizacoes.map(item =>
+          item.id === id ? readyOrganization(id) : item,
+        ),
+      }));
+    });
+    const activation = createOrganizationActivation({
+      store,
+      getProject: jest.fn(),
+      resumePreparation,
+    });
+
+    // A preparação de A está em voo, suspensa dentro de resumePreparation('A').
+    const retryA = activation.retryPreparation('A');
+    // Duplo toque da MESMA organização: mesma intenção, junta-se à operação.
+    const retryAdeNovo = activation.retryPreparation('A');
+    // Retry de B é intenção DIFERENTE: deve ser recusado com `false`, nunca
+    // aliased ao resultado de A (o que reportaria o sucesso de A como se B
+    // tivesse sido recuperada, sem nunca passar B a nada).
+    const retryB = activation.retryPreparation('B');
+
+    // Libera A para que o alias defeituoso resolva com o `true` de A em vez de
+    // travar — o bug aparece como asserção falha, não como timeout do teste.
+    releaseA();
+    const [resultadoA, resultadoAdeNovo, resultadoB] = await Promise.all([
+      retryA,
+      retryAdeNovo,
+      retryB,
+    ]);
+
+    expect(resultadoB).toBe(false);
+    // B nunca é passada à preparação nem tem o estado alterado para 'preparando'
+    // ou para o desfecho de A.
+    expect(resumePreparation).not.toHaveBeenCalledWith('B');
+    expect(
+      store.instance.getState().organizacoes.find(item => item.id === 'B')
+        ?.estado,
+    ).toBe('falha_recuperavel');
+
+    // Duplo toque da MESMA organização continua a juntar-se: um único
+    // resumePreparation('A') e o mesmo desfecho (contrato de runExclusive).
+    expect(resultadoA).toBe(true);
+    expect(resultadoAdeNovo).toBe(true);
+    expect(
+      resumePreparation.mock.calls.filter(([id]) => id === 'A'),
+    ).toHaveLength(1);
+  });
 });
 
 describe('A-v4-1: guard global de trabalho pendente na alternância de área (§5.2:172)', () => {
