@@ -35,6 +35,9 @@ async function setup(
   // antes da camada de organização, sem carimbo de origem.
   trackStore.instance.setState({
     projectId: origemDaTrilha ?? undefined,
+    // `null` reproduz o payload legado DEPOIS da migração de versão (M-1):
+    // carimbo explícito de legado, sem projeto de origem.
+    originStatus: origemDaTrilha ? undefined : 'legacy',
     description: 'trilha de A',
     locationHistory: [{latitude: 0, longitude: 0, timestamp: 1}],
     distance: 10,

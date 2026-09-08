@@ -28,6 +28,7 @@ export type ActivationState = {
   projectId?: string;
   generation: number;
   error?: string;
+  pendingWorkOrigin?: {organizacaoId: string; area: Area; projectId: string};
 };
 export type ActivationProject = {
   $getOwnRole(): Promise<{roleId: string}>;
@@ -58,29 +59,29 @@ export function createOrganizationActivation({
     generation: 0,
   }));
 
-  // SPEC A §4.2 / FIX-B — RESTORATION ONLY: on cold start, persisted pending
-  // work blocks the restore only when its ORIGIN differs from the selection
-  // being restored — reopening the validated origin is what concludes/clears
-  // the work. When the origin cannot be identified (no target, or no projectId
-  // mapping), the conservative behavior is to block: a fresh instance must
-  // never silently strand persisted work. Every OTHER context change (org
-  // switch, area switch, acknowledgment, recovery retry) uses the global
-  // predicate instead — see A-v4-1 in performActivation.
+  function pendingWorkOrigin(
+    organizacoes: OrganizacaoLocal[],
+  ): ActivationState['pendingWorkOrigin'] {
+    const projectId = getPendingWorkProjectId();
+    if (!projectId) return undefined;
+    for (const org of organizacoes) {
+      for (const area of AREAS) {
+        if (org.materializacao[area].projectId === projectId)
+          return {organizacaoId: org.id, area, projectId};
+      }
+    }
+    return undefined;
+  }
+
+  // Restoration can reopen only the exact origin project, including its area.
   function pendingWorkBlocks(
     organizacoes: OrganizacaoLocal[],
     targetId?: string,
+    area: Area = 'monitoramento',
   ): boolean {
     if (!hasPendingWork()) return false;
-    if (!targetId) return true;
-    const pendingProjectId = getPendingWorkProjectId();
-    const origin = pendingProjectId
-      ? organizacoes.find(
-          item =>
-            item.materializacao.monitoramento.projectId === pendingProjectId ||
-            item.materializacao.alertas.projectId === pendingProjectId,
-        )?.id
-      : undefined;
-    return origin !== targetId;
+    const origin = pendingWorkOrigin(organizacoes);
+    return !origin || origin.organizacaoId !== targetId || origin.area !== area;
   }
 
   // A-v4-2 (SPEC A §4.2 regra 3 / §6.2:215): snapshot of the context last
@@ -90,17 +91,16 @@ export function createOrganizationActivation({
   // carried in the instance state, which survives recovery (FIX-D) and would
   // republish 'ready' without any revalidation in the failing attempt.
   let origemValidada: {projectId: string; generation: number} | undefined;
-  // True only while initialize() restores the persisted selection: that path
-  // already applied the FIX-B origin comparison above before calling activate.
-  let restoring = false;
-
   let inFlight: Promise<boolean> | undefined;
-  function activate(
-    id: string,
-    options: ActivationOptions = {},
-  ): Promise<boolean> {
+  // A-v4-4 (M-2): EVERY entry point — activate, initialize, retryPreparation
+  // and the pending-work recovery — shares this single lock. A concurrent call
+  // JOINS the running operation instead of starting a second one that would
+  // carry its own exemptions into the first one's checks. `perform` runs
+  // synchronously up to its first await: its entry guards must decide on the
+  // state that exists when the caller asks for the change, not a later one.
+  function runExclusive(perform: () => Promise<boolean>): Promise<boolean> {
     if (inFlight) return inFlight;
-    const operation = performActivation(id, options);
+    const operation = perform();
     inFlight = operation;
     void operation.finally(() => {
       if (inFlight === operation) inFlight = undefined;
@@ -108,10 +108,30 @@ export function createOrganizationActivation({
     return operation;
   }
 
-  async function performActivation(id: string, options: ActivationOptions) {
+  function activate(
+    id: string,
+    options: ActivationOptions = {},
+  ): Promise<boolean> {
+    return runExclusive(() => performActivation(id, options));
+  }
+
+  async function performActivation(
+    id: string,
+    options: ActivationOptions,
+    restoring = false,
+  ) {
     const previous = instance.getState();
     const document = store.instance.getState();
     const sameOrganization = document.ativa?.organizacaoId === id;
+    const area = options.acknowledge
+      ? 'monitoramento'
+      : (options.area ?? 'monitoramento');
+    // The restoration allowance belongs only to this operation. Even here,
+    // work that changes origin during an await must block publication.
+    const workBlocks = () =>
+      restoring
+        ? pendingWorkBlocks(document.organizacoes, id, area)
+        : hasPendingWork();
     if (
       previous.status === 'ready' &&
       sameOrganization &&
@@ -127,7 +147,7 @@ export function createOrganizationActivation({
     // string, with no area variant (CA15). Only the cold-start restoration
     // path is exempt: reopening the persisted origin is what concludes the
     // work, and initialize() already applied the FIX-B origin comparison.
-    if (!restoring && hasPendingWork()) {
+    if (workBlocks()) {
       instance.setState({error: 'pending-work'});
       return false;
     }
@@ -161,7 +181,7 @@ export function createOrganizationActivation({
       revalidating = false;
       // A-v4-1: the same global predicate re-checked before the commit — work
       // that appeared during validation still blocks it (§5.2:164).
-      if (!restoring && hasPendingWork()) throw new Error('pending-work');
+      if (workBlocks()) throw new Error('pending-work');
       const origin = document.organizacoes.find(
         item => item.id === document.ativa?.organizacaoId,
       );
@@ -177,6 +197,7 @@ export function createOrganizationActivation({
         }
         await cancelPresentation(originIds);
       }
+      if (workBlocks()) throw new Error('pending-work');
       if (store.instance.getState() !== document)
         throw new Error('document-changed');
       // SPEC A §4.2 regra 9 / FIX-A: the acknowledgment records the area
@@ -184,9 +205,6 @@ export function createOrganizationActivation({
       // recognition never chooses an area, so any requested area is ignored
       // on this path. The persisted area and the published operational
       // projectId can never diverge. Without acknowledge, options.area stands.
-      const area = options.acknowledge
-        ? 'monitoramento'
-        : (options.area ?? 'monitoramento');
       if (options.acknowledge) store.actions.confirmarAbertura(id, area);
       else store.actions.ativar({organizacaoId: id, area});
       const projectId = org.materializacao[area].projectId!;
@@ -256,62 +274,87 @@ export function createOrganizationActivation({
   }
 
   const automaticallyResumed = new Set<string>();
-  async function retryPreparation(id: string) {
-    if (inFlight) return inFlight;
-    const operation = (async () => {
-      const org = store.instance
+  function retryPreparation(id: string) {
+    return runExclusive(() => performPreparation(id));
+  }
+
+  async function performPreparation(id: string) {
+    const org = store.instance
+      .getState()
+      .organizacoes.find(item => item.id === id);
+    if (!org || org.estado === 'pronta') return false;
+    store.instance.setState(state => ({
+      organizacoes: state.organizacoes.map(item =>
+        item.id === id ? {...item, estado: 'preparando' as const} : item,
+      ),
+    }));
+    instance.setState({status: 'preparing'});
+    try {
+      await resumePreparation(id);
+      const completed = store.instance
         .getState()
         .organizacoes.find(item => item.id === id);
-      if (!org || org.estado === 'pronta') return false;
+      if (completed?.estado !== 'pronta')
+        throw new Error('preparation-incomplete');
+      instance.setState({status: 'confirmation'});
+      return true;
+    } catch {
+      // Publication may have succeeded before the adapter's late rejection.
+      // Never persist failure over pronta + pending confirmation: that pair
+      // is durable success and downgrading it would invalidate hydration.
+      const completed = store.instance
+        .getState()
+        .organizacoes.find(item => item.id === id);
+      if (completed?.estado === 'pronta') {
+        instance.setState({status: 'confirmation', error: undefined});
+        return true;
+      }
       store.instance.setState(state => ({
         organizacoes: state.organizacoes.map(item =>
-          item.id === id ? {...item, estado: 'preparando' as const} : item,
+          item.id === id
+            ? {
+                ...item,
+                estado: 'falha_recuperavel' as const,
+                ultimoErro: {
+                  codigo: 'preparation-failed',
+                  area: item.areaEmExecucao,
+                  ocorridoEm: new Date().toISOString(),
+                },
+                areaEmExecucao: null,
+              }
+            : item,
         ),
       }));
-      instance.setState({status: 'preparing'});
-      try {
-        await resumePreparation(id);
-        const completed = store.instance
-          .getState()
-          .organizacoes.find(item => item.id === id);
-        if (completed?.estado !== 'pronta')
-          throw new Error('preparation-incomplete');
-        instance.setState({status: 'confirmation'});
-        return true;
-      } catch {
-        store.instance.setState(state => ({
-          organizacoes: state.organizacoes.map(item =>
-            item.id === id
-              ? {
-                  ...item,
-                  estado: 'falha_recuperavel' as const,
-                  ultimoErro: {
-                    codigo: 'preparation-failed',
-                    area: item.areaEmExecucao,
-                    ocorridoEm: new Date().toISOString(),
-                  },
-                  areaEmExecucao: null,
-                }
-              : item,
-          ),
-        }));
-        instance.setState({status: 'failure'});
-        return false;
-      }
-    })();
-    inFlight = operation;
-    try {
-      return await operation;
-    } finally {
-      inFlight = undefined;
+      instance.setState({status: 'failure'});
+      return false;
     }
   }
 
-  async function initialize() {
-    const {organizacoes, ativa} = store.instance.getState();
+  function initialize() {
+    return runExclusive(performInitialization);
+  }
+
+  async function performInitialization() {
+    const {organizacoes, ativa, hidratacaoFalhou} = store.instance.getState();
+    if (hidratacaoFalhou) {
+      origemValidada = undefined;
+      instance.setState({
+        status: 'recovery',
+        error: 'hydration-failed',
+        projectId: undefined,
+        pendingWorkOrigin: undefined,
+      });
+      return false;
+    }
     if (!organizacoes.length) {
-      instance.setState({status: 'absent'});
-      return;
+      origemValidada = undefined;
+      instance.setState({
+        status: 'absent',
+        error: undefined,
+        projectId: undefined,
+        pendingWorkOrigin: undefined,
+      });
+      return false;
     }
     const selected = ativa
       ? organizacoes.find(org => org.id === ativa.organizacaoId)
@@ -322,9 +365,19 @@ export function createOrganizationActivation({
     // differs from the selection being restored — reopening the origin is
     // what concludes/clears the work. An unidentifiable origin still blocks:
     // a fresh instance must never strand persisted work.
-    if (pendingWorkBlocks(organizacoes, selected?.id)) {
-      instance.setState({status: 'unavailable', error: 'pending-work'});
-      return;
+    if (
+      pendingWorkBlocks(
+        organizacoes,
+        selected?.id,
+        ativa?.area ?? 'monitoramento',
+      )
+    ) {
+      instance.setState({
+        status: 'unavailable',
+        error: 'pending-work',
+        pendingWorkOrigin: pendingWorkOrigin(organizacoes),
+      });
+      return false;
     }
     if (!selected) {
       instance.setState({status: ativa ? 'unavailable' : 'selection'});
@@ -337,21 +390,36 @@ export function createOrganizationActivation({
         !automaticallyResumed.has(selected.id)
       ) {
         automaticallyResumed.add(selected.id);
-        await retryPreparation(selected.id);
+        return performPreparation(selected.id);
       }
     } else if (selected.confirmacaoPendente) {
       instance.setState({status: 'confirmation'});
     } else {
-      // A-v4-1: this is the cold-start RESTORE of the persisted selection —
-      // the FIX-B origin comparison above already decided; the global
-      // in-session guard inside activate must not re-block the restore.
-      restoring = true;
-      try {
-        await activate(selected.id, {area: ativa?.area ?? 'monitoramento'});
-      } finally {
-        restoring = false;
-      }
+      return performActivation(
+        selected.id,
+        {area: ativa?.area ?? 'monitoramento'},
+        true,
+      );
     }
+    return false;
+  }
+
+  // Explicit recovery revalidates the origin pair and selects its exact area.
+  // It cannot be used as a general bypass of the in-session pending-work guard.
+  function recoverPendingWork() {
+    return runExclusive(async () => {
+      const state = instance.getState();
+      const origin = pendingWorkOrigin(store.instance.getState().organizacoes);
+      if (
+        state.status !== 'unavailable' ||
+        state.error !== 'pending-work' ||
+        !hasPendingWork() ||
+        !origin ||
+        origin.projectId !== state.pendingWorkOrigin?.projectId
+      )
+        return false;
+      return performActivation(origin.organizacaoId, {area: origin.area}, true);
+    });
   }
   const captureContext = () => ({
     projectId: instance.getState().projectId,
@@ -366,6 +434,7 @@ export function createOrganizationActivation({
     activate,
     initialize,
     retryPreparation,
+    recoverPendingWork,
     captureContext,
     isCurrent,
   };

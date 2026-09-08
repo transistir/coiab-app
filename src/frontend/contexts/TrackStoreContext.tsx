@@ -7,7 +7,12 @@ import {
 import * as v from 'valibot';
 
 import {MMKVStoreInitializer} from '../hooks/persistedState/createPersistedState';
-import {assertWorkOrigin} from '../lib/organization/workOrigin';
+import {
+  assertWorkOrigin,
+  migrateWorkOrigin,
+  newWorkOrigin,
+} from '../lib/organization/workOrigin';
+import {hasPendingOrganizationWork} from '../lib/organization/pendingWork';
 import {LocationHistoryPoint} from '../sharedTypes/location';
 import {calculateTotalDistance} from '../utils/distance';
 import {Preset} from '@comapeo/schema';
@@ -27,6 +32,7 @@ export const PresetSchema = v.object({
 const TrackStateSchema = v.intersect([
   v.object({
     projectId: v.optional(v.string()),
+    originStatus: v.optional(v.picklist(['legacy', 'unresolved'])),
     description: v.string(),
     distance: v.number(),
     preset: v.nullable(PresetSchema),
@@ -99,18 +105,18 @@ export function createTrackStore({persist} = {persist: false}) {
             return value;
           },
         }),
-        version: 1,
+        version: 2,
         migrate: (persistedState, version): TrackState => {
           const newState = createInitialState();
 
-          if (version === 0) {
+          if (version === 0 || version === 1) {
             try {
               // Even if persisted state has fields that are not part of the schema,
               // Valibot will only extract the relevant fields (assuming all relevant ones pass validation).
               // https://valibot.dev/guides/objects/
-              return v.parse(TrackStateSchema, persistedState, {
-                abortEarly: true,
-              });
+              return migrateWorkOrigin(
+                v.parse(TrackStateSchema, persistedState, {abortEarly: true}),
+              );
             } catch {
               return newState;
             }
@@ -126,7 +132,8 @@ export function createTrackStore({persist} = {persist: false}) {
 
   const actions = {
     assertOrigin: (projectId: string) => {
-      assertWorkOrigin(store.getState().projectId, projectId);
+      const state = store.getState();
+      assertWorkOrigin(state.projectId, projectId, state.originStatus);
     },
     setTrackPreset: (preset: Preset) => {
       store.setState({preset});
@@ -159,6 +166,7 @@ export function createTrackStore({persist} = {persist: false}) {
     clearCurrentTrack: () => {
       store.setState({
         projectId: undefined,
+        originStatus: undefined,
         docId: null,
         description: '',
         distance: 0,
@@ -174,18 +182,18 @@ export function createTrackStore({persist} = {persist: false}) {
         store.setState({isTracking: false, trackingSince: null});
         return;
       }
-      // SPEC A CA09: resuming a persisted track never rewrites its origin.
-      // An existing projectId that differs from the active project refuses
-      // the resume; only a legacy track without origin adopts the resolver's.
-      const {projectId} = store.getState();
+      // A resumed track keeps its stamp, including an unresolved origin.
+      // Only new work can take the current project from the resolver.
+      const state = store.getState();
       const origin = getProjectId();
-      if (projectId && origin && projectId !== origin) {
-        throw new Error('work-origin-mismatch');
+      const pending = hasPendingOrganizationWork({track: state});
+      if (pending && origin) {
+        assertWorkOrigin(state.projectId, origin, state.originStatus);
       }
       store.setState({
         isTracking: true,
         trackingSince: new Date(),
-        ...(projectId || !origin ? {} : {projectId: origin}),
+        ...(pending ? {} : newWorkOrigin(origin)),
       });
     },
   };

@@ -14,9 +14,12 @@ describe('trabalho com origem persistida (CA08/CA09)', () => {
     );
     expect(() => restored.actions.assertOrigin('A-m')).not.toThrow();
   });
-  test('rascunho legado sem origem não recebe ID da nova organização, mas continua salvável', () => {
+  test('rascunho legado migrado não recebe ID da nova organização, mas continua salvável', () => {
     const draft = createDraftObservationStore({persist: false});
     draft.actions.createDraft();
+    // Carimbo que a migração de versão aplica a um payload anterior à camada
+    // de organização (M-1): legado EXPLÍCITO, sem projeto de origem.
+    draft.instance.setState({projectId: undefined, originStatus: 'legacy'});
     draft.setProjectResolver(() => 'B-m');
     // A origem do rascunho não é reescrita pelo projeto ativo...
     expect(draft.instance.getState().projectId).toBeUndefined();
@@ -45,6 +48,9 @@ describe('trabalho com origem persistida (CA08/CA09)', () => {
   test.each([
     {draft: {value: {tags: {}}}},
     {track: {isTracking: true}},
+    // M-1: trilha nova cuja origem não foi resolvida também é trabalho
+    // pendente — ela não pode ser abandonada por uma troca de organização.
+    {track: {originStatus: 'unresolved' as const}},
     {track: {locationHistory: [{}]}},
     {track: {docId: 'edit'}},
     {media: true},

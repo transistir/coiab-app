@@ -110,6 +110,11 @@ async function setup(
     draftStore.setProjectResolver(() => origemDoRascunho);
   }
   draftStore.actions.createDraft();
+  if (!origemDoRascunho) {
+    // Payload legado DEPOIS da migração de versão (M-1): carimbo explícito
+    // de legado, sem projeto de origem.
+    draftStore.instance.setState({originStatus: 'legacy'});
+  }
   // manualLocation faz handlePressSave salvar direto (sem diálogo de GPS).
   draftStore.actions.updatePosition({
     manualLocation: true,

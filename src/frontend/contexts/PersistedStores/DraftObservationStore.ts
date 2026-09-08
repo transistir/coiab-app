@@ -15,7 +15,12 @@ import {manipulateAsync} from 'expo-image-manipulator';
 import {excludeKeys} from 'filter-obj';
 import type {Attachment, Position} from '../../sharedTypes/index.ts';
 import {throwIfAborted} from '../../lib/throwIfAborted.ts';
-import {assertWorkOrigin} from '../../lib/organization/workOrigin';
+import {
+  assertWorkOrigin,
+  migrateWorkOrigin,
+  newWorkOrigin,
+  type WorkOrigin,
+} from '../../lib/organization/workOrigin';
 import {parse} from 'valibot';
 import {PhotoEXIFSchema} from '../../lib/exif.ts';
 import * as Sentry from '@sentry/react-native';
@@ -66,7 +71,11 @@ export function createDraftObservationStore({persist}: {persist: boolean}) {
       createPersistedState(createEmptyStoreState as () => DraftState, {
         name: '@MapeoDraftStore',
         storage: createJSONStorage(() => MMKVStoreInitializer),
-        version: 0,
+        version: 1,
+        migrate: (persistedState, version) =>
+          version === 0
+            ? migrateWorkOrigin(persistedState as DraftState)
+            : createEmptyStoreState(),
         onRehydrateStorage: () => state => {
           if (!state?.unsavedAttachments) return;
 
@@ -293,7 +302,7 @@ export function createDraftObservationStore({persist}: {persist: boolean}) {
     if (observation) {
       instance.setState(
         {
-          ...(getProjectId() ? {projectId: getProjectId()} : {}),
+          ...newWorkOrigin(getProjectId()),
           value: valueOf(observation),
           id: {docId: observation.docId, versionId: observation.versionId},
           unsavedAttachments: [],
@@ -304,7 +313,7 @@ export function createDraftObservationStore({persist}: {persist: boolean}) {
     } else {
       instance.setState(
         {
-          ...(getProjectId() ? {projectId: getProjectId()} : {}),
+          ...newWorkOrigin(getProjectId()),
           value: createEmptyObservationValue(),
           id: null,
           unsavedAttachments: [],
@@ -405,7 +414,8 @@ export function createDraftObservationStore({persist}: {persist: boolean}) {
 
   const actions = {
     assertOrigin: (projectId: string) => {
-      assertWorkOrigin(instance.getState().projectId, projectId);
+      const state = instance.getState();
+      assertWorkOrigin(state.projectId, projectId, state.originStatus);
     },
     addPhoto,
     addAudio,
@@ -480,8 +490,7 @@ export type UnsavedAudioAttachment = {
 
 type UnsavedAttachment = UnsavedPhotoAttachment | UnsavedAudioAttachment;
 
-type DraftStateEmpty = {
-  projectId?: string;
+type DraftStateEmpty = WorkOrigin & {
   value: null;
   id: null;
   unsavedAttachments: null;
@@ -496,8 +505,7 @@ type ObservationValueWithPreset = Exclude<ObservationValue, 'presetRef'> & {
   presetRef?: Preset;
 };
 
-type DraftStatePopulated = {
-  projectId?: string;
+type DraftStatePopulated = WorkOrigin & {
   value: ObservationValueWithPreset;
   id: {docId: string; versionId: string} | null;
   unsavedAttachments: UnsavedAttachment[];

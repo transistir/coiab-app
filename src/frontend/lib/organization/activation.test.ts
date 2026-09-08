@@ -1,9 +1,14 @@
-import {createCoiabOrganizationsStore} from '../../contexts/CoiabOrganizationsStoreContext';
+import {
+  COIAB_ORGANIZATIONS_STORAGE_KEY,
+  createCoiabOrganizationsStore,
+} from '../../contexts/CoiabOrganizationsStoreContext';
+import {MMKVStoreInitializer} from '../../hooks/persistedState/createPersistedState';
 import {organizationDocument, readyOrganization} from './fixtures';
 import {
   createOrganizationActivation,
   type ActivationProject,
 } from './activation';
+import {parseEstadoOrganizacoes} from './coiabOrganizations';
 import {MEMBER_ROLE_ID} from '../../sharedTypes';
 
 function setup() {
@@ -606,6 +611,229 @@ describe('A-v4-3: recovery só sai por revalidação bem-sucedida (§5.3:189/CA1
     expect(store.instance.getState().ativa).toEqual({
       organizacaoId: 'A',
       area: 'alertas',
+    });
+  });
+});
+
+/**
+ * Achados MUST-FIX da co-revisão independente (M-2..M-6): o commit da troca e
+ * a hidratação do cadastro são verificados contra o que está DURÁVEL em MMKV,
+ * não apenas contra o estado em memória.
+ */
+describe('co-revisão: recheque de trabalho pendente e endurecimento da hidratação', () => {
+  function deferred() {
+    let resolve!: () => void;
+    const promise = new Promise<void>(done => {
+      resolve = done;
+    });
+    return {promise, resolve};
+  }
+
+  /** MMKV é síncrono aqui; a assinatura de StateStorage admite Promise. */
+  function lerRegistro() {
+    return MMKVStoreInitializer.getItem(COIAB_ORGANIZATIONS_STORAGE_KEY) as
+      string | null;
+  }
+
+  beforeEach(() => {
+    MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
+  });
+
+  function durableSetup() {
+    const store = createCoiabOrganizationsStore({persist: true});
+    store.instance.setState(organizationDocument(), true);
+    const project: ActivationProject = {
+      $getOwnRole: async () => ({roleId: MEMBER_ROLE_ID}),
+      $sync: {stop: jest.fn(async () => {})},
+      disconnectServers: jest.fn(async () => {}),
+    };
+    const getProject = jest.fn(
+      async (_id: string): Promise<typeof project> => project,
+    ); // eslint-disable-line @typescript-eslint/no-unused-vars
+    const hasPendingWork = jest.fn(() => false);
+    const cancelPresentation = jest.fn(async (_ids: string[]) => {}); // eslint-disable-line @typescript-eslint/no-unused-vars
+    const activation = createOrganizationActivation({
+      store,
+      getProject,
+      hasPendingWork,
+      cancelPresentation,
+      getPendingWorkProjectId: () => 'A-a',
+    });
+    return {
+      store,
+      project,
+      getProject,
+      hasPendingWork,
+      cancelPresentation,
+      activation,
+    };
+  }
+
+  test('M-2 initialize() concorrente não isenta a troca em voo do seu recheque', async () => {
+    const {store, getProject, hasPendingWork, activation, project} =
+      durableSetup();
+    await activation.initialize();
+    const before = lerRegistro();
+    const entered = deferred();
+    const release = deferred();
+    getProject.mockImplementation(async id => {
+      if (id === 'B-m') {
+        entered.resolve();
+        await release.promise;
+      }
+      return project;
+    });
+    const switching = activation.activate('B');
+    await entered.promise;
+    // initialize() de A entra no MESMO lock: não pode instalar a isenção de
+    // restauração por cima do recheque final de B.
+    const initializing = activation.initialize();
+    hasPendingWork.mockReturnValue(true);
+    release.resolve();
+    expect(await switching).toBe(false);
+    await initializing;
+    expect(store.instance.getState().ativa).toEqual({
+      organizacaoId: 'A',
+      area: 'alertas',
+    });
+    expect(lerRegistro()).toBe(before);
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'ready',
+      projectId: 'A-a',
+      error: 'pending-work',
+    });
+  });
+
+  test.each(['sync', 'disconnect', 'presentation'] as const)(
+    'M-3 trabalho surgido na limpeza (%s) aborta antes de persistir o destino',
+    async phase => {
+      const {store, project, hasPendingWork, cancelPresentation, activation} =
+        durableSetup();
+      await activation.initialize();
+      const before = lerRegistro();
+      const entered = deferred();
+      const release = deferred();
+      const cleanup = async () => {
+        entered.resolve();
+        await release.promise;
+      };
+      if (phase === 'sync') project.$sync!.stop = cleanup;
+      else if (phase === 'disconnect') project.disconnectServers = cleanup;
+      else cancelPresentation.mockImplementation(cleanup);
+      const switching = activation.activate('B');
+      await entered.promise;
+      hasPendingWork.mockReturnValue(true);
+      release.resolve();
+      expect(await switching).toBe(false);
+      expect(store.instance.getState().ativa).toEqual({
+        organizacaoId: 'A',
+        area: 'alertas',
+      });
+      expect(lerRegistro()).toBe(before);
+      expect(activation.instance.getState()).toMatchObject({
+        status: 'ready',
+        projectId: 'A-a',
+        error: 'pending-work',
+      });
+    },
+  );
+
+  test('M-4 preparação que publica pronta antes de rejeitar preserva registro hidratável', async () => {
+    const {store, getProject} = durableSetup();
+    store.instance.setState({
+      organizacoes: [{...readyOrganization(), estado: 'preparando'}],
+      ativa: null,
+    });
+    const {materializacao} = readyOrganization();
+    const activation = createOrganizationActivation({
+      store,
+      getProject,
+      resumePreparation: async id => {
+        store.actions.publicarPronta(id, {
+          monitoramento: {
+            projectId: materializacao.monitoramento.projectId!,
+            template: materializacao.monitoramento.template,
+          },
+          alertas: {
+            projectId: materializacao.alertas.projectId!,
+            template: materializacao.alertas.template,
+          },
+        });
+        throw new Error('late adapter failure');
+      },
+    });
+    await activation.initialize();
+    const durable = JSON.parse(lerRegistro() as string).state;
+    // 'falha_recuperavel' + confirmacaoPendente é recusado pelo parser: gravá-lo
+    // por cima de uma publicação concluída derrubaria a hidratação inteira.
+    expect(parseEstadoOrganizacoes(durable)).not.toBeNull();
+    expect(durable.organizacoes[0]).toMatchObject({
+      estado: 'pronta',
+      confirmacaoPendente: true,
+    });
+    expect(
+      createCoiabOrganizationsStore({persist: true}).instance.getState()
+        .hidratacaoFalhou,
+    ).toBe(false);
+    expect(activation.instance.getState().status).toBe('confirmation');
+  });
+
+  test('M-5 cadastro corrompido expõe recuperação de hidratação em vez de ausente', async () => {
+    const corrupt = '{unreadable registry';
+    MMKVStoreInitializer.setItem(COIAB_ORGANIZATIONS_STORAGE_KEY, corrupt);
+    const store = createCoiabOrganizationsStore({persist: true});
+    const getProject = jest.fn();
+    const activation = createOrganizationActivation({store, getProject});
+    await activation.initialize();
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'recovery',
+      error: 'hydration-failed',
+    });
+    expect(getProject).not.toHaveBeenCalled();
+    // O documento ilegível é preservado até a resolução explícita (§5.3).
+    expect(lerRegistro()).toBe(corrupt);
+    store.actions.resolverFalhaHidratacao();
+    await activation.initialize();
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'absent',
+      error: undefined,
+    });
+  });
+
+  test('M-6 pendência em Monitoramento encaminha a restauração de Alertas à recuperação da origem exata', async () => {
+    const {store, getProject} = durableSetup();
+    const activation = createOrganizationActivation({
+      store,
+      getProject,
+      hasPendingWork: () => true,
+      getPendingWorkProjectId: () => 'A-m',
+    });
+    // Seleção persistida A/alertas, trabalho pendente em A/monitoramento: a
+    // mesma organização NÃO autoriza reabrir o projeto errado.
+    await activation.initialize();
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'unavailable',
+      error: 'pending-work',
+      pendingWorkOrigin: {
+        organizacaoId: 'A',
+        area: 'monitoramento',
+        projectId: 'A-m',
+      },
+    });
+    expect(getProject).not.toHaveBeenCalled();
+    expect(store.instance.getState().ativa).toEqual({
+      organizacaoId: 'A',
+      area: 'alertas',
+    });
+    // A rota de saída é explícita: reabrir o projeto de origem do trabalho.
+    expect(await activation.recoverPendingWork()).toBe(true);
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'ready',
+      projectId: 'A-m',
+    });
+    expect(store.instance.getState().ativa).toEqual({
+      organizacaoId: 'A',
+      area: 'monitoramento',
     });
   });
 });

@@ -90,6 +90,9 @@ describe('useTrackActions()', () => {
       description: '',
       distance: 0,
       isTracking: true,
+      // Sem projeto ativo resolvido, o trabalho novo nasce com origem
+      // explicitamente não resolvida (M-1).
+      originStatus: 'unresolved',
       locationHistory: [],
       observationRefs: [],
       trackingSince: dateSpy.mock.instances.at(-1),
@@ -110,6 +113,7 @@ describe('useTrackActions()', () => {
       trackingSince: null,
       preset: null,
       docId: null,
+      originStatus: 'unresolved',
     });
   });
 
@@ -164,6 +168,9 @@ describe('useTrackActions()', () => {
       description: '',
       distance: 0,
       isTracking: true,
+      // Sem projeto ativo resolvido, o trabalho novo nasce com origem
+      // explicitamente não resolvida (M-1).
+      originStatus: 'unresolved',
       locationHistory: [],
       observationRefs: [],
       trackingSince: dateSpy.mock.instances.at(-1),
@@ -178,6 +185,7 @@ describe('useTrackActions()', () => {
     expect(stateHook.result.current).toStrictEqual({
       // clearCurrentTrack drops the work origin along with the track.
       projectId: undefined,
+      originStatus: undefined,
       description: '',
       distance: 0,
       isTracking: false,
@@ -336,19 +344,26 @@ describe('setTracking() e origem do trabalho (CA09)', () => {
     expect(trackStore.instance.getState().locationHistory).toHaveLength(1);
   });
 
-  test('trilha legada sem projectId retoma com origem do resolver', () => {
+  test('trilha legada retomada mantém o carimbo legado e continua salvável', () => {
     const trackStore = createTrackStore();
     trackStore.setProjectResolver(() => 'B-m');
+    // Payload anterior à camada de organização, já migrado (M-1): legado
+    // EXPLÍCITO, sem projeto de origem.
     trackStore.instance.setState({
+      originStatus: 'legacy',
       description: 'legada',
       locationHistory: [{latitude: 0, longitude: 0, timestamp: 1}],
     });
 
     trackStore.actions.setTracking(true);
 
+    // Retomar nunca reescreve a origem: o carimbo legado sobrevive e é ele
+    // que autoriza salvar no projeto ativo.
     expect(trackStore.instance.getState()).toMatchObject({
       isTracking: true,
-      projectId: 'B-m',
+      originStatus: 'legacy',
     });
+    expect(trackStore.instance.getState().projectId).toBeUndefined();
+    expect(() => trackStore.actions.assertOrigin('B-m')).not.toThrow();
   });
 });

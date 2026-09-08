@@ -11,6 +11,7 @@ export function hasPendingOrganizationWork({
   track?: {
     isTracking?: boolean;
     projectId?: string;
+    originStatus?: 'legacy' | 'unresolved';
     docId?: string | null;
     description?: string;
     preset?: unknown;
@@ -26,6 +27,7 @@ export function hasPendingOrganizationWork({
     draft?.value ||
     track?.isTracking ||
     track?.projectId ||
+    track?.originStatus === 'unresolved' ||
     track?.docId ||
     track?.description ||
     track?.preset ||
