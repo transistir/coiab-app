@@ -5,6 +5,8 @@ import {useTrackActions, useTrackState} from '../../contexts/TrackStoreContext';
 import {useNavigationFromRoot} from '../../hooks/useNavigationWithTypes';
 import {useCreateDocument} from '@comapeo/core-react';
 import {useActiveProject} from '../../contexts/ActiveProjectContext';
+import * as Sentry from '@sentry/react-native';
+import {toError} from '../../utils/errors';
 import type {Position} from '@comapeo/schema/dist/schema/track';
 
 export const SaveTrackButton: FC = () => {
@@ -17,10 +19,24 @@ export const SaveTrackButton: FC = () => {
   const observationRefs = useTrackState(state => state.observationRefs);
   const locationHistory = useTrackState(state => state.locationHistory);
   const description = useTrackState(state => state.description);
-  const {clearCurrentTrack} = useTrackActions();
+  const {clearCurrentTrack, assertOrigin} = useTrackActions();
   const preset = useTrackState(state => state.preset);
 
   const handleSaveClick = () => {
+    try {
+      // SPEC A CA09 / FIX-F: validate the persisted track's origin against
+      // the ACTIVE operational projectId BEFORE writing to core — a diverged
+      // origin (e.g. after an organization switch) throws
+      // 'work-origin-mismatch' and prevents the save. A legacy track with no
+      // stamped origin is not diverged and stays saveable.
+      assertOrigin(projectId);
+    } catch (err) {
+      Sentry.captureException(err);
+      navigation.navigate('ErrorBottomSheet', {
+        error: toError(err, 'Error saving track'),
+      });
+      return;
+    }
     createTrack(
       {
         value: {
