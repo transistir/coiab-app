@@ -83,11 +83,45 @@ step's toolchain builds.
 
 ## 2. Trigger and wait
 
+### Set REPO to the repo that owns the branch — every command below uses it
+
+`gh workflow run --ref` resolves the ref **in** the `-R` repo, so the
+dispatch must go where the branch actually exists. Capturing an
+implementation branch that only exists in `transistir/comapeo-mobile-1`
+with `-R transistir/coiab-app` fails at ref resolution, and vice versa:
+
 ```sh
-gh workflow run storybook-capture.yml -R transistir/coiab-app --ref <branch>
+# implementation PR branch (lives in the fork):
+REPO=transistir/comapeo-mobile-1
+# coiab-app sync branch (exists only in coiab-app):
+# REPO=transistir/coiab-app   # only after coiab-app's EXPO_TOKEN is set
+```
+
+ coiab-app's own dispatch currently fails at Setup EAS until its
+`EXPO_TOKEN` secret is set (`gh secret list -R transistir/coiab-app`).
+Do not edit the workflow to skip the EAS step — the capture needs the
+APK that step's toolchain builds.
+
+### Identify the new run by exclusion, not by timestamp alone
+
+```sh
+# Snapshot the run ids ALREADY on this branch BEFORE dispatching. The
+# timestamp cutoff alone cannot identify this dispatch: the stamp is
+# taken 30 s in the past (clock-skew tolerance), so a retry run created
+# inside that window — or any pre-dispatch run — still passes the
+# createdAt check and would be bound as ours. Excluding PRE_IDS closes
+# that hole; the residual race is milliseconds wide instead of 30 s.
+PRE_IDS=$(gh run list -R $REPO --workflow storybook-capture.yml --branch <branch> --event workflow_dispatch --limit 20 --json databaseId -q '[.[].databaseId] | tostring')
+# Stamp the cutoff BEFORE dispatching: if the dispatch request itself is
+# slow, a stamp taken after it (even 30 s back) can postdate the run's
+# createdAt and the poll would never match it.
+DISPATCH_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ -d '30 seconds ago')
+gh workflow run storybook-capture.yml -R $REPO --ref <branch>
 sleep 15
-gh run list -R transistir/coiab-app --workflow storybook-capture.yml --branch <branch> --event workflow_dispatch --limit 5 --json databaseId,headSha,createdAt,status,url
-# Set RUN to the new run matching the intended SHA and dispatch time.
+gh run list -R $REPO --workflow storybook-capture.yml --branch <branch> --event workflow_dispatch --limit 5 --json databaseId,headSha,createdAt,status,url
+# RUN = the run whose id is NOT in PRE_IDS and createdAt >= DISPATCH_TS.
+# If two qualify, the concurrent-dispatch race hit — disambiguate by
+# headSha or re-snapshot and re-dispatch.
 ```
 
 Wait in the background rather than blocking a foreground call for the whole
