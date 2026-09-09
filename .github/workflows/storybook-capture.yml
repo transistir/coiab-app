@@ -87,27 +87,11 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: AVD cache
-        uses: actions/cache@v4
-        id: avd-cache
-        with:
-          path: |
-            ~/.android/avd/*
-            ~/.android/adb*
-          key: avd-api35-x86_64-google_apis-pixel5-v2
-
-      - name: Create AVD snapshot for caching
-        if: steps.avd-cache.outputs.cache-hit != 'true'
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          target: google_apis
-          profile: pixel_5
-          force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          disable-animations: false
-          script: echo "AVD snapshot created for caching."
+      # AVD cache/snapshot steps intentionally removed: the snapshot save
+      # hung the runner until the 90-minute job timeout (run 34400273000,
+      # 2026-09-09) and earlier runs failed to load the cached snapshot
+      # ("Failed to load snapshot 'default_boot'", 2026-09-05). A cold
+      # emulator boot measured ~43 s, so caching bought nothing.
 
       - name: Capture Storybook flow screenshots
         uses: reactivecircus/android-emulator-runner@v2
