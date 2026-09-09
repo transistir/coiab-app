@@ -57,6 +57,28 @@ import {
   type QADeviceNameStore,
 } from './QADeviceNameStoreContext';
 
+/**
+ * SPEC A CA09: persisted work must carry and validate its origin. Wires the
+ * live active-project resolver into the draft observation and track stores,
+ * so new work is stamped with the active project and `assertOrigin()` can
+ * refuse saves whose origin diverged (e.g. after an organization switch).
+ * The resolver reads the store on every call — never a captured value — so
+ * switches take effect immediately.
+ */
+export function wireWorkOriginResolvers({
+  draftObservationStore,
+  trackStore,
+  activeProjectIdStore,
+}: {
+  draftObservationStore: DraftObservationStore;
+  trackStore: TrackStore;
+  activeProjectIdStore: ActiveProjectIdStore;
+}) {
+  const resolver = () => activeProjectIdStore.instance.getState().projectId;
+  draftObservationStore.setProjectResolver(resolver);
+  trackStore.setProjectResolver(resolver);
+}
+
 type AppProvidersProps = {
   children: React.ReactNode;
   localDiscoveryController: ReturnType<typeof createLocalDiscoveryController>;

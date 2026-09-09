@@ -32,7 +32,7 @@ import {
 } from '@comapeo/core-react-native';
 import {AppState, LogBox, PermissionsAndroid, Platform} from 'react-native';
 import {requestForegroundPermissionsAsync} from 'expo-location';
-import {AppProviders} from './contexts/AppProviders';
+import {AppProviders, wireWorkOriginResolvers} from './contexts/AppProviders';
 import {createLocalDiscoveryController} from './contexts/LocalDiscoveryContext';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Sentry from '@sentry/react-native';
@@ -128,6 +128,15 @@ const persistedManualEntryCoordinateFormatStore =
 
 const persistedActiveProjectIdStore = createActiveProjectIdStore({
   persist: true,
+});
+
+// SPEC A CA09: stamp and validate the origin of persisted work (drafts and
+// tracks) against the active project, so ObservationCreate/SaveTrack can
+// never write into a project belonging to another organization.
+wireWorkOriginResolvers({
+  draftObservationStore: persistedDraftObservationStore,
+  trackStore: persistedTrackStore,
+  activeProjectIdStore: persistedActiveProjectIdStore,
 });
 
 const persistedOrganizationInviteIdentityStore =
