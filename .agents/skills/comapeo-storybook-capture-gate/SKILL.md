@@ -128,8 +128,8 @@ Wait in the background rather than blocking a foreground call for the whole
 run:
 
 ```sh
-until [ "$(gh run view $RUN -R transistir/coiab-app --json status -q .status)" = "completed" ]; do sleep 30; done
-gh run view $RUN -R transistir/coiab-app --json conclusion -q .conclusion
+until [ "$(gh run view $RUN -R $REPO --json status -q .status)" = "completed" ]; do sleep 30; done
+gh run view $RUN -R $REPO --json conclusion -q .conclusion
 ```
 
 ## 3. If the run fails, classify before re-running
@@ -139,8 +139,8 @@ Verify the artifact inventory (step 6), then download any partial artifact
 into a fresh directory and look:
 
 ```sh
-gh run download $RUN -R transistir/coiab-app -D ./caps/$RUN
-gh run view $RUN -R transistir/coiab-app --log-failed | rg -i "storybook-capture" | tail -25
+gh run download $RUN -R $REPO -D ./caps/$RUN
+gh run view $RUN -R $REPO --log-failed | rg -i "storybook-capture" | tail -25
 ```
 
 - **Correct frame, failed identity check** — inspect retained
@@ -164,7 +164,7 @@ its artifact is absent too.
 ## 4. Vision review — every frame, not a sample
 
 ```sh
-gh run download $RUN -R transistir/coiab-app -D ./caps/$RUN
+gh run download $RUN -R $REPO -D ./caps/$RUN
 D=$(find ./caps/$RUN -name captures.tsv | head -1 | xargs dirname)
 awk 'END {print NR-1}' "$D/captures.tsv" # must equal the manifest row count
 node scripts/storybook-report.mjs "$D"    # validates ledger and referenced PNGs
@@ -213,14 +213,14 @@ that logs claimed were uploaded. Require `total_count >= 1` and an expected,
 unexpired entry. If missing, re-dispatch the producing build (step 2), verify
 its SHA and replacement artifact, and review that run's frames. Never reuse
 the vanished artifact's link. Include the verified download link —
-`https://github.com/transistir/coiab-app/actions/runs/<RUN>/artifacts/<ARTIFACT_ID>`:
+`https://github.com/$REPO/actions/runs/<RUN>/artifacts/<ARTIFACT_ID>`:
 
 ```sh
-gh api repos/transistir/coiab-app/actions/runs/$RUN/artifacts \
+gh api repos/$REPO/actions/runs/$RUN/artifacts \
   --jq '{total_count, artifacts: [.artifacts[] | {id, name, expired}]}'
 # Set ART and NAME from the expected unexpired entry, not blindly artifacts[0].
-gh run download $RUN -R transistir/coiab-app -n "$NAME" -D ./verified-caps/$RUN
-gh pr comment <PR> -R transistir/coiab-app --body-file <review-comment.md>
+gh run download $RUN -R $REPO -n "$NAME" -D ./verified-caps/$RUN
+gh pr comment <PR> -R $REPO --body-file <review-comment.md>
 ```
 
 The comment must state:
