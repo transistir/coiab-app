@@ -15,6 +15,7 @@ import {useLeaveProject, useManyProjects} from '@comapeo/core-react';
 import {useActiveProject} from '../../contexts/ActiveProjectContext';
 import {useProjectSettings} from '../../hooks/server/projects';
 import {useActiveProjectIdActions} from '../../contexts/ActiveProjectIdStoreContext';
+import {useOrganizations} from '../../hooks/organization/useOrganizations';
 import * as Sentry from '@sentry/react-native';
 import {LoadingIndicator} from '../../sharedComponents/LoadingIndicator';
 import {toError} from '../../utils/errors';
@@ -52,8 +53,10 @@ export const LeaveProject = ({
   const {projectId} = useActiveProject();
   const {data: projectSettings} = useProjectSettings();
   const leaveProject = useLeaveProject();
-  const {setActiveProjectId} = useActiveProjectIdActions();
+  const {setActiveProjectId, clearActiveProjectId} =
+    useActiveProjectIdActions();
   const {data: projects} = useManyProjects();
+  const organizations = useOrganizations();
 
   const isCoordinator = route.params.memberType === 'coordinator';
 
@@ -63,27 +66,61 @@ export const LeaveProject = ({
       {
         onSuccess: () => {
           try {
-            const defaultProject = projects?.find(
-              project => project.name === undefined,
+            // SPEC 3.8/3.10: leaving never materializes a standalone
+            // (unnamed) project — an org project degrades to `incomplete`
+            // by switching to the surviving slot, or hands off to the
+            // startup gate with no active project at all; a non-org
+            // project switches to any remaining project, else clears.
+            let noProjectRemains = false;
+            const leftOrg = organizations.find(
+              org => org.slots.m === projectId || org.slots.a === projectId,
             );
-            if (defaultProject?.projectId) {
-              setActiveProjectId(defaultProject.projectId);
+            if (leftOrg) {
+              const survivingSlot =
+                leftOrg.slots.m === projectId
+                  ? leftOrg.slots.a
+                  : leftOrg.slots.m;
+              if (survivingSlot) {
+                setActiveProjectId(survivingSlot);
+              } else {
+                noProjectRemains = true;
+              }
+            } else {
+              const remainingProject = projects?.find(
+                proj => proj.projectId !== projectId,
+              );
+              if (remainingProject) {
+                setActiveProjectId(remainingProject.projectId);
+              } else {
+                noProjectRemains = true;
+              }
             }
             // Reset (rather than replace) so that no screen with queries
             // scoped to the left project stays mounted — refetching them
             // errors because leaving closes the project's data stores.
-            navigation.dispatch(
-              CommonActions.reset({
-                index: 1,
-                routes: [
-                  {name: 'Home'},
-                  {
-                    name: 'LeftProjectConfirmation',
-                    params: {projectName: projectSettings.name ?? ''},
-                  },
-                ],
-              }),
-            );
+            if (noProjectRemains) {
+              clearActiveProjectId();
+              // SPEC 10.1: with no project left, the startup gate's
+              // organization fork is the correct landing — navigate there
+              // explicitly so a cleared active id never drops the user on
+              // IntroToCoMapeo.
+              navigation.dispatch(
+                CommonActions.reset({index: 0, routes: [{name: 'Success'}]}),
+              );
+            } else {
+              navigation.dispatch(
+                CommonActions.reset({
+                  index: 1,
+                  routes: [
+                    {name: 'Home'},
+                    {
+                      name: 'LeftProjectConfirmation',
+                      params: {projectName: projectSettings.name ?? ''},
+                    },
+                  ],
+                }),
+              );
+            }
           } catch (err) {
             Sentry.captureException(err);
             navigation.replace('ErrorBottomSheet', {

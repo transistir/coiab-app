@@ -22,9 +22,6 @@
 #   gh workflow run build-apk.yml --repo transistir/comapeo-mobile-1 --ref develop
 name: Build APK
 
-permissions:
-  contents: read
-
 on:
   workflow_dispatch:
     inputs:

@@ -51,6 +51,7 @@ import {createCoordinateFormatStore} from './contexts/CoordinateFormatStoreConte
 import {createUnitSystemStore} from './contexts/UnitSystemStoreContext';
 import {createManualEntryCoordinateFormatStore} from './contexts/ManualEntryCoordinateFormatStoreContext';
 import {createActiveProjectIdStore} from './contexts/ActiveProjectIdStoreContext';
+import {createOrganizationInviteIdentityStore} from './contexts/OrganizationInviteIdentityStoreContext';
 import {createLocaleStore, LocaleContext} from './contexts/LocaleStoreContext';
 import {IntlProvider} from './contexts/IntlContext';
 import {ServerLoading} from './ServerLoading';
@@ -128,6 +129,11 @@ const persistedManualEntryCoordinateFormatStore =
 const persistedActiveProjectIdStore = createActiveProjectIdStore({
   persist: true,
 });
+
+const persistedOrganizationInviteIdentityStore =
+  createOrganizationInviteIdentityStore({
+    persist: true,
+  });
 
 const qaDeviceNameStore = createQADeviceNameStore({persist: true});
 
@@ -278,6 +284,9 @@ const App = () => {
                     }
                     savedLocationStore={savedLocationStore}
                     activeProjectIdStore={persistedActiveProjectIdStore}
+                    organizationInviteIdentityStore={
+                      persistedOrganizationInviteIdentityStore
+                    }
                     appUsageStatsStore={appUsagePromptStore}
                     lowStorageBannerStore={lowStorageBannerStore}
                     earlyAccessStore={earlyAccessStore}

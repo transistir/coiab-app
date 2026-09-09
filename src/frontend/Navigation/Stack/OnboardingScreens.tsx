@@ -3,7 +3,6 @@ import {IntroToCoMapeo} from '../../screens/Onboarding/IntroToCoMapeo';
 import {DataPrivacy} from '../../screens/Onboarding/DataPrivacy';
 import {OnboardingPrivacyPolicy} from '../../screens/Onboarding/OnboardingPrivacyPolicy';
 import {DeviceNaming} from '../../screens/Onboarding/DeviceNaming';
-import {Success} from '../../screens/Onboarding/Success';
 import {JoinAProject} from '../../screens/ProjectCreation/JoinAProject';
 import {MapOnYourOwnIntro} from '../../screens/Onboarding/MapOnYourOwnIntro';
 import {MessageDescriptor} from 'react-intl';
@@ -34,11 +33,6 @@ export const createOnboardingScreens = ({
       <RootStack.Screen
         name="DeviceNaming"
         component={DeviceNaming}
-        options={{headerShown: false}}
-      />
-      <RootStack.Screen
-        name="Success"
-        component={Success}
         options={{headerShown: false}}
       />
       <RootStack.Screen

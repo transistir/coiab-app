@@ -9,7 +9,7 @@
  * Jest's ESM support, but this workaround is, amazingly, easier.
  */
 
-/* global console */
+/* global console, process */
 import comapeoServer from '@comapeo/cloud';
 import createFastify from 'fastify';
 import {randomBytes} from 'node:crypto';
@@ -32,6 +32,14 @@ const clientMigrationsFolder = path.join(
 
 const server = createFastify();
 
+// The cloud server limits how many projects it hosts (`allowedProjects`,
+// default 1). Tests that need more (e.g. an Organization with two projects)
+// pass the limit through this env var.
+const allowedProjectsFromEnv = Number.parseInt(
+  process.env.TEST_SERVER_ALLOWED_PROJECTS ?? '',
+  10,
+);
+
 server.register(comapeoServer, {
   rootKey: randomBytes(16),
   projectMigrationsFolder,
@@ -40,6 +48,9 @@ server.register(comapeoServer, {
   coreStorage: () => new RAM(),
   serverName: 'test server',
   serverBearerToken: 'ignored',
+  allowedProjects: Number.isNaN(allowedProjectsFromEnv)
+    ? 1
+    : allowedProjectsFromEnv,
 });
 
 console.log(await server.listen());

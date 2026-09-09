@@ -30,6 +30,7 @@ import {SelectInviteeRole} from '../../screens/YourTeam/SelectInviteeRole';
 import {ReviewInvitation} from '../../screens/YourTeam/ReviewAndInvite/ReviewInvitation';
 import {InviteAccepted} from '../../screens/YourTeam/InviteAccepted';
 import {ReviewAndInvite} from '../../screens/YourTeam/ReviewAndInvite';
+import {ReviewOrganizationInvite} from '../../screens/YourTeam/ReviewOrganizationInvite';
 import {RemoveDevice} from '../../screens/YourTeam/RemoveDevice';
 import {DeviceRemovedSuccess} from '../../screens/YourTeam/DeviceRemovedSuccess';
 import {
@@ -295,6 +296,11 @@ export const createAppScreens = ({
         name="ReviewAndInvite"
         component={ReviewAndInvite}
         options={{headerTitle: intl(ReviewInvitation.navTitle)}}
+      />
+      <RootStack.Screen
+        name="ReviewOrganizationInvite"
+        component={ReviewOrganizationInvite}
+        options={{headerTitle: intl(ReviewOrganizationInvite.navTitle)}}
       />
       <RootStack.Screen
         name="InviteAccepted"

@@ -14,6 +14,7 @@ import {useEffect} from 'react';
 import {useUpdateProjectSettings} from '@comapeo/core-react';
 import * as Sentry from '@sentry/react-native';
 import {projectColors} from '../../constants';
+import {isInternalOrgProject} from '../../lib/organization/marker';
 
 const m = defineMessages({
   projectName: {
@@ -46,6 +47,12 @@ export const EditProjectDetails: NativeNavigationComponent<
   const {projectId} = useActiveProject();
   const projectDetails = useProjectRoleAndDetails(projectId);
   const {mutate, status} = useUpdateProjectSettings({projectId});
+  // SPEC 4.3: `projectDescription` of an internal organization project holds
+  // the reserved marker — it is not a user-editable field. The form drops
+  // the description input and the save passes the existing string through
+  // unchanged, so the marker is never overwritten here (SPEC 3.9).
+  const projectDescription = projectDetails.projectDescription;
+  const isMarkerProject = isInternalOrgProject(projectDescription);
   const {control, setValue, watch, handleSubmit, setError} = useForm<{
     projectName: string;
     color: string;
@@ -54,7 +61,7 @@ export const EditProjectDetails: NativeNavigationComponent<
     defaultValues: {
       color: projectDetails.projectColor,
       projectName: projectDetails.projectName,
-      projectDescription: projectDetails.projectDescription,
+      projectDescription: isMarkerProject ? undefined : projectDescription,
     },
   });
 
@@ -74,7 +81,9 @@ export const EditProjectDetails: NativeNavigationComponent<
               {
                 projectColor: details.color,
                 name: details.projectName.trim(),
-                projectDescription: details.projectDescription?.trim(),
+                projectDescription: isMarkerProject
+                  ? projectDescription
+                  : details.projectDescription?.trim(),
               },
               {
                 onSuccess: () => {
@@ -90,7 +99,15 @@ export const EditProjectDetails: NativeNavigationComponent<
         />
       ),
     });
-  }, [navigation, handleSubmit, mutate, status, setError]);
+  }, [
+    navigation,
+    handleSubmit,
+    mutate,
+    status,
+    setError,
+    isMarkerProject,
+    projectDescription,
+  ]);
 
   return (
     <View>
@@ -108,19 +125,23 @@ export const EditProjectDetails: NativeNavigationComponent<
           placeholder={`[${formatMessage(m.projectName)}]`}
         />
 
-        <HeaderText variant="header6">
-          {formatMessage(m.projectDescription)}
-        </HeaderText>
-        <HookFormTextInput
-          control={control}
-          rules={{maxLength: 60, required: false}}
-          multiline={true}
-          style={{textAlignVertical: 'top', fontSize: 20}}
-          showCharacterCount={true}
-          name="projectDescription"
-          testID="edit-project-description"
-          placeholder={`[${formatMessage(m.descriptionPlaceholder)}]`}
-        />
+        {!isMarkerProject && (
+          <>
+            <HeaderText variant="header6">
+              {formatMessage(m.projectDescription)}
+            </HeaderText>
+            <HookFormTextInput
+              control={control}
+              rules={{maxLength: 60, required: false}}
+              multiline={true}
+              style={{textAlignVertical: 'top', fontSize: 20}}
+              showCharacterCount={true}
+              name="projectDescription"
+              testID="edit-project-description"
+              placeholder={`[${formatMessage(m.descriptionPlaceholder)}]`}
+            />
+          </>
+        )}
 
         <HeaderText variant="header6">
           {formatMessage(m.projectColors)}
