@@ -36,7 +36,7 @@ const toolingConfig = pluginTs.config({
   name: 'tooling',
   files: [
     '*.config.{js,mjs,cjs}',
-    'scripts/*.{js,mjs,cjs}',
+    'scripts/**/*.{js,mjs,cjs}',
     'expo-config-plugins/*.{js,mjs,cjs}',
     'expo-config-plugins/**/*.{js,mjs,cjs}',
     '.claude/skills/**/*.{js,mjs,cjs}',
@@ -63,6 +63,35 @@ const backendConfig = pluginTs.config({
   },
 });
 
+/**
+ * R1 bundling: package/ZIP handling is Node-only (scripts/). The RN bundle
+ * (src/frontend) must never import comapeocat, yauzl-promise or Node
+ * built-ins — embedded package manifests are generated at build time
+ * (`npm run build:manifestos-pacotes`). TEST files run in the jest Node
+ * environment and never enter the bundle, so the 'tests' block below only
+ * bans the bundle-poisoning packages: it re-allows Node built-ins and
+ * `comapeocat/writer.js` (tests build REAL `.comapeocat` fixtures with it) —
+ * package READING in tests must go through `scripts/lib/manifesto-pacote.mjs`.
+ */
+const NODE_ONLY_IMPORT_MESSAGE =
+  'Node-only module (R1 bundling): package/ZIP handling lives in scripts/ — the RN bundle must stay free of comapeocat, yauzl-promise and Node built-ins. Use the generated manifestos (scripts/gerar-manifestos-pacotes.mjs).';
+const NODE_ONLY_IMPORT_GROUP = [
+  'comapeocat',
+  'comapeocat/*',
+  'yauzl-promise',
+  'yauzl-promise/*',
+  'fs',
+  'fs/*',
+  'node:fs',
+  'node:fs/*',
+  'zlib',
+  'node:zlib',
+  'stream',
+  'stream/*',
+  'node:stream',
+  'node:stream/*',
+];
+
 const frontendConfig = pluginTs.config(
   {
     name: 'frontend',
@@ -81,6 +110,14 @@ const frontendConfig = pluginTs.config(
       storybook: pluginStorybookCustom,
     },
     rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {group: NODE_ONLY_IMPORT_GROUP, message: NODE_ONLY_IMPORT_MESSAGE},
+          ],
+        },
+      ],
       'intl/no-unused-message-descriptors': 'error',
       'intl/no-duplicate-message-descriptor-ids': 'error',
       'react-native/no-single-element-style-arrays': 'error',
@@ -147,6 +184,25 @@ const frontendConfig = pluginTs.config(
       pluginTestingLibrary.configs['flat/react'],
     ],
     rules: {
+      // Same R1 ban for the bundle-poisoning packages, but tests run in the
+      // jest Node environment (never bundled): Node built-ins stay allowed
+      // (e.g. packageJson.test.ts, metrics/sendMetricsData.test.ts) and
+      // `comapeocat/writer.js` builds the REAL `.comapeocat` fixtures — the
+      // only re-allowed comapeocat specifier (the group form cannot express
+      // exceptions under a directory ban, hence the regex with a negative
+      // lookahead).
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              regex:
+                '^(?:comapeocat|comapeocat/(?!writer\\.js$).+|yauzl-promise(?:/.*)?)$',
+              message: NODE_ONLY_IMPORT_MESSAGE,
+            },
+          ],
+        },
+      ],
       // Mostly conventional and doesn't have significant impact on how tests work
       'testing-library/render-result-naming-convention': 'off',
       '@eslint-react/hooks-extra/no-unnecessary-use-prefix': 'off',

@@ -1,0 +1,109 @@
+{
+  "//": "AUTO-GENERATED por scripts/gerar-manifestos-pacotes.mjs (`npm run build:manifestos-pacotes`) — não editar manualmente.",
+  "monitoramento": {
+    "ref": {
+      "versao": "1.0.0",
+      "hash": "3f869378216be88a12b5fbdb9405d5ea7c3f12b405b9e34122b1e1afb1912d5b"
+    },
+    "conteudo": {
+      "fileVersion": "1.0",
+      "metadata": {
+        "name": "Monitoramento COIAB",
+        "version": "1.0.0"
+      },
+      "categorias": [
+        {
+          "id": "arvore",
+          "name": "Árvore",
+          "appliesTo": [
+            "observation"
+          ],
+          "tags": {
+            "natural": "tree"
+          },
+          "fields": [
+            "especie"
+          ],
+          "icon": "arvore",
+          "color": "#228B22"
+        },
+        {
+          "id": "rio",
+          "name": "Rio",
+          "appliesTo": [
+            "track"
+          ],
+          "tags": {
+            "waterway": "river"
+          },
+          "fields": []
+        }
+      ],
+      "campos": [
+        {
+          "id": "especie",
+          "tagKey": "especie",
+          "type": "text"
+        }
+      ],
+      "icones": [
+        "arvore"
+      ],
+      "selecao": {
+        "observation": [
+          "arvore"
+        ],
+        "track": [
+          "rio"
+        ]
+      }
+    }
+  },
+  "alertas": {
+    "ref": {
+      "versao": "1.0.0",
+      "hash": "af7398b61af67a75c1613cf74541b2152528b35c588073d6b0fda9b827122a30"
+    },
+    "conteudo": {
+      "fileVersion": "1.0",
+      "metadata": {
+        "name": "Alertas COIAB",
+        "version": "1.0.0"
+      },
+      "categorias": [
+        {
+          "id": "alerta-fogo",
+          "name": "Fogo",
+          "appliesTo": [
+            "observation"
+          ],
+          "tags": {
+            "alerta": "fogo"
+          },
+          "fields": []
+        },
+        {
+          "id": "alerta-rio",
+          "name": "Rio cheio",
+          "appliesTo": [
+            "track"
+          ],
+          "tags": {
+            "alerta": "rio-cheio"
+          },
+          "fields": []
+        }
+      ],
+      "campos": [],
+      "icones": [],
+      "selecao": {
+        "observation": [
+          "alerta-fogo"
+        ],
+        "track": [
+          "alerta-rio"
+        ]
+      }
+    }
+  }
+}
