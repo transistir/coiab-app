@@ -8,9 +8,9 @@ Base verificada em 06/09/2026: `transistir/coiab-app`, commit `c20ef05861909410e
 
 A organização passa a ser o contexto principal do COIAB. A ação que hoje permite escolher livremente um projeto passa a escolher uma organização. Cada organização contém dois projetos CoMapeo distintos e fixos, apresentados como áreas de trabalho: **Monitoramento** e **Alertas**.
 
-O MVP admite **uma organização cadastrada por dispositivo**, incluindo uma organização cuja preparação ainda não terminou. Não oferece criação/entrada em uma segunda organização nem substituição destrutiva da primeira. O modelo local aceita uma coleção e o mecanismo de ativação é implementado e testado com mais de uma organização em ambiente de testes; a interface de seleção múltipla fica desabilitada no produto MVP. A ativação já serve ao primeiro acesso, à restauração após reinício e à recuperação. A troca frequente entre organizações fica para o pós-MVP.
+O MVP admite **múltiplas organizações cadastradas por dispositivo** (decisão registrada em [#25](https://github.com/transistir/coiab-app/issues/25), 09/09/2026), incluindo organizações cuja preparação ainda não terminou. O modelo local já aceita uma coleção e o mecanismo de ativação é implementado e testado com mais de uma organização. A interface de seleção entre organizações (listar todas e trocar a ativa, inclusive entrar em uma segunda organização) é **trabalho próprio de UI ainda não implementado**: o que este spec define para a troca A → B (§5.2) vale para quando ela for construída; no estado atual do produto, o dispositivo entra em uma organização via onboarding (criação ou convite). A ativação já serve ao primeiro acesso, à restauração após reinício e à recuperação. A troca frequente entre organizações fica para o pós-MVP.
 
-Essa decisão adota a recomendação da [issue #25](https://github.com/transistir/coiab-app/issues/25), cujo texto consultado ainda a apresenta como recomendação inicial. Evita ampliar a jornada de campo com gestão de múltiplos vínculos antes de comprovar a necessidade. Não confundir “uma organização” com “um projeto”: as duas áreas existem desde a criação.
+Decisão de produto registrada em [#25](https://github.com/transistir/coiab-app/issues/25) (09/09/2026): o MVP suporta múltiplas organizações, revogando a recomendação inicial de uma organização por dispositivo ali registrada. Não confundir “uma organização” com “um projeto”: as duas áreas existem desde a criação, e alternar entre elas não é troca de organização.
 
 Referências de escopo: [épico #4 — Organizações](https://github.com/transistir/coiab-app/issues/4), [modelo mínimo #24](https://github.com/transistir/coiab-app/issues/24), [criação local #26](https://github.com/transistir/coiab-app/issues/26), [dois projetos #5](https://github.com/transistir/coiab-app/issues/5), [materialização e recuperação #31](https://github.com/transistir/coiab-app/issues/31), [rotas #28](https://github.com/transistir/coiab-app/issues/28) e [estados intermediários #29](https://github.com/transistir/coiab-app/issues/29).
 
@@ -114,7 +114,7 @@ Regras obrigatórias:
 8. “Indisponível” **não** é valor persistido: é o resultado de revalidar uma organização `pronta` na ativação (acesso removido, ID inexistente, leitura com erro) e nunca sobrescreve `estado` nem apaga `ativa`.
 9. `confirmacaoPendente` recebe `true` na mesma gravação que publica `pronta`. O reconhecimento (“Abrir organização”) grava `confirmacaoPendente: false` e `ativa = {organizacaoId, area: 'monitoramento'}` em **uma única escrita**; encerrar o processo antes desse toque reapresenta a confirmação, sem recriar projetos.
 
-O journal (`materializacao`, `areaEmExecucao`, `ultimoErro`) tem leitores definidos: (a) o coordenador de ativação (§5.1), que reconcilia e conclui a preparação; e (b) o registro condicional de rotas (§7), que classifica o dispositivo em organização **ausente** (nenhum registro), **incompleta** (`preparando` ou `falha_recuperavel`), **pronta com confirmação pendente**, **pronta e ativável** ou **indisponível** (revalidação de uma organização pronta falhou). Nenhum outro consumidor grava nesses campos. A coleção suporta múltiplos registros, mas a regra do MVP bloqueia uma segunda preparação antes de chamar o core. A sequência que produz e consome esses campos é normativa no SPEC B §5.3–5.5; a forma acima é normativa aqui.
+O journal (`materializacao`, `areaEmExecucao`, `ultimoErro`) tem leitores definidos: (a) o coordenador de ativação (§5.1), que reconcilia e conclui a preparação; e (b) o registro condicional de rotas (§7), que classifica o dispositivo em organização **ausente** (nenhum registro), **incompleta** (`preparando` ou `falha_recuperavel`), **pronta com confirmação pendente**, **pronta e ativável** ou **indisponível** (revalidação de uma organização pronta falhou). Nenhum outro consumidor grava nesses campos. A coleção suporta múltiplos registros (#25); a interface de entrada em uma segunda organização é trabalho de UI ainda não implementado. A sequência que produz e consome esses campos é normativa no SPEC B §5.3–5.5; a forma acima é normativa aqui.
 
 ### 4.3. Criação, entrada e dados legados
 
@@ -194,11 +194,11 @@ Perda de acesso a qualquer um dos dois projetos torna o contexto organizacional 
 
 O cabeçalho de `Home` identifica a organização; o nome completo deve estar disponível no menu e na leitura de acessibilidade, mesmo se truncado visualmente. O menu mostra o nome da organização e dois acessos fixos, **Monitoramento** e **Alertas**, com marca da área atual. As abas inferiores existentes continuam representando lista, mapa, câmera e acesso à trilha.
 
-Com uma organização no MVP, não mostrar “Trocar de projeto”, “Nova colaboração”, seletor vazio, seta de troca de organização ou ação para adicionar uma segunda organização. A presença de dois projetos no core não satisfaz a condição de exibir troca. A interface deve permitir navegar entre as duas áreas desde a criação.
+Com múltiplas organizações suportadas no MVP (#25) e a interface de seleção ainda não implementada, não mostrar “Trocar de projeto”, “Nova colaboração” ou seletor vazio enquanto o seletor de organizações não existir. Quando o seletor for construído, `Organizations` lista organizações — nunca áreas: o seletor não se torna um seletor de áreas.
 
-A alternância **Monitoramento ↔ Alertas** acontece exclusivamente por esses dois acessos fixos do menu, em qualquer momento do ciclo de vida da organização, inclusive logo após a criação (D12). O seletor `Organizations` não é e não se torna um seletor de áreas: ele lista organizações e permanece oculto no MVP. Junto com o nome da organização no `HomeHeader`, esses dois acessos são a evidência de que a organização tem duas áreas acessíveis — não é necessária uma superfície inicial de organização adicional.
+A alternância **Monitoramento ↔ Alertas** acontece exclusivamente por esses dois acessos fixos do menu, em qualquer momento do ciclo de vida da organização, inclusive logo após a criação (D12). Junto com o nome da organização no `HomeHeader`, esses dois acessos são a evidência de que a organização tem duas áreas acessíveis — não é necessária uma superfície inicial de organização adicional.
 
-Com seleção múltipla habilitada no pós-MVP ou em testes, o cartão do menu oferece **“Trocar de organização”**. Ao tocar, fechar o drawer e abrir o seletor modal **“Organizações”**. Mostrar a ativa primeiro com marca e texto “Atual”; demais por nome, com desempate pelo ID. Nomes duplicados recebem um identificador local abreviado para distingui-los. Organizações incompletas/indisponíveis aparecem identificadas, sem ação de ativação; a recuperação é uma ação separada. O seletor não lista os projetos internos nem inicia criação de outra organização. Essa criação será outra entrega de produto.
+O cartão do menu oferece **“Trocar de organização”**, abrindo o seletor modal **“Organizações”**. Mostrar a ativa primeiro com marca e texto “Atual”; demais por nome, com desempate pelo ID. Nomes duplicados recebem um identificador local abreviado para distingui-los. Organizações incompletas/indisponíveis aparecem identificadas, sem ação de ativação; a recuperação é uma ação separada. O seletor não lista os projetos internos nem inicia criação de outra organização. Essa criação será outra entrega de produto.
 
 ### 6.2. Estados e ações
 
@@ -226,7 +226,7 @@ Nomes novos abaixo são **propostas para implementação**; não são arquivos e
 | `AllProjects: undefined` → `Organizations: undefined` — **renomeada** | Reposicionar o seletor modal atual para ler o registro local e listar **organizações**, nunca os projetos internos nem as áreas. Disponível apenas quando a capacidade de múltiplas organizações estiver habilitada; acessível também na recuperação, sem depender de `ActiveProjectProvider`. |
 | `Home` e suas abas — **mantidas** | Consomem organização/área validadas; após ativação abrem `Map`, inclusive na primeira abertura vinda da confirmação. Alternância de área é estado de produto acionado pelos acessos fixos do menu, sem rota nova por projeto e sem superfície inicial de organização adicional. |
 | `Success`, `JoinProjectIntro` e modais de convite — **adaptadas** | `Success` deixa de conter a decisão criar/aguardar: encaminha à porta de entrada organizacional, que apresenta a escolha reaproveitando sua composição visual. Espera e resultado de convite funcionam sem projeto ativo; conclusão de convite não chama seleção de projeto diretamente. |
-| `CreateProject`, `NameSoloProject`, `MapOnYourOwnIntro` e entradas de colaboração livre — **retiradas da jornada COIAB MVP** | O formulário organizacional reaproveita componentes, sem oferecer os fluxos solo originais. Não deixar entradas secundárias contornarem o limite de uma organização. |
+| `CreateProject`, `NameSoloProject`, `MapOnYourOwnIntro` e entradas de colaboração livre — **retiradas da jornada COIAB MVP** | O formulário organizacional reaproveita componentes, sem oferecer os fluxos solo originais. Não deixar entradas secundárias contornarem a jornada organizacional. |
 | `Sync`, `RemoteArchive`, `AddRemoteArchive`, `RemoveRemoteArchive` e telas de conteúdo — **mantidas** | Operam na área derivada, identificam seu escopo e pertencem ao ciclo de vida do contexto. Rotas e callbacks antigos não podem atuar no novo destino. |
 
 São **uma rota funcional nova e uma renomeação**, além de adaptações de registro, condições e consumidores existentes. Alterar `src/frontend/sharedTypes/navigation.ts` e os arquivos reais em `src/frontend/Navigation/Stack/` para registrar esse contrato. Não acrescentar `organizationId` opcional a todas as rotas de conteúdo: o contexto é resolvido centralmente; IDs em parâmetros nunca autorizam acesso cruzado.
@@ -241,11 +241,11 @@ A chave de navegação das telas e modais dependentes do contexto deve incluir o
 
 | Entrega | MVP | Pós-MVP |
 | --- | --- | --- |
-| Organizações cadastradas pela jornada normal | Zero ou uma, contando preparação pendente. | Várias, após liberação explícita de produto. |
+| Organizações cadastradas pela jornada normal | Múltiplas (decisão #25, 09/09/2026); entrada hoje pelo onboarding — criação ou convite. | Interface de gestão/troca frequente entre organizações. |
 | Dois projetos fixos e áreas acessíveis | Obrigatório desde a criação concluída. | Mantido até nova decisão. |
 | Registro local em coleção e ativação centralizada | Implementados; primeira ativação, restauração e recuperação exercitam o mecanismo. | Reutilizados para troca frequente. |
-| Seletor de organizações | Adaptado e coberto com fixtures de múltiplas organizações; oculto e inacessível no build MVP normal. A habilitação fora do MVP usa o flag já existente `useEarlyAccessState` (`src/frontend/sharedComponents/DrawerMenu.tsx:110`), o mesmo mecanismo do menu atual. | Habilitado quando houver duas ou mais; uma única não precisa de seletor. |
-| Adicionar/substituir/abandonar organização | Sem jornada de segunda organização ou substituição. | Requer política própria de entrada, saída e dados locais. |
+| Seletor de organizações | Política definida (§6.1); UI não implementada. Construção planejada como entrega própria, usando o flag já existente `useEarlyAccessState` (`src/frontend/sharedComponents/DrawerMenu.tsx:110`) se precisar de liberação gradual. | Habilitado quando houver duas ou mais; uma única não precisa de seletor. |
+| Adicionar/substituir/abandonar organização | Entrada por criação (onboarding) ou convite; sem substituição destrutiva. | Requer política própria de entrada, saída e dados locais. |
 
 Não-objetivos explícitos:
 
@@ -295,7 +295,7 @@ As decisões deste spec não ficam condicionadas às questões abaixo. Elas deli
 
 ## Decisões tomadas
 
-1. **D1.** Organização é o contexto principal local do COIAB; uma organização por dispositivo é a política do MVP.
+1. **D1.** Organização é o contexto principal local do COIAB; o MVP suporta múltiplas organizações por dispositivo (decisão #25, 09/09/2026), com UI de seleção/troca como entrega própria.
 2. **D2.** Cada organização pronta associa dois projetos CoMapeo distintos e exclusivos às áreas fixas Monitoramento e Alertas; nomes não determinam associação.
 3. **D3.** A camada organizacional usa **um único** documento versionado em MMKV/Zustand, na chave `CoiabOrganizations`, escrito atomicamente: cadastro, estado da operação de criação, journal de materialização e confirmação pendente são campos desse documento, não chaves ou entidades separadas. Projetos, dados, membros e configurações permanecem no core existente, sem novo backend.
 4. **D4.** Organização e área ativas são uma única seleção persistida; o projeto operacional é derivado, sem ID persistido concorrente ou fallback ao primeiro projeto/solo.
