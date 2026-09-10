@@ -143,6 +143,15 @@ export const withRealNavigator: Decorator = (Story, context) => {
   // popped by a stray hardware-back a few hundred ms after mount; consume
   // back events so the seeded stack survives the capture window.
   const consumeHardwareBackPress = true;
+  // Stable callback identity keeps the guard's BackHandler subscription
+  // stable across renders (its effect keys on [enabled, onConsumed]), so the
+  // guard keeps its LIFO slot instead of churning (remove + re-add) on every
+  // decorator render.
+  const handleHardwareBackConsumed = React.useCallback(
+    (reason: string) =>
+      console.log(`STORYBOOK: hardware back consumed; ${reason}`),
+    [],
+  );
   const navigationRef =
     React.useRef<NavigationContainerRef<AppStackParamsList>>(null);
   const [activeRoute, setActiveRoute] = React.useState<ActiveRoute>();
@@ -246,9 +255,7 @@ export const withRealNavigator: Decorator = (Story, context) => {
             the container pop the seeded stack first. */}
         <ConsumeHardwareBackPress
           enabled={consumeHardwareBackPress}
-          onConsumed={reason =>
-            console.log(`STORYBOOK: hardware back consumed; ${reason}`)
-          }
+          onConsumed={handleHardwareBackConsumed}
         />
       </View>
     </View>

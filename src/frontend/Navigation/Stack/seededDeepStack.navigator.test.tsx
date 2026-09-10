@@ -9,30 +9,48 @@ import type {AppStackParamsList} from '../../sharedTypes/navigation';
 // itself requires with the real Android implementation — the one production
 // Android runs, whose subscription array dispatches LAST-IN-FIRST-OUT. Every
 // BackHandler consumer in this suite (the guard, the container's
-// useBackButton, screen hooks) then shares that one subscription array, and
-// every add/remove is recorded on globalThis (jest.mock factories are
-// hoisted above module scope and may not close over module variables) so
-// tests can assert the subscription order.
-type BackHandlerOrderEvent = {type: 'add' | 'remove'; handler: unknown};
-const backHandlerOrderHolder = globalThis as {
-  __hwBackOrder?: Array<BackHandlerOrderEvent>;
+// useBackButton, screen hooks) then shares that one subscription array. The
+// mock also keeps its own mirror of that array (identity-deduped adds,
+// identity-based removal — see BackHandler.android.js) and, when a test
+// installs `__hwBackEvents` on globalThis (jest.mock factories are hoisted
+// above module scope and may not close over module variables), records every
+// add/remove together with a snapshot of the array as it stood at that
+// instant. A test can then dispatch against the array as it was at ANY
+// historical moment — in particular right after mount, before any
+// re-render could churn subscriptions.
+type BackPressHandler = () => boolean | null | undefined;
+type BackHandlerEvent = {
+  type: 'add' | 'remove';
+  handler: BackPressHandler;
+  /** Mirror of the subscription array immediately AFTER this event applied. */
+  subscriptions: BackPressHandler[];
+};
+const backHandlerHolder = globalThis as {
+  __hwBackEvents?: BackHandlerEvent[];
 };
 
 jest.mock('react-native/Libraries/Utilities/BackHandler', () => {
   const android =
     require('react-native/Libraries/Utilities/BackHandler.android').default;
+  const live: BackPressHandler[] = [];
+  const record = (type: 'add' | 'remove', handler: BackPressHandler) => {
+    const events = (globalThis as {__hwBackEvents?: BackHandlerEvent[]})
+      .__hwBackEvents;
+    events?.push({type, handler, subscriptions: [...live]});
+  };
   return {
     __esModule: true,
     default: {
       exitApp: android.exitApp,
-      addEventListener: (eventName: string, handler: unknown) => {
-        const order = (globalThis as {__hwBackOrder?: BackHandlerOrderEvent[]})
-          .__hwBackOrder;
-        order?.push({type: 'add', handler});
+      addEventListener: (eventName: string, handler: BackPressHandler) => {
+        if (live.indexOf(handler) === -1) live.push(handler);
+        record('add', handler);
         const subscription = android.addEventListener(eventName, handler);
         return {
           remove: () => {
-            order?.push({type: 'remove', handler});
+            const index = live.indexOf(handler);
+            if (index !== -1) live.splice(index, 1);
+            record('remove', handler);
             subscription.remove();
           },
         };
@@ -45,11 +63,7 @@ let mockNavigation: NavigationContainerRef<AppStackParamsList>;
 let mockSeededInitialState: InitialState | undefined;
 let mockOnRootStateChange: ((state: InitialState) => void) | undefined;
 
-type HardwareBackGuardPosition = 'child' | 'sibling';
-type HardwareBackGuard = {
-  position: HardwareBackGuardPosition;
-  consumed: string[];
-};
+type HardwareBackGuard = {consumed: string[]};
 
 // Gate lives on globalThis because jest.mock factories are hoisted above
 // module scope and may not close over module variables.
@@ -88,36 +102,35 @@ jest.mock('../../../../tests/integration/helpers/navigation', () => {
     // Mount only the navigator the shipping app renders, inside our own
     // NavigationContainer that owns the seeded deep-stack initialState —
     // the same shape the Storybook flow decorator (withRealNavigator) uses.
-    // The hardware-back guard position mirrors the decorator's topology:
-    // unset = no guard (survival test below), 'child' = rendered inside the
-    // container (pre-fix shape), 'sibling' = rendered after the container
-    // (fixed shape).
+    // A guard installed via __hwBackGuard mirrors the PRE-FIX topology of
+    // the decorator's ConsumeHardwareBackPress: rendered INSIDE the
+    // NavigationContainer, so child effects subscribe it before the
+    // container's own handler and LIFO dispatch lets the container pop
+    // first. It exists only as the control that documents the failure
+    // mode; the FIXED sibling topology is regression-tested against the
+    // real decorator below, not against this mirror.
     MockedAppNavigator: () => {
       const guard = (globalThis as {__hwBackGuard?: HardwareBackGuard})
         .__hwBackGuard;
-      const guardElement = guard ? (
-        <ConsumeHardwareBackPress
-          enabled={true}
-          onConsumed={(reason: string) => {
-            guard.consumed.push(reason);
-          }}
-        />
-      ) : null;
       return (
-        <>
-          <NavigationContainer
-            ref={(ref: NavigationContainerRef<AppStackParamsList>) => {
-              mockNavigation = ref;
-            }}
-            initialState={mockSeededInitialState}
-            onStateChange={(state: InitialState) => {
-              mockOnRootStateChange?.(state as InitialState);
-            }}>
-            {guard?.position === 'child' ? guardElement : null}
-            <RootStackNavigator />
-          </NavigationContainer>
-          {guard?.position === 'sibling' ? guardElement : null}
-        </>
+        <NavigationContainer
+          ref={(ref: NavigationContainerRef<AppStackParamsList>) => {
+            mockNavigation = ref;
+          }}
+          initialState={mockSeededInitialState}
+          onStateChange={(state: InitialState) => {
+            mockOnRootStateChange?.(state as InitialState);
+          }}>
+          {guard ? (
+            <ConsumeHardwareBackPress
+              enabled={true}
+              onConsumed={(reason: string) => {
+                guard.consumed.push(reason);
+              }}
+            />
+          ) : null}
+          <RootStackNavigator />
+        </NavigationContainer>
       );
     },
   };
@@ -243,6 +256,28 @@ import {createAppProvidersWrapper} from '../../../../tests/integration/helpers/r
 import {withRealNavigator} from '../../../../.rnstorybook/decorators/withRealNavigator';
 
 /**
+ * Spy on BOTH console channels the real decorator logs through: state repair
+ * goes to console.warn, readiness / nav-state-change / back-consumed go to
+ * console.log. Behavioral assertions must read the merged stream, or a
+ * repair can fire unnoticed through the unspied channel.
+ */
+function spyOnStorybookConsole() {
+  const log = jest.spyOn(console, 'log').mockImplementation(() => {});
+  const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  const including = (needle: string) =>
+    [...log.mock.calls, ...warn.mock.calls]
+      .map(args => String(args[0]))
+      .filter(message => message.includes(needle));
+  return {
+    including,
+    restore: () => {
+      log.mockRestore();
+      warn.mockRestore();
+    },
+  };
+}
+
+/**
  * Story 18 regression (CI captures 34417507310 / 34422668174): with a seeded
  * deep stack [Home, ObservationCategoryChooser, ObservationCreate,
  * ObservationFields(index 3, fieldIds)] the app pops back to
@@ -336,10 +371,8 @@ describe('hardware-back guard vs NavigationContainer subscription order', () => 
     };
   }
 
-  async function renderSeededStackAndPressBack(
-    position: HardwareBackGuardPosition,
-  ) {
-    guardHolder.__hwBackGuard = {position, consumed: []};
+  async function renderSeededStackAndPressBack() {
+    guardHolder.__hwBackGuard = {consumed: []};
     mockSeededInitialState = seededDeepStackInitialState();
     mockOnRootStateChange = undefined;
 
@@ -375,8 +408,12 @@ describe('hardware-back guard vs NavigationContainer subscription order', () => 
     return {routeBefore, indexBefore, routeAfter, indexAfter, consumed};
   }
 
+  // Documented topology mirror (control), NOT an anchor for the fix: it
+  // reproduces the pre-fix child shape with this file's own mock to show the
+  // LIFO failure mode. The regression tests below mount the REAL decorator
+  // and would catch a revert of the fix in withRealNavigator.tsx.
   test('control: guard as a child INSIDE the container — the container pops the seeded stack (LIFO)', async () => {
-    const result = await renderSeededStackAndPressBack('child');
+    const result = await renderSeededStackAndPressBack();
 
     expect(result.routeBefore).toBe('ObservationFields');
     expect(result.indexBefore).toBe(3);
@@ -390,35 +427,24 @@ describe('hardware-back guard vs NavigationContainer subscription order', () => 
     expect(result.consumed).toEqual([]);
   }, 15000);
 
-  test('regression: guard as a SIBLING AFTER the container — the guard consumes the back event', async () => {
-    const result = await renderSeededStackAndPressBack('sibling');
-
-    expect(result.routeBefore).toBe('ObservationFields');
-    expect(result.indexBefore).toBe(3);
-
-    // Effects for the container's subtree complete before a later sibling
-    // mounts, so the guard subscribed LAST and LIFO dispatch calls it FIRST;
-    // returning true stops the dispatch before the navigator pops.
-    expect(result.consumed).toEqual(['stack-seeded story; not popping']);
-    expect(result.routeAfter).toBe('ObservationFields');
-    expect(result.indexAfter).toBe(3);
-  }, 15000);
-
-  test('regression: the real withRealNavigator decorator subscribes the guard AFTER the container', async () => {
-    const consoleLog = jest.spyOn(console, 'log').mockImplementation(() => {});
-    const logsIncluding = (needle: string) =>
-      consoleLog.mock.calls.filter(args => String(args[0]).includes(needle));
-
-    const order: Array<BackHandlerOrderEvent> = [];
-    backHandlerOrderHolder.__hwBackOrder = order;
+  // Mounts the REAL decorator (.rnstorybook/decorators/withRealNavigator.tsx)
+  // on the seeded deep stack and dispatches a REAL back event at steady
+  // state: the guard must consume it, with no pop and no state repair
+  // masking one. Note this alone does not anchor the topology fix — with an
+  // inline onConsumed the pre-fix guard churns to the LIFO top after the
+  // first re-render, so the steady-state press is consumed either way; the
+  // MOUNT-TIME order test below is what catches a revert.
+  test('regression: the real decorator renders the guard AFTER the container — a back press leaves the seeded stack intact', async () => {
+    const consoleSpy = spyOnStorybookConsole();
 
     const appProviders = createAppProvidersWrapper({
       mapeoApi: orgSetup.client,
       activeProjectId: orgSetup.projectId,
     });
     const story = () => <View />;
+    const storyId = 'seeded-deep-stack-sibling-guard';
     const context = {
-      id: 'seeded-deep-stack-hw-back',
+      id: storyId,
       parameters: {flow: {initialState: seededDeepStackInitialState()}},
     } as unknown as Parameters<typeof withRealNavigator>[1];
     // Storybook invokes decorators as components; render a host component so
@@ -427,79 +453,167 @@ describe('hardware-back guard vs NavigationContainer subscription order', () => 
     const view = await render(<DecoratorHost />, {
       wrapper: appProviders.wrapper,
     });
+    const routeMarker = (route: string) =>
+      `STORYBOOK.flow-ready.${storyId}.${route}`;
 
     try {
       // Flow state resolves ('flow:none' — no seeding spec), then the
       // container mounts straight onto the seeded deep stack.
       await screen.findByTestId(
-        'STORYBOOK.flow-ready.seeded-deep-stack-hw-back.ObservationFields',
+        routeMarker('ObservationFields'),
+        {},
         {timeout: 10000},
       );
-      // No reconciliation pop happened pre-press in this harness.
-      expect(logsIncluding('state repair')).toEqual([]);
 
-      // Mount-time subscription order, read from the recorded BackHandler
-      // calls. The decorator re-subscribes its guard on every render (inline
-      // onConsumed), so the FIRST removal in the session is the churn
-      // cleanup of the guard's mount-time registration. For the guard to win
-      // the LIFO dispatch it must have subscribed LAST: nothing may sit
-      // between its first subscription and its first churn — least of all
-      // the container's own useBackButton handler, which subscribes in the
-      // parent effect AFTER a guard rendered as a child of the container
-      // (child effects run first) and would pop the seeded stack first.
-      const firstAddIndex = order.findIndex(event => event.type === 'add');
-      const firstRemoveIndex = order.findIndex(
-        event => event.type === 'remove',
-      );
-      expect(firstAddIndex).toBeGreaterThanOrEqual(0);
-      expect(firstRemoveIndex).toBeGreaterThan(firstAddIndex);
-      const firstAdd = order[firstAddIndex];
-      const firstRemove = order[firstRemoveIndex];
-      const addBeforeFirstRemove = order[firstRemoveIndex - 1];
-      if (!firstAdd || !firstRemove || !addBeforeFirstRemove) {
-        throw new Error('BackHandler subscription order log is incomplete');
-      }
-      // (1) The session's first subscriber must not be the one churned out
-      // of the array: pre-fix that first subscriber is the guard itself.
-      expect(firstRemove.handler).not.toBe(firstAdd.handler);
-      // (2) The guard's mount-time registration is the LAST one: the call
-      // right before its churn removal is its own subscription.
-      expect(addBeforeFirstRemove).toEqual({
-        type: 'add',
-        handler: firstRemove.handler,
+      // Let post-mount query refreshes land before baselining the log, so a
+      // late reconciliation tick cannot be mistaken for a back-press state
+      // change.
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 500));
       });
 
-      const pressBack = async () => {
-        await act(async () => {
-          DeviceEventEmitter.emit('hardwareBackPress');
-        });
-        await act(async () => {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        });
-      };
+      // Readiness was announced through the log channel, for the seeded top
+      // route.
+      const readyEntries = consoleSpy.including('Flow ready for story');
+      expect(readyEntries.length).toBeGreaterThan(0);
+      expect(readyEntries[readyEntries.length - 1]).toContain(
+        'route: ObservationFields',
+      );
+      // No reconciliation pop happened pre-press: zero repairs in EITHER
+      // console channel (repair logs via console.warn — an unspied channel
+      // would hide it — readiness via console.log).
+      expect(consoleSpy.including('state repair')).toEqual([]);
+      // Whatever state the navigator did announce, the seeded top route was
+      // still at index 3.
+      for (const entry of consoleSpy.including('nav state change')) {
+        expect(entry).toMatch(/index: 3;/);
+      }
+      const navStateChangesBefore = consoleSpy.including('nav state change');
 
-      await pressBack();
-      await pressBack();
+      // RN 0.85 exports DeviceEventEmitter === RCTDeviceEventEmitter — the
+      // exact emitter BackHandler.android.js dispatches through (LIFO, stops
+      // at first true).
+      await act(async () => {
+        DeviceEventEmitter.emit('hardwareBackPress');
+      });
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      });
 
-      // The guard consumed both events...
-      expect(logsIncluding('hardware back consumed')).toHaveLength(2);
-      // ...so the navigator never popped and the state-repair path never
+      // The guard consumed the event (log channel)...
+      expect(consoleSpy.including('hardware back consumed')).toHaveLength(1);
+      // ...so the navigator never popped: no state change fired at all —
+      // with zero repairs the state is still the seeded initialState, i.e.
+      // route ObservationFields at index 3 — and the state-repair path never
       // had to mask a pop (a masked pop still shows the wrong screen in the
       // capture window — CI run 34475503925).
-      expect(logsIncluding('state repair')).toEqual([]);
-      expect(
-        screen.queryByTestId(
-          'STORYBOOK.flow-ready.seeded-deep-stack-hw-back.ObservationCreate',
-        ),
-      ).toBeNull();
-      expect(
-        screen.getByTestId(
-          'STORYBOOK.flow-ready.seeded-deep-stack-hw-back.ObservationFields',
-        ),
-      ).toBeTruthy();
+      expect(consoleSpy.including('nav state change')).toEqual(
+        navStateChangesBefore,
+      );
+      expect(consoleSpy.including('state repair')).toEqual([]);
+      expect(screen.queryByTestId(routeMarker('ObservationCreate'))).toBeNull();
+      expect(screen.getByTestId(routeMarker('ObservationFields'))).toBeTruthy();
     } finally {
-      backHandlerOrderHolder.__hwBackOrder = undefined;
-      consoleLog.mockRestore();
+      consoleSpy.restore();
+      await act(async () => {
+        view.unmount();
+      });
+      await appProviders.teardown();
+    }
+  }, 30000);
+
+  // Anchors the guard's subscription ORDER to the mount-time topology,
+  // churn-independently. The mock's event log carries a snapshot of the
+  // subscription array at every add/remove, so this test can dispatch a back
+  // event against the array exactly as a press arriving RIGHT AFTER MOUNT
+  // would find it — before any re-render could churn subscriptions. That
+  // window is the only place the pre-fix topology differs: with an INLINE
+  // onConsumed the pre-fix guard (child INSIDE the container) subscribes
+  // before the container's handler, loses the LIFO dispatch, and pops —
+  // until the first re-render churns it to the LIFO top and masks the bug.
+  // The assertion below reads only the mount-time snapshot (adds before the
+  // first removal), so it passes for both an inline and a memoized guard
+  // onConsumed and fails against the pre-fix child topology.
+  test('regression: at mount time the real decorator subscribes the guard LAST — it is dispatched FIRST and consumes', async () => {
+    const consoleSpy = spyOnStorybookConsole();
+    const events: BackHandlerEvent[] = [];
+    backHandlerHolder.__hwBackEvents = events;
+
+    const appProviders = createAppProvidersWrapper({
+      mapeoApi: orgSetup.client,
+      activeProjectId: orgSetup.projectId,
+    });
+    const story = () => <View />;
+    const storyId = 'seeded-deep-stack-guard-order';
+    const context = {
+      id: storyId,
+      parameters: {flow: {initialState: seededDeepStackInitialState()}},
+    } as unknown as Parameters<typeof withRealNavigator>[1];
+    const DecoratorHost = () => withRealNavigator(story, context);
+    const view = await render(<DecoratorHost />, {
+      wrapper: appProviders.wrapper,
+    });
+    const routeMarker = (route: string) =>
+      `STORYBOOK.flow-ready.${storyId}.${route}`;
+
+    try {
+      // Flow state resolves ('flow:none' — no seeding spec), then the
+      // container mounts straight onto the seeded deep stack.
+      await screen.findByTestId(
+        routeMarker('ObservationFields'),
+        {},
+        {timeout: 10000},
+      );
+      expect(
+        consoleSpy.including('Flow ready for story').length,
+      ).toBeGreaterThan(0);
+      expect(consoleSpy.including('state repair')).toEqual([]);
+
+      // The mount-time array: everything subscribed before the FIRST removal
+      // — i.e. before any re-render churn (an inline onConsumed re-runs the
+      // guard's effect on every decorator render). Its last entry is what a
+      // back press arriving right after mount dispatches FIRST.
+      const firstRemoveIndex = events.findIndex(
+        event => event.type === 'remove',
+      );
+      const mountTimeAdds = events
+        .slice(0, firstRemoveIndex === -1 ? events.length : firstRemoveIndex)
+        .filter(event => event.type === 'add');
+      const lastMountAdd = mountTimeAdds[mountTimeAdds.length - 1];
+      if (!lastMountAdd) {
+        throw new Error('no mount-time BackHandler subscriptions recorded');
+      }
+      const recordedAtMount = lastMountAdd.subscriptions;
+      // At least the container's useBackButton handler and the guard; the
+      // dispatch below must stop at the guard before reaching the
+      // container's.
+      expect(recordedAtMount.length).toBeGreaterThanOrEqual(2);
+
+      // Dispatch the back event against the RECORDING, exactly as
+      // BackHandler.android's emitter listener does: iterate LIFO, stop at
+      // the first handler returning true.
+      const called: BackPressHandler[] = [];
+      await act(async () => {
+        for (let i = recordedAtMount.length - 1; i >= 0; i--) {
+          const handler = recordedAtMount[i]!;
+          called.push(handler);
+          if (handler() === true) break;
+        }
+      });
+
+      // The handler recorded LAST at mount time (LIFO: dispatched FIRST)
+      // consumed the event on the first call...
+      expect(called).toHaveLength(1);
+      expect(called[0]).toBe(recordedAtMount[recordedAtMount.length - 1]);
+      // ...and that handler is the guard (log channel), not the container's
+      // useBackButton (which pops and would have changed the route).
+      expect(consoleSpy.including('hardware back consumed')).toHaveLength(1);
+      expect(consoleSpy.including('state repair')).toEqual([]);
+      expect(screen.getByTestId(routeMarker('ObservationFields'))).toBeTruthy();
+      expect(screen.queryByTestId(routeMarker('ObservationCreate'))).toBeNull();
+    } finally {
+      backHandlerHolder.__hwBackEvents = undefined;
+      consoleSpy.restore();
       await act(async () => {
         view.unmount();
       });
