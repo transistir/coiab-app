@@ -104,7 +104,8 @@ jobs:
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: |
-            adb install -r "$APK_PATH"
+            adb uninstall "$STORYBOOK_PACKAGE_ID" || true
+            adb install "$APK_PATH"
             scripts/storybook-capture-all.sh storybook-captures
             node scripts/storybook-report.mjs storybook-captures
 
