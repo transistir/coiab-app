@@ -109,19 +109,22 @@ export const withRealNavigator: Decorator = (Story, context) => {
   const navigationRef =
     React.useRef<NavigationContainerRef<AppStackParamsList>>(null);
   const [activeRoute, setActiveRoute] = React.useState<ActiveRoute>();
-  // Expected top-of-stack route from the story's seeded initialState. Some
-  // post-mount reconciliation (query refreshes re-running the flow-state
-  // effect, navigator screen-set changes) can pop the seeded deep stack with
-  // no user interaction; capture runs 34417507310/34422668174 showed
-  // ObservationFields reverting to ObservationCreate ~60ms after readiness.
-  // Repair once per mount so the frame captures what the story declares.
-  const seededTopRoute = React.useMemo(() => {
+  // Expected state from the story's seeded initialState. Some post-mount
+  // reconciliation (query refreshes re-running the flow-state effect,
+  // navigator screen-set changes) can pop the seeded deep stack with no user
+  // interaction; capture runs 34417507310/34422668174 showed ObservationFields
+  // reverting to ObservationCreate ~60ms after readiness — and run
+  // 34475503925 proved a marker-only repair masks the pop (the screenshot
+  // still showed the wrong screen). Repair by resetting the navigator to the
+  // full seeded state, once per mount, so the frame captures what the story
+  // declares.
+  const seededInitialState = React.useMemo(() => {
     if (typeof flow?.initialState === 'function') {
-      if (!ready) return undefined;
-      return flow.initialState(ready).routes.at(-1)?.name;
+      return ready ? flow.initialState(ready) : undefined;
     }
-    return flow?.initialState?.routes.at(-1)?.name;
+    return flow?.initialState;
   }, [flow?.initialState, ready]);
+  const seededTopRoute = seededInitialState?.routes.at(-1)?.name;
   const repairCountRef = React.useRef(0);
   const announceActiveRoute = React.useCallback(() => {
     const route = navigationRef.current?.getCurrentRoute();
@@ -134,6 +137,7 @@ export const withRealNavigator: Decorator = (Story, context) => {
 
     if (
       seededTopRoute !== undefined &&
+      seededInitialState !== undefined &&
       route.name !== seededTopRoute &&
       repairCountRef.current < 1
     ) {
@@ -141,6 +145,7 @@ export const withRealNavigator: Decorator = (Story, context) => {
       console.warn(
         `STORYBOOK: state repair for story: ${context.id}; route ${route.name} -> ${seededTopRoute}`,
       );
+      navigationRef.current?.reset(seededInitialState);
       setActiveRoute({
         storyId: context.id,
         readyKey,
@@ -159,9 +164,9 @@ export const withRealNavigator: Decorator = (Story, context) => {
     // native markers rendered below, because an earlier route log cannot prove
     // which route is active when the screenshot is taken.
     console.log(
-      `STORYBOOK: Flow ready for story: ${context.id}; route: ${route.name}`,
+      `STORYBOOK: Flow ready for story: ${context.id}; route: ${route.name}; projectId: ${ready?.projectId ?? 'none'}; observationIds: ${JSON.stringify(ready?.observationIds ?? [])}`,
     );
-  }, [context.id, readyKey, seededTopRoute]);
+  }, [context.id, readyKey, seededInitialState, seededTopRoute]);
 
   if (!ready) return <FlowStatePlaceholder spec={flow?.state} />;
 
