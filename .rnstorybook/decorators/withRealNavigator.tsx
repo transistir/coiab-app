@@ -196,11 +196,9 @@ export const withRealNavigator: Decorator = (Story, context) => {
           initialState={initialState}
           onReady={announceActiveRoute}
           onStateChange={state => {
-            if (__DEV__) {
-              console.log(
-                `STORYBOOK: nav state change for story: ${context.id}; index: ${state?.index}; routes: ${JSON.stringify(state?.routes.map(r => r.name))}`,
-              );
-            }
+            console.log(
+              `STORYBOOK: nav state change for story: ${context.id}; index: ${state?.index}; routes: ${JSON.stringify(state?.routes.map(r => r.name))}`,
+            );
             announceActiveRoute();
           }}>
           <RootStackNavigator />
