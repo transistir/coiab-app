@@ -17,8 +17,7 @@ import {
 import {FlowStatePlaceholder} from '../utils/FlowStatePlaceholder';
 
 type FlowInitialState =
-  | InitialState
-  | ((resolved: ResolvedFlowState) => InitialState);
+  InitialState | ((resolved: ResolvedFlowState) => InitialState);
 
 type FlowParameters = {
   flow?: {
@@ -110,12 +109,43 @@ export const withRealNavigator: Decorator = (Story, context) => {
   const navigationRef =
     React.useRef<NavigationContainerRef<AppStackParamsList>>(null);
   const [activeRoute, setActiveRoute] = React.useState<ActiveRoute>();
+  // Expected top-of-stack route from the story's seeded initialState. Some
+  // post-mount reconciliation (query refreshes re-running the flow-state
+  // effect, navigator screen-set changes) can pop the seeded deep stack with
+  // no user interaction; capture runs 34417507310/34422668174 showed
+  // ObservationFields reverting to ObservationCreate ~60ms after readiness.
+  // Repair once per mount so the frame captures what the story declares.
+  const seededTopRoute = React.useMemo(() => {
+    if (typeof flow?.initialState === 'function') {
+      if (!ready) return undefined;
+      return flow.initialState(ready).routes.at(-1)?.name;
+    }
+    return flow?.initialState?.routes.at(-1)?.name;
+  }, [flow?.initialState, ready]);
+  const repairCountRef = React.useRef(0);
   const announceActiveRoute = React.useCallback(() => {
     const route = navigationRef.current?.getCurrentRoute();
     if (!route || !readyKey) {
       console.error(
         `STORYBOOK: Flow readiness failed for story: ${context.id}; active route unavailable`,
       );
+      return;
+    }
+
+    if (
+      seededTopRoute !== undefined &&
+      route.name !== seededTopRoute &&
+      repairCountRef.current < 1
+    ) {
+      repairCountRef.current += 1;
+      console.warn(
+        `STORYBOOK: state repair for story: ${context.id}; route ${route.name} -> ${seededTopRoute}`,
+      );
+      setActiveRoute({
+        storyId: context.id,
+        readyKey,
+        routeName: seededTopRoute,
+      });
       return;
     }
 
@@ -131,7 +161,7 @@ export const withRealNavigator: Decorator = (Story, context) => {
     console.log(
       `STORYBOOK: Flow ready for story: ${context.id}; route: ${route.name}`,
     );
-  }, [context.id, readyKey]);
+  }, [context.id, readyKey, seededTopRoute]);
 
   if (!ready) return <FlowStatePlaceholder spec={flow?.state} />;
 
