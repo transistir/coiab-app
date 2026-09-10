@@ -108,10 +108,14 @@ type ConsumeHardwareBackPressProps = {
 };
 
 /**
- * Registered AFTER the NavigationContainer's own hardware-back handler, so
- * with React Native's LIFO subscription order this fires first and consumes
- * back events that would otherwise pop the seeded stack. Story-only: the
- * production app never renders this decorator.
+ * Must render as a SIBLING AFTER the NavigationContainer: React completes
+ * effects for the container's subtree before mounting later siblings, so
+ * this subscribes AFTER the container's own hardware-back handler — and with
+ * React Native's LIFO subscription dispatch it fires first and consumes back
+ * events before the navigator pops. Rendered as a child INSIDE the container
+ * it would subscribe BEFORE it (child effects run before parent effects),
+ * handing the back event to the container first. Story-only: the production
+ * app never renders this decorator.
  */
 function ConsumeHardwareBackPress({
   enabled,
@@ -234,14 +238,18 @@ export const withRealNavigator: Decorator = (Story, context) => {
             );
             announceActiveRoute();
           }}>
-          <ConsumeHardwareBackPress
-            enabled={consumeHardwareBackPress}
-            onConsumed={reason =>
-              console.log(`STORYBOOK: hardware back consumed; ${reason}`)
-            }
-          />
           <RootStackNavigator />
         </NavigationContainer>
+        {/* Sibling AFTER the container (see the guard's doc comment): child
+            effects run before parent effects, so a guard inside the
+            container would subscribe before it and LIFO dispatch would let
+            the container pop the seeded stack first. */}
+        <ConsumeHardwareBackPress
+          enabled={consumeHardwareBackPress}
+          onConsumed={reason =>
+            console.log(`STORYBOOK: hardware back consumed; ${reason}`)
+          }
+        />
       </View>
     </View>
   );
