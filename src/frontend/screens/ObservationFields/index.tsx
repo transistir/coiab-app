@@ -101,6 +101,9 @@ export const ObservationFields = ({
 
   if (!field) {
     // should not get here as fieldId is a param of this page. But ts can't know
+    console.log(
+      `STORYBOOK: ObservationFields field not found; wanted: ${JSON.stringify(fieldIds)}; available: ${JSON.stringify(fields.map(val => val.docId))}; going back`,
+    );
     Sentry.captureException('navigated to ObservationField with no fields');
     navigation.goBack();
     return null;

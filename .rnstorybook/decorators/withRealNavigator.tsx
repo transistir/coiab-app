@@ -1,6 +1,6 @@
 import * as React from 'react';
 import type {Decorator} from '@storybook/react-native';
-import {View} from 'react-native';
+import {BackHandler, View} from 'react-native';
 import {
   NavigationContainer,
   type InitialState,
@@ -102,10 +102,43 @@ function guardMissingSeededObservationIds(
  * state has been applied, since `getInitialRoute()` (in
  * `Navigation/Stack/index.tsx`) is only evaluated at mount.
  */
+type ConsumeHardwareBackPressProps = {
+  enabled: boolean;
+  onConsumed?: (reason: string) => void;
+};
+
+/**
+ * Registered AFTER the NavigationContainer's own hardware-back handler, so
+ * with React Native's LIFO subscription order this fires first and consumes
+ * back events that would otherwise pop the seeded stack. Story-only: the
+ * production app never renders this decorator.
+ */
+function ConsumeHardwareBackPress({
+  enabled,
+  onConsumed,
+}: ConsumeHardwareBackPressProps) {
+  React.useEffect(() => {
+    if (!enabled) return;
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        onConsumed?.('stack-seeded story; not popping');
+        return true;
+      },
+    );
+    return () => subscription.remove();
+  }, [enabled, onConsumed]);
+  return null;
+}
+
 export const withRealNavigator: Decorator = (Story, context) => {
   const {flow} = (context.parameters ?? {}) as FlowParameters;
   const ready = useFlowState(flow?.state);
   const readyKey = ready?.key;
+  // Deep seeded stacks (e.g. CreateObservation ObservationFields/Detail) are
+  // popped by a stray hardware-back a few hundred ms after mount; consume
+  // back events so the seeded stack survives the capture window.
+  const consumeHardwareBackPress = true;
   const navigationRef =
     React.useRef<NavigationContainerRef<AppStackParamsList>>(null);
   const [activeRoute, setActiveRoute] = React.useState<ActiveRoute>();
@@ -201,6 +234,12 @@ export const withRealNavigator: Decorator = (Story, context) => {
             );
             announceActiveRoute();
           }}>
+          <ConsumeHardwareBackPress
+            enabled={consumeHardwareBackPress}
+            onConsumed={reason =>
+              console.log(`STORYBOOK: hardware back consumed; ${reason}`)
+            }
+          />
           <RootStackNavigator />
         </NavigationContainer>
       </View>
