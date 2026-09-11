@@ -236,6 +236,68 @@ describe('troca serializada e encerramento da origem (CA06/CA08/CA11/CA14)', () 
     });
   });
 
+  test('duplo toque com MESMO alvo e área diferente é recusado, nunca aliased (§5.2)', async () => {
+    const {activation, getProject, store} = switchSetup();
+    await activation.initialize();
+    const original = getProject.getMockImplementation()!;
+    let release!: () => void;
+    const delay = new Promise<void>(resolve => {
+      release = resolve;
+    });
+    getProject.mockImplementation(async id => {
+      if (id === 'B-m') await delay;
+      return original(id);
+    });
+
+    // Monitoramento fica em voo (suspenso no primeiro await do core);
+    // Alertas é pedido em seguida para o MESMO alvo — a área pedida difere,
+    // então não é um duplo toque, é outra intenção.
+    const toMonitoramento = activation.activate('B');
+    const toAlertas = activation.activate('B', {area: 'alertas'});
+    release();
+    const [monitoramentoResult, alertasResult] = await Promise.all([
+      toMonitoramento,
+      toAlertas,
+    ]);
+
+    // A segunda NÃO pode herdar o resultado da primeira: o usuário pediu
+    // Alertas e receber `true` com Monitoramento ativo é falso sucesso.
+    expect(alertasResult).toBe(false);
+    expect(monitoramentoResult).toBe(true);
+    // A intenção em voo conclui a área ELA mesma, intacta.
+    expect(store.instance.getState().ativa).toEqual({
+      organizacaoId: 'B',
+      area: 'monitoramento',
+    });
+  });
+
+  test('duplo toque com MESMO alvo e MESMA área continua compartilhando a intenção (§5.2)', async () => {
+    const {activation, getProject} = switchSetup();
+    await activation.initialize();
+    const original = getProject.getMockImplementation()!;
+    let release!: () => void;
+    const delay = new Promise<void>(resolve => {
+      release = resolve;
+    });
+    getProject.mockImplementation(async id => {
+      if (id === 'B-m') await delay;
+      return original(id);
+    });
+
+    // Mesmo alvo, mesma área: é um duplo toque e JOINA a operação em voo —
+    // a validação do core roda uma única vez para as duas chamadas.
+    const first = activation.activate('B', {area: 'alertas'});
+    const second = activation.activate('B', {area: 'alertas'});
+    release();
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+
+    expect(firstResult).toBe(true);
+    expect(secondResult).toBe(true);
+    expect(getProject.mock.calls.filter(([id]) => id === 'B-m')).toHaveLength(
+      1,
+    );
+  });
+
   test('perda de acesso à própria organização encaminha à recuperação', async () => {
     const {activation, getProject, store} = switchSetup();
     await activation.initialize();

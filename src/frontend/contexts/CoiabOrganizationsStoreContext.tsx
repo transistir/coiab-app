@@ -81,7 +81,18 @@ function projetoSemAssociacao(
 export function createCoiabOrganizationsStore({persist} = {persist: false}) {
   let initial = createInitialState();
   if (persist) {
-    const raw = MMKVStoreInitializer.getItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
+    // A read that THROWS (a broken storage adapter) is a hydration failure
+    // like an unreadable document (SPEC A §5.3): the failure is exposed on
+    // the store so the recovery flow renders — it must never crash the
+    // construction itself and take the recovery UI down with it.
+    let raw: string | null | undefined;
+    try {
+      raw = MMKVStoreInitializer.getItem(COIAB_ORGANIZATIONS_STORAGE_KEY) as
+        string | null | undefined;
+    } catch {
+      raw = undefined;
+      initial = {...initial, hidratacaoFalhou: true};
+    }
     if (typeof raw === 'string') {
       try {
         const parsed = parseEstadoOrganizacoes(JSON.parse(raw).state);

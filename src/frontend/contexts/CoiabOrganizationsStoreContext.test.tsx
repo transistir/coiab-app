@@ -556,6 +556,37 @@ describe('falha de hidratação (SPEC A §5.3)', () => {
       rawCorrompido,
     );
   });
+
+  // P1 (greptile): a LEITURA do storage acontece fora do tratamento de erro
+  // de hidratação — um adaptador que lança na leitura quebrava a construção
+  // do store (exceção propagada), e o fluxo de recuperação nunca renderizava.
+  test('leitura do storage que lança expõe falha de hidratação em vez de quebrar a construção', () => {
+    const read = jest
+      .spyOn(MMKVStoreInitializer, 'getItem')
+      .mockImplementation(() => {
+        throw new Error('mmkv adapter broken');
+      });
+
+    let store: ReturnType<typeof createCoiabOrganizationsStore> | undefined;
+    try {
+      expect(() => {
+        store = createCoiabOrganizationsStore({persist: true});
+      }).not.toThrow();
+    } finally {
+      // A construção (hoje) lança ANTES do fim do teste — restaura o spy
+      // mesmo assim, para não vazar para os testes seguintes.
+      read.mockRestore();
+    }
+
+    // A falha é exposta como hidratação falha (SPEC A §5.3) — o estado que a
+    // recuperação consome — e não como exceção de construção.
+    expect(store).toBeDefined();
+    expect(store!.instance.getState()).toMatchObject({hidratacaoFalhou: true});
+
+    // A resolução explícita destrava o store, como nas demais falhas.
+    store!.actions.resolverFalhaHidratacao();
+    expect(store!.instance.getState().hidratacaoFalhou).toBe(false);
+  });
 });
 
 import {MMKVStoreInitializer} from '../hooks/persistedState/createPersistedState';

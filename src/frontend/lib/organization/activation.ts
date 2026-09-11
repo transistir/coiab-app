@@ -123,11 +123,30 @@ export function createOrganizationActivation({
     return operation;
   }
 
+  // The area an activation would publish (SPEC A §4.2 regra 9): an
+  // acknowledgment never chooses an area — Monitoramento stands; an explicit
+  // area wins; Monitoramento is the default. Shared by the lock key below so
+  // two keys can never alias intents that publish different areas.
+  function requestedArea(options: ActivationOptions): Area {
+    return options.acknowledge
+      ? 'monitoramento'
+      : (options.area ?? 'monitoramento');
+  }
+
   function activate(
     id: string,
     options: ActivationOptions = {},
   ): Promise<boolean> {
-    return runExclusive(`activate:${id}`, () => performActivation(id, options));
+    // review round 2 (§5.2): the key carries the RESOLVED intent. A double
+    // tap with the same target + area + acknowledge still JOINS the running
+    // operation; a different area (or acknowledge) is a distinct intent and
+    // is rejected outright — keying by the id alone let the second call join
+    // and report `true` while its requested area was never selected.
+    const area = requestedArea(options);
+    return runExclusive(
+      `activate:${id}:${area}:${options.acknowledge ? 1 : 0}`,
+      () => performActivation(id, options),
+    );
   }
 
   async function performActivation(
@@ -138,9 +157,7 @@ export function createOrganizationActivation({
     const previous = instance.getState();
     const document = store.instance.getState();
     const sameOrganization = document.ativa?.organizacaoId === id;
-    const area = options.acknowledge
-      ? 'monitoramento'
-      : (options.area ?? 'monitoramento');
+    const area = requestedArea(options);
     // The restoration allowance belongs only to this operation. Even here,
     // work that changes origin during an await must block publication.
     const workBlocks = () =>
