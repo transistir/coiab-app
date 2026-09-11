@@ -164,7 +164,12 @@ export const RootStackNavigator = () => {
   // organization (a standalone/debug switch) does not survive into Home —
   // getInitialRoute stays pure; this effect corrects the stored id to the
   // primary organization's Monitoramento slot instead.
+  // Storybook builds seed the Storybook Project and resolve its preset/doc
+  // ids for the flow screens; rewriting the active id to an organization
+  // slot here makes those seeded ids unreadable (fields not found -> guard
+  // goBack, observation 404). The QA captures must see the seeded project.
   React.useEffect(() => {
+    if (process.env.EXPO_PUBLIC_STORYBOOK_ENABLED === 'true') return;
     if (orgStatus !== 'ready') return;
     const activeIsReadyOrgSlot = organizations.some(
       org =>

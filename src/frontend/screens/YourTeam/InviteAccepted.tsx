@@ -73,17 +73,17 @@ export const InviteAccepted = ({
         </BodyText>
       </View>
       <View style={{alignItems: 'center', gap: 12}}>
-        <SecondaryButton
-          fullSize
-          text={t(m.done)}
-          onPress={() => navigation.popToTop()}
-        />
         <PrimaryButton
           fullSize
           text={t(m.addAnotherDevice)}
           onPress={() => {
             navigation.popTo('SelectDevice');
           }}
+        />
+        <SecondaryButton
+          fullSize
+          text={t(m.done)}
+          onPress={() => navigation.popToTop()}
         />
       </View>
     </View>

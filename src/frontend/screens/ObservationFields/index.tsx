@@ -90,10 +90,20 @@ export const ObservationFields = ({
     });
   }, [navigation, current, formatMessage, fieldIds.length, observationId]);
 
+  // While the fields query has not loaded yet, render nothing. Navigating
+  // back here would eject the user from the observation flow before the
+  // data needed to find the field is even available.
+  if (!fields) {
+    return null;
+  }
+
   const field = fields.find(val => val.docId === fieldIds[current - 1]);
 
   if (!field) {
     // should not get here as fieldId is a param of this page. But ts can't know
+    console.log(
+      `STORYBOOK: ObservationFields field not found; wanted: ${JSON.stringify(fieldIds)}; available: ${JSON.stringify(fields.map(val => val.docId))}; going back`,
+    );
     Sentry.captureException('navigated to ObservationField with no fields');
     navigation.goBack();
     return null;
