@@ -86,7 +86,6 @@ import {RemovedFromProjectBottomSheet} from '../../screens/RemovedFromProjectBot
 import {ObservationMetadata} from '../../screens/ObservationMetadata.tsx';
 import {BackgroundMapErrorBottomSheet} from '../../screens/BackgroundMaps/ErrorBottomSheet.tsx';
 import {InviteCollaboratorsScreen} from '../../screens/YourTeam/InviteCollaborators.tsx';
-import {StartNewProjectScreen} from '../../screens/ProjectSettings/StartNewProject.tsx';
 import {EditProjectDetails} from '../../screens/ProjectSettings/EditProjectDetails.tsx';
 import {AllProjects} from '../../screens/AllProjects.tsx';
 import {TrackRecordingActive} from '../../screens/TrackRecordingActive.tsx';
@@ -504,13 +503,6 @@ export const createAppScreens = ({
       <RootStack.Screen
         name="InviteCollaborators"
         component={InviteCollaboratorsScreen}
-        options={{
-          headerShown: false,
-        }}
-      />
-      <RootStack.Screen
-        name="StartNewProject"
-        component={StartNewProjectScreen}
         options={{
           headerShown: false,
         }}

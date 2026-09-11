@@ -83,19 +83,53 @@ step's toolchain builds.
 
 ## 2. Trigger and wait
 
+### Set REPO to the repo that owns the branch — every command below uses it
+
+`gh workflow run --ref` resolves the ref **in** the `-R` repo, so the
+dispatch must go where the branch actually exists. Capturing an
+implementation branch that only exists in `transistir/comapeo-mobile-1`
+with `-R transistir/coiab-app` fails at ref resolution, and vice versa:
+
 ```sh
-gh workflow run storybook-capture.yml -R transistir/coiab-app --ref <branch>
+# implementation PR branch (lives in the fork):
+REPO=transistir/comapeo-mobile-1
+# coiab-app sync branch (exists only in coiab-app):
+# REPO=transistir/coiab-app   # only after coiab-app's EXPO_TOKEN is set
+```
+
+ coiab-app's own dispatch currently fails at Setup EAS until its
+`EXPO_TOKEN` secret is set (`gh secret list -R transistir/coiab-app`).
+Do not edit the workflow to skip the EAS step — the capture needs the
+APK that step's toolchain builds.
+
+### Identify the new run by exclusion, not by timestamp alone
+
+```sh
+# Snapshot the run ids ALREADY on this branch BEFORE dispatching. The
+# timestamp cutoff alone cannot identify this dispatch: the stamp is
+# taken 30 s in the past (clock-skew tolerance), so a retry run created
+# inside that window — or any pre-dispatch run — still passes the
+# createdAt check and would be bound as ours. Excluding PRE_IDS closes
+# that hole; the residual race is milliseconds wide instead of 30 s.
+PRE_IDS=$(gh run list -R $REPO --workflow storybook-capture.yml --branch <branch> --event workflow_dispatch --limit 20 --json databaseId -q '[.[].databaseId] | tostring')
+# Stamp the cutoff BEFORE dispatching: if the dispatch request itself is
+# slow, a stamp taken after it (even 30 s back) can postdate the run's
+# createdAt and the poll would never match it.
+DISPATCH_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ -d '30 seconds ago')
+gh workflow run storybook-capture.yml -R $REPO --ref <branch>
 sleep 15
-gh run list -R transistir/coiab-app --workflow storybook-capture.yml --branch <branch> --event workflow_dispatch --limit 5 --json databaseId,headSha,createdAt,status,url
-# Set RUN to the new run matching the intended SHA and dispatch time.
+gh run list -R $REPO --workflow storybook-capture.yml --branch <branch> --event workflow_dispatch --limit 5 --json databaseId,headSha,createdAt,status,url
+# RUN = the run whose id is NOT in PRE_IDS and createdAt >= DISPATCH_TS.
+# If two qualify, the concurrent-dispatch race hit — disambiguate by
+# headSha or re-snapshot and re-dispatch.
 ```
 
 Wait in the background rather than blocking a foreground call for the whole
 run:
 
 ```sh
-until [ "$(gh run view $RUN -R transistir/coiab-app --json status -q .status)" = "completed" ]; do sleep 30; done
-gh run view $RUN -R transistir/coiab-app --json conclusion -q .conclusion
+until [ "$(gh run view $RUN -R $REPO --json status -q .status)" = "completed" ]; do sleep 30; done
+gh run view $RUN -R $REPO --json conclusion -q .conclusion
 ```
 
 ## 3. If the run fails, classify before re-running
@@ -105,8 +139,8 @@ Verify the artifact inventory (step 6), then download any partial artifact
 into a fresh directory and look:
 
 ```sh
-gh run download $RUN -R transistir/coiab-app -D ./caps/$RUN
-gh run view $RUN -R transistir/coiab-app --log-failed | rg -i "storybook-capture" | tail -25
+gh run download $RUN -R $REPO -D ./caps/$RUN
+gh run view $RUN -R $REPO --log-failed | rg -i "storybook-capture" | tail -25
 ```
 
 - **Correct frame, failed identity check** — inspect retained
@@ -130,7 +164,7 @@ its artifact is absent too.
 ## 4. Vision review — every frame, not a sample
 
 ```sh
-gh run download $RUN -R transistir/coiab-app -D ./caps/$RUN
+gh run download $RUN -R $REPO -D ./caps/$RUN
 D=$(find ./caps/$RUN -name captures.tsv | head -1 | xargs dirname)
 awk 'END {print NR-1}' "$D/captures.tsv" # must equal the manifest row count
 node scripts/storybook-report.mjs "$D"    # validates ledger and referenced PNGs
@@ -179,14 +213,14 @@ that logs claimed were uploaded. Require `total_count >= 1` and an expected,
 unexpired entry. If missing, re-dispatch the producing build (step 2), verify
 its SHA and replacement artifact, and review that run's frames. Never reuse
 the vanished artifact's link. Include the verified download link —
-`https://github.com/transistir/coiab-app/actions/runs/<RUN>/artifacts/<ARTIFACT_ID>`:
+`https://github.com/$REPO/actions/runs/<RUN>/artifacts/<ARTIFACT_ID>`:
 
 ```sh
-gh api repos/transistir/coiab-app/actions/runs/$RUN/artifacts \
+gh api repos/$REPO/actions/runs/$RUN/artifacts \
   --jq '{total_count, artifacts: [.artifacts[] | {id, name, expired}]}'
 # Set ART and NAME from the expected unexpired entry, not blindly artifacts[0].
-gh run download $RUN -R transistir/coiab-app -n "$NAME" -D ./verified-caps/$RUN
-gh pr comment <PR> -R transistir/coiab-app --body-file <review-comment.md>
+gh run download $RUN -R $REPO -n "$NAME" -D ./verified-caps/$RUN
+gh pr comment <PR> -R $REPO --body-file <review-comment.md>
 ```
 
 The comment must state:

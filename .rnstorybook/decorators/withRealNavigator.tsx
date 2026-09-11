@@ -1,6 +1,6 @@
 import * as React from 'react';
 import type {Decorator} from '@storybook/react-native';
-import {View} from 'react-native';
+import {BackHandler, View} from 'react-native';
 import {
   NavigationContainer,
   type InitialState,
@@ -17,8 +17,7 @@ import {
 import {FlowStatePlaceholder} from '../utils/FlowStatePlaceholder';
 
 type FlowInitialState =
-  | InitialState
-  | ((resolved: ResolvedFlowState) => InitialState);
+  InitialState | ((resolved: ResolvedFlowState) => InitialState);
 
 type FlowParameters = {
   flow?: {
@@ -103,19 +102,101 @@ function guardMissingSeededObservationIds(
  * state has been applied, since `getInitialRoute()` (in
  * `Navigation/Stack/index.tsx`) is only evaluated at mount.
  */
+type ConsumeHardwareBackPressProps = {
+  enabled: boolean;
+  onConsumed?: (reason: string) => void;
+};
+
+/**
+ * Must render as a SIBLING AFTER the NavigationContainer: React completes
+ * effects for the container's subtree before mounting later siblings, so
+ * this subscribes AFTER the container's own hardware-back handler — and with
+ * React Native's LIFO subscription dispatch it fires first and consumes back
+ * events before the navigator pops. Rendered as a child INSIDE the container
+ * it would subscribe BEFORE it (child effects run before parent effects),
+ * handing the back event to the container first. Story-only: the production
+ * app never renders this decorator.
+ */
+function ConsumeHardwareBackPress({
+  enabled,
+  onConsumed,
+}: ConsumeHardwareBackPressProps) {
+  React.useEffect(() => {
+    if (!enabled) return;
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        onConsumed?.('stack-seeded story; not popping');
+        return true;
+      },
+    );
+    return () => subscription.remove();
+  }, [enabled, onConsumed]);
+  return null;
+}
+
 export const withRealNavigator: Decorator = (Story, context) => {
   const {flow} = (context.parameters ?? {}) as FlowParameters;
   const ready = useFlowState(flow?.state);
   const readyKey = ready?.key;
+  // Deep seeded stacks (e.g. CreateObservation ObservationFields/Detail) are
+  // popped by a stray hardware-back a few hundred ms after mount; consume
+  // back events so the seeded stack survives the capture window.
+  const consumeHardwareBackPress = true;
+  // Stable callback identity keeps the guard's BackHandler subscription
+  // stable across renders (its effect keys on [enabled, onConsumed]), so the
+  // guard keeps its LIFO slot instead of churning (remove + re-add) on every
+  // decorator render.
+  const handleHardwareBackConsumed = React.useCallback(
+    (reason: string) =>
+      console.log(`STORYBOOK: hardware back consumed; ${reason}`),
+    [],
+  );
   const navigationRef =
     React.useRef<NavigationContainerRef<AppStackParamsList>>(null);
   const [activeRoute, setActiveRoute] = React.useState<ActiveRoute>();
+  // Expected state from the story's seeded initialState. Some post-mount
+  // reconciliation (query refreshes re-running the flow-state effect,
+  // navigator screen-set changes) can pop the seeded deep stack with no user
+  // interaction; capture runs 34417507310/34422668174 showed ObservationFields
+  // reverting to ObservationCreate ~60ms after readiness — and run
+  // 34475503925 proved a marker-only repair masks the pop (the screenshot
+  // still showed the wrong screen). Repair by resetting the navigator to the
+  // full seeded state, once per mount, so the frame captures what the story
+  // declares.
+  const seededInitialState = React.useMemo(() => {
+    if (typeof flow?.initialState === 'function') {
+      return ready ? flow.initialState(ready) : undefined;
+    }
+    return flow?.initialState;
+  }, [flow?.initialState, ready]);
+  const seededTopRoute = seededInitialState?.routes.at(-1)?.name;
+  const repairCountRef = React.useRef(0);
   const announceActiveRoute = React.useCallback(() => {
     const route = navigationRef.current?.getCurrentRoute();
     if (!route || !readyKey) {
       console.error(
         `STORYBOOK: Flow readiness failed for story: ${context.id}; active route unavailable`,
       );
+      return;
+    }
+
+    if (
+      seededTopRoute !== undefined &&
+      seededInitialState !== undefined &&
+      route.name !== seededTopRoute &&
+      repairCountRef.current < 1
+    ) {
+      repairCountRef.current += 1;
+      console.warn(
+        `STORYBOOK: state repair for story: ${context.id}; route ${route.name} -> ${seededTopRoute}`,
+      );
+      navigationRef.current?.reset(seededInitialState);
+      setActiveRoute({
+        storyId: context.id,
+        readyKey,
+        routeName: seededTopRoute,
+      });
       return;
     }
 
@@ -129,9 +210,9 @@ export const withRealNavigator: Decorator = (Story, context) => {
     // native markers rendered below, because an earlier route log cannot prove
     // which route is active when the screenshot is taken.
     console.log(
-      `STORYBOOK: Flow ready for story: ${context.id}; route: ${route.name}`,
+      `STORYBOOK: Flow ready for story: ${context.id}; route: ${route.name}; projectId: ${ready?.projectId ?? 'none'}; observationIds: ${JSON.stringify(ready?.observationIds ?? [])}`,
     );
-  }, [context.id, readyKey]);
+  }, [context.id, readyKey, seededInitialState, seededTopRoute]);
 
   if (!ready) return <FlowStatePlaceholder spec={flow?.state} />;
 
@@ -160,9 +241,22 @@ export const withRealNavigator: Decorator = (Story, context) => {
           ref={navigationRef}
           initialState={initialState}
           onReady={announceActiveRoute}
-          onStateChange={announceActiveRoute}>
+          onStateChange={state => {
+            console.log(
+              `STORYBOOK: nav state change for story: ${context.id}; index: ${state?.index}; routes: ${JSON.stringify(state?.routes.map(r => r.name))}`,
+            );
+            announceActiveRoute();
+          }}>
           <RootStackNavigator />
         </NavigationContainer>
+        {/* Sibling AFTER the container (see the guard's doc comment): child
+            effects run before parent effects, so a guard inside the
+            container would subscribe before it and LIFO dispatch would let
+            the container pop the seeded stack first. */}
+        <ConsumeHardwareBackPress
+          enabled={consumeHardwareBackPress}
+          onConsumed={handleHardwareBackConsumed}
+        />
       </View>
     </View>
   );
