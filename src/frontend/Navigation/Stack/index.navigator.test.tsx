@@ -500,9 +500,12 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       );
       expect(joined).toHaveLength(3);
     });
-    // Provenance note (F7): a local leave DELETES the row — the core keeps
-    // no `left` row for it — so the active id names no local project at all
-    // and carries no marker to trace. That absence is the evidence here.
+    // Provenance note (F7/F10): the core KEEPS the project keys row with
+    // `hasLeftProject: true` and deletes only the project settings
+    // (mapeo-manager.js:1041 / :1044-1047), but `listProjects()` defaults to
+    // `includeLeft: false` (:636), so the row is invisible here — the active
+    // id names no local project and carries no marker to trace. That
+    // absence, asserted below against the real core, is the evidence.
     await waitFor(async () => {
       const rows = await freshSetup.manager.listProjects();
       expect(rows.some(project => project.projectId === activeMProjectId)).toBe(

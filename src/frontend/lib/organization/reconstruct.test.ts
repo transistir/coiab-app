@@ -274,6 +274,42 @@ describe('projectProvenance', () => {
     expect(projectProvenance(rows, 'plain')).toEqual({kind: 'unmarked'});
   });
 
+  it('reports a row that claims the reserved namespace but does not parse as corrupt (F8)', () => {
+    // Same decision `reconstructOrganizations` already makes for a joined
+    // row (`unsupported-marker`): claiming `coiab-org:` is ownership
+    // evidence even when the value cannot be read, so it must not fall
+    // through to `unmarked` and let the slot be switched across
+    // organizations.
+    const status = 'joined' as const;
+    const corrupt = [
+      {projectId: 'truncated', projectDescription: 'coiab-org:', status},
+      {
+        projectId: 'bad-version',
+        projectDescription: `coiab-org:v2:${ORG_A}:m:A`,
+        status,
+      },
+      {
+        projectId: 'bad-org-id',
+        projectDescription: 'coiab-org:v1:NOT-HEX:m:A',
+        status,
+      },
+      {
+        projectId: 'mentions-prefix',
+        projectDescription: 'notes about coiab-org:v1',
+        status,
+      },
+    ];
+    expect(projectProvenance(corrupt, 'truncated')).toEqual({kind: 'corrupt'});
+    expect(projectProvenance(corrupt, 'bad-version')).toEqual({
+      kind: 'corrupt',
+    });
+    expect(projectProvenance(corrupt, 'bad-org-id')).toEqual({kind: 'corrupt'});
+    // The prefix must START the description to claim the namespace.
+    expect(projectProvenance(corrupt, 'mentions-prefix')).toEqual({
+      kind: 'unmarked',
+    });
+  });
+
   it('reports an id the device holds no project for as absent', () => {
     expect(projectProvenance(rows, 'gone')).toEqual({kind: 'absent'});
     expect(projectProvenance([], 'a-m')).toEqual({kind: 'absent'});

@@ -110,12 +110,17 @@ export function getInitialRoute(
  * - 'degraded': the id IS a slot of an organization that is not ready
  *   (incomplete or invalid) while another one is, or its row carries the
  *   marker of an organization that is not ready — including one that is
- *   gone from the reconstruction entirely, because the row was left or
- *   removed (F7) — or it names NO local project while some organization is
- *   non-ready (the leave residue: the row is deleted, so the marker that
- *   would prove ownership is gone with it). NEVER silently switch to the
- *   other organization: the caller routes to the recovery surface
- *   (OrganizationProvisioning) instead, reusing the gate's mechanism.
+ *   gone from the reconstruction entirely because none of its rows is
+ *   `joined` (F7; through this seam that means `joining` rows, an invite
+ *   accepted but never synced — a left row does not arrive here at all, see
+ *   `ProjectProvenance`) — or its row claims the reserved `coiab-org:`
+ *   namespace without parsing, which is ownership evidence for an
+ *   organization that cannot even be named (F8) — or it names NO local
+ *   project while some organization is non-ready (the leave residue: the
+ *   row is hidden from this seam, so the marker that would prove ownership
+ *   is out of reach). NEVER silently switch to the other organization: the
+ *   caller routes to the recovery surface (OrganizationProvisioning)
+ *   instead, reusing the gate's mechanism.
  */
 export type ActiveProjectCorrection =
   {kind: 'none'} | {kind: 'correct'; projectId: string} | {kind: 'degraded'};
@@ -127,10 +132,11 @@ export function resolveActiveProjectCorrection(
    * The RAW project rows (F7): the reconstruction above drops everything but
    * `joined` rows, so the marker of a slot the device kept but did not join
    * survives only here, and so does the answer to "does this device hold
-   * that project at all?". Defaults to none, which reads every id as
-   * `absent` — the device-wide behaviour this parameter narrows.
+   * that project at all?". Required (F9): a defaulted empty array reads
+   * every id as `absent`, which silently re-enables the device-wide
+   * behaviour this parameter exists to narrow.
    */
-  projects: ReadonlyArray<LocalProjectRow> = [],
+  projects: ReadonlyArray<LocalProjectRow>,
 ): ActiveProjectCorrection {
   const readyOrganization = organizations.find(org => org.state === 'ready');
   // Without a ready organization there is nothing to correct TO (the
@@ -165,20 +171,35 @@ export function resolveActiveProjectCorrection(
       return {kind: 'correct', projectId: owner.slots.m};
     }
     // Owned by an organization that is not ready — or gone from the
-    // reconstruction entirely (residual #1: every row of it left or removed,
-    // leaving an ALL-READY device that would otherwise silently hand the
-    // user the other organization). Keep the slot, show the repair surface.
+    // reconstruction entirely (residual #1: none of its rows is `joined`,
+    // e.g. an invite accepted but never synced, leaving an ALL-READY device
+    // that would otherwise silently hand the user the other organization).
+    // Keep the slot, show the repair surface.
+    return {kind: 'degraded'};
+  }
+  if (provenance.kind === 'corrupt') {
+    // F8: the row claims the reserved `coiab-org:` namespace but cannot be
+    // parsed, so the id IS an organization slot whose organization cannot be
+    // named — the same evidence as the branch above, minus the ability to
+    // check whether the owner is ready. Reading it as unmarked would hand a
+    // corrupt slot to the legacy correction and switch organizations
+    // silently, so it fails closed exactly like a marked-but-non-ready id.
     return {kind: 'degraded'};
   }
   if (provenance.kind === 'absent') {
     // The id names no project this device holds — and no row means no
-    // marker to trace it with. A local leave deletes the row outright
-    // (verified against the real core in index.navigator.test.tsx) and
-    // clears the id, so this is what a vanished slot looks like: with a
-    // non-ready organization on the device, that residue is the likely
-    // origin and it fails closed onto the recovery surface, which doubles
-    // as the diagnosis. On an all-ready device nothing can have been lost,
-    // so the documented legacy correction stands.
+    // marker to trace it with. A leave keeps the project keys row but hides
+    // it from `listProjects()` (see `ProjectProvenance`; verified against
+    // the real core in index.navigator.test.tsx) and clears the id, so this
+    // is what a vanished slot looks like through this seam: with a non-ready
+    // organization on the device, that residue is the likely origin and it
+    // fails closed onto the recovery surface, which doubles as the
+    // diagnosis. On an all-ready device nothing can have been lost, so the
+    // documented legacy correction stands — and after a deliberate leave of
+    // an organization's LAST project the leave flow itself clears the id and
+    // routes to the remaining organization (screens/YourTeam/
+    // LeaveProject.tsx:116-124), so landing there is the designed outcome of
+    // an explicit user action, not the silent switch F6 forbids.
     return organizations.some(org => org.state !== 'ready')
       ? {kind: 'degraded'}
       : {kind: 'correct', projectId: readyOrganization.slots.m};
