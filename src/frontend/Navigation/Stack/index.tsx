@@ -10,13 +10,17 @@ import {createOnboardingScreens} from './OnboardingScreens';
 import {createAppScreens} from './AppScreens';
 import {PendingInvitesListener} from '../../sharedComponents/PendingInvitesListener';
 import {PendingMapSharesListener} from '../../sharedComponents/PendingMapSharesListener';
-import {useOwnDeviceInfo} from '@comapeo/core-react';
+import {useManyProjects, useOwnDeviceInfo} from '@comapeo/core-react';
 import {
   useActiveProjectId,
   useActiveProjectIdActions,
 } from '../../contexts/ActiveProjectIdStoreContext';
 import {useOrganizations} from '../../hooks/organization/useOrganizations';
-import type {ReconstructedOrganization} from '../../lib/organization/reconstruct';
+import {
+  projectProvenance,
+  type LocalProjectRow,
+  type ReconstructedOrganization,
+} from '../../lib/organization/reconstruct';
 import {AuthScreen} from '../../screens/AuthScreen';
 import {Success} from '../../screens/Onboarding/Success';
 import {CreateOrganization} from '../../screens/Onboarding/CreateOrganization';
@@ -95,15 +99,21 @@ export function getInitialRoute(
  * What the active-id correction (SPEC 1.3) must do with the persisted
  * active project id once an Organization is ready:
  * - 'none': the id is a slot of a ready organization — nothing to correct.
- * - 'correct': the id is a slot of NO organization (a standalone/debug
- *   switch, or the pre-org era's persisted id) AND every organization on
- *   the device is ready — the documented legacy case; the caller silently
- *   repoints it at the first ready organization's Monitoramento slot,
- *   exactly as before.
+ * - 'correct': the id has NO ownership evidence tying it to a non-ready
+ *   organization — a standalone/debug switch or the pre-org era's persisted
+ *   id (no `coiab-org` marker on its row); the caller silently repoints it
+ *   at the first ready organization's Monitoramento slot, exactly as
+ *   before. A marked id whose OWN organization is ready is repointed at
+ *   that organization's Monitoramento slot instead — same organization, so
+ *   no cross-org switch happens. An id naming no local project at all is
+ *   corrected too, but only on an all-ready device (see below).
  * - 'degraded': the id IS a slot of an organization that is not ready
- *   (incomplete or invalid) while another one is, OR it is claimed by no
- *   organization while some organization is non-ready (F6: the active slot
- *   itself vanished, so nothing claims it). NEVER silently switch to the
+ *   (incomplete or invalid) while another one is, or its row carries the
+ *   marker of an organization that is not ready — including one that is
+ *   gone from the reconstruction entirely, because the row was left or
+ *   removed (F7) — or it names NO local project while some organization is
+ *   non-ready (the leave residue: the row is deleted, so the marker that
+ *   would prove ownership is gone with it). NEVER silently switch to the
  *   other organization: the caller routes to the recovery surface
  *   (OrganizationProvisioning) instead, reusing the gate's mechanism.
  */
@@ -113,6 +123,14 @@ export type ActiveProjectCorrection =
 export function resolveActiveProjectCorrection(
   organizations: ReconstructedOrganization[],
   activeProjectId: string | undefined,
+  /**
+   * The RAW project rows (F7): the reconstruction above drops everything but
+   * `joined` rows, so the marker of a slot the device kept but did not join
+   * survives only here, and so does the answer to "does this device hold
+   * that project at all?". Defaults to none, which reads every id as
+   * `absent` — the device-wide behaviour this parameter narrows.
+   */
+  projects: ReadonlyArray<LocalProjectRow> = [],
 ): ActiveProjectCorrection {
   const readyOrganization = organizations.find(org => org.state === 'ready');
   // Without a ready organization there is nothing to correct TO (the
@@ -127,19 +145,47 @@ export function resolveActiveProjectCorrection(
   // A slot of a NON-ready organization (incomplete or invalid): the
   // active organization degraded while another is ready.
   if (organizations.some(isSlotOf)) return {kind: 'degraded'};
-  // F6: a slot the device LOST (left, or removed by another device) is not
-  // reconstructed at all — `reconstruct` contributes a slot only for
-  // `joined` rows — so when the ACTIVE slot is the one that vanished, no
-  // organization claims the id (and the leave flow clears it outright),
-  // making it indistinguishable from a rootless id. Correcting it would be
-  // the same silent cross-organization switch the branch above forbids, so
-  // the legacy correction is allowed ONLY on an all-ready device, where no
-  // slot can have vanished; anything non-ready fails closed onto the
-  // recovery surface, which doubles as the diagnosis for the lost slot.
-  if (organizations.some(org => org.state !== 'ready')) {
+  // F7: the id is claimed by no organization — `reconstruct` contributes a
+  // slot only for `joined` rows, so a slot the device LOST is not reported
+  // even when the device still holds its row. What the id IS is decided per
+  // id, from its own row, instead of from the device-wide
+  // `some(state !== 'ready')` gate this replaces: that gate read an
+  // unrelated broken organization as evidence about the active id and
+  // parked the user on the recovery surface with no way back to Home
+  // (residual #2 / the Greptile P1).
+  const provenance = projectProvenance(projects, activeProjectId);
+  if (provenance.kind === 'organization') {
+    const owner = organizations.find(
+      org => org.organizationId === provenance.organizationId,
+    );
+    // The owning organization is intact: repointing at ITS Monitoramento
+    // slot keeps the user inside the organization the id already belonged
+    // to, so this is not the cross-organization switch F1 forbids.
+    if (owner && owner.state === 'ready') {
+      return {kind: 'correct', projectId: owner.slots.m};
+    }
+    // Owned by an organization that is not ready — or gone from the
+    // reconstruction entirely (residual #1: every row of it left or removed,
+    // leaving an ALL-READY device that would otherwise silently hand the
+    // user the other organization). Keep the slot, show the repair surface.
     return {kind: 'degraded'};
   }
-  // Rootless id (or no id at all): never was an organization slot origin.
+  if (provenance.kind === 'absent') {
+    // The id names no project this device holds — and no row means no
+    // marker to trace it with. A local leave deletes the row outright
+    // (verified against the real core in index.navigator.test.tsx) and
+    // clears the id, so this is what a vanished slot looks like: with a
+    // non-ready organization on the device, that residue is the likely
+    // origin and it fails closed onto the recovery surface, which doubles
+    // as the diagnosis. On an all-ready device nothing can have been lost,
+    // so the documented legacy correction stands.
+    return organizations.some(org => org.state !== 'ready')
+      ? {kind: 'degraded'}
+      : {kind: 'correct', projectId: readyOrganization.slots.m};
+  }
+  // An unmarked project this device holds: never was an organization slot
+  // origin (pre-org era, a standalone/debug switch), so no organization's
+  // state says anything about it — the documented legacy correction.
   return {kind: 'correct', projectId: readyOrganization.slots.m};
 }
 
@@ -268,6 +314,10 @@ export const RootStackNavigator = () => {
   // Suspends alongside useOwnDeviceInfo on the navigator's existing
   // Suspense boundary (see PLAN-46 risks: pinned, do not deviate).
   const organizations = useOrganizations();
+  // The same (cached) query `useOrganizations` reconstructs from — read raw
+  // here because the reconstruction drops non-`joined` rows, and F7's
+  // per-id provenance needs the marker of a slot the device lost.
+  const {data: projects} = useManyProjects();
   const orgStatus: OrgGateStatus = organizations.some(
     org => org.state === 'ready',
   )
@@ -301,7 +351,7 @@ export const RootStackNavigator = () => {
   const activeProjectCorrection =
     process.env.EXPO_PUBLIC_STORYBOOK_ENABLED !== 'true' &&
     orgStatus === 'ready'
-      ? resolveActiveProjectCorrection(organizations, activeProjectId)
+      ? resolveActiveProjectCorrection(organizations, activeProjectId, projects)
       : ({kind: 'none'} as const);
   const activeProjectDegraded = activeProjectCorrection.kind === 'degraded';
   const correctionKind = activeProjectCorrection.kind;

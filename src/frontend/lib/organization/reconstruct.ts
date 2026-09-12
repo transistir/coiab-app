@@ -29,12 +29,51 @@ export type ReconstructedOrganization =
       slots: Partial<Record<Slot, string>>;
     };
 
+/**
+ * A local project row as `listProjects()` returns it — the only input this
+ * module reads (SPEC 10). Named so callers that need the RAW rows (marker
+ * provenance for a project id, below) share the same shape.
+ */
+export type LocalProjectRow = {
+  projectId: string;
+  projectDescription?: string;
+  status: 'joined' | 'joining' | 'left';
+};
+
+/**
+ * What the LOCAL project rows say about where a project id came from (SPEC
+ * 10.1 provenance), for callers that must tell a legacy/standalone id apart
+ * from an organization slot the reconstruction above no longer reports:
+ * - 'organization': the row carries a `coiab-org` marker, so the id is (or
+ *   was) that organization's slot. Read regardless of join status — the
+ *   marker survives a `joining`/`left` row, which contributes no slot.
+ * - 'unmarked': a project this device holds that never was a slot (the
+ *   pre-org era, a standalone/debug project).
+ * - 'absent': no row holds that id at all. Either the project was removed
+ *   from the device (a leave deletes the row outright — CoMapeo core does
+ *   not keep a `left` row for a local leave) or the id is stale. The id
+ *   names nothing this device can operate, either way.
+ */
+export type ProjectProvenance =
+  | {kind: 'absent'}
+  | {kind: 'unmarked'}
+  | {kind: 'organization'; organizationId: string};
+
+export function projectProvenance(
+  projects: ReadonlyArray<LocalProjectRow>,
+  projectId: string | undefined,
+): ProjectProvenance {
+  if (projectId === undefined) return {kind: 'absent'};
+  const row = projects.find(project => project.projectId === projectId);
+  if (!row) return {kind: 'absent'};
+  const marker = parseMarker(row.projectDescription ?? '');
+  return marker
+    ? {kind: 'organization', organizationId: marker.organizationId}
+    : {kind: 'unmarked'};
+}
+
 export function reconstructOrganizations(
-  projects: ReadonlyArray<{
-    projectId: string;
-    projectDescription?: string;
-    status: 'joined' | 'joining' | 'left';
-  }>,
+  projects: ReadonlyArray<LocalProjectRow>,
 ): ReconstructedOrganization[] {
   const slotsByOrg = new Map<string, Partial<Record<Slot, string>>>();
   const namesByOrg = new Map<string, string>();

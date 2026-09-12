@@ -1,5 +1,5 @@
 import {markerFor} from './marker';
-import {reconstructOrganizations} from './reconstruct';
+import {projectProvenance, reconstructOrganizations} from './reconstruct';
 
 const ORG_A = 'a1b2c3d4e5f60718';
 const ORG_B = 'ffffffffffffffff';
@@ -226,5 +226,60 @@ describe('reconstructOrganizations', () => {
       },
     ]);
     expect(orgs.map(org => org.organizationId)).toEqual([ORG_A, ORG_B]);
+  });
+});
+
+describe('projectProvenance', () => {
+  const rows = [
+    {
+      projectId: 'a-m',
+      projectDescription: markerFor(ORG_A, 'm', 'A'),
+      status: 'joined' as const,
+    },
+    {
+      projectId: 'a-a-left',
+      projectDescription: markerFor(ORG_A, 'a', 'A'),
+      status: 'left' as const,
+    },
+    {projectId: 'standalone', status: 'joined' as const},
+    {
+      projectId: 'plain',
+      projectDescription: 'Plano de manejo',
+      status: 'joined' as const,
+    },
+  ];
+
+  it('reads the marker of a joined row', () => {
+    expect(projectProvenance(rows, 'a-m')).toEqual({
+      kind: 'organization',
+      organizationId: ORG_A,
+    });
+  });
+
+  it('reads the marker of a NON-joined row, which contributes no slot', () => {
+    // The status change drops the slot from the reconstruction but leaves
+    // the marker intact — that is what makes a kept-but-unjoined slot
+    // traceable to its organization.
+    expect(reconstructOrganizations(rows)).toEqual([
+      expect.objectContaining({state: 'incomplete', organizationId: ORG_A}),
+    ]);
+    expect(projectProvenance(rows, 'a-a-left')).toEqual({
+      kind: 'organization',
+      organizationId: ORG_A,
+    });
+  });
+
+  it('reports a project the device holds without a marker as unmarked', () => {
+    expect(projectProvenance(rows, 'standalone')).toEqual({kind: 'unmarked'});
+    expect(projectProvenance(rows, 'plain')).toEqual({kind: 'unmarked'});
+  });
+
+  it('reports an id the device holds no project for as absent', () => {
+    expect(projectProvenance(rows, 'gone')).toEqual({kind: 'absent'});
+    expect(projectProvenance([], 'a-m')).toEqual({kind: 'absent'});
+  });
+
+  it('reports no id at all as absent', () => {
+    expect(projectProvenance(rows, undefined)).toEqual({kind: 'absent'});
   });
 });

@@ -330,6 +330,49 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     ]);
   }, 15000);
 
+  test('a standalone active id reaches Home on the ready organization even with an invalid one on the device (F7, Greptile P1)', async () => {
+    // The reported repro: a valid standalone (unmarked) active project, a
+    // READY organization and an INVALID one on the same device. The blanket
+    // `some(state !== 'ready')` gate read the invalid organization as
+    // evidence about the active id and parked the device on
+    // OrganizationProvisioning — with no marker linking the id to the broken
+    // organization, Home on the ready organization must stay reachable.
+    const readyOrgId = 'fedcba9876543210';
+    const readyMProjectId = await freshSetup.client.createProject({
+      name: 'Monitoramento',
+      projectDescription: markerFor(readyOrgId, 'm', 'Ready Org'),
+    });
+    await freshSetup.client.createProject({
+      name: 'Alertas',
+      projectDescription: markerFor(readyOrgId, 'a', 'Ready Org'),
+    });
+    const duplicateSlotMarker = markerFor('f'.repeat(16), 'm', 'Broken Org');
+    await freshSetup.client.createProject({
+      name: 'Monitoramento',
+      projectDescription: duplicateSlotMarker,
+    });
+    await freshSetup.client.createProject({
+      name: 'Monitoramento (duplicado)',
+      projectDescription: duplicateSlotMarker,
+    });
+    const standaloneProjectId = await freshSetup.client.createProject({
+      name: 'Standalone',
+    });
+    await freshSetup.renderNavigationAsync({
+      activeProjectId: standaloneProjectId,
+    });
+
+    expect(await screen.findByTestId('MAIN.map-screen')).toBeOnTheScreen();
+    // The rootless correction still runs: the id is repointed at the ready
+    // organization's Monitoramento slot, not left on the standalone project.
+    await waitFor(() =>
+      expect(freshSetup.activeProjectId).toBe(readyMProjectId),
+    );
+    expect(
+      mockNavigation.getRootState().routes.map(route => route.name),
+    ).toEqual(['Home']);
+  }, 15000);
+
   test('a duplicate-slot organization lands on OrganizationProvisioning and fails closed without crashing', async () => {
     const duplicateSlotMarker = markerFor(
       freshSetup.orgId,
@@ -457,6 +500,15 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       );
       expect(joined).toHaveLength(3);
     });
+    // Provenance note (F7): a local leave DELETES the row — the core keeps
+    // no `left` row for it — so the active id names no local project at all
+    // and carries no marker to trace. That absence is the evidence here.
+    await waitFor(async () => {
+      const rows = await freshSetup.manager.listProjects();
+      expect(rows.some(project => project.projectId === activeMProjectId)).toBe(
+        false,
+      );
+    });
     expect(
       await screen.findByText('Setting up your Organization…'),
     ).toBeOnTheScreen();
@@ -477,5 +529,11 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     // fail-closed on the recovery surface instead of operating org B.
     expect(freshSetup.activeProjectId).not.toBe(readyMProjectId);
     expect(freshSetup.activeProjectId).not.toBe(readyAProjectId);
+    // Stronger than the two negatives: the only two outcomes the leave may
+    // leave behind are the left slot's own id (the gate's reset unmounts
+    // LeaveProject before its mutation callback clears it) or `undefined`
+    // (the callback ran first). Anything else — including a third project —
+    // would be a silent repoint.
+    expect([activeMProjectId, undefined]).toContain(freshSetup.activeProjectId);
   }, 20000);
 });
