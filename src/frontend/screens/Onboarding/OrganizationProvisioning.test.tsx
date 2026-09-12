@@ -11,6 +11,10 @@ import {useOrganizations} from '../../hooks/organization/useOrganizations';
 import {useCreateOrganization} from '../../hooks/organization/useCreateOrganization';
 import {useDiscardIncompleteOrganization} from '../../hooks/organization/useDiscardIncompleteOrganization';
 import {markerFor} from '../../lib/organization/marker';
+import {
+  organizationCreationProvenanceStore,
+  recordOrganizationCreationProvenance,
+} from '../../lib/organization/creationProvenance';
 import type {DiscardResult} from '../../lib/organization/fanout';
 import type {InviteLike} from '../../lib/organization/bundle';
 import type {ReconstructedOrganization} from '../../lib/organization/reconstruct';
@@ -70,6 +74,7 @@ function mockDiscard(
     status: 'idle',
     error: undefined,
     result: undefined,
+    discardedOrganizationId: undefined,
     ...overrides,
   });
 }
@@ -98,6 +103,34 @@ const Stack = createNativeStackNavigator<AppStackParamsList>();
 const HomeStub = () => <Text>HOME-REACHED</Text>;
 const SuccessStub = () => <Text>START-OVER-FORK-REACHED</Text>;
 
+type ProvisioningProps = React.ComponentProps<typeof OrganizationProvisioning>;
+
+/**
+ * Every `navigation.reset` the screen dispatches, in order. Two resets in
+ * one commit settle on the last route, so the rendered screen alone cannot
+ * tell a clean hop from a flash through another screen.
+ */
+let resetCalls: Array<Parameters<ProvisioningProps['navigation']['reset']>[0]>;
+
+const RecordingProvisioning = (props: ProvisioningProps) => {
+  const {navigation} = props;
+  // Memoized on the real navigation object so the screen's effect deps stay
+  // as stable as they are in the app.
+  const recordingNavigation = React.useMemo(
+    () => ({
+      ...navigation,
+      reset: (state: Parameters<typeof navigation.reset>[0]) => {
+        resetCalls.push(state);
+        navigation.reset(state);
+      },
+    }),
+    [navigation],
+  );
+  return (
+    <OrganizationProvisioning {...props} navigation={recordingNavigation} />
+  );
+};
+
 /**
  * ONE navigator tree for the initial render and every rerender: a rerender
  * whose screen set differs from the mounted one remounts the navigator and
@@ -110,7 +143,7 @@ function navigatorTree() {
         <Stack.Navigator>
           <Stack.Screen
             name="OrganizationProvisioning"
-            component={OrganizationProvisioning}
+            component={RecordingProvisioning}
             options={{headerShown: false}}
           />
           <Stack.Screen name="Home" component={HomeStub} />
@@ -158,6 +191,8 @@ let alertSpy: jest.SpyInstance;
 
 beforeEach(() => {
   jest.clearAllMocks();
+  resetCalls = [];
+  organizationCreationProvenanceStore.setState({organizationIds: []});
   mockOrganizations([]);
   mockCreateOrganization();
   mockDiscard();
@@ -189,8 +224,45 @@ describe('OrganizationProvisioning', () => {
     expect(screen.queryByText('HOME-REACHED')).not.toBeOnTheScreen();
   });
 
+  test('refuses to finish a setup this device cannot prove it started', async () => {
+    // An organization degraded by a leave/removal is `incomplete` with a name
+    // too — indistinguishable from an interrupted create without durable
+    // provenance. Finishing it would fabricate an unrelated project and mark
+    // the organization ready without the original slot's data or members.
+    const user = userEvent.setup();
+    mockOrganizations([incompleteOrganization]);
+    await renderScreen();
+
+    expect(
+      screen.queryByTestId('ORG.provisioning-retry-btn'),
+    ).not.toBeOnTheScreen();
+    expect(
+      screen.getByText(
+        'This Organization was not left half-created on this device, so its setup cannot be finished here.',
+      ),
+    ).toBeOnTheScreen();
+    // The escape hatch stays: the setup is not a permanent lockout.
+    await user.press(screen.getByTestId('ORG.provisioning-discard-btn'));
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  test('stays on the repair surface while another organization is ready', async () => {
+    // Mixed state: `some(ready)` must not send the invalid organization's
+    // only diagnosis surface back to Home the moment it renders.
+    mockOrganizations([readyOrganization, invalidOrganization]);
+    await renderScreen();
+
+    expect(screen.queryByText('HOME-REACHED')).not.toBeOnTheScreen();
+    expect(
+      screen.getByText(
+        'Something is wrong with this Organization. Contact support.',
+      ),
+    ).toBeOnTheScreen();
+  });
+
   test('offers to finish setting up for an incomplete organization with a name', async () => {
     mockOrganizations([incompleteOrganization]);
+    recordOrganizationCreationProvenance(incompleteOrganization.organizationId);
     await renderScreen();
 
     expect(screen.getByTestId('ORG.provisioning-retry-btn')).toBeOnTheScreen();
@@ -200,6 +272,7 @@ describe('OrganizationProvisioning', () => {
   test('pressing the retry resumes the reconstructed organization (idempotent fan-out)', async () => {
     const user = userEvent.setup();
     mockOrganizations([incompleteOrganization]);
+    recordOrganizationCreationProvenance(incompleteOrganization.organizationId);
     await renderScreen();
 
     await user.press(screen.getByTestId('ORG.provisioning-retry-btn'));
@@ -222,6 +295,7 @@ describe('OrganizationProvisioning', () => {
     // The invite sheet completes the organization — fabricating the slot
     // here would create a private project alongside it.
     mockOrganizations([incompleteOrganization]);
+    recordOrganizationCreationProvenance(incompleteOrganization.organizationId);
     mockInvites([
       {
         inviteId: 'invite-a',
@@ -242,6 +316,7 @@ describe('OrganizationProvisioning', () => {
 
   test('hides the retry button while the fan-out is running', async () => {
     mockOrganizations([incompleteOrganization]);
+    recordOrganizationCreationProvenance(incompleteOrganization.organizationId);
     mockCreateOrganization({status: 'creating'});
     await renderScreen();
 
@@ -294,6 +369,7 @@ describe('OrganizationProvisioning', () => {
     mockOrganizations([namelessIncompleteOrganization]);
     mockDiscard({
       status: 'success',
+      discardedOrganizationId: 'd'.repeat(16),
       result: {
         ok: true,
         removed: [{slot: 'a', projectId: 'project-a'}],
@@ -305,6 +381,57 @@ describe('OrganizationProvisioning', () => {
     expect(
       await screen.findByText('START-OVER-FORK-REACHED'),
     ).toBeOnTheScreen();
+  });
+
+  test('a successful discard next to a ready organization goes straight to the start-over fork, never through Home', async () => {
+    // N10a: the discarded setup is filtered out of the collection, so the
+    // device looks "ready, nothing degraded" on the same commit the discard
+    // result lands. The discard owns that navigation — no Home flash first.
+    mockOrganizations([readyOrganization]);
+    mockDiscard({
+      status: 'success',
+      discardedOrganizationId: 'c'.repeat(16),
+      result: {
+        ok: true,
+        removed: [{slot: 'm', projectId: 'project-m'}],
+        skipped: [],
+      } satisfies DiscardResult,
+    });
+    await renderScreen();
+
+    expect(
+      await screen.findByText('START-OVER-FORK-REACHED'),
+    ).toBeOnTheScreen();
+    expect(resetCalls).toEqual([{index: 0, routes: [{name: 'Success'}]}]);
+  });
+
+  test('a successful discard stays on the repair surface while another degraded organization remains', async () => {
+    // Greptile P1: a discard that frees the device must not hide another
+    // organization that still needs repair — the start-over fork only owns
+    // the next decision when NOTHING on the device is degraded anymore.
+    const user = userEvent.setup();
+    mockOrganizations([incompleteOrganization, invalidOrganization]);
+    mockDiscard({
+      status: 'success',
+      result: {
+        ok: true,
+        removed: [{slot: 'm', projectId: 'project-m'}],
+        skipped: [],
+      } satisfies DiscardResult,
+    });
+    await renderScreen();
+
+    await user.press(screen.getByTestId('ORG.provisioning-discard-btn'));
+    pressAlertButton('Discard and start over');
+
+    // The discarded setup is gone; the remaining invalid organization's
+    // diagnosis stays on screen — no automatic hop to the start-over fork.
+    expect(
+      await screen.findByText(
+        'Something is wrong with this Organization. Contact support.',
+      ),
+    ).toBeOnTheScreen();
+    expect(screen.queryByText('START-OVER-FORK-REACHED')).not.toBeOnTheScreen();
   });
 
   test('a partial discard names each skipped project and why, and stays put', async () => {
