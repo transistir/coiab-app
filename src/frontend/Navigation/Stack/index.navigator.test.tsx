@@ -415,4 +415,67 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     // organization's slot, not the ready organization's.
     expect(freshSetup.activeProjectId).toBe(degradedMProjectId);
   }, 15000);
+
+  test('leaving the active slot while another organization is ready never repoints the active id at it (F6)', async () => {
+    // F6: the leave clears the active id, and the slot it left stops being
+    // reconstructed at all (only `joined` rows contribute slots) — so the
+    // active id is claimed by NO organization and the legacy SPEC 1.3
+    // correction used to repoint it at the ready organization's m slot.
+    // On the next start that ready slot makes the device look healthy and
+    // Home operates the OTHER organization with no notice.
+    const readyOrgId = 'fedcba9876543210';
+    const readyMProjectId = await freshSetup.client.createProject({
+      name: 'Monitoramento',
+      projectDescription: markerFor(readyOrgId, 'm', 'Ready Org'),
+    });
+    const readyAProjectId = await freshSetup.client.createProject({
+      name: 'Alertas',
+      projectDescription: markerFor(readyOrgId, 'a', 'Ready Org'),
+    });
+    const activeMProjectId = await freshSetup.client.createProject({
+      name: 'Monitoramento',
+      projectDescription: markerFor(freshSetup.orgId, 'm', freshSetup.orgName),
+    });
+    await freshSetup.client.createProject({
+      name: 'Alertas',
+      projectDescription: markerFor(freshSetup.orgId, 'a', freshSetup.orgName),
+    });
+    await freshSetup.renderNavigationAsync({
+      activeProjectId: activeMProjectId,
+    });
+
+    expect(await screen.findByTestId('MAIN.map-screen')).toBeOnTheScreen();
+    const navigation = mockNavigation;
+    await act(async () =>
+      navigation.navigate('LeaveProject', {memberType: 'participant'}),
+    );
+    await fireEvent.press(await screen.findByText('Yes, Leave'));
+
+    await waitFor(async () => {
+      const joined = (await freshSetup.manager.listProjects()).filter(
+        project => project.status === 'joined',
+      );
+      expect(joined).toHaveLength(3);
+    });
+    expect(
+      await screen.findByText('Setting up your Organization…'),
+    ).toBeOnTheScreen();
+    // Let the post-leave project refresh settle: the buggy correction fires
+    // from an effect on the refreshed organization list.
+    await act(async () => {
+      await freshSetup.manager.listProjects();
+    });
+
+    expect(navigation.getRootState().routes.map(route => route.name)).toEqual([
+      'OrganizationProvisioning',
+    ]);
+    expect(screen.queryByTestId('MAIN.map-screen')).not.toBeOnTheScreen();
+    // NO silent switch: the active id is not repointed at EITHER slot of the
+    // other organization. It stays on the left slot's id, exactly as the
+    // single-organization leave already leaves it (the gate's reset unmounts
+    // LeaveProject before its mutation callback clears it) — stale, but
+    // fail-closed on the recovery surface instead of operating org B.
+    expect(freshSetup.activeProjectId).not.toBe(readyMProjectId);
+    expect(freshSetup.activeProjectId).not.toBe(readyAProjectId);
+  }, 20000);
 });

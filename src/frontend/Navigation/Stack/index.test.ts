@@ -170,6 +170,53 @@ describe('resolveActiveProjectCorrection (SPEC 1.3 + F1)', () => {
     ).toEqual({kind: 'degraded'});
   });
 
+  test('a cleared active id is not silently repointed while an organization is degraded (F6)', () => {
+    // The one-tap leave flow clears the active id: the device is left with
+    // NO active id, org A degraded (its remaining slot only) and org B
+    // ready. `undefined` is claimed by no organization, so the legacy
+    // branch would repoint it at B's m slot — the silent cross-org switch
+    // F1 forbids, just reached through the cleared id instead of A's slot.
+    const organizations = [
+      incompleteOrg('a1', {a: 'proj-a-a'}),
+      readyOrg('b2', 'proj-b-m', 'proj-b-a'),
+    ];
+    expect(resolveActiveProjectCorrection(organizations, undefined)).toEqual({
+      kind: 'degraded',
+    });
+  });
+
+  test('a vanished active id claimed by no organization degrades rather than switching orgs (F6)', () => {
+    // `reconstruct` contributes a slot only for `joined` rows, so the slot
+    // this device LOST (left, or removed by another device) is absent from
+    // `org.slots` — the still-persisted active id matches no organization
+    // at all. With a non-ready organization on the device that id cannot be
+    // told apart from a rootless one, so it fails closed.
+    const organizations = [
+      incompleteOrg('a1', {a: 'proj-a-a'}),
+      readyOrg('b2', 'proj-b-m', 'proj-b-a'),
+    ];
+    expect(resolveActiveProjectCorrection(organizations, 'proj-a-m')).toEqual({
+      kind: 'degraded',
+    });
+  });
+
+  test('an unclaimed id is still silently corrected when EVERY organization is ready (legacy stays intact, SPEC 1.3)', () => {
+    // The conservative gate only suppresses the legacy correction while
+    // something is non-ready: with an all-ready device no slot can have
+    // vanished, so the documented rootless behaviour is unchanged.
+    const organizations = [
+      readyOrg('a1', 'proj-a-m', 'proj-a-a'),
+      readyOrg('b2', 'proj-b-m', 'proj-b-a'),
+    ];
+    expect(resolveActiveProjectCorrection(organizations, undefined)).toEqual({
+      kind: 'correct',
+      projectId: 'proj-a-m',
+    });
+    expect(
+      resolveActiveProjectCorrection(organizations, 'unrelated-project'),
+    ).toEqual({kind: 'correct', projectId: 'proj-a-m'});
+  });
+
   test('without a ready organization nothing is corrected (the caller gates on orgStatus)', () => {
     expect(
       resolveActiveProjectCorrection(

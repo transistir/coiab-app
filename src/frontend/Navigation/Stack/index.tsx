@@ -96,13 +96,15 @@ export function getInitialRoute(
  * active project id once an Organization is ready:
  * - 'none': the id is a slot of a ready organization — nothing to correct.
  * - 'correct': the id is a slot of NO organization (a standalone/debug
- *   switch, or the pre-org era's persisted id) — the documented legacy
- *   case; the caller silently repoints it at the first ready
- *   organization's Monitoramento slot, exactly as before.
- * - 'degraded': the id IS a slot of an organization, but that organization
- *   is not ready (incomplete or invalid) while another one is — the
- *   active organization degraded. NEVER silently switch to the other
- *   organization: the caller routes to the recovery surface
+ *   switch, or the pre-org era's persisted id) AND every organization on
+ *   the device is ready — the documented legacy case; the caller silently
+ *   repoints it at the first ready organization's Monitoramento slot,
+ *   exactly as before.
+ * - 'degraded': the id IS a slot of an organization that is not ready
+ *   (incomplete or invalid) while another one is, OR it is claimed by no
+ *   organization while some organization is non-ready (F6: the active slot
+ *   itself vanished, so nothing claims it). NEVER silently switch to the
+ *   other organization: the caller routes to the recovery surface
  *   (OrganizationProvisioning) instead, reusing the gate's mechanism.
  */
 export type ActiveProjectCorrection =
@@ -125,6 +127,18 @@ export function resolveActiveProjectCorrection(
   // A slot of a NON-ready organization (incomplete or invalid): the
   // active organization degraded while another is ready.
   if (organizations.some(isSlotOf)) return {kind: 'degraded'};
+  // F6: a slot the device LOST (left, or removed by another device) is not
+  // reconstructed at all — `reconstruct` contributes a slot only for
+  // `joined` rows — so when the ACTIVE slot is the one that vanished, no
+  // organization claims the id (and the leave flow clears it outright),
+  // making it indistinguishable from a rootless id. Correcting it would be
+  // the same silent cross-organization switch the branch above forbids, so
+  // the legacy correction is allowed ONLY on an all-ready device, where no
+  // slot can have vanished; anything non-ready fails closed onto the
+  // recovery surface, which doubles as the diagnosis for the lost slot.
+  if (organizations.some(org => org.state !== 'ready')) {
+    return {kind: 'degraded'};
+  }
   // Rootless id (or no id at all): never was an organization slot origin.
   return {kind: 'correct', projectId: readyOrganization.slots.m};
 }
