@@ -15,10 +15,8 @@ import {
   useActiveProjectId,
   useActiveProjectIdActions,
 } from '../../contexts/ActiveProjectIdStoreContext';
-import {
-  useOrganizations,
-  usePrimaryOrganization,
-} from '../../hooks/organization/useOrganizations';
+import {useOrganizations} from '../../hooks/organization/useOrganizations';
+import type {ReconstructedOrganization} from '../../lib/organization/reconstruct';
 import {AuthScreen} from '../../screens/AuthScreen';
 import {Success} from '../../screens/Onboarding/Success';
 import {CreateOrganization} from '../../screens/Onboarding/CreateOrganization';
@@ -65,6 +63,12 @@ export function getInitialRoute(
   deviceName: string | undefined,
   projectId: string | undefined,
   orgStatus: OrgGateStatus,
+  /**
+   * F1: the ACTIVE project is a slot of an organization that degraded while
+   * another one is ready (resolveActiveProjectCorrection → 'degraded'). The
+   * device must not land on Home operating the other organization.
+   */
+  activeProjectDegraded: boolean = false,
 ): keyof AppStackParamsList {
   if (authState === 'unauthenticated') {
     return 'AuthScreen';
@@ -81,7 +85,48 @@ export function getInitialRoute(
     // org fork regardless of any active project id.
     return 'Success';
   }
+  if (activeProjectDegraded) {
+    return 'OrganizationProvisioning';
+  }
   return 'Home';
+}
+
+/**
+ * What the active-id correction (SPEC 1.3) must do with the persisted
+ * active project id once an Organization is ready:
+ * - 'none': the id is a slot of a ready organization — nothing to correct.
+ * - 'correct': the id is a slot of NO organization (a standalone/debug
+ *   switch, or the pre-org era's persisted id) — the documented legacy
+ *   case; the caller silently repoints it at the first ready
+ *   organization's Monitoramento slot, exactly as before.
+ * - 'degraded': the id IS a slot of an organization, but that organization
+ *   is not ready (incomplete or invalid) while another one is — the
+ *   active organization degraded. NEVER silently switch to the other
+ *   organization: the caller routes to the recovery surface
+ *   (OrganizationProvisioning) instead, reusing the gate's mechanism.
+ */
+export type ActiveProjectCorrection =
+  {kind: 'none'} | {kind: 'correct'; projectId: string} | {kind: 'degraded'};
+
+export function resolveActiveProjectCorrection(
+  organizations: ReconstructedOrganization[],
+  activeProjectId: string | undefined,
+): ActiveProjectCorrection {
+  const readyOrganization = organizations.find(org => org.state === 'ready');
+  // Without a ready organization there is nothing to correct TO (the
+  // caller only runs this once `orgStatus === 'ready'`).
+  if (!readyOrganization) return {kind: 'none'};
+  const isSlotOf = (org: ReconstructedOrganization) =>
+    activeProjectId !== undefined &&
+    (org.slots.m === activeProjectId || org.slots.a === activeProjectId);
+  if (organizations.some(org => org.state === 'ready' && isSlotOf(org))) {
+    return {kind: 'none'};
+  }
+  // A slot of a NON-ready organization (incomplete or invalid): the
+  // active organization degraded while another is ready.
+  if (organizations.some(isSlotOf)) return {kind: 'degraded'};
+  // Rootless id (or no id at all): never was an organization slot origin.
+  return {kind: 'correct', projectId: readyOrganization.slots.m};
 }
 
 // Lives outside ActiveProjectProvider: adding or changing the active project
@@ -145,25 +190,58 @@ function OrganizationCompletion({
  * to the fail-closed surface the startup gate would have picked. A MIXED
  * state (something else still ready) keeps Home: there the degraded
  * organization is reached through its repair entry instead.
+ *
+ * The same reset also carries the F1 cross-org degradation at RUNTIME: when
+ * the ACTIVE project belongs to an organization that degrades while another
+ * one is ready (resolveActiveProjectCorrection → 'degraded'), the active id
+ * must NOT be silently rewritten to the ready organization's slot — the user
+ * is routed to OrganizationProvisioning so the recovery UX renders instead.
+ * A device that already boots degraded is handled declaratively by
+ * getInitialRoute, not here: an imperative reset dispatched from this layout
+ * effect on the navigator's FIRST commit is dropped or undone by the router
+ * (the same commit-ordering hazard OrganizationCompletion documents above),
+ * so the startup gate owns the cold start and this effect owns transitions.
  */
-function OrganizationDegradationGate({
+export function OrganizationDegradationGate({
   state,
   navigation,
   enabled,
   orgStatus,
+  activeProjectDegraded = false,
 }: Pick<Parameters<NavigatorLayout>[0], 'state' | 'navigation'> & {
   enabled: boolean;
   orgStatus: OrgGateStatus;
+  /** resolveActiveProjectCorrection(...) === 'degraded' for the active id. */
+  activeProjectDegraded?: boolean;
 }) {
   const previousOrgStatus = React.useRef(orgStatus);
+  // Starts false, not at the prop value: a device that MOUNTS already in
+  // the degraded state (the degradation happened before the navigator
+  // mounted, cold start into the mixed state) must route once too.
+  const previousDegraded = React.useRef(false);
   React.useEffect(() => {
+    // F2 (senior P1-1): while disabled the transition is NOT consumed —
+    // the ref keeps the last value seen while ENABLED, so a
+    // ready→provisioning transition observed during the disabled window
+    // re-fires when enabled returns instead of being lost.
+    if (!enabled) return;
     const previous = previousOrgStatus.current;
     previousOrgStatus.current = orgStatus;
-    if (!enabled) return;
     if (previous !== 'ready' || orgStatus !== 'provisioning') return;
     if (state.routes[state.index]?.name === 'OrganizationProvisioning') return;
     navigation.reset({index: 0, routes: [{name: 'OrganizationProvisioning'}]});
   }, [enabled, orgStatus, state, navigation]);
+  React.useEffect(() => {
+    // Same preservation rule as above for the degraded-active signal.
+    if (!enabled) return;
+    const previous = previousDegraded.current;
+    previousDegraded.current = activeProjectDegraded;
+    // Edge-triggered: the routing fires when the signal first becomes
+    // true, not on every render while the state persists.
+    if (previous || !activeProjectDegraded) return;
+    if (state.routes[state.index]?.name === 'OrganizationProvisioning') return;
+    navigation.reset({index: 0, routes: [{name: 'OrganizationProvisioning'}]});
+  }, [enabled, activeProjectDegraded, state, navigation]);
   return null;
 }
 
@@ -188,36 +266,34 @@ export const RootStackNavigator = () => {
     !deviceInfo.name ||
     !activeProjectId;
 
-  const primaryOrganization = usePrimaryOrganization();
-
-  // SPEC 1.3: the Organization is the root product state, so once an
-  // Organization is ready, a persisted active id that is a slot of no ready
-  // organization (a standalone/debug switch) does not survive into Home —
-  // getInitialRoute stays pure; this effect corrects the stored id to the
-  // primary organization's Monitoramento slot instead.
+  // SPEC 1.3 + F1 (review round 2): the Organization is the root product
+  // state, so once an Organization is ready, a persisted active id that is
+  // a slot of no ready organization does not survive into Home. The
+  // correction is decided by resolveActiveProjectCorrection:
+  // - ROOTLESS ids (a standalone/debug switch, the pre-org era) are still
+  //   silently corrected to the first ready organization's Monitoramento
+  //   slot — getInitialRoute stays pure.
+  // - A DEGRADED active organization (its slot is no longer a ready slot
+  //   while another organization is ready) is never silently switched —
+  //   that rewrite would hand the user another organization's data with
+  //   no notice. Instead the recovery UX is routed to: getInitialRoute
+  //   opens on OrganizationProvisioning when the device already boots
+  //   degraded, and OrganizationDegradationGate resets there when the
+  //   degradation happens while the app runs.
   // Storybook builds seed the Storybook Project and resolve its preset/doc
   // ids for the flow screens; rewriting the active id to an organization
   // slot here makes those seeded ids unreadable (fields not found -> guard
   // goBack, observation 404). The QA captures must see the seeded project.
+  const activeProjectCorrection =
+    process.env.EXPO_PUBLIC_STORYBOOK_ENABLED !== 'true' &&
+    orgStatus === 'ready'
+      ? resolveActiveProjectCorrection(organizations, activeProjectId)
+      : ({kind: 'none'} as const);
+  const activeProjectDegraded = activeProjectCorrection.kind === 'degraded';
   React.useEffect(() => {
-    if (process.env.EXPO_PUBLIC_STORYBOOK_ENABLED === 'true') return;
-    if (orgStatus !== 'ready') return;
-    const activeIsReadyOrgSlot = organizations.some(
-      org =>
-        org.state === 'ready' &&
-        (org.slots.m === activeProjectId || org.slots.a === activeProjectId),
-    );
-    if (activeIsReadyOrgSlot) return;
-    if (primaryOrganization?.state === 'ready') {
-      setActiveProjectId(primaryOrganization.slots.m);
-    }
-  }, [
-    organizations,
-    orgStatus,
-    activeProjectId,
-    primaryOrganization,
-    setActiveProjectId,
-  ]);
+    if (activeProjectCorrection.kind !== 'correct') return;
+    setActiveProjectId(activeProjectCorrection.projectId);
+  }, [activeProjectCorrection, setActiveProjectId]);
 
   const layout: NavigatorLayout = ({children, state, navigation}) => (
     <SafeAreaView
@@ -241,6 +317,7 @@ export const RootStackNavigator = () => {
         state={state}
         navigation={navigation}
         orgStatus={orgStatus}
+        activeProjectDegraded={activeProjectDegraded}
         enabled={security.authState === 'authenticated' && !!deviceInfo.name}
       />
       <React.Suspense fallback={<FullScreenCenteredLoader />}>
@@ -297,6 +374,7 @@ export const RootStackNavigator = () => {
     deviceInfo.name,
     activeProjectId,
     orgStatus,
+    activeProjectDegraded,
   );
 
   return (

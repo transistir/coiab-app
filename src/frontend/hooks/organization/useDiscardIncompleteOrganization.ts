@@ -7,6 +7,7 @@ import {
   type DiscardResult,
 } from '../../lib/organization/fanout';
 import {projectsQueryKey} from '../../lib/organization/queryKeys';
+import {clearOrganizationCreationProvenance} from '../../lib/organization/creationProvenance';
 
 export type DiscardOrganizationStatus =
   'idle' | 'discarding' | 'success' | 'error';
@@ -92,6 +93,18 @@ export function useDiscardIncompleteOrganization() {
         };
       } catch (e) {
         outcome = {ok: false, error: e};
+      }
+
+      // review round 2 (F4): a COMPLETED discard removed every slot project
+      // of the half-built organization, so this device no longer holds an
+      // unfinished creation for it — the durable provenance record must go
+      // with it, or the escape hatch of a refused create leaves a permanent
+      // MMKV entry. Durable cleanup is never token-gated (same as the
+      // invalidation below); a refused/failed discard keeps the record,
+      // because the organization (and its interrupted create) is still on
+      // the device.
+      if (outcome.ok && outcome.result.ok) {
+        clearOrganizationCreationProvenance(organizationId);
       }
 
       try {

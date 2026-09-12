@@ -377,4 +377,42 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     expect(headerTitle).toHaveTextContent('Monitoramento');
     expect(screen.queryByText('Unrelated')).not.toBeOnTheScreen();
   });
+
+  test('a degraded active organization is not silently switched to the ready one (F1)', async () => {
+    // Review round 2 F1: org B is ready while the ACTIVE organization (A)
+    // holds only its m slot — a leave or a remote removal degraded it. The
+    // buggy effect silently rewrote the active project to B's m slot
+    // (data-loss-adjacent: the user would operate another organization
+    // with no notice). The fix keeps the active id on A's slot and routes
+    // to the recovery surface (OrganizationProvisioning) through the same
+    // mechanism OrganizationDegradationGate uses.
+    const readyOrgId = 'fedcba9876543210';
+    await freshSetup.client.createProject({
+      name: 'Monitoramento',
+      projectDescription: markerFor(readyOrgId, 'm', 'Ready Org'),
+    });
+    await freshSetup.client.createProject({
+      name: 'Alertas',
+      projectDescription: markerFor(readyOrgId, 'a', 'Ready Org'),
+    });
+    const degradedMProjectId = await freshSetup.client.createProject({
+      name: 'Monitoramento',
+      projectDescription: markerFor(freshSetup.orgId, 'm', freshSetup.orgName),
+    });
+    await freshSetup.renderNavigationAsync({
+      activeProjectId: degradedMProjectId,
+    });
+
+    // The recovery surface renders — NOT Home operating the ready org.
+    expect(
+      await screen.findByText('Setting up your Organization…'),
+    ).toBeOnTheScreen();
+    expect(
+      mockNavigation.getRootState().routes.map(route => route.name),
+    ).toEqual(['OrganizationProvisioning']);
+    expect(screen.queryByTestId('MAIN.map-screen')).not.toBeOnTheScreen();
+    // NO silent switch: the persisted active id is still the degraded
+    // organization's slot, not the ready organization's.
+    expect(freshSetup.activeProjectId).toBe(degradedMProjectId);
+  }, 15000);
 });

@@ -298,6 +298,42 @@ describe('troca serializada e encerramento da origem (CA06/CA08/CA11/CA14)', () 
     );
   });
 
+  test('intenção recusada publica o motivo da recusa, não um false silencioso (§6.2:215)', async () => {
+    // Review round 2 F5: o caller de intenção diferente recebia `false`
+    // sem nenhuma explicação — §6.2:215 exige que a troca bloqueada
+    // apresente o motivo. A recusa é publicada na MESMA superfície de
+    // erro dos demais bloqueios (o campo `error` da instância).
+    const {activation, getProject} = switchSetup();
+    await activation.initialize();
+    const original = getProject.getMockImplementation()!;
+    let release!: () => void;
+    const delay = new Promise<void>(resolve => {
+      release = resolve;
+    });
+    getProject.mockImplementation(async id => {
+      if (id === 'B-m') await delay;
+      return original(id);
+    });
+
+    // Monitoramento fica em voo; Alertas para o MESMO alvo é intenção
+    // distinta e é recusada.
+    const toMonitoramento = activation.activate('B');
+    const toAlertas = activation.activate('B', {area: 'alertas'});
+
+    // O caller recusado observa o motivo publicado E o false.
+    expect(await toAlertas).toBe(false);
+    expect(activation.instance.getState().error).toBe('operation-in-progress');
+
+    // A intenção em voo conclui a si mesma, intacta.
+    release();
+    expect(await toMonitoramento).toBe(true);
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'ready',
+      projectId: 'B-m',
+      error: undefined,
+    });
+  });
+
   test('perda de acesso à própria organização encaminha à recuperação', async () => {
     const {activation, getProject, store} = switchSetup();
     await activation.initialize();

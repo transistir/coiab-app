@@ -109,7 +109,15 @@ export function createOrganizationActivation({
     perform: () => Promise<boolean>,
   ): Promise<boolean> {
     if (inFlight) {
-      return inFlightKey === key ? inFlight : Promise.resolve(false);
+      if (inFlightKey === key) return inFlight;
+      // review round 2 (F5, §6.2:215): a refused intent is never silent.
+      // The rejection is published on the same error surface the other
+      // blocked/failed switch paths use (the instance's `error` field),
+      // so the caller can explain WHY the request did not run instead of
+      // observing a bare `false`. The in-flight operation keeps owning
+      // the status; its own settlement overwrites this error as usual.
+      instance.setState({error: 'operation-in-progress'});
+      return Promise.resolve(false);
     }
     const operation = perform();
     inFlight = operation;

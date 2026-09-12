@@ -1,67 +1,38 @@
 import * as v from 'valibot';
 
+import {
+  AREAS,
+  type Area,
+  type EstadoOrganizacoes,
+  type EtapaArea,
+  type OrganizacaoLocal,
+  type TemplateRef,
+} from './documento';
+
 /**
  * The durable COIAB organization layer (SPEC A §4.2): one versioned product
  * document under the MMKV key `CoiabOrganizations` — registration, creation
  * state, the #31 materialization journal and the pending confirmation are
  * FIELDS of this document, not separate entities or keys. The type and field
  * names below are the normative contract shared with SPEC B (creation flow).
+ *
+ * Single source of truth (review round 2 F3): the typed model (Area, EtapaArea,
+ * OrganizacaoLocal, EstadoOrganizacoes, TemplateRef, AREAS) is canonically
+ * defined in documento.ts — the §4.2 document shared with the
+ * materialization layer — and only RE-EXPORTED here. This module keeps the
+ * domain functions and the valibot schemas; the type definitions are never
+ * duplicated in parallel.
  */
-
-export type Area = 'monitoramento' | 'alertas';
-
-export const AREAS: readonly Area[] = ['monitoramento', 'alertas'];
-
-export type TemplateRef = {
-  /** Version of the area's canonical category package */
-  versao: string;
-  /** Hash of the package pinned at distribution */
-  hash: string;
+export type {
+  Area,
+  EstadoOrganizacoes,
+  EtapaArea,
+  OrganizacaoLocal,
+  TemplateRef,
 };
-
-/** #31 materialization journal: one record per area. */
-export type EtapaArea = {
-  etapa: 'ausente' | 'criando' | 'criado' | 'importando' | 'verificado';
-  /** Public core id, written before any import */
-  projectId: string | null;
-  /** Pinned on the first attempt for this area */
-  template: TemplateRef | null;
-  /** listProjects() taken immediately before createProject */
-  idsAntesDaCriacao: string[] | null;
-};
+export {AREAS};
 
 export type EstadoOrganizacao = 'preparando' | 'falha_recuperavel' | 'pronta';
-
-export type OrganizacaoLocal = {
-  /** Opaque, stable, locally generated — not a name, path or project id */
-  id: string;
-  /** Required, trimmed */
-  nome: string;
-  estado: EstadoOrganizacao;
-  /** True when `pronta` is published; false after “Abrir organização” */
-  confirmacaoPendente: boolean;
-  materializacao: {
-    monitoramento: EtapaArea;
-    alertas: EtapaArea;
-  };
-  /** Area of the running step; null when no step has started */
-  areaEmExecucao: Area | null;
-  /** Never carries the organization name */
-  ultimoErro: null | {
-    codigo: string;
-    area: Area | null;
-    ocorridoEm: string;
-  };
-};
-
-export type EstadoOrganizacoes = {
-  versao: 1;
-  organizacoes: OrganizacaoLocal[];
-  ativa: null | {
-    organizacaoId: string;
-    area: Area;
-  };
-};
 
 export const AREA_SCHEMA = v.picklist(['monitoramento', 'alertas']);
 
