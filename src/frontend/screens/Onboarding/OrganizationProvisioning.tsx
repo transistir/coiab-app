@@ -178,11 +178,15 @@ export const OrganizationProvisioning = ({
   const hasDegradedOrganization = organizations.some(
     org => org.state !== 'ready',
   );
+  const discardSucceeded = discardStatus === 'success' && !!discardResult?.ok;
   React.useEffect(() => {
+    // Skip after an ok discard: the effect below routes to Success, and a
+    // Home reset here would flash Home first (post-discard Home flash).
+    if (discardSucceeded) return;
     if (isReady && !hasDegradedOrganization) {
       navigation.reset({index: 0, routes: [{name: 'Home'}]});
     }
-  }, [isReady, hasDegradedOrganization, navigation]);
+  }, [isReady, hasDegradedOrganization, discardSucceeded, navigation]);
 
   // A settled discard either freed the device (`ok`) or refused to remove
   // something: then the setup is still here, the lines below say which

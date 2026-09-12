@@ -103,6 +103,34 @@ const Stack = createNativeStackNavigator<AppStackParamsList>();
 const HomeStub = () => <Text>HOME-REACHED</Text>;
 const SuccessStub = () => <Text>START-OVER-FORK-REACHED</Text>;
 
+type ProvisioningProps = React.ComponentProps<typeof OrganizationProvisioning>;
+
+/**
+ * Every `navigation.reset` the screen dispatches, in order. Two resets in
+ * one commit settle on the last route, so the rendered screen alone cannot
+ * tell a clean hop from a flash through another screen.
+ */
+let resetCalls: Array<Parameters<ProvisioningProps['navigation']['reset']>[0]>;
+
+const RecordingProvisioning = (props: ProvisioningProps) => {
+  const {navigation} = props;
+  // Memoized on the real navigation object so the screen's effect deps stay
+  // as stable as they are in the app.
+  const recordingNavigation = React.useMemo(
+    () => ({
+      ...navigation,
+      reset: (state: Parameters<typeof navigation.reset>[0]) => {
+        resetCalls.push(state);
+        navigation.reset(state);
+      },
+    }),
+    [navigation],
+  );
+  return (
+    <OrganizationProvisioning {...props} navigation={recordingNavigation} />
+  );
+};
+
 /**
  * ONE navigator tree for the initial render and every rerender: a rerender
  * whose screen set differs from the mounted one remounts the navigator and
@@ -115,7 +143,7 @@ function navigatorTree() {
         <Stack.Navigator>
           <Stack.Screen
             name="OrganizationProvisioning"
-            component={OrganizationProvisioning}
+            component={RecordingProvisioning}
             options={{headerShown: false}}
           />
           <Stack.Screen name="Home" component={HomeStub} />
@@ -163,6 +191,7 @@ let alertSpy: jest.SpyInstance;
 
 beforeEach(() => {
   jest.clearAllMocks();
+  resetCalls = [];
   organizationCreationProvenanceStore.setState({organizationIds: []});
   mockOrganizations([]);
   mockCreateOrganization();
@@ -352,6 +381,28 @@ describe('OrganizationProvisioning', () => {
     expect(
       await screen.findByText('START-OVER-FORK-REACHED'),
     ).toBeOnTheScreen();
+  });
+
+  test('a successful discard next to a ready organization goes straight to the start-over fork, never through Home', async () => {
+    // N10a: the discarded setup is filtered out of the collection, so the
+    // device looks "ready, nothing degraded" on the same commit the discard
+    // result lands. The discard owns that navigation — no Home flash first.
+    mockOrganizations([readyOrganization]);
+    mockDiscard({
+      status: 'success',
+      discardedOrganizationId: 'c'.repeat(16),
+      result: {
+        ok: true,
+        removed: [{slot: 'm', projectId: 'project-m'}],
+        skipped: [],
+      } satisfies DiscardResult,
+    });
+    await renderScreen();
+
+    expect(
+      await screen.findByText('START-OVER-FORK-REACHED'),
+    ).toBeOnTheScreen();
+    expect(resetCalls).toEqual([{index: 0, routes: [{name: 'Success'}]}]);
   });
 
   test('a successful discard stays on the repair surface while another degraded organization remains', async () => {
