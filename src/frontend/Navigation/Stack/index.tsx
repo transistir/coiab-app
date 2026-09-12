@@ -290,10 +290,15 @@ export const RootStackNavigator = () => {
       ? resolveActiveProjectCorrection(organizations, activeProjectId)
       : ({kind: 'none'} as const);
   const activeProjectDegraded = activeProjectCorrection.kind === 'degraded';
+  const correctionKind = activeProjectCorrection.kind;
+  const correctedProjectId =
+    activeProjectCorrection.kind === 'correct'
+      ? activeProjectCorrection.projectId
+      : null;
   React.useEffect(() => {
-    if (activeProjectCorrection.kind !== 'correct') return;
-    setActiveProjectId(activeProjectCorrection.projectId);
-  }, [activeProjectCorrection, setActiveProjectId]);
+    if (correctionKind !== 'correct' || correctedProjectId === null) return;
+    setActiveProjectId(correctedProjectId);
+  }, [correctionKind, correctedProjectId, setActiveProjectId]);
 
   const layout: NavigatorLayout = ({children, state, navigation}) => (
     <SafeAreaView
