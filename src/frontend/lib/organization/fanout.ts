@@ -374,17 +374,27 @@ export async function discardIncompleteOrganization(
   // `reconstructOrganizations` intentionally gives slots only to joined
   // rows. Core's default listProjects() still exposes a non-left row while an
   // accepted invite is `joining`, including its marker in projectInfo. Such
-  // a row can materialize after the joined slot above is left, so it keeps
-  // the discard partial and the recovery identity/provenance intact.
+  // a row can materialize after the joined slot above is left, including
+  // between that reconstruction and this final read. Every target row not
+  // already handled keeps the discard partial and its recovery metadata.
   const remainingRows = await manager.listProjects();
+  const removedProjectIds = new Set(removed.map(entry => entry.projectId));
+  const skippedProjectIds = new Set(skipped.map(entry => entry.projectId));
   for (const row of remainingRows) {
-    if (row.status === 'joined' || row.status === 'left') continue;
+    if (row.status === 'left') continue;
     const marker = parseMarker(row.projectDescription ?? '');
     if (marker?.organizationId !== opts.organizationId) continue;
+    if (
+      removedProjectIds.has(row.projectId) ||
+      skippedProjectIds.has(row.projectId)
+    ) {
+      continue;
+    }
     skipped.push({
       slot: marker.slot,
       projectId: row.projectId,
-      reason: 'join-pending',
+      reason:
+        row.status === 'joining' ? 'join-pending' : 'no-longer-incomplete',
     });
   }
   return {ok: skipped.length === 0, removed, skipped};

@@ -515,6 +515,46 @@ describe('discardIncompleteOrganization', () => {
     });
   });
 
+  it('keeps recovery metadata when a pending slot joins during the final scan', async () => {
+    const manager = createFakeManager();
+    const joinedProjectId = seedJoinedSlot(manager);
+    const joiningProjectId = 'joining-a';
+    manager.projects.push({
+      projectId: joiningProjectId,
+      projectDescription: markerFor(ORG_A, 'a', 'Acme'),
+      status: 'joining',
+    });
+    const baseListProjects = manager.listProjects.bind(manager);
+    let listReads = 0;
+    manager.listProjects = async () => {
+      listReads += 1;
+      if (listReads === 3) {
+        const joiningProject = manager.projects.find(
+          project => project.projectId === joiningProjectId,
+        );
+        if (joiningProject) joiningProject.status = 'joined';
+      }
+      return baseListProjects();
+    };
+
+    const result = await discardIncompleteOrganization(manager, {
+      organizationId: ORG_A,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      removed: [{slot: 'm', projectId: joinedProjectId}],
+      skipped: [
+        {
+          slot: 'a',
+          projectId: joiningProjectId,
+          reason: 'no-longer-incomplete',
+        },
+      ],
+    });
+    expect(listReads).toBe(3);
+  });
+
   it('unblocks creating a fresh organization after discarding a partially accepted bundle', async () => {
     const manager = createFakeManager();
     seedJoinedSlot(manager);
@@ -578,6 +618,11 @@ describe('discardIncompleteOrganization', () => {
           {
             slot: 'm',
             projectId: originalProjectId,
+            reason: 'no-longer-incomplete',
+          },
+          {
+            slot: 'm',
+            projectId: 'replacement-m',
             reason: 'no-longer-incomplete',
           },
         ],
@@ -773,6 +818,11 @@ describe('discardIncompleteOrganization', () => {
       removed: [],
       skipped: [
         {slot: 'm', projectId: mProjectId, reason: 'no-longer-incomplete'},
+        {
+          slot: 'a',
+          projectId: 'project-a-joined',
+          reason: 'no-longer-incomplete',
+        },
       ],
     });
     expect(manager.leftProjectIds).toEqual([]);
