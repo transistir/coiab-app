@@ -161,6 +161,65 @@ describe('useDiscardIncompleteOrganization', () => {
     hook.unmount();
   });
 
+  test('a pending join makes discard partial and keeps identity and provenance', async () => {
+    const {clientApi, projects} = createFakeDiscardClient();
+    const organizationId = '0123456789abcdef';
+    await clientApi.createProject({
+      name: 'Monitoramento',
+      projectDescription: markerFor(organizationId, 'm', 'Org Incompleta'),
+    });
+    projects.push({
+      projectId: 'joining-a',
+      projectDescription: markerFor(organizationId, 'a', 'Org Incompleta'),
+      status: 'joining',
+    });
+    identityStore.actions.setIdentity(organizationId, IDENTITY);
+    recordOrganizationCreationProvenance(organizationId);
+
+    const hook = await discardWithHook(clientApi, organizationId);
+
+    expect(hook.result.current!.status).toBe('success');
+    expect(hook.result.current!.result).toEqual({
+      ok: false,
+      removed: [{slot: 'm', projectId: 'project-1'}],
+      skipped: [{slot: 'a', projectId: 'joining-a', reason: 'join-pending'}],
+    });
+    expect(identityStore.instance.getState()).toStrictEqual({
+      [organizationId]: IDENTITY,
+    });
+    expect(
+      organizationCreationProvenanceStore.getState().organizationIds,
+    ).toContain(organizationId);
+
+    hook.unmount();
+  });
+
+  test('a rejected leave that stays joined publishes error and keeps identity and provenance', async () => {
+    const {clientApi, leaveProject} = createFakeDiscardClient();
+    const organizationId = '0123456789abcdef';
+    await clientApi.createProject({
+      name: 'Monitoramento',
+      projectDescription: markerFor(organizationId, 'm', 'Org Incompleta'),
+    });
+    const leaveError = new Error('IPC_GONE');
+    leaveProject.mockRejectedValueOnce(leaveError);
+    identityStore.actions.setIdentity(organizationId, IDENTITY);
+    recordOrganizationCreationProvenance(organizationId);
+
+    const hook = await discardWithHook(clientApi, organizationId);
+
+    expect(hook.result.current!.status).toBe('error');
+    expect(hook.result.current!.error).toBe(leaveError);
+    expect(identityStore.instance.getState()).toStrictEqual({
+      [organizationId]: IDENTITY,
+    });
+    expect(
+      organizationCreationProvenanceStore.getState().organizationIds,
+    ).toContain(organizationId);
+
+    hook.unmount();
+  });
+
   test('a successful discard removes the incomplete organization and clears its provenance record (F4)', async () => {
     // Review round 2 F4: the discard is the escape hatch of a refused
     // create, but the durable creation-provenance record used to survive

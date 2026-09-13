@@ -226,18 +226,17 @@ export type DiscardableManagerLike = Omit<ManagerLike, 'getProject'> & {
 };
 
 /**
- * Copied from `@comapeo/core/src/roles.js`, like `sharedTypes`' copy (the
- * constant is not exported by the package — digidem/mapeo-core-next#532).
+ * Copied from `@comapeo/core/src/roles.js`, like `sharedTypes`' copy.
  * `fanout.ts` keeps no `@comapeo/core` import so it stays unit-testable, so
- * the literal lives here too. If the two copies ever diverge, a creator slot
- * is treated as joined and left; core still limits that mutation to this
- * device's membership and local project data.
+ * the literal lives here too; `fanout.test.ts` pins it to core's exported
+ * `roles.CREATOR_ROLE_ID`. If the values ever diverge, a creator slot is
+ * treated as joined and left, so that test is a destructive-safety gate.
  */
 export const CREATOR_ROLE_ID = 'a12a6702b93bd7ff';
 
 /** Why a discard did NOT remove a slot project it found. */
 export type DiscardSkipReason =
-  'shared-with-other-devices' | 'no-longer-incomplete';
+  'shared-with-other-devices' | 'no-longer-incomplete' | 'join-pending';
 
 /** What a discard settled on: the slots removed, and those it refused to. */
 export type DiscardResult = {
@@ -280,6 +279,10 @@ export type DiscardResult = {
  * leave can reject after it already happened. A rejected leave is therefore
  * reconciled against a fresh project list: a project no longer joined is
  * removed (never left twice); one still joined rethrows.
+ *
+ * A marker-bearing `joining` row is not a reconstructed slot, but it can
+ * later materialize as one. It is reported as pending rather than treating
+ * the organization as fully discarded, preserving its recovery metadata.
  *
  * A read failure (IPC, storage) is not a skip — it throws, since an
  * unclassifiable project must fail closed just as loudly.
@@ -352,12 +355,37 @@ export async function discardIncompleteOrganization(
     try {
       await manager.leaveProject(projectId);
     } catch (error) {
-      const stillJoined = (await manager.listProjects()).some(
-        row => row.projectId === projectId && row.status === 'joined',
-      );
+      // Reconciliation is best-effort: if this read also fails, preserve the
+      // destructive operation's original error instead of hiding it behind a
+      // secondary list failure. Unknown state fails closed as still joined.
+      let stillJoined = true;
+      try {
+        stillJoined = (await manager.listProjects()).some(
+          row => row.projectId === projectId && row.status === 'joined',
+        );
+      } catch {
+        // The original leave error wins.
+      }
       if (stillJoined) throw error;
     }
     removed.push({slot, projectId});
+  }
+
+  // `reconstructOrganizations` intentionally gives slots only to joined
+  // rows. Core's default listProjects() still exposes a non-left row while an
+  // accepted invite is `joining`, including its marker in projectInfo. Such
+  // a row can materialize after the joined slot above is left, so it keeps
+  // the discard partial and the recovery identity/provenance intact.
+  const remainingRows = await manager.listProjects();
+  for (const row of remainingRows) {
+    if (row.status === 'joined' || row.status === 'left') continue;
+    const marker = parseMarker(row.projectDescription ?? '');
+    if (marker?.organizationId !== opts.organizationId) continue;
+    skipped.push({
+      slot: marker.slot,
+      projectId: row.projectId,
+      reason: 'join-pending',
+    });
   }
   return {ok: skipped.length === 0, removed, skipped};
 }

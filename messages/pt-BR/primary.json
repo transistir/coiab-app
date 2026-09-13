@@ -545,7 +545,10 @@
     "message": "Compartilhar Informações de Diagnóstico"
   },
   "$1screens.OrganizationProvisioning.discardConfirmBody": {
-    "message": "Este dispositivo sairá dos projetos desta configuração: deixará de sincronizá-los e excluirá sua cópia dos dados. Um projeto que existe somente neste dispositivo será perdido definitivamente; outros dispositivos mantêm suas cópias de um projeto do qual você participou. Um projeto criado aqui ao qual outros dispositivos aderiram será mantido."
+    "message": "Este dispositivo sairá dos projetos desta configuração, e os outros membros verão que ele saiu. As observações deste dispositivo que ainda não foram sincronizadas não estarão mais disponíveis aqui; exporte primeiro todos os dados importantes. Os projetos que existem apenas neste dispositivo serão excluídos permanentemente; os outros dispositivos manterão suas cópias, e os projetos criados aqui com outros membros serão mantidos."
+  },
+  "$1screens.OrganizationProvisioning.skippedJoinPending": {
+    "message": "Um convite para esta organização ainda está sincronizando. Tente novamente quando ele terminar."
   },
   "$1screens.PhotoPreviewModal.headerButtonText": {
     "message": "Excluir foto"

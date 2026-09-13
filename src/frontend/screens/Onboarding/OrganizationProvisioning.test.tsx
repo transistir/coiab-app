@@ -357,7 +357,7 @@ describe('OrganizationProvisioning', () => {
     expect(alertSpy).toHaveBeenCalledTimes(1);
     // The confirm must say what a leave costs: joined projects are left too.
     expect(alertSpy.mock.calls[0][1]).toBe(
-      'This device will leave the projects of this setup: it stops syncing them and deletes its copy of their data. A project that exists only on this device is gone for good; other devices keep their copy of a project you joined. A project created here that other devices have joined is kept.',
+      'This device will leave the projects in this setup, and other members will see it leave. Observations not yet synced from this device will no longer be available here, so export any important data first. Projects that exist only on this device will be permanently deleted; other devices keep their copies, and projects created here with other members are kept.',
     );
     expect(discard).not.toHaveBeenCalled();
 
@@ -482,6 +482,26 @@ describe('OrganizationProvisioning', () => {
     expect(
       screen.getByText(
         'Monitoramento changed while it was being discarded, so it was kept.',
+      ),
+    ).toBeOnTheScreen();
+    expect(screen.queryByText('START-OVER-FORK-REACHED')).not.toBeOnTheScreen();
+  });
+
+  test('a pending join skip explains that the invitation must finish syncing', async () => {
+    mockOrganizations([incompleteOrganization]);
+    mockDiscard({
+      status: 'success',
+      result: {
+        ok: false,
+        removed: [{slot: 'm', projectId: 'project-m'}],
+        skipped: [{slot: 'a', projectId: 'project-a', reason: 'join-pending'}],
+      } satisfies DiscardResult,
+    });
+    await renderScreen();
+
+    expect(
+      screen.getByText(
+        'An invitation for this organization is still syncing. Try again once it finishes.',
       ),
     ).toBeOnTheScreen();
     expect(screen.queryByText('START-OVER-FORK-REACHED')).not.toBeOnTheScreen();
