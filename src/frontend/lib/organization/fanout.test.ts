@@ -82,7 +82,9 @@ function createFakeManager(): FakeManager {
     memberIdsByProjectId,
     createdByByProjectId,
     async listProjects() {
-      return [...projects];
+      // Core's default listProjects() excludes rows whose project keys have
+      // hasLeftProject set; model that app-facing seam, not includeLeft:true.
+      return projects.filter(project => project.status !== 'left');
     },
     async createProject(opts) {
       const projectId = `p-${++projectCounter}`;
@@ -399,12 +401,33 @@ describe('discardIncompleteOrganization', () => {
     ).toEqual([]);
   });
 
-  it('skips a slot project it cannot prove this device created', async () => {
-    // Finding 1: "no other member visible" does not prove creation — a
-    // recently ACCEPTED invite project whose roles doc has not synced yet
-    // also looks memberless. Only the creator role (resolved locally from
-    // core ownership) counts as durable proof, so a joined slot is skipped
-    // and the organization stays on the device.
+  /**
+   * Seeds the end state of a partially accepted bundle: slot m joined from
+   * `invitor-device` (a member of it), slot a never accepted. Returns m's id.
+   */
+  function seedJoinedSlot(
+    manager: FakeManager,
+    organizationId: string = ORG_A,
+  ): string {
+    const projectId = 'joined-m';
+    manager.projects.push({
+      projectId,
+      projectDescription: markerFor(organizationId, 'm', 'Acme'),
+      status: 'joined',
+    });
+    manager.createdByByProjectId.set(projectId, 'invitor-device');
+    manager.memberIdsByProjectId.set(projectId, [
+      manager.ownDeviceId,
+      'invitor-device',
+    ]);
+    return projectId;
+  }
+
+  it('leaves a slot project this device joined, even before its roles doc has synced', async () => {
+    // A joined slot is not this device's to delete, but it is its to LEAVE:
+    // core's leave assigns this device the left role and clears only this
+    // device's copy, so the creator's project and data survive. Provenance
+    // gates deleting a project others may depend on, never leaving one.
     const manager = createFakeManager();
     const joinedProjectId = 'joined-1';
     manager.projects.push({
@@ -421,22 +444,167 @@ describe('discardIncompleteOrganization', () => {
     });
 
     expect(result).toEqual({
-      ok: false,
-      removed: [],
-      skipped: [
-        {slot: 'm', projectId: joinedProjectId, reason: 'not-created-here'},
-      ],
+      ok: true,
+      removed: [{slot: 'm', projectId: joinedProjectId}],
+      skipped: [],
     });
-    expect(manager.leftProjectIds).toEqual([]);
+    expect(manager.leftProjectIds).toEqual([joinedProjectId]);
+    expect(
+      await reconstructOrganizations(await manager.listProjects()),
+    ).toEqual([]);
+  });
+
+  it('leaves the joined slot of a partially accepted bundle, although its invitor is a member', async () => {
+    // A bundle whose first accept joined and whose second failed stays
+    // incomplete with a JOINED slot. If that setup can never be finished
+    // (the invitor is gone, the invite cancelled), the discard is the only
+    // way out — so the joined slot is left, not kept.
+    const manager = createFakeManager();
+    const joinedProjectId = seedJoinedSlot(manager);
+
+    const result = await discardIncompleteOrganization(manager, {
+      organizationId: ORG_A,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      removed: [{slot: 'm', projectId: joinedProjectId}],
+      skipped: [],
+    });
+    expect(manager.leftProjectIds).toEqual([joinedProjectId]);
+    expect(
+      await reconstructOrganizations(await manager.listProjects()),
+    ).toEqual([]);
+  });
+
+  it('unblocks creating a fresh organization after discarding a partially accepted bundle', async () => {
+    const manager = createFakeManager();
+    seedJoinedSlot(manager);
+    await expectOrgError(
+      createOrganization(manager, {
+        organizationId: ORG_B,
+        organizationName: 'Outra',
+      }),
+      'incomplete-org-blocks-create',
+    );
+
+    await discardIncompleteOrganization(manager, {organizationId: ORG_A});
+
+    const fresh = await createOrganization(manager, {
+      organizationId: ORG_B,
+      organizationName: 'Outra',
+    });
+    expect(fresh.projectIds.m).toBeDefined();
+    expect(fresh.projectIds.a).toBeDefined();
+  });
+
+  it.each([
+    ['created', (manager: FakeManager) => seedIncompleteOrg(manager)],
+    ['joined', async (manager: FakeManager) => seedJoinedSlot(manager)],
+  ])(
+    'skips a %s slot whose project is replaced right before the leave',
+    async (_provenance, seed) => {
+      // TOCTOU: the organization can stay incomplete while the SLOT changes
+      // hands — the state alone would let the discard leave a project that
+      // no longer is the slot, and still report the setup as gone.
+      const manager = createFakeManager();
+      const originalProjectId = await seed(manager);
+      const baseGetProject = manager.getProject.bind(manager);
+      manager.getProject = async projectId => {
+        const project = await baseGetProject(projectId);
+        return {
+          ...project,
+          async $getOwnRole() {
+            const role = await project.$getOwnRole();
+            const index = manager.projects.findIndex(
+              p => p.projectId === originalProjectId,
+            );
+            manager.projects.splice(index, 1, {
+              projectId: 'replacement-m',
+              projectDescription: markerFor(ORG_A, 'm', 'Acme'),
+              status: 'joined',
+            });
+            return role;
+          },
+        };
+      };
+
+      const result = await discardIncompleteOrganization(manager, {
+        organizationId: ORG_A,
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        removed: [],
+        skipped: [
+          {
+            slot: 'm',
+            projectId: originalProjectId,
+            reason: 'no-longer-incomplete',
+          },
+        ],
+      });
+      expect(manager.leftProjectIds).toEqual([]);
+    },
+  );
+
+  it('counts a leave that rejects after core already left the project as removed, without leaving again', async () => {
+    // Core's leave marks the project left and drops its settings BEFORE it
+    // waits for the role change to sync, so a sync timeout rejects a leave
+    // that already happened — and the project is gone from listProjects().
+    const manager = createFakeManager();
+    const joinedProjectId = seedJoinedSlot(manager);
+    const baseLeaveProject = manager.leaveProject.bind(manager);
+    let leaveCalls = 0;
+    manager.leaveProject = async projectId => {
+      leaveCalls += 1;
+      await baseLeaveProject(projectId);
+      throw new Error('SYNC_TIMEOUT');
+    };
+
+    const result = await discardIncompleteOrganization(manager, {
+      organizationId: ORG_A,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      removed: [{slot: 'm', projectId: joinedProjectId}],
+      skipped: [],
+    });
+    expect(leaveCalls).toBe(1);
+    expect(
+      await reconstructOrganizations(await manager.listProjects()),
+    ).toEqual([]);
+  });
+
+  it('rethrows a leave that rejected without leaving, and a retry completes', async () => {
+    const manager = createFakeManager();
+    const joinedProjectId = seedJoinedSlot(manager);
+    const baseLeaveProject = manager.leaveProject.bind(manager);
+    manager.leaveProject = async () => {
+      throw new Error('IPC_GONE');
+    };
+
+    await expect(
+      discardIncompleteOrganization(manager, {organizationId: ORG_A}),
+    ).rejects.toThrow('IPC_GONE');
     const orgs = await reconstructOrganizations(await manager.listProjects());
     expect(orgs).toHaveLength(1); // the organization is still on the device
     expect(orgs[0]).toMatchObject({state: 'incomplete', organizationId: ORG_A});
+
+    manager.leaveProject = baseLeaveProject;
+    await expect(
+      discardIncompleteOrganization(manager, {organizationId: ORG_A}),
+    ).resolves.toEqual({
+      ok: true,
+      removed: [{slot: 'm', projectId: joinedProjectId}],
+      skipped: [],
+    });
   });
 
   it('keeps a slot project that has other members and reports the reason', async () => {
-    // A joined slot's invitor (or a device invited mid-setup) is a member of
-    // a live organization someone else can complete — removing it would drop
-    // the user's membership in data this device did not create.
+    // A member invited into a slot created here may depend on this creator's
+    // project and data, so the discard must keep it.
     const manager = createFakeManager();
     const mProjectId = await seedIncompleteOrg(manager);
     manager.memberIdsByProjectId.set(mProjectId, [

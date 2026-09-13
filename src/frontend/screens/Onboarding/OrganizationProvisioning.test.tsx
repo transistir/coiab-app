@@ -355,6 +355,10 @@ describe('OrganizationProvisioning', () => {
     await user.press(screen.getByTestId('ORG.provisioning-discard-btn'));
 
     expect(alertSpy).toHaveBeenCalledTimes(1);
+    // The confirm must say what a leave costs: joined projects are left too.
+    expect(alertSpy.mock.calls[0][1]).toBe(
+      'This device will leave the projects of this setup: it stops syncing them and deletes its copy of their data. A project that exists only on this device is gone for good; other devices keep their copy of a project you joined. A project created here that other devices have joined is kept.',
+    );
     expect(discard).not.toHaveBeenCalled();
 
     pressAlertButton('Cancel');
@@ -461,9 +465,7 @@ describe('OrganizationProvisioning', () => {
     expect(screen.getByText('Setting up your Organization…')).toBeOnTheScreen();
   });
 
-  test('a skip with no creation provenance is explained the same way', async () => {
-    // Finding 1: a joined slot this device cannot prove it created is never
-    // deleted — the user is told which project was kept and why.
+  test('a skip because the setup changed mid-discard is explained the same way', async () => {
     mockOrganizations([incompleteOrganization]);
     mockDiscard({
       status: 'success',
@@ -471,7 +473,7 @@ describe('OrganizationProvisioning', () => {
         ok: false,
         removed: [],
         skipped: [
-          {slot: 'm', projectId: 'project-m', reason: 'not-created-here'},
+          {slot: 'm', projectId: 'project-m', reason: 'no-longer-incomplete'},
         ],
       } satisfies DiscardResult,
     });
@@ -479,7 +481,7 @@ describe('OrganizationProvisioning', () => {
 
     expect(
       screen.getByText(
-        'Monitoramento was not created on this device, so it was kept.',
+        'Monitoramento changed while it was being discarded, so it was kept.',
       ),
     ).toBeOnTheScreen();
     expect(screen.queryByText('START-OVER-FORK-REACHED')).not.toBeOnTheScreen();

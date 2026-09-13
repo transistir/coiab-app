@@ -708,7 +708,7 @@
     "message": "This Organization was not left half-created on this device, so its setup cannot be finished here."
   },
   "$1screens.OrganizationProvisioning.discardConfirmBody": {
-    "message": "The projects created on this device for this setup will be removed. Projects shared with other devices are not affected."
+    "message": "This device will leave the projects of this setup: it stops syncing them and deletes its copy of their data. A project that exists only on this device is gone for good; other devices keep their copy of a project you joined. A project created here that other devices have joined is kept."
   },
   "$1screens.OrganizationProvisioning.discardConfirmTitle": {
     "message": "Discard this Organization setup?"
@@ -727,9 +727,6 @@
   },
   "$1screens.OrganizationProvisioning.settingUp": {
     "message": "Setting up your Organization…"
-  },
-  "$1screens.OrganizationProvisioning.skippedNotCreatedHere": {
-    "message": "{projectName} was not created on this device, so it was kept."
   },
   "$1screens.OrganizationProvisioning.skippedShared": {
     "message": "{projectName} is shared with other devices, so it was kept."

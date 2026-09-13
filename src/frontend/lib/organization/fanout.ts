@@ -229,14 +229,15 @@ export type DiscardableManagerLike = Omit<ManagerLike, 'getProject'> & {
  * Copied from `@comapeo/core/src/roles.js`, like `sharedTypes`' copy (the
  * constant is not exported by the package — digidem/mapeo-core-next#532).
  * `fanout.ts` keeps no `@comapeo/core` import so it stays unit-testable, so
- * the literal lives here too; if the two copies ever diverge, a discard can
- * only fail CLOSED (every project skipped), never delete a shared project.
+ * the literal lives here too. If the two copies ever diverge, a creator slot
+ * is treated as joined and left; core still limits that mutation to this
+ * device's membership and local project data.
  */
 export const CREATOR_ROLE_ID = 'a12a6702b93bd7ff';
 
 /** Why a discard did NOT remove a slot project it found. */
 export type DiscardSkipReason =
-  'not-created-here' | 'shared-with-other-devices' | 'no-longer-incomplete';
+  'shared-with-other-devices' | 'no-longer-incomplete';
 
 /** What a discard settled on: the slots removed, and those it refused to. */
 export type DiscardResult = {
@@ -254,21 +255,31 @@ export type DiscardResult = {
  * organization state itself is derived from the project list, so leaving the
  * slot projects IS clearing it.
  *
- * Finding 1: a slot project is only removed when this device can PROVE it
- * created it — the project's creator role (`$getOwnRole`), which core
- * resolves locally from core ownership (the creator's auth core IS the
- * project key), so it is durable on the creating device and can never be
- * held by a device that joined. "No other member visible" alone proves
- * nothing: a project joined moments ago whose roles doc has not synced yet
- * looks memberless, and deleting it would destroy a shared project. A slot
- * whose provenance cannot be established is SKIPPED — neither removed nor
- * left behind silently — and reported in `skipped`, so the UI can say why
- * the discard did not finish and the organization stays on the device.
+ * Every slot is removed with core's `leaveProject`, which is not local-only:
+ * it assigns this device the left role, waits for that to sync, and clears
+ * this device's copy of the project's data. Creation provenance decides what
+ * that leave may cost others:
+ * - A project this device JOINED (any role but the creator's) is always
+ *   left. The creator's project and every other member's copy survive; the
+ *   other devices just see this one leave. Without it, a partially accepted
+ *   bundle whose invitor is gone would lock creation out for good.
+ * - A project this device CREATED (the creator role, which core resolves
+ *   locally from core ownership, so no joined device can hold it) is the only
+ *   copy others may depend on once they join, so it is left only while no
+ *   other member is visible; otherwise it is SKIPPED and reported in
+ *   `skipped`, so the UI can say why the discard did not finish and the
+ *   organization stays on the device.
  *
  * Because the reads above take real time over IPC while sync runs, each
  * leave is revalidated immediately before it: the organization must still be
- * incomplete and the project still memberless (both re-read), or the slot is
- * skipped with the same reporting (TOCTOU).
+ * incomplete with this very project in the slot, and a created project still
+ * memberless (all re-read), or the slot is skipped with the same reporting
+ * (TOCTOU).
+ *
+ * Core marks the project left locally before it waits for the sync, so a
+ * leave can reject after it already happened. A rejected leave is therefore
+ * reconciled against a fresh project list: a project no longer joined is
+ * removed (never left twice); one still joined rethrows.
  *
  * A read failure (IPC, storage) is not a skip — it throws, since an
  * unclassifiable project must fail closed just as loudly.
@@ -311,16 +322,11 @@ export async function discardIncompleteOrganization(
     if (projectId === undefined) continue; // nothing built for this slot
     const project = await manager.getProject(projectId);
 
-    // Creation provenance first: without durable proof this device created
-    // the project, nothing else about it matters — it is not ours to delete.
+    // Creation provenance decides whether other members block the leave: a
+    // joined project survives on its creator, a created one may not.
     const {roleId} = await project.$getOwnRole();
-    if (roleId !== CREATOR_ROLE_ID) {
-      skipped.push({slot, projectId, reason: 'not-created-here'});
-      continue;
-    }
-
-    const members = await project.$member.getMany();
-    if (hasOtherMembers(members)) {
+    const createdHere = roleId === CREATOR_ROLE_ID;
+    if (createdHere && hasOtherMembers(await project.$member.getMany())) {
       skipped.push({slot, projectId, reason: 'shared-with-other-devices'});
       continue;
     }
@@ -330,16 +336,27 @@ export async function discardIncompleteOrganization(
     const fresh = reconstructOrganizations(await manager.listProjects()).find(
       o => o.organizationId === opts.organizationId,
     );
-    if (fresh === undefined || fresh.state !== 'incomplete') {
+    if (
+      fresh === undefined ||
+      fresh.state !== 'incomplete' ||
+      fresh.slots[slot] !== projectId
+    ) {
       skipped.push({slot, projectId, reason: 'no-longer-incomplete'});
       continue;
     }
-    if (hasOtherMembers(await project.$member.getMany())) {
+    if (createdHere && hasOtherMembers(await project.$member.getMany())) {
       skipped.push({slot, projectId, reason: 'shared-with-other-devices'});
       continue;
     }
 
-    await manager.leaveProject(projectId);
+    try {
+      await manager.leaveProject(projectId);
+    } catch (error) {
+      const stillJoined = (await manager.listProjects()).some(
+        row => row.projectId === projectId && row.status === 'joined',
+      );
+      if (stillJoined) throw error;
+    }
     removed.push({slot, projectId});
   }
   return {ok: skipped.length === 0, removed, skipped};

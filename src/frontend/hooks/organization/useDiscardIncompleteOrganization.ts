@@ -8,6 +8,7 @@ import {
 } from '../../lib/organization/fanout';
 import {projectsQueryKey} from '../../lib/organization/queryKeys';
 import {clearOrganizationCreationProvenance} from '../../lib/organization/creationProvenance';
+import {useOrganizationInviteIdentityActions} from '../../contexts/OrganizationInviteIdentityStoreContext';
 
 export type DiscardOrganizationStatus =
   'idle' | 'discarding' | 'success' | 'error';
@@ -24,6 +25,7 @@ export type DiscardOrganizationStatus =
 export function useDiscardIncompleteOrganization() {
   const clientApi = useClientApi();
   const queryClient = useQueryClient();
+  const {clearIdentity} = useOrganizationInviteIdentityActions();
 
   const [status, setStatus] = useState<DiscardOrganizationStatus>('idle');
   const [error, setError] = useState<unknown>(undefined);
@@ -103,8 +105,12 @@ export function useDiscardIncompleteOrganization() {
       // invalidation below); a refused/failed discard keeps the record,
       // because the organization (and its interrupted create) is still on
       // the device.
+      // The persisted invite identity goes by the same rule: it pins a
+      // recovery accept, which a refused discard still needs and a completed
+      // one no longer has an organization for.
       if (outcome.ok && outcome.result.ok) {
         clearOrganizationCreationProvenance(organizationId);
+        clearIdentity(organizationId);
       }
 
       try {
@@ -131,7 +137,7 @@ export function useDiscardIncompleteOrganization() {
         }
       }
     },
-    [clientApi, queryClient],
+    [clientApi, queryClient, clearIdentity],
   );
 
   return {discard, reset, status, error, result, discardedOrganizationId};

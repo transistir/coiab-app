@@ -544,6 +544,9 @@
   "$1screens.OnboardingPrivacyPolicy.shareDiagnostics": {
     "message": "Compartilhar Informações de Diagnóstico"
   },
+  "$1screens.OrganizationProvisioning.discardConfirmBody": {
+    "message": "Este dispositivo sairá dos projetos desta configuração: deixará de sincronizá-los e excluirá sua cópia dos dados. Um projeto que existe somente neste dispositivo será perdido definitivamente; outros dispositivos mantêm suas cópias de um projeto do qual você participou. Um projeto criado aqui ao qual outros dispositivos aderiram será mantido."
+  },
   "$1screens.PhotoPreviewModal.headerButtonText": {
     "message": "Excluir foto"
   },

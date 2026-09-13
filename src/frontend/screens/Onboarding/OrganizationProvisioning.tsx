@@ -45,7 +45,7 @@ const m = defineMessages({
   discardConfirmBody: {
     id: '$1screens.OrganizationProvisioning.discardConfirmBody',
     defaultMessage:
-      'The projects created on this device for this setup will be removed. Projects shared with other devices are not affected.',
+      'This device will leave the projects of this setup: it stops syncing them and deletes its copy of their data. A project that exists only on this device is gone for good; other devices keep their copy of a project you joined. A project created here that other devices have joined is kept.',
   },
   cancel: {
     id: '$1screens.OrganizationProvisioning.cancel',
@@ -61,11 +61,6 @@ const m = defineMessages({
     defaultMessage:
       '{projectName} is shared with other devices, so it was kept.',
   },
-  skippedNotCreatedHere: {
-    id: '$1screens.OrganizationProvisioning.skippedNotCreatedHere',
-    defaultMessage:
-      '{projectName} was not created on this device, so it was kept.',
-  },
   cannotFinish: {
     id: '$1screens.OrganizationProvisioning.cannotFinish',
     defaultMessage:
@@ -80,7 +75,6 @@ const m = defineMessages({
 
 /** Why each kept project is still on the device, per skip reason. */
 const SKIP_MESSAGES = {
-  'not-created-here': m.skippedNotCreatedHere,
   'shared-with-other-devices': m.skippedShared,
   'no-longer-incomplete': m.skippedStale,
 } as const;
@@ -104,8 +98,9 @@ const SKIP_MESSAGES = {
  * expired, no name to resume under) must not be a permanent creation
  * lockout behind the fail-closed create, so the screen also offers to
  * DISCARD the half-built organization behind a destructive confirm and
- * start over. The discard fan-out only removes the projects this device
- * provably created and still holds alone; anything it refuses is reported
+ * start over. The discard fan-out leaves every project of the setup, except a
+ * project this device created that other devices have joined, or one that
+ * changed while it ran; anything it refuses is reported
  * per project (with the reason), and the screen stays here to say so — as
  * it does when the discard itself fails.
  */
