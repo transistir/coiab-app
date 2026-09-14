@@ -11,7 +11,12 @@ import {
   type TemplateRef,
 } from './documento';
 import {createMaterializer} from './materializar';
+import {markerFor} from './marker';
+import {reconstructOrganizations} from './reconstruct';
 import {criarTemplateSourceDePacotes, type ManifestoPacote} from './pacotes';
+
+/** 16 lowercase hex — the document id IS the marker's organization id. */
+const ORG_ID = '0123456789abcdef';
 
 const MEMBER_INICIALIZADO = {
   name: 'Meu aparelho',
@@ -24,20 +29,42 @@ function harness() {
   const events: string[] = [];
   const projects: string[] = [];
   const imported = new Set<string>();
+  const settings = new Map<
+    string,
+    {name?: string; sendStats?: boolean; projectDescription?: string}
+  >();
   const client = {
-    listProjects: jest.fn(async () => projects.map(projectId => ({projectId}))),
-    createProject: jest.fn(async ({name, configPath}) => {
-      expect(configPath).toBe('');
-      const area = name === 'Monitoramento' ? 'monitoramento' : 'alertas';
-      expect(document.organizacoes[0]?.materializacao[area]).toMatchObject({
-        etapa: 'criando',
-        idsAntesDaCriacao: [...projects],
-      });
-      const id = `id-${projects.length}`;
-      projects.push(id);
-      events.push(`create:${name}`);
-      return id;
-    }),
+    listProjects: jest.fn(async () =>
+      projects.map(projectId => ({
+        projectId,
+        projectDescription: settings.get(projectId)?.projectDescription,
+        status: 'joined' as const,
+      })),
+    ),
+    createProject: jest.fn(
+      async ({
+        name,
+        configPath,
+        projectDescription,
+      }: {
+        name: string;
+        configPath: string;
+        projectDescription: string;
+      }) => {
+        expect(configPath).toBe('');
+        const area = name === 'Monitoramento' ? 'monitoramento' : 'alertas';
+        expect(document.organizacoes[0]?.materializacao[area]).toMatchObject({
+          etapa: 'criando',
+          idsAntesDaCriacao: [...projects],
+        });
+        const id = `id-${projects.length}`;
+        projects.push(id);
+        // Core seeds the settings at creation (mapeo-manager.js:499).
+        settings.set(id, {name, sendStats: false, projectDescription});
+        events.push(`create:${name}`);
+        return id;
+      },
+    ),
     getDeviceInfo: jest.fn(async () => ({
       deviceId: 'device',
       name: 'Meu aparelho',
@@ -54,15 +81,20 @@ function harness() {
         events.push(`import:${filePath}`);
         imported.add(id);
       }),
-      $setProjectSettings: jest.fn(async (settings: unknown) => {
-        events.push(`settings:${JSON.stringify(settings)}`);
-      }),
+      // Core MERGES settings ({...existing, ...new}) — mapeo-project.js.
+      $setProjectSettings: jest.fn(
+        async (next: {
+          name: string;
+          sendStats: boolean;
+          projectDescription: string;
+        }) => {
+          settings.set(id, {...settings.get(id), ...next});
+          events.push(`settings:${JSON.stringify(next)}`);
+        },
+      ),
       // §5.4 step 6 conferência reads the settings back: the mock project
       // reports exactly what the flow must have configured.
-      $getProjectSettings: jest.fn(async () => ({
-        name: projects.indexOf(id) === 0 ? 'Monitoramento' : 'Alertas',
-        sendStats: false,
-      })),
+      $getProjectSettings: jest.fn(async () => ({...settings.get(id)})),
       $member: {
         getById: jest.fn(async () => MEMBER_INICIALIZADO),
       },
@@ -90,6 +122,7 @@ function harness() {
     events,
     projects,
     imported,
+    settings,
     get document() {
       return document;
     },
@@ -97,7 +130,7 @@ function harness() {
       client,
       templates,
       repository,
-      generateId: () => 'org-local',
+      generateId: () => ORG_ID,
     }),
   };
 }
@@ -114,7 +147,7 @@ function documentoAmbosVerificados(): EstadoOrganizacoes {
     versao: 1,
     organizacoes: [
       {
-        id: 'org-local',
+        id: ORG_ID,
         nome: 'Associação',
         estado: 'preparando',
         confirmacaoPendente: false,
@@ -137,17 +170,25 @@ describe('materialização da organização', () => {
     expect(h.events).toEqual([
       'create:Monitoramento',
       'import:/local/m',
-      'settings:{"name":"Monitoramento","sendStats":false}',
+      `settings:${JSON.stringify({
+        name: 'Monitoramento',
+        sendStats: false,
+        projectDescription: markerFor(ORG_ID, 'm', 'Associação'),
+      })}`,
       'create:Alertas',
       'import:/local/a',
-      'settings:{"name":"Alertas","sendStats":false}',
+      `settings:${JSON.stringify({
+        name: 'Alertas',
+        sendStats: false,
+        projectDescription: markerFor(ORG_ID, 'a', 'Associação'),
+      })}`,
     ]);
     expect(h.client.createProject).toHaveBeenCalledTimes(2);
     expect(h.document).toMatchObject({
       ativa: null,
       organizacoes: [
         {
-          id: 'org-local',
+          id: ORG_ID,
           nome: 'Associação',
           estado: 'pronta',
           confirmacaoPendente: true,
@@ -158,6 +199,122 @@ describe('materialização da organização', () => {
         },
       ],
     });
+  });
+
+  test('CA4: createProject receives the organization marker as projectDescription', async () => {
+    const h = harness();
+    await h.service.start('  Associação  ');
+    expect(h.client.createProject).toHaveBeenNthCalledWith(1, {
+      name: 'Monitoramento',
+      configPath: '',
+      projectDescription: markerFor(ORG_ID, 'm', 'Associação'),
+    });
+    expect(h.client.createProject).toHaveBeenNthCalledWith(2, {
+      name: 'Alertas',
+      configPath: '',
+      projectDescription: markerFor(ORG_ID, 'a', 'Associação'),
+    });
+  });
+
+  test('the materialized projects reconstruct the organization by marker', async () => {
+    const h = harness();
+    await h.service.start('Associação');
+    const rows = await h.client.listProjects();
+    expect(reconstructOrganizations(rows)).toEqual([
+      {
+        state: 'ready',
+        organizationId: ORG_ID,
+        organizationName: 'Associação',
+        slots: {m: 'id-0', a: 'id-1'},
+      },
+    ]);
+  });
+
+  test('a project adopted from Core gets the marker re-applied through $setProjectSettings', async () => {
+    const h = harness();
+    h.repository.write({
+      versao: 1,
+      organizacoes: [
+        {
+          id: ORG_ID,
+          nome: 'Associação',
+          estado: 'preparando',
+          confirmacaoPendente: false,
+          materializacao: {
+            monitoramento: {
+              etapa: 'criando',
+              projectId: null,
+              template: {versao: '1', hash: 'm'},
+              idsAntesDaCriacao: [],
+            },
+            alertas: {
+              etapa: 'ausente',
+              projectId: null,
+              template: null,
+              idsAntesDaCriacao: null,
+            },
+          },
+          areaEmExecucao: 'monitoramento',
+          ultimoErro: null,
+        },
+      ],
+      ativa: null,
+    });
+    // Core created the project before any settings were written: the joined
+    // listProjects row carries NO description (no marker yet).
+    h.projects.push('id-0');
+
+    await h.service.resume();
+
+    // Only Alertas is created — Monitoramento was adopted, not re-created.
+    expect(h.client.createProject).toHaveBeenCalledTimes(1);
+    expect(h.events.filter(event => event.startsWith('settings:'))).toContain(
+      `settings:${JSON.stringify({
+        name: 'Monitoramento',
+        sendStats: false,
+        projectDescription: markerFor(ORG_ID, 'm', 'Associação'),
+      })}`,
+    );
+    expect(h.document.organizacoes[0]?.estado).toBe('pronta');
+  });
+
+  test('a divergent projectDescription fails the final conferência → falha_recuperavel', async () => {
+    const h = harness();
+    const base = h.client.getProject.getMockImplementation()!;
+    h.client.getProject.mockImplementation(async id => ({
+      ...(await base(id)),
+      $getProjectSettings: jest.fn(async () => ({
+        name: h.projects.indexOf(id) === 0 ? 'Monitoramento' : 'Alertas',
+        sendStats: false,
+        // A valid marker of ANOTHER organization — the conferência rejects it.
+        projectDescription: markerFor('ffffffffffffffff', 'm', 'Outra'),
+      })),
+    }));
+
+    await h.service.start('Associação');
+
+    expect(h.document.organizacoes[0]?.estado).toBe('falha_recuperavel');
+    expect(h.document.organizacoes[0]?.ultimoErro).toMatchObject({
+      codigo: 'preparation-failed',
+    });
+  });
+
+  test('an invalid generated organization id rejects start before prepare or any write', async () => {
+    const h = harness();
+    const invalido = createMaterializer({
+      client: h.client,
+      templates: h.templates,
+      repository: h.repository,
+      generateId: () => 'org-1',
+    });
+
+    await expect(invalido.start('Associação')).rejects.toThrow(
+      'organization id must be 16 lowercase hex chars',
+    );
+
+    expect(h.templates.prepare).not.toHaveBeenCalled();
+    expect(h.repository.write).not.toHaveBeenCalled();
+    expect(h.client.createProject).not.toHaveBeenCalled();
   });
   test('CA6/CA7: second creation failure is durable; automatic resume waits for retry and reuses Monitoramento', async () => {
     const h = harness();
@@ -215,7 +372,7 @@ describe('materialização da organização', () => {
       client: h.client,
       templates: h.templates,
       repository: h.repository,
-      generateId: () => 'different',
+      generateId: () => '2222222222222222',
     });
     await Promise.all([
       h.service.start('Original'),
@@ -239,29 +396,33 @@ describe('materialização da organização', () => {
       creationEntered = resolve;
     });
     const names = new Map<string, string>();
-    h.client.createProject.mockImplementation(async ({name}) => {
-      if (h.client.createProject.mock.calls.length === 1) {
-        creationEntered();
-        await blocked;
-      }
-      const id = `id-${h.projects.length}`;
-      h.projects.push(id);
-      names.set(id, name);
-      return id;
-    });
+    h.client.createProject.mockImplementation(
+      async ({name, projectDescription}) => {
+        if (h.client.createProject.mock.calls.length === 1) {
+          creationEntered();
+          await blocked;
+        }
+        const id = `id-${h.projects.length}`;
+        h.projects.push(id);
+        h.settings.set(id, {name, sendStats: false, projectDescription});
+        names.set(id, name);
+        return id;
+      },
+    );
     const getProject = h.client.getProject.getMockImplementation()!;
     h.client.getProject.mockImplementation(async id => ({
       ...(await getProject(id)),
       $getProjectSettings: jest.fn(async () => ({
         name: names.get(id)!,
         sendStats: false,
+        projectDescription: h.settings.get(id)?.projectDescription,
       })),
     }));
     const other = createMaterializer({
       client: {...h.client},
       templates: h.templates,
       repository: h.repository,
-      generateId: () => 'other-org',
+      generateId: () => '3333333333333333',
     });
     const started = h.service.start('Original');
     await entered;
@@ -386,9 +547,15 @@ describe('materialização da organização', () => {
         ...project,
         $getProjectSettings: jest.fn(async () => {
           conferencia.push(`settings:${id}`);
+          const org = h.document.organizacoes[0]!;
           return {
             name: id === 'id-0' ? 'Monitoramento' : 'Alertas',
             sendStats: false,
+            projectDescription: markerFor(
+              org.id,
+              id === 'id-0' ? 'm' : 'a',
+              org.nome,
+            ),
           };
         }),
         $member: {
@@ -410,8 +577,16 @@ describe('materialização da organização', () => {
     // The repair re-applies the canonical settings idempotently (same args as
     // the normal path) — never a re-import or a re-create.
     expect(h.events.filter(event => event.startsWith('settings:'))).toEqual([
-      'settings:{"name":"Monitoramento","sendStats":false}',
-      'settings:{"name":"Alertas","sendStats":false}',
+      `settings:${JSON.stringify({
+        name: 'Monitoramento',
+        sendStats: false,
+        projectDescription: markerFor(ORG_ID, 'm', 'Associação'),
+      })}`,
+      `settings:${JSON.stringify({
+        name: 'Alertas',
+        sendStats: false,
+        projectDescription: markerFor(ORG_ID, 'a', 'Associação'),
+      })}`,
     ]);
     expect(conferencia).toEqual([
       'settings:id-0',
@@ -491,17 +666,26 @@ describe('materialização da organização', () => {
       ['id-0', 'Renomeado por engano'],
       ['id-1', 'Alertas'],
     ]);
+    const descricaoAtual = new Map<string, string>();
     const base = h.client.getProject.getMockImplementation()!;
     h.client.getProject.mockImplementation(async (id: string) => {
       const project = await base(id);
       return {
         ...project,
-        $setProjectSettings: jest.fn(async (settings: unknown) => {
-          nomeAtual.set(id, (settings as {name: string}).name);
-        }),
+        $setProjectSettings: jest.fn(
+          async (settings: {
+            name: string;
+            sendStats: boolean;
+            projectDescription: string;
+          }) => {
+            nomeAtual.set(id, settings.name);
+            descricaoAtual.set(id, settings.projectDescription);
+          },
+        ),
         $getProjectSettings: jest.fn(async () => ({
           name: nomeAtual.get(id)!,
           sendStats: false,
+          projectDescription: descricaoAtual.get(id),
         })),
       };
     });
@@ -528,7 +712,7 @@ describe('materialização da organização', () => {
       versao: 1,
       organizacoes: [
         {
-          id: 'org-local',
+          id: ORG_ID,
           nome: 'Associação',
           estado: 'preparando',
           confirmacaoPendente: false,
@@ -628,16 +812,33 @@ describe('materialização da organização', () => {
       name: 'Meu aparelho',
       deviceType: 'mobile' as const,
     };
-    function projetoMock(id: string, projetos: string[]) {
+    // The conferência REOPENS each project: the settings live in Core, keyed
+    // by project id, NOT inside the per-open project instance.
+    const settingsById = new Map<
+      string,
+      {name?: string; sendStats?: boolean; projectDescription?: string}
+    >();
+    function projetoMock(id: string) {
+      let settings = settingsById.get(id);
+      if (!settings) {
+        settings = {};
+        settingsById.set(id, settings);
+      }
       return {
         $importCategories: jest.fn(async () => {
           imported.add(id);
         }),
-        $setProjectSettings: jest.fn(async () => {}),
-        $getProjectSettings: jest.fn(async () => ({
-          name: projetos.indexOf(id) === 0 ? 'Monitoramento' : 'Alertas',
-          sendStats: false,
-        })),
+        // Core MERGES settings ({...existing, ...new}) — mapeo-project.js.
+        $setProjectSettings: jest.fn(
+          async (next: {
+            name: string;
+            sendStats: boolean;
+            projectDescription: string;
+          }) => {
+            Object.assign(settings, next);
+          },
+        ),
+        $getProjectSettings: jest.fn(async () => ({...settings})),
         $member: {getById: jest.fn(async () => MEMBER_INICIALIZADO)},
       };
     }
@@ -662,7 +863,7 @@ describe('materialização da organização', () => {
       client: clientA,
       templates,
       repository,
-      generateId: () => 'org-1',
+      generateId: () => '4444444444444444',
     });
     const operacao1 = serviceA.start('Órgão Um');
     const flush = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -671,14 +872,14 @@ describe('materialização da organização', () => {
     }
     expect(resolverCriacao).toBeDefined();
     expect(document.organizacoes[0]).toMatchObject({
-      id: 'org-1',
+      id: '4444444444444444',
       estado: 'preparando',
     });
 
     // The journal is replaced externally. The in-flight callback must leave
     // the replacement intact, and another client must wait for it to settle.
     const replacement = documentoAmbosVerificados();
-    replacement.organizacoes[0]!.id = 'org-replacement';
+    replacement.organizacoes[0]!.id = '5555555555555555';
     repository.write(replacement);
     const projetosB: string[] = [];
     const clientB = {
@@ -692,13 +893,13 @@ describe('materialização da organização', () => {
       }),
       getDeviceInfo: jest.fn(async () => device),
       setDeviceInfo: jest.fn(async () => {}),
-      getProject: jest.fn(async (id: string) => projetoMock(id, projetosB)),
+      getProject: jest.fn(async (id: string) => projetoMock(id)),
     };
     const serviceB = createMaterializer({
       client: clientB,
       templates,
       repository,
-      generateId: () => 'org-2',
+      generateId: () => '6666666666666666',
     });
     const waiting = serviceB.start('Órgão Dois');
     expect(waiting).toBe(operacao1);
@@ -714,7 +915,7 @@ describe('materialização da organização', () => {
     repository.write(documentoInicial());
     await serviceB.start('Órgão Dois');
     expect(document.organizacoes[0]).toMatchObject({
-      id: 'org-2',
+      id: '6666666666666666',
       estado: 'pronta',
       confirmacaoPendente: true,
     });
@@ -902,6 +1103,7 @@ describe('validação real dos pacotes (#30 / SPEC B §5.2 CA5)', () => {
   type SettingsCore = {
     name?: string;
     sendStats?: boolean;
+    projectDescription?: string;
     defaultPresets?: {point: string[]; line: string[]};
     configMetadata?: {name?: string; version?: string; fileVersion?: string};
   };
@@ -990,10 +1192,25 @@ describe('validação real dos pacotes (#30 / SPEC B §5.2 CA5)', () => {
         projetos.map(projectId => ({projectId})),
       ),
       createProject: jest.fn(
-        async ({name, configPath}: {name: string; configPath: string}) => {
+        async ({
+          name,
+          configPath,
+          projectDescription,
+        }: {
+          name: string;
+          configPath: string;
+          projectDescription: string;
+        }) => {
           expect(configPath).toBe('');
           const id = `id-${projetos.length}`;
           projetos.push(id);
+          // Core seeds the settings at creation (mapeo-manager.js:499).
+          estados.set(id, {
+            presets: [],
+            campos: [],
+            icones: [],
+            settings: {name, sendStats: false, projectDescription},
+          });
           eventos.push(`create:${name}`);
           return id;
         },
@@ -1076,7 +1293,7 @@ describe('validação real dos pacotes (#30 / SPEC B §5.2 CA5)', () => {
         client,
         templates,
         repository,
-        generateId: () => 'org-local',
+        generateId: () => ORG_ID,
       }),
     };
   }
@@ -1132,7 +1349,7 @@ describe('validação real dos pacotes (#30 / SPEC B §5.2 CA5)', () => {
       versao: 1,
       organizacoes: [
         {
-          id: 'org-pendente',
+          id: '7777777777777777',
           nome: 'Pendente',
           estado: 'preparando',
           confirmacaoPendente: false,

@@ -32,6 +32,9 @@ import {
 
 const CAMINHO = '/pkg/monitoramento.comapeocat';
 
+/** 16 lowercase hex — the document id IS the marker's organization id. */
+const ORG_ID = '0123456789abcdef';
+
 const SVG_ARVORE =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#228B22"/></svg>';
 
@@ -1049,9 +1052,22 @@ describe('criarTemplateSourceDePacotes (real adapter behind TemplateSource)', ()
       },
     };
     const imports: string[] = [];
-    function makeProject(name: string) {
+    function makeProject(name: string, projectDescription: string) {
+      // One persistent settings object per project — Core MERGES
+      // $setProjectSettings over it (mapeo-project.js) and the marker set
+      // at createProject (mapeo-manager.js:499) survives the import.
+      const settings: Record<string, unknown> = {
+        name,
+        sendStats: false,
+        projectDescription,
+      };
+      const presets: object[] = [];
+      const campos: object[] = [];
+      const icones: object[] = [];
       const project = {
-        ...projetoCore({presets: [], campos: [], settings: {}}),
+        preset: {getMany: async () => presets},
+        field: {getMany: async () => campos},
+        icon: {getMany: async () => icones},
         $member: {
           getById: async () => ({
             name: 'Device',
@@ -1059,17 +1075,17 @@ describe('criarTemplateSourceDePacotes (real adapter behind TemplateSource)', ()
             role: {roleId: 'a12a6702b93bd7ff'},
           }),
         },
-        $setProjectSettings: async () => {},
+        $setProjectSettings: async (next: Record<string, unknown>) => {
+          Object.assign(settings, next);
+        },
+        $getProjectSettings: async () => ({...settings}),
         $importCategories: async ({filePath}: {filePath: string}) => {
           imports.push(filePath);
           const imported = await emularImportacaoCore(arquivos[filePath]!);
-          Object.assign(
-            project,
-            projetoCore({
-              ...imported,
-              settings: {...imported.settings, name, sendStats: false},
-            }),
-          );
+          presets.push(...imported.presets);
+          campos.push(...imported.campos);
+          icones.push(...imported.icones);
+          Object.assign(settings, imported.settings);
         },
       };
       return project;
@@ -1085,15 +1101,23 @@ describe('criarTemplateSourceDePacotes (real adapter behind TemplateSource)', ()
       setDeviceInfo: async () => {},
       listProjects: async () =>
         [...projects.keys()].map(projectId => ({projectId})),
-      createProject: jest.fn(async ({name}: {name: string}) => {
-        if (projects.size === 1 && failSecond) {
-          failSecond = false;
-          throw new Error('interrupted');
-        }
-        const id = `project-${projects.size}`;
-        projects.set(id, makeProject(name));
-        return id;
-      }),
+      createProject: jest.fn(
+        async ({
+          name,
+          projectDescription,
+        }: {
+          name: string;
+          projectDescription: string;
+        }) => {
+          if (projects.size === 1 && failSecond) {
+            failSecond = false;
+            throw new Error('interrupted');
+          }
+          const id = `project-${projects.size}`;
+          projects.set(id, makeProject(name, projectDescription));
+          return id;
+        },
+      ),
       getProject: async (id: string) => projects.get(id)!,
     };
     const templates = criarTemplateSourceDePacotes({
@@ -1106,7 +1130,7 @@ describe('criarTemplateSourceDePacotes (real adapter behind TemplateSource)', ()
       client,
       repository,
       templates,
-      generateId: () => 'org',
+      generateId: () => ORG_ID,
     }).start('Associação');
     expect(document.organizacoes[0]?.estado).toBe('falha_recuperavel');
     expect(projects.size).toBe(1);
@@ -1141,7 +1165,7 @@ describe('criarTemplateSourceDePacotes (real adapter behind TemplateSource)', ()
       client: {...client},
       repository,
       templates: afterUpdate,
-      generateId: () => 'unused',
+      generateId: () => '8888888888888888',
     }).retry();
 
     expect(document.organizacoes[0]?.estado).toBe('pronta');

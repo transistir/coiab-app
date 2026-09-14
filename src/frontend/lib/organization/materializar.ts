@@ -1,5 +1,6 @@
 import type {ComapeoCoreClientApi} from '@comapeo/ipc';
 import {CREATOR_ROLE_ID} from './fanout';
+import {markerFor, type Slot} from './marker';
 import {
   AREAS,
   type Area,
@@ -24,15 +25,24 @@ export type CreationProject = {
   $setProjectSettings(settings: {
     name: string;
     sendStats: boolean;
+    projectDescription: string;
   }): Promise<unknown>;
   /** SPEC B §5.4 step 6: the final conferência reads the settings back. */
-  $getProjectSettings(): Promise<{name?: string; sendStats?: boolean}>;
+  $getProjectSettings(): Promise<{
+    name?: string;
+    sendStats?: boolean;
+    projectDescription?: string;
+  }>;
 };
 export type CreationClient<P extends CreationProject> = {
   getDeviceInfo: ComapeoCoreClientApi['getDeviceInfo'];
   setDeviceInfo: ComapeoCoreClientApi['setDeviceInfo'];
   listProjects(): Promise<Array<{projectId: string}>>;
-  createProject(options: {name: string; configPath: string}): Promise<string>;
+  createProject(options: {
+    name: string;
+    configPath: string;
+    projectDescription: string;
+  }): Promise<string>;
   getProject(id: string): Promise<P>;
 };
 /**
@@ -54,6 +64,9 @@ export type TemplateSource<P, T extends TemplatePackage> = {
   verify(project: P, template: T, projectId: string): Promise<boolean>;
 };
 const NAMES = {monitoramento: 'Monitoramento', alertas: 'Alertas'} as const;
+const SLOT_POR_AREA: Record<Area, Slot> = {monitoramento: 'm', alertas: 'a'};
+const marcador = (org: OrganizacaoLocal, area: Area) =>
+  markerFor(org.id, SLOT_POR_AREA[area], org.nome);
 
 // Shared across hook instances/remounts, scoped to the native client process.
 const running = new WeakMap<object, Promise<void>>();
@@ -177,7 +190,11 @@ export function createMaterializer<
       assertViva(op);
       const settings = await project.$getProjectSettings();
       assertViva(op);
-      if (settings.name !== NAMES[area] || settings.sendStats !== false) {
+      if (
+        settings.name !== NAMES[area] ||
+        settings.sendStats !== false ||
+        settings.projectDescription !== marcador(current(), area)
+      ) {
         throw new Error('conference-settings');
       }
       if (!(await templates.verify(project, packages[area], projectId))) {
@@ -216,6 +233,7 @@ export function createMaterializer<
           await verified.$setProjectSettings({
             name: NAMES[area],
             sendStats: false,
+            projectDescription: marcador(current(), area),
           });
           assertViva(op);
           if (!(await templates.verify(verified, packages[area], projectId))) {
@@ -242,6 +260,7 @@ export function createMaterializer<
             projectId = await client.createProject({
               name: NAMES[area],
               configPath: '',
+              projectDescription: marcador(current(), area),
             });
             assertViva(op);
           }
@@ -269,6 +288,7 @@ export function createMaterializer<
         await project.$setProjectSettings({
           name: NAMES[area],
           sendStats: false,
+          projectDescription: marcador(current(), area),
         });
         assertViva(op);
         const device = await client.getDeviceInfo();
@@ -336,6 +356,11 @@ export function createMaterializer<
     if (current()) return;
     const error = organizationNameError(name);
     if (error) throw new Error(error);
+    // The document id IS the marker's organization id (SPEC B §4.1), so the
+    // id and name are validated by minting the Monitoramento marker BEFORE
+    // prepare() — a bad id or name must throw before any write.
+    const id = generateId();
+    markerFor(id, 'm', name.trim());
     const packages = await templates.prepare();
     // A concurrent operation may have persisted an intent (or superseded this
     // one) while the packages were being prepared — never write on its behalf.
@@ -347,7 +372,6 @@ export function createMaterializer<
       template: packages[area].ref,
       idsAntesDaCriacao: null,
     });
-    const id = generateId();
     save({
       id,
       nome: name.trim(),
