@@ -8,6 +8,7 @@ import {HeaderText} from './Text/HeaderText';
 import {BLUE_GREY, DARK_GREY} from '../lib/styles';
 import {useProjectRoleAndDetails} from '../hooks/useProjectRoleAndDetails';
 import {useActiveProject} from '../contexts/ActiveProjectContext';
+import {useCoiabOrganizationsState} from '../contexts/CoiabOrganizationsStoreContext';
 import {isLowStorage} from '../lib/storage';
 import {useStorageReadingQuery} from '../hooks/useStorageReadingQuery';
 import {ExclamationBadge} from './Storage/ExclamationBadge';
@@ -26,6 +27,19 @@ export function HomeHeader({
 }: HomeHeaderProps) {
   const {projectId} = useActiveProject();
   const projectDetails = useProjectRoleAndDetails(projectId);
+  // Identifies the operational organization (SPEC A §4.2 rule 5) when the
+  // device has one, falling back to the active project otherwise: a stale,
+  // unready or unacknowledged selection is not the organization the app is
+  // operating, so it never names the header.
+  const {organizacoes, ativa} = useCoiabOrganizationsState();
+  const organizacaoAtiva = ativa
+    ? organizacoes.find(
+        organizacao =>
+          organizacao.id === ativa.organizacaoId &&
+          organizacao.estado === 'pronta' &&
+          !organizacao.confirmacaoPendente,
+      )
+    : undefined;
   const {data} = useStorageReadingQuery();
   const isLow = isLowStorage(data.freeBytes);
   const insets = useSafeAreaInsets();
@@ -59,7 +73,7 @@ export function HomeHeader({
             style={styles.text}
             numberOfLines={1}
             ellipsizeMode="tail">
-            {projectDetails.projectHeader}
+            {organizacaoAtiva?.nome ?? projectDetails.projectHeader}
           </HeaderText>
           {isLow && (
             <View style={{position: 'absolute', top: -2, right: -2}}>
