@@ -309,15 +309,19 @@ function mesmoConjunto(a: readonly string[], b: readonly string[]): boolean {
  * - every `fieldRefs` entry resolves to an existing non-deleted field whose
  *   canonical DEFINITIONS (tagKey, type and select options — never the names
  *   alone) equal those of the category's package fields;
- * - `iconRef` mirrors the category's `icon` AND resolves: its docId must be an
- *   active icon document whose `name` is the category's package icon — a
- *   reference to another (or missing) icon document is a divergence;
+ * - `iconRef` mirrors the category's `icon` AND resolves. With the icon read
+ *   surface, the docId must be an active icon document whose `name` is the
+ *   category's package icon; when the surface is NOT exposed (real core rpc
+ *   has no icon listing), the references are proven by reference alone: no
+ *   icon document may carry two different package icons, and the distinct
+ *   docIds must equal the declared icon names.
  * - the default selection (`defaultPresets.point/line`) equals the preset
  *   docIds of the package `categorySelection` (observation/track);
  * - `configMetadata` (name/version/fileVersion) equals the package metadata.
  *
- * Any missing read surface, empty-fallback settings read or divergence
- * returns the SPECIFIC `MotivoDivergencia` — verification never throws.
+ * Any missing REQUIRED read surface (preset/field/settings), empty-fallback
+ * settings read or divergence returns the SPECIFIC `MotivoDivergencia` —
+ * verification never throws.
  */
 export async function conferirImportacao(
   project: ProjetoComPresets,
@@ -336,15 +340,20 @@ export async function conferirImportacao(
     if (!project.preset || !project.field || !project.$getProjectSettings) {
       return 'superficie_ausente';
     }
-    // Icons the categories reference: without the icon read surface their
-    // references cannot be proven, so the import cannot be declared complete.
+    // Icons the categories reference. The read surface is OPTIONAL: real
+    // core 7.4.0 / ipc 9.0.1 exposes NO icon listing (`icon.getMany` is not
+    // on the rpc surface — `ReferenceError: icon is not defined`,
+    // tests/integration/cliente-superficie.test.ts). Without it the
+    // references are still proven BY REFERENCE (no docId behind two
+    // different package icons; distinct docIds === declared icon names);
+    // with it, the name bijection holds as before.
     const iconesDoPacote = new Set(
       conteudo.categorias
         .map(categoria => categoria.icon)
         .filter((icone): icone is string => typeof icone === 'string'),
     );
-    if (iconesDoPacote.size > 0 && !project.icon) return 'superficie_ausente';
-    const lerIcones = project.icon;
+    const lerIcones =
+      typeof project.icon?.getMany === 'function' ? project.icon : undefined;
     const [presetsBrutos, camposBrutos, iconesBrutos, settings] =
       await Promise.all([
         project.preset.getMany(),
@@ -402,6 +411,10 @@ export async function conferirImportacao(
     const usados = new Set<number>();
     const pares: Array<{categoria: CategoriaPacote; preset: PresetImportado}> =
       [];
+
+    // Reference-only icon validation (no listing): docId → package icon
+    // names seen behind it. One docId with two different names diverges.
+    const referenciasPorDocId = new Map<string, Set<string>>();
     for (const categoria of conteudo.categorias) {
       const chave = chaveTags(categoria.tags);
       if (chave === null) return 'preset_ausente';
@@ -430,8 +443,17 @@ export async function conferirImportacao(
       if (categoria.icon != null) {
         const docIdIcone = preset.iconRef?.docId;
         if (typeof docIdIcone !== 'string') return 'icone_divergente';
-        if (nomePorIconeDocId.get(docIdIcone) !== categoria.icon) {
-          return 'icone_divergente';
+        if (lerIcones) {
+          if (nomePorIconeDocId.get(docIdIcone) !== categoria.icon) {
+            return 'icone_divergente';
+          }
+        } else {
+          const nomes = referenciasPorDocId.get(docIdIcone);
+          if (nomes === undefined) {
+            referenciasPorDocId.set(docIdIcone, new Set([categoria.icon]));
+          } else if (!nomes.has(categoria.icon)) {
+            return 'icone_divergente';
+          }
         }
       }
       const definicoesEsperadas = categoria.fields.map(id =>
@@ -461,6 +483,13 @@ export async function conferirImportacao(
         return 'campo_referencia_invalida';
       }
       pares.push({categoria, preset});
+    }
+
+    // Without the listing, the distinct referenced docIds must equal the
+    // distinct declared icon names: every declared icon referenced, none
+    // duplicated, none missing.
+    if (!lerIcones && referenciasPorDocId.size !== iconesDoPacote.size) {
+      return 'icone_divergente';
     }
 
     // Default selection: categorySelection ↔ defaultPresets docIds.

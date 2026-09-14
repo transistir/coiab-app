@@ -15,6 +15,7 @@ import manifestosGerados from './manifestos.generated.json';
 import {
   ErroPacote,
   abrirPacote,
+  conferirImportacao,
   criarTemplateSourceDePacotes,
   verificarImportacao,
   type CampoImportado,
@@ -24,6 +25,7 @@ import {
   type ManifestoPacote,
   type Pacote,
   type PresetImportado,
+  type ProjetoComPresets,
 } from './pacotes';
 
 // FS tests never touch the disk: the reader is injected as an in-memory map
@@ -107,6 +109,45 @@ const FIXTURE_ALERTAS: PacoteFixture = {
   selecao: {observation: ['alerta-fogo'], track: ['alerta-rio']},
 };
 
+const FIXTURE_ICONES: PacoteFixture = {
+  metadata: {name: 'Icones COIAB', version: '1.0.0'},
+  categorias: [
+    {
+      id: 'peixe',
+      name: 'Peixe',
+      appliesTo: ['observation'],
+      tags: {fauna: 'peixe'},
+      icon: 'peixe',
+    },
+    {
+      id: 'passaro',
+      name: 'Pássaro',
+      appliesTo: ['observation'],
+      tags: {fauna: 'passaro'},
+      icon: 'passaro',
+    },
+    {
+      id: 'flor',
+      name: 'Flor',
+      appliesTo: ['observation'],
+      tags: {flora: 'flor'},
+      icon: 'flor',
+    },
+    {
+      id: 'rio',
+      name: 'Rio',
+      appliesTo: ['track'],
+      tags: {waterway: 'river'},
+    },
+  ],
+  icones: [
+    {id: 'peixe', svg: SVG_ARVORE},
+    {id: 'passaro', svg: SVG_ARVORE},
+    {id: 'flor', svg: SVG_ARVORE},
+  ],
+  selecao: {observation: ['peixe'], track: ['rio']},
+};
+
 async function construirPacote(fixture: PacoteFixture): Promise<Uint8Array> {
   const writer = new Writer();
   for (const icone of fixture.icones ?? []) {
@@ -177,6 +218,14 @@ function pacoteMonitoramentoBytes(): Promise<Uint8Array> {
     bytesMonitoramento = construirPacote(FIXTURE_MONITORAMENTO);
   }
   return bytesMonitoramento;
+}
+
+let bytesIcones: Promise<Uint8Array> | null = null;
+function pacoteIconesBytes(): Promise<Uint8Array> {
+  if (!bytesIcones) {
+    bytesIcones = construirPacote(FIXTURE_ICONES);
+  }
+  return bytesIcones;
 }
 
 /** Core maps `appliesTo` to the preset geometry (`import-categories.js`). */
@@ -470,6 +519,24 @@ describe('verificarImportacao (Core preset shape + §5.4 canonical conferência 
     importado: Awaited<ReturnType<typeof emularImportacaoCore>>;
   }> {
     const bytes = await pacoteMonitoramentoBytes();
+    const leitor = leitorEmMemoria({[CAMINHO]: bytes});
+    const manifesto = await manifestoDe(bytes);
+    const pacote = await abrirPacote(CAMINHO, manifesto.ref, manifesto, leitor);
+    const importado = await emularImportacaoCore(bytes);
+    return {pacote, leitor, importado};
+  }
+
+  /** Project WITHOUT the icon read surface — the real rpc core surface. */
+  function semListagemDe(projeto: ProjetoComPresets) {
+    return {
+      preset: projeto.preset,
+      field: projeto.field,
+      $getProjectSettings: projeto.$getProjectSettings,
+    };
+  }
+
+  async function abrirIcones() {
+    const bytes = await pacoteIconesBytes();
     const leitor = leitorEmMemoria({[CAMINHO]: bytes});
     const manifesto = await manifestoDe(bytes);
     const pacote = await abrirPacote(CAMINHO, manifesto.ref, manifesto, leitor);
@@ -816,16 +883,96 @@ describe('verificarImportacao (Core preset shape + §5.4 canonical conferência 
     ).resolves.toBe(false);
   });
 
-  test('project without the icon read surface cannot prove the package icons → false', async () => {
+  test('icon listing absent (real rpc core has no icon.getMany): verifies via icon REFERENCES → true', async () => {
+    // Real core 7.4.0 / ipc 9.0.1 exposes NO icon listing (`icon.getMany`
+    // → `ReferenceError: icon is not defined`,
+    // tests/integration/cliente-superficie.test.ts). `$importCategories`
+    // still writes a string `preset.iconRef.docId`, so without the listing
+    // the import is proven BY REFERENCE and verification completes.
     const {pacote, leitor, importado} = await abrir();
-    const projeto = projetoCore(importado);
+    const semListagem = semListagemDe(projetoCore(importado));
+    await expect(
+      conferirImportacao(semListagem, pacote, leitor),
+    ).resolves.toBeNull();
+    await expect(
+      verificarImportacao(semListagem, pacote, leitor),
+    ).resolves.toBe(true);
+  });
+
+  test('icon listing absent: two categories with DIFFERENT icons whose presets share one docId → icone_divergente', async () => {
+    const {pacote, leitor, importado} = await abrirIcones();
+    // `peixe` and `flor` carry different package icons but both presets
+    // resolve to ONE icon document: a collision the package never had.
+    const projeto = semListagemDe(
+      projetoCore({
+        ...importado,
+        presets: importado.presets.map(preset =>
+          preset.docId === 'preset-flor'
+            ? {...preset, iconRef: {docId: 'icone-peixe'}}
+            : preset,
+        ),
+      }),
+    );
+    await expect(conferirImportacao(projeto, pacote, leitor)).resolves.toBe(
+      'icone_divergente',
+    );
+  });
+
+  test('icon listing absent: category with icon whose preset iconRef is null → icone_divergente', async () => {
+    const {pacote, leitor, importado} = await abrir();
+    const projeto = semListagemDe(
+      projetoCore({
+        ...importado,
+        presets: importado.presets.map(preset =>
+          preset.docId === 'preset-arvore'
+            ? {...preset, iconRef: null}
+            : preset,
+        ),
+      }),
+    );
+    await expect(conferirImportacao(projeto, pacote, leitor)).resolves.toBe(
+      'icone_divergente',
+    );
+  });
+
+  test('icon listing absent: fewer distinct icon docIds than declared icon names → icone_divergente', async () => {
+    const {pacote, leitor, importado} = await abrirIcones();
+    // Three declared icons, but `passaro` and `flor` resolve to ONE
+    // document: 2 distinct docIds cannot partition 3 declared names.
+    const projeto = semListagemDe(
+      projetoCore({
+        ...importado,
+        presets: importado.presets.map(preset =>
+          preset.docId === 'preset-flor'
+            ? {...preset, iconRef: {docId: 'icone-passaro'}}
+            : preset,
+        ),
+      }),
+    );
+    await expect(conferirImportacao(projeto, pacote, leitor)).resolves.toBe(
+      'icone_divergente',
+    );
+  });
+
+  test('regression (icon.getMany present): multi-icon package still verifies by NAME bijection → true', async () => {
+    const {pacote, leitor, importado} = await abrirIcones();
+    await expect(
+      verificarImportacao(projetoCore(importado), pacote, leitor),
+    ).resolves.toBe(true);
+  });
+
+  test('regression (icon.getMany present): docId shared by different icon names still diverges → false', async () => {
+    const {pacote, leitor, importado} = await abrirIcones();
     await expect(
       verificarImportacao(
-        {
-          preset: projeto.preset,
-          field: projeto.field,
-          $getProjectSettings: projeto.$getProjectSettings,
-        },
+        projetoCore({
+          ...importado,
+          presets: importado.presets.map(preset =>
+            preset.docId === 'preset-flor'
+              ? {...preset, iconRef: {docId: 'icone-peixe'}}
+              : preset,
+          ),
+        }),
         pacote,
         leitor,
       ),
