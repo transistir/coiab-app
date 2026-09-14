@@ -1,5 +1,6 @@
 import {act, renderHook, waitFor} from '@testing-library/react-native';
 import {useClientApi} from '@comapeo/core-react';
+import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import type {ComapeoCoreClientApi} from '@comapeo/ipc';
 import * as Sentry from '@sentry/react-native';
 import React, {StrictMode, type ReactNode} from 'react';
@@ -16,9 +17,19 @@ import {
   type ActivationOptions,
   type OrganizationActivation,
 } from '../../lib/organization/activation';
-import {organizationDocument} from '../../lib/organization/fixtures';
+import {
+  organizationDocument,
+  readyOrganization,
+} from '../../lib/organization/fixtures';
 import type {EstadoOrganizacoes} from '../../lib/organization/coiabOrganizations';
-import {MEMBER_ROLE_ID} from '../../sharedTypes';
+import type {
+  CreationProject,
+  TemplatePackage,
+  TemplateSource,
+} from '../../lib/organization/materializar';
+import {projectsQueryKey} from '../../lib/organization/queryKeys';
+import {CREATOR_ROLE_ID, MEMBER_ROLE_ID} from '../../sharedTypes';
+import {OrganizationMaterializerProvider} from '../../contexts/OrganizationMaterializerContext';
 import {useOrganizationActivation} from './useOrganizationActivation';
 
 // The hook reports degraded boots to Sentry; the SDK itself stays off jest.
@@ -87,7 +98,11 @@ type PromiseWithResolvers = {
 
 describe('useOrganizationActivation', () => {
   let projects: Record<ProjectId, FakeProject>;
-  let clientApi: {getProject: jest.Mock};
+  let clientApi: {
+    getProject: jest.Mock;
+    getDeviceInfo: jest.Mock;
+    setDeviceInfo: jest.Mock;
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -97,7 +112,15 @@ describe('useOrganizationActivation', () => {
       'B-m': fakeProject(),
       'B-a': fakeProject(),
     };
-    clientApi = {getProject: jest.fn(async (id: ProjectId) => projects[id])};
+    clientApi = {
+      getProject: jest.fn(async (id: ProjectId) => projects[id]),
+      getDeviceInfo: jest.fn(async () => ({
+        deviceId: 'device-1',
+        name: 'Teste',
+        deviceType: 'mobile',
+      })),
+      setDeviceInfo: jest.fn(async () => {}),
+    };
     useClientApiMock.mockReturnValue(
       clientApi as unknown as ComapeoCoreClientApi,
     );
@@ -298,5 +321,148 @@ describe('useOrganizationActivation', () => {
         ).state as EstadoOrganizacoes
       ).ativa,
     ).toEqual({organizacaoId: 'A', area: 'alertas'});
+  });
+
+  // ---- Materializer adapter (Phase 4) -------------------------------------
+
+  /** The document id IS the marker's organization id (SPEC B §4.1), so the
+   * fixture carries a 16-lowercase-hex id like the production generator. */
+  const ORG_ID = '0123456789abcdef';
+
+  function preparingDocument(): EstadoOrganizacoes {
+    return {
+      versao: 1,
+      organizacoes: [
+        {
+          ...readyOrganization(ORG_ID),
+          estado: 'preparando',
+          confirmacaoPendente: false,
+        },
+      ],
+      ativa: {organizacaoId: ORG_ID, area: 'alertas'},
+    };
+  }
+
+  /** Project surface the materializer's creation client reaches: settings
+   * written by the flow must read back identical in the conferência. */
+  function fakeCreationProject() {
+    const settings: {
+      name?: string;
+      sendStats?: boolean;
+      projectDescription?: string;
+    } = {};
+    return {
+      $member: {
+        getById: jest.fn(async () => ({
+          name: 'Teste',
+          deviceType: 'mobile',
+          role: {roleId: CREATOR_ROLE_ID},
+        })),
+      },
+      $importCategories: jest.fn(),
+      $setProjectSettings: jest.fn(async (next: typeof settings) => {
+        Object.assign(settings, next);
+      }),
+      $getProjectSettings: jest.fn(async () => ({...settings})),
+    };
+  }
+
+  function fakeTemplates(): TemplateSource<CreationProject, TemplatePackage> {
+    return {
+      prepare: jest.fn(async () => ({
+        monitoramento: {
+          ref: {versao: '1', hash: 'monitoramento'},
+          filePath: '/fake/monitoramento.comapeocat',
+        },
+        alertas: {
+          ref: {versao: '1', hash: 'alertas'},
+          filePath: '/fake/alertas.comapeocat',
+        },
+      })),
+      verify: jest.fn(async () => true),
+    } as unknown as TemplateSource<CreationProject, TemplatePackage>;
+  }
+
+  function createMaterializerWrapper(store: CoiabOrganizationsStore) {
+    const templates = fakeTemplates();
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {gcTime: Infinity},
+        mutations: {gcTime: Infinity},
+      },
+    });
+    const invalidateQueries = jest.spyOn(queryClient, 'invalidateQueries');
+    const wrapper = ({children}: {children: ReactNode}) => (
+      <QueryClientProvider client={queryClient}>
+        <CoiabOrganizationsStoreProvider store={store}>
+          <OrganizationMaterializerProvider templates={templates}>
+            {children}
+          </OrganizationMaterializerProvider>
+        </CoiabOrganizationsStoreProvider>
+      </QueryClientProvider>
+    );
+    return {wrapper, invalidateQueries, templates};
+  }
+
+  test('retoma a preparação persistida através do materializador e publica confirmation', async () => {
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState(preparingDocument(), true);
+    // The resumed journal holds stable project ids: the creation client must
+    // hand back one project object per id so settings survive both passes.
+    const projectsById = new Map<string, unknown>();
+    clientApi.getProject.mockImplementation(async (id: string) => {
+      let project = projectsById.get(id);
+      if (!project) {
+        project = fakeCreationProject();
+        projectsById.set(id, project);
+      }
+      return project;
+    });
+    const {wrapper, invalidateQueries, templates} =
+      createMaterializerWrapper(store);
+
+    const hook = await renderHook(() => useOrganizationActivation(), {
+      wrapper,
+    });
+
+    await waitFor(() =>
+      expect(hook.result.current.status).toBe('confirmation'),
+    );
+
+    expect(store.instance.getState().organizacoes[0]).toMatchObject({
+      estado: 'pronta',
+      confirmacaoPendente: true,
+    });
+    // Exactly one resume: the engine's startup adapter ran once (and the
+    // materializer's prepare is the once-per-resume observable).
+    expect(templates.prepare).toHaveBeenCalledTimes(1);
+    // SPEC B §5.4 step 7: the project cache is invalidated after the resume.
+    expect(
+      invalidateQueries.mock.calls.map(call => call[0]?.queryKey),
+    ).toContainEqual(projectsQueryKey);
+
+    await hook.unmount();
+  });
+
+  test('sem o materializador não há retomada: unavailable com preparation-adapter-required e documento intacto', async () => {
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState(preparingDocument(), true);
+
+    const hook = await renderHook(() => useOrganizationActivation(), {
+      wrapper: createWrapper(store, false),
+    });
+
+    await waitFor(() => expect(hook.result.current.status).toBe('unavailable'));
+    expect(hook.result.current.error).toBe('preparation-adapter-required');
+    // A missing adapter is absent capability, not a failed attempt: the
+    // persisted document stays exactly as it was ('preparando', journal
+    // intact, no 'falha_recuperável' write).
+    expect(store.instance.getState().organizacoes[0]).toMatchObject({
+      estado: 'preparando',
+      confirmacaoPendente: false,
+      areaEmExecucao: null,
+    });
+
+    await hook.unmount();
   });
 });

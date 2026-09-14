@@ -61,6 +61,7 @@ import {
   createCoiabOrganizationsStore,
 } from './CoiabOrganizationsStoreContext';
 import {OrganizationActivationProvider} from './OrganizationActivationContext';
+import {OrganizationMaterializerProvider} from './OrganizationMaterializerContext';
 
 /**
  * SPEC A CA09: persisted work must carry and validate its origin. Wires the
@@ -166,11 +167,13 @@ export const AppProviders = ({
                                         value={qaDeviceNameStore}>
                                         <CoiabOrganizationsStoreProvider
                                           store={coiabOrganizationsStore}>
-                                          <OrganizationActivationProvider>
-                                            <AuthProvider>
-                                              {children}
-                                            </AuthProvider>
-                                          </OrganizationActivationProvider>
+                                          <OrganizationMaterializerProvider>
+                                            <OrganizationActivationProvider>
+                                              <AuthProvider>
+                                                {children}
+                                              </AuthProvider>
+                                            </OrganizationActivationProvider>
+                                          </OrganizationMaterializerProvider>
                                         </CoiabOrganizationsStoreProvider>
                                       </QADeviceNameStoreContext>
                                     </EarlyAccessStoreProvider>

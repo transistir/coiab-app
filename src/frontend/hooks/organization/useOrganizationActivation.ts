@@ -8,6 +8,7 @@ import {
   useCoiabOrganizationsStoreContext,
   type CoiabOrganizationsStore,
 } from '../../contexts/CoiabOrganizationsStoreContext';
+import {useOrganizationMaterializer} from '../../contexts/OrganizationMaterializerContext';
 import {
   createOrganizationActivation,
   type ActivationProject,
@@ -82,6 +83,9 @@ function toActivationProject(
 export function useOrganizationActivation(): OrganizationActivationHandle {
   const store = useCoiabOrganizationsStoreContext();
   const clientApi = useClientApi();
+  // `null` outside the root materializer provider: the engine then publishes
+  // `preparation-adapter-required` instead of resuming (P3-8 degradation).
+  const materializador = useOrganizationMaterializer();
 
   const activation = useMemo(() => {
     // Writes the engine attempts while disarmed are dropped: post-unmount
@@ -119,10 +123,11 @@ export function useOrganizationActivation(): OrganizationActivationHandle {
       store: engineStore,
       getProject: async id =>
         toActivationProject(await clientApi.getProject(id)),
+      resumePreparation: materializador?.retomar,
     });
     engineWriteGates.set(activation, gate);
     return activation;
-  }, [store, clientApi]);
+  }, [store, clientApi, materializador]);
 
   const state = useStore(activation.instance);
 

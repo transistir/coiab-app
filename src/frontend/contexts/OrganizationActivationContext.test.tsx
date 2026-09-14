@@ -1,4 +1,5 @@
 import * as React from 'react';
+import {Asset} from 'expo-asset';
 import {Text} from 'react-native';
 import {render, screen, waitFor} from '@testing-library/react-native';
 import type {MapeoManager} from '@comapeo/core';
@@ -15,6 +16,7 @@ import {
   type ActivationOptions,
   type OrganizationActivation,
 } from '../lib/organization/activation';
+import {useOrganizationMaterializer} from './OrganizationMaterializerContext';
 import {COIAB_ORGANIZATIONS_STORAGE_KEY} from './CoiabOrganizationsStoreContext';
 import {useOrganizationActivationContext} from './OrganizationActivationContext';
 
@@ -39,6 +41,19 @@ jest.mock('../lib/organization/activation', () => {
 
 const createOrganizationActivationMock =
   createOrganizationActivation as unknown as jest.Mock;
+
+/** The materializer is mounted once at the root (Phase 4): the handle must
+ * exist under `AppProviders`, and mounting must never touch the asset
+ * system — the installed template source does no I/O on construction. */
+function MaterializerProbe() {
+  const materializador = useOrganizationMaterializer();
+
+  return (
+    <Text testID="materializador">
+      {materializador ? 'montado' : 'ausente'}
+    </Text>
+  );
+}
 
 /** The engine is mounted once at the root (SPEC A §5.2): everything the
  * activation publishes must be readable from anywhere under `AppProviders`. */
@@ -110,9 +125,15 @@ describe('OrganizationActivationContext sob AppProviders', () => {
     const appProviders = createAppProvidersWrapper({mapeoApi: client});
     onTeardown.push(appProviders.teardown);
 
-    const utils = await render(<ActivationProbe />, {
-      wrapper: appProviders.wrapper,
-    });
+    const utils = await render(
+      <>
+        <ActivationProbe />
+        <MaterializerProbe />
+      </>,
+      {
+        wrapper: appProviders.wrapper,
+      },
+    );
 
     // The tree must be unmounted before the IPC is stopped, otherwise every
     // subscription tears down against a closed client.
@@ -192,5 +213,23 @@ describe('OrganizationActivationContext sob AppProviders', () => {
     const engine = createOrganizationActivationMock.mock.results[0]!.value;
     expect(engine.initialize).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('activation-status')).toHaveTextContent('absent');
+  });
+
+  test('monta o materializador na raiz sem nenhuma chamada de asset (documento vazio)', async () => {
+    const fromModuleSpy = jest.spyOn(Asset, 'fromModule');
+    const downloadAsyncSpy = jest.spyOn(Asset.prototype, 'downloadAsync');
+
+    await renderProbe();
+
+    await waitFor(() =>
+      expect(screen.getByTestId('activation-status')).toHaveTextContent(
+        'absent',
+      ),
+    );
+    expect(screen.getByTestId('materializador')).toHaveTextContent('montado');
+    // Constructing the installed template source at the root does no I/O:
+    // the asset download happens only inside `prepare` (Phase 3).
+    expect(fromModuleSpy).not.toHaveBeenCalled();
+    expect(downloadAsyncSpy).not.toHaveBeenCalled();
   });
 });
