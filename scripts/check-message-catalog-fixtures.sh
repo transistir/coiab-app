@@ -90,13 +90,13 @@ make_fixture_repo() {
   local name=$1
   local primary_trailing_newline=${2:-}
   local dir="$fixture_root/$name"
-  mkdir -p -- "$dir/messages/en-US"
+  mkdir -p -- "$dir/messages/en-US" || exit 1
   if [[ -n $primary_trailing_newline ]]; then
-    printf '{\n  "a": "one"\n}\n' >"$dir/messages/en-US/primary.json"
+    printf '{\n  "a": "one"\n}\n' >"$dir/messages/en-US/primary.json" || exit 1
   else
-    printf '{\n  "a": "one"\n}' >"$dir/messages/en-US/primary.json"
+    printf '{\n  "a": "one"\n}' >"$dir/messages/en-US/primary.json" || exit 1
   fi
-  printf '{\n  "b": "two"\n}' >"$dir/messages/en-US/secondary.json"
+  printf '{\n  "b": "two"\n}' >"$dir/messages/en-US/secondary.json" || exit 1
   fixture_git -C "$dir" init -q
   fixture_git -C "$dir" config user.email fixture@example.com
   fixture_git -C "$dir" config user.name fixture
