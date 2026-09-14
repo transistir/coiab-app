@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // @ts-check
 
-import {readFile, stat, writeFile} from 'node:fs/promises';
+import {mkdir, readFile, stat, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -17,7 +17,7 @@ import {extrairManifesto} from './lib/manifesto-pacote.mjs';
  * Uso:
  *   node ./scripts/gerar-manifestos-pacotes.mjs \
  *     [--monitoramento <arquivo.comapeocat> --alertas <arquivo.comapeocat>] \
- *     [--regenerar]
+ *     [--emitir-fixtures] [--regenerar]
  *
  * Quando os dois pacotes aprovados de #30 forem entregues, aponte
  * `--monitoramento`/`--alertas` para os arquivos reais (aí a geração SEMPRE
@@ -28,10 +28,16 @@ import {extrairManifesto} from './lib/manifesto-pacote.mjs';
  * mudança de formato. NB: o Writer carimba `buildDateValue: Date.now()` no
  * `metadata.json`, então o `ref.hash` de fixtures reconstruídas muda a cada
  * execução (o `conteudo` mapeado é estável); pacotes reais entregues como
- * arquivos fixos geram hash estável. Por isso, SEM pacotes reais e sem
- * `--regenerar`, a geração é PULADA quando `manifestos.generated.json` já
- * existe — o arquivo versionado permanece determinístico entre `npm start`s
- * (fallback: se o arquivo não existir, as fixtures são geradas normalmente).
+ * arquivos fixos geram hash estável. `--emitir-fixtures` é a ponte: grava as
+ * fixtures como ARQUIVOS fixos em `assets/categorias/<area>.comapeocat` e
+ * gera o manifesto a partir dos bytes gravados — hash estável, e o sha256
+ * do asset vira trava real entre o arquivo e o manifesto
+ * (pacotesInstalados.test.ts). A flag é incompatível com caminhos reais:
+ * misturar regeneraria o manifesto com bytes trocados. Por isso, SEM
+ * pacotes reais, sem `--emitir-fixtures` e sem `--regenerar`, a geração é
+ * PULADA quando `manifestos.generated.json` já existe — o arquivo
+ * versionado permanece determinístico entre `npm start`s (fallback: se o
+ * arquivo não existir, as fixtures são geradas normalmente).
  */
 
 const PROJECT_ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -147,9 +153,27 @@ async function arquivoExiste(caminho) {
   }
 }
 
+/** `assets/categorias/` — destino dos pacotes `.comapeocat` embarcados. */
+const DIRETORIO_ASSETS = path.join(PROJECT_ROOT, 'assets', 'categorias');
+
+/**
+ * Grava a fixture canônica de `area` como arquivo fixo em
+ * `assets/categorias/<area>.comapeocat` e devolve os bytes RELIDOS do
+ * arquivo: o manifesto passa a descrever exatamente os bytes versionados
+ * (e não os bytes em memória), travando o par asset↔manifesto.
+ */
+async function emitirFixture(area) {
+  const bytes = await construirPacote(FIXTURES[area]);
+  await mkdir(DIRETORIO_ASSETS, {recursive: true});
+  const destino = path.join(DIRETORIO_ASSETS, `${area}.comapeocat`);
+  await writeFile(destino, bytes);
+  return new Uint8Array(await readFile(destino));
+}
+
 /** @type {Record<string, string>} */
 const caminhosPorArea = {};
 let regenerar = false;
+let emitirFixtures = false;
 const argv = process.argv.slice(2);
 for (let indice = 0; indice < argv.length; indice += 1) {
   const argumento = argv[indice] ?? '';
@@ -157,10 +181,14 @@ for (let indice = 0; indice < argv.length; indice += 1) {
     regenerar = true;
     continue;
   }
+  if (argumento === '--emitir-fixtures') {
+    emitirFixtures = true;
+    continue;
+  }
   const area = AREAS.find(candidata => argumento === `--${candidata}`);
   if (!area) {
     throw new Error(
-      `Argumento desconhecido: '${argumento}'. Uso: [--monitoramento <arquivo.comapeocat> --alertas <arquivo.comapeocat>] [--regenerar]`,
+      `Argumento desconhecido: '${argumento}'. Uso: [--monitoramento <arquivo.comapeocat> --alertas <arquivo.comapeocat>] [--emitir-fixtures] [--regenerar]`,
     );
   }
   const caminho = argv[indice + 1];
@@ -183,11 +211,26 @@ if (quantidadePacotesReais === 1) {
   );
 }
 
-// Determinismo do arquivo versionado: sem pacotes reais e sem --regenerar,
-// NÃO reconstruir as fixtures (o Writer carimba buildDateValue: Date.now() e o
-// ref.hash mudaria a cada `npm start`). Pacote ausente → fallback normal.
+// --emitir-fixtures grava as fixtures INTERINAS em assets/categorias/ — não
+// coexiste com pacotes reais de #30: ou se emitem as interinas, ou se usam
+// os reais; misturar trocaria os bytes sob o manifesto já publicado.
+if (emitirFixtures && quantidadePacotesReais > 0) {
+  throw new Error(
+    '--emitir-fixtures é incompatível com --monitoramento/--alertas: a flag emite as fixtures interinas em assets/categorias/, pacotes reais são informados por caminho',
+  );
+}
+
+// Determinismo do arquivo versionado: sem pacotes reais, sem --emitir-fixtures
+// e sem --regenerar, NÃO reconstruir as fixtures (o Writer carimba
+// buildDateValue: Date.now() e o ref.hash mudaria a cada `npm start`).
+// Pacote ausente → fallback normal.
 const temPacotesReais = quantidadePacotesReais > 0;
-if (!temPacotesReais && !regenerar && (await arquivoExiste(OUTPUT_FILE))) {
+if (
+  !temPacotesReais &&
+  !emitirFixtures &&
+  !regenerar &&
+  (await arquivoExiste(OUTPUT_FILE))
+) {
   console.log(
     'manifestos.generated.json já existe, pulando (use --regenerar para forçar)',
   );
@@ -198,7 +241,9 @@ if (!temPacotesReais && !regenerar && (await arquivoExiste(OUTPUT_FILE))) {
     const caminho = caminhosPorArea[area];
     const bytes = caminho
       ? new Uint8Array(await readFile(caminho))
-      : await construirPacote(FIXTURES[area]);
+      : emitirFixtures
+        ? await emitirFixture(area)
+        : await construirPacote(FIXTURES[area]);
     const {hash, conteudo} = await extrairManifesto(bytes);
     const versao = conteudo.metadata.version;
     if (versao === undefined) {
@@ -210,7 +255,10 @@ if (!temPacotesReais && !regenerar && (await arquivoExiste(OUTPUT_FILE))) {
     console.log(
       `Manifesto '${area}': versao ${versao}, sha256 ${hash} — fonte: ${
         caminho ??
-        'fixture canônica de teste (pacotes aprovados de #30 ainda não entregues)'
+        (emitirFixtures
+          ? path.join(DIRETORIO_ASSETS, `${area}.comapeocat`) +
+            ' (fixture interina emitida; trocar pelos pacotes reais de #30)'
+          : 'fixture canônica de teste (pacotes aprovados de #30 ainda não entregues)')
       }`,
     );
   }

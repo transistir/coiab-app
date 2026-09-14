@@ -3,7 +3,7 @@
   "monitoramento": {
     "ref": {
       "versao": "1.0.0",
-      "hash": "3f869378216be88a12b5fbdb9405d5ea7c3f12b405b9e34122b1e1afb1912d5b"
+      "hash": "e682ec0caadcca240584ee0e9ea9825005195c9515e5c409a5c2266d94027ea3"
     },
     "conteudo": {
       "fileVersion": "1.0",
@@ -62,7 +62,7 @@
   "alertas": {
     "ref": {
       "versao": "1.0.0",
-      "hash": "af7398b61af67a75c1613cf74541b2152528b35c588073d6b0fda9b827122a30"
+      "hash": "848cbf9c11c6ddddef7dd07439aa00ebeeaf8e30894ce454350783446d3b9bd6"
     },
     "conteudo": {
       "fileVersion": "1.0",
