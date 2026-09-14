@@ -1062,4 +1062,36 @@ describe('co-revisão: recheque de trabalho pendente e endurecimento da hidrata�
       area: 'monitoramento',
     });
   });
+
+  test('M-7 adaptador de preparação ausente preserva preparando sem gravação durável de falha', async () => {
+    const {store, activation} = durableSetup();
+    store.instance.setState({
+      organizacoes: [
+        {
+          ...readyOrganization(),
+          estado: 'preparando',
+          areaEmExecucao: 'alertas',
+        },
+      ],
+      ativa: null,
+    });
+    const before = store.instance.getState();
+    await activation.initialize();
+    // Indisponibilidade é publicada com status existente do motor: capacidade
+    // ausente não é tentativa que falhou (SPEC A §4.2 regra 7).
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'unavailable',
+      error: 'preparation-adapter-required',
+    });
+    // NENHUMA escrita: documento persistido intacto por identidade.
+    expect(store.instance.getState()).toBe(before);
+    expect(store.instance.getState().organizacoes[0]).toMatchObject({
+      estado: 'preparando',
+      areaEmExecucao: 'alertas',
+      ultimoErro: null,
+    });
+    const durable = JSON.parse(lerRegistro() as string).state;
+    expect(durable.organizacoes[0]?.estado).toBe('preparando');
+    expect(JSON.stringify(durable)).not.toContain('falha_recuperavel');
+  });
 });

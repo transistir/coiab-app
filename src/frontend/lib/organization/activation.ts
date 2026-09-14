@@ -43,9 +43,7 @@ export function createOrganizationActivation({
   hasPendingWork = () => false,
   getPendingWorkProjectId = () => null,
   cancelPresentation = async () => {},
-  resumePreparation = async () => {
-    throw new Error('preparation-adapter-required');
-  },
+  resumePreparation,
 }: {
   store: CoiabOrganizationsStore;
   hasPendingWork?: () => boolean;
@@ -323,6 +321,18 @@ export function createOrganizationActivation({
       .getState()
       .organizacoes.find(item => item.id === id);
     if (!org || org.estado === 'pronta') return false;
+    // SPEC A §4.2 regra 7: 'falha_recuperavel' is recorded when a resume was
+    // ATTEMPTED and failed. A missing adapter is absent capability, not a
+    // failed attempt: the organization stays exactly as persisted
+    // ('preparando', areaEmExecucao intact, no journal write) and the
+    // published state says why using statuses the engine already has.
+    if (!resumePreparation) {
+      instance.setState({
+        status: 'unavailable',
+        error: 'preparation-adapter-required',
+      });
+      return false;
+    }
     store.instance.setState(state => ({
       organizacoes: state.organizacoes.map(item =>
         item.id === id ? {...item, estado: 'preparando' as const} : item,
