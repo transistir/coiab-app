@@ -2,17 +2,21 @@
 
 # Fixture suite for scripts/check-message-catalog.sh. Every case builds a
 # throwaway git repository and drives the check with a fake generator command
-# (`GENERATOR_CMD`), so the real `npm run extract-messages` — slow, and
-# dependent on the whole dependency tree — never runs. Seconds, offline, no
-# node_modules.
+# (`CHECK_MESSAGE_CATALOG_GENERATOR`), so the real `npm run extract-messages` —
+# slow, and dependent on the whole dependency tree — never runs. Seconds,
+# offline, no node_modules.
 #
 # The cases mirror the incident this gate exists for (#72): the generator and
-# the committed catalog diverging in either direction (a tracked file rewritten,
-# or a new file appearing) must fail the check, while a generator that
-# reproduces the committed bytes exactly must pass even though it rewrote the
-# file.
+# the committed catalog diverging in either direction (a tracked file rewritten
+# or deleted, or a new file appearing) must fail the check, as must the
+# generator itself failing, while a generator that reproduces the committed
+# bytes exactly must pass even though it rewrote the file.
 
 set -euo pipefail
+# Without this, a failing command inside `$(make_fixture_repo ...)` is masked by
+# the function's final `printf`, and the case would run against a half-built
+# repository.
+shopt -s inherit_errexit
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 repo_root=$(cd -- "$script_dir/.." && pwd -P)
@@ -93,11 +97,15 @@ make_fixture_repo() {
   printf '%s\n' "$dir"
 }
 
-# Runs the check against a fixture repo with the given generator command.
+# Runs the check against a fixture repo with the given generator command. The
+# check hands the generator to `bash -c`, so shell-quote it: fixture paths come
+# from `mktemp` and may contain characters the shell would otherwise act on.
 run_check() {
   local repo=$1
   local generator=$2
-  CATALOG_REPO_ROOT=$repo GENERATOR_CMD=$generator "$check_script"
+  CHECK_MESSAGE_CATALOG_ROOT=$repo \
+    CHECK_MESSAGE_CATALOG_GENERATOR=$(printf '%q' "$generator") \
+    "$check_script"
 }
 
 generator_dir="$fixture_root/generators"
@@ -128,10 +136,26 @@ cat >"$generator_dir/strip-trailing-newline.sh" <<'GEN'
 printf '{\n  "a": "one"\n}' > messages/en-US/primary.json
 GEN
 
+# Deletes a tracked catalog file (case G).
+cat >"$generator_dir/delete-tracked.sh" <<'GEN'
+#!/usr/bin/env bash
+rm messages/en-US/secondary.json
+GEN
+
+# Rewrites a tracked catalog file and stages the change (case H). Runs with the
+# fixture repo as cwd, so `git add` targets the fixture's index.
+cat >"$generator_dir/rewrite-tracked-staged.sh" <<'GEN'
+#!/usr/bin/env bash
+printf '{\n  "a": "changed"\n}' > messages/en-US/primary.json
+git add messages/en-US/primary.json
+GEN
+
 chmod +x "$generator_dir/rewrite-tracked.sh" \
   "$generator_dir/create-untracked.sh" \
   "$generator_dir/rewrite-identical.sh" \
-  "$generator_dir/strip-trailing-newline.sh"
+  "$generator_dir/strip-trailing-newline.sh" \
+  "$generator_dir/delete-tracked.sh" \
+  "$generator_dir/rewrite-tracked-staged.sh"
 
 # --- case A: clean catalog, no-op generator ----------------------------------
 
@@ -171,5 +195,35 @@ newline_repo=$(make_fixture_repo trailing-newline newline)
 expect_failure 1 'diverges' run_check "$newline_repo" "$generator_dir/strip-trailing-newline.sh"
 assert_output_contains 'messages/en-US/primary.json'
 assert_output_contains '\ No newline at end of file'
+
+# --- case F: the generator itself fails --------------------------------------
+
+# Pins the first failure path: a generator that exits non-zero must abort the
+# check, not be treated as "no drift". Without this case a gate that swallowed
+# the failure (for example by ignoring the command's exit status) would still
+# pass every other case.
+failed_repo=$(make_fixture_repo generator-fails)
+expect_failure 1 'generator command failed' run_check "$failed_repo" false
+
+# --- case G: generator deletes a tracked file --------------------------------
+
+# The third direction of drift: the committed catalog has a file the generator
+# does not write. Comparing file contents cannot see a deletion, so this case
+# pins the path-existence half of the check.
+deleted_repo=$(make_fixture_repo delete-tracked)
+expect_failure 1 'diverges' run_check "$deleted_repo" "$generator_dir/delete-tracked.sh"
+assert_output_contains 'messages/en-US/secondary.json'
+
+# --- case H: generator stages the drift it introduces ------------------------
+
+# The generator rewrites a tracked file and `git add`s it, so the drift lives in
+# both the index and the worktree. Comparing the index to the worktree
+# (`git diff --name-only` plus `git ls-files --others`) reports nothing here and
+# the check would pass; only the porcelain status against HEAD sees it. This
+# pins the comparison rather than leaving it to be inferred from cases B-G,
+# none of which touch the index.
+staged_repo=$(make_fixture_repo rewrite-tracked-staged)
+expect_failure 1 'diverges' run_check "$staged_repo" "$generator_dir/rewrite-tracked-staged.sh"
+assert_output_contains 'messages/en-US/primary.json'
 
 echo 'check-message-catalog fixtures: PASS'

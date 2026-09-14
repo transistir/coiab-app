@@ -9,18 +9,22 @@
 # with "This operation needs to be run on a clean working tree" — no APK, no
 # capture. ci.yml never regenerated the catalog, so CI stayed green for 6 rounds
 # of PR #62 while EAS could not build. This gate regenerates the catalog and
-# fails loudly on any drift: tracked files rewritten, or new files appearing.
+# fails loudly on any drift: tracked files rewritten (staged or not), tracked
+# files deleted, or new files appearing.
 #
-# Environment (fixtures rely on these; both default to the real thing):
-#   CATALOG_REPO_ROOT  repository to check (default: this script's repository)
-#   GENERATOR_CMD      generator to run, via `bash -c`
-#                      (default: `npm run extract-messages`)
+# Environment (fixtures rely on these; both default to the real thing). The
+# names are namespaced because this is a required gate: a generic, easily
+# inherited name such as GENERATOR_CMD=true must not be able to turn it off.
+#   CHECK_MESSAGE_CATALOG_ROOT       repository to check
+#                                    (default: this script's repository)
+#   CHECK_MESSAGE_CATALOG_GENERATOR  generator to run, via `bash -c`
+#                                    (default: `npm run extract-messages`)
 
 set -euo pipefail
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
-repo_root=${CATALOG_REPO_ROOT:-$(cd -- "$script_dir/.." && pwd -P)}
-generator_cmd=${GENERATOR_CMD:-npm run extract-messages}
+repo_root=${CHECK_MESSAGE_CATALOG_ROOT:-$(cd -- "$script_dir/.." && pwd -P)}
+generator_cmd=${CHECK_MESSAGE_CATALOG_GENERATOR:-npm run extract-messages}
 
 cd -- "$repo_root"
 
@@ -29,12 +33,18 @@ if ! bash -c "$generator_cmd"; then
   exit 1
 fi
 
-# Compare against the index rather than HEAD: on CI the checkout is clean, so
-# index and HEAD agree, and the generator only writes to the working tree.
-tracked_changes=$(git diff --name-only -- messages/)
-untracked_changes=$(git ls-files --others --exclude-standard -- messages/)
+# The generator must leave messages/ byte-identical to the committed catalog.
+# A single `git status --porcelain` is the comparison because it reports every
+# kind of drift at once — staged edits, unstaged edits, deletions, and
+# untracked files — where an index-vs-worktree `git diff` plus
+# `git ls-files --others` pair silently missed staged changes. Dirt that is
+# already under messages/ before this run and is not something the generator
+# overwrites (a staged edit, an untracked file, a deleted file it does not
+# write) fails too; that is intended, because the catalog a build consumes must
+# equal the committed one.
+status_output=$(git status --porcelain --untracked-files=all -- messages/)
 
-if [[ -z $tracked_changes && -z $untracked_changes ]]; then
+if [[ -z $status_output ]]; then
   echo "check-message-catalog: messages/ matches the output of: $generator_cmd" >&2
   exit 0
 fi
@@ -42,22 +52,16 @@ fi
 {
   echo "check-message-catalog: FAIL - messages/ diverges from the output of: $generator_cmd"
   echo "Regenerate it ('$generator_cmd') and commit the result; never hand-edit messages/."
-  if [[ -n $tracked_changes ]]; then
-    echo
-    echo "Tracked files changed by the generator:"
-    while IFS= read -r path; do
-      printf '  %s\n' "$path"
-    done <<<"$tracked_changes"
-    echo
-    git diff -- messages/
-  fi
-  if [[ -n $untracked_changes ]]; then
-    echo
-    echo "New untracked files under messages/:"
-    while IFS= read -r path; do
-      printf '  %s\n' "$path"
-    done <<<"$untracked_changes"
-  fi
+  echo
+  echo "Paths under messages/ that differ from the committed catalog:"
+  while IFS= read -r entry; do
+    printf '  %s\n' "${entry:3}"
+  done <<<"$status_output"
+  echo
+  # HEAD, not the index: for the staged drift this check exists to catch, an
+  # index-vs-worktree diff prints an empty body while the header above names
+  # the paths, which reads as "no changes".
+  git --no-pager diff HEAD -- messages/
 } >&2
 
 exit 1
