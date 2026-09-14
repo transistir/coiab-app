@@ -15,9 +15,9 @@ export type DiscardOrganizationStatus =
 
 /**
  * The escape hatch for the fail-closed create: tears down the half-built
- * organization (`discardIncompleteOrganization` carries the provenance and
- * member checks, the pre-leave revalidation and the leaves) so creation can
- * restart fresh. Matches the other organization hooks' lifecycle (P6 Q2): a
+ * organization (`discardIncompleteOrganization` carries the pre-leave state
+ * revalidation and the local leaves) so creation can restart fresh. Matches
+ * the other organization hooks' lifecycle (P6 Q2): a
  * synchronous busy guard against re-entry, an attempt token so a superseded
  * or unmounted attempt publishes nothing, invalidations that settle before
  * the terminal status is published, and a reset that is inert while busy.

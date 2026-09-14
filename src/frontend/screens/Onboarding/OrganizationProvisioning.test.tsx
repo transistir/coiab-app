@@ -357,7 +357,7 @@ describe('OrganizationProvisioning', () => {
     expect(alertSpy).toHaveBeenCalledTimes(1);
     // The confirm must say what a leave costs: joined projects are left too.
     expect(alertSpy.mock.calls[0][1]).toBe(
-      'This device will leave the projects in this setup, and other members will see it leave. Observations not yet synced from this device will no longer be available here, so export any important data first. Projects that exist only on this device will be permanently deleted; other devices keep their copies, and projects created here with other members are kept.',
+      'This device will leave the projects in this setup. Observations not yet synced from this device will no longer be available here, so export any important data first. Other members keep the projects and their copies.',
     );
     expect(discard).not.toHaveBeenCalled();
 
@@ -436,33 +436,6 @@ describe('OrganizationProvisioning', () => {
       ),
     ).toBeOnTheScreen();
     expect(screen.queryByText('START-OVER-FORK-REACHED')).not.toBeOnTheScreen();
-  });
-
-  test('a partial discard names each skipped project and why, and stays put', async () => {
-    mockOrganizations([incompleteOrganization]);
-    mockDiscard({
-      status: 'success',
-      result: {
-        ok: false,
-        removed: [],
-        skipped: [
-          {
-            slot: 'm',
-            projectId: 'project-m',
-            reason: 'shared-with-other-devices',
-          },
-        ],
-      } satisfies DiscardResult,
-    });
-    await renderScreen();
-
-    expect(
-      screen.getByText(
-        'Monitoramento is shared with other devices, so it was kept.',
-      ),
-    ).toBeOnTheScreen();
-    expect(screen.queryByText('START-OVER-FORK-REACHED')).not.toBeOnTheScreen();
-    expect(screen.getByText('Setting up your Organization…')).toBeOnTheScreen();
   });
 
   test('a skip because the setup changed mid-discard is explained the same way', async () => {

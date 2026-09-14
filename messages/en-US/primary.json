@@ -708,7 +708,7 @@
     "message": "This Organization was not left half-created on this device, so its setup cannot be finished here."
   },
   "$1screens.OrganizationProvisioning.discardConfirmBody": {
-    "message": "This device will leave the projects in this setup, and other members will see it leave. Observations not yet synced from this device will no longer be available here, so export any important data first. Projects that exist only on this device will be permanently deleted; other devices keep their copies, and projects created here with other members are kept."
+    "message": "This device will leave the projects in this setup. Observations not yet synced from this device will no longer be available here, so export any important data first. Other members keep the projects and their copies."
   },
   "$1screens.OrganizationProvisioning.discardConfirmTitle": {
     "message": "Discard this Organization setup?"
@@ -730,9 +730,6 @@
   },
   "$1screens.OrganizationProvisioning.skippedJoinPending": {
     "message": "An invitation for this organization is still syncing. Try again once it finishes."
-  },
-  "$1screens.OrganizationProvisioning.skippedShared": {
-    "message": "{projectName} is shared with other devices, so it was kept."
   },
   "$1screens.OrganizationProvisioning.skippedStale": {
     "message": "{projectName} changed while it was being discarded, so it was kept."

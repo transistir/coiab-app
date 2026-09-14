@@ -45,7 +45,7 @@ const m = defineMessages({
   discardConfirmBody: {
     id: '$1screens.OrganizationProvisioning.discardConfirmBody',
     defaultMessage:
-      'This device will leave the projects in this setup, and other members will see it leave. Observations not yet synced from this device will no longer be available here, so export any important data first. Projects that exist only on this device will be permanently deleted; other devices keep their copies, and projects created here with other members are kept.',
+      'This device will leave the projects in this setup. Observations not yet synced from this device will no longer be available here, so export any important data first. Other members keep the projects and their copies.',
   },
   cancel: {
     id: '$1screens.OrganizationProvisioning.cancel',
@@ -55,11 +55,6 @@ const m = defineMessages({
     id: '$1screens.OrganizationProvisioning.discardFailed',
     defaultMessage:
       'Something went wrong while discarding this setup. It was not fully removed — you can try again.',
-  },
-  skippedShared: {
-    id: '$1screens.OrganizationProvisioning.skippedShared',
-    defaultMessage:
-      '{projectName} is shared with other devices, so it was kept.',
   },
   cannotFinish: {
     id: '$1screens.OrganizationProvisioning.cannotFinish',
@@ -80,7 +75,6 @@ const m = defineMessages({
 
 /** Why each kept project is still on the device, per skip reason. */
 const SKIP_MESSAGES = {
-  'shared-with-other-devices': m.skippedShared,
   'no-longer-incomplete': m.skippedStale,
   'join-pending': m.skippedJoinPending,
 } as const;
@@ -104,11 +98,10 @@ const SKIP_MESSAGES = {
  * expired, no name to resume under) must not be a permanent creation
  * lockout behind the fail-closed create, so the screen also offers to
  * DISCARD the half-built organization behind a destructive confirm and
- * start over. The discard fan-out leaves every project of the setup, except a
- * project this device created that other devices have joined, one that
- * changed while it ran, or a slot invitation that is still joining; anything
- * it refuses is reported per project (with the reason), and the screen stays
- * here to say so — as it does when the discard itself fails.
+ * start over. The discard fan-out leaves every project of the setup; a
+ * project that changed while it ran or a slot invitation still joining is
+ * reported and kept, and the screen stays here to say so — as it does when
+ * the discard itself fails.
  */
 export const OrganizationProvisioning = ({
   navigation,

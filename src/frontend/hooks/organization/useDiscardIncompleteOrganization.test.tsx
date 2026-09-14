@@ -29,9 +29,8 @@ const DEVICE_ID = 'device-1';
 
 /**
  * A fake client satisfying what `discardIncompleteOrganization` reads: the
- * project list, the creator role, the member list, the device id and the
- * leave call — enough of the real client for the discard fan-out and the
- * react-query cache.
+ * project list and local leave call, plus fixture helpers — enough of the
+ * real client for the discard fan-out and the react-query cache.
  */
 function createFakeDiscardClient() {
   const projects: FakeProjectRow[] = [];
@@ -135,8 +134,8 @@ describe('useDiscardIncompleteOrganization', () => {
     hook.unmount();
   });
 
-  test('a partial discard keeps the persisted invite identity for the retry', async () => {
-    const {clientApi, getProject} = createFakeDiscardClient();
+  test('discarding a shared created slot leaves it and clears the persisted invite identity', async () => {
+    const {clientApi, getProject, leaveProject} = createFakeDiscardClient();
     const organizationId = '0123456789abcdef';
     await clientApi.createProject({
       name: 'Monitoramento',
@@ -153,10 +152,13 @@ describe('useDiscardIncompleteOrganization', () => {
     const hook = await discardWithHook(clientApi, organizationId);
 
     expect(hook.result.current!.status).toBe('success');
-    expect(hook.result.current!.result?.ok).toBe(false);
-    expect(identityStore.instance.getState()).toStrictEqual({
-      [organizationId]: IDENTITY,
+    expect(hook.result.current!.result).toEqual({
+      ok: true,
+      removed: [{slot: 'm', projectId: 'project-1'}],
+      skipped: [],
     });
+    expect(leaveProject).toHaveBeenCalledWith('project-1');
+    expect(identityStore.instance.getState()).toStrictEqual({});
 
     hook.unmount();
   });
