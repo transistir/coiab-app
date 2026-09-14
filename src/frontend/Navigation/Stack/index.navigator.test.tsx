@@ -107,6 +107,10 @@ import {
   setupIntegrationTestWithoutProject,
 } from '../../../../tests/integration/helpers/setupIntegrationTest';
 import {markerFor} from '../../lib/organization/marker';
+import {
+  organizationCreationProvenanceStore,
+  recordOrganizationCreationProvenance,
+} from '../../lib/organization/creationProvenance';
 
 /**
  * The startup gate mounted for real (SPEC 10.1): getInitialRoute picks the
@@ -119,6 +123,12 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
   // beforeEach/afterEach that boot and tear down a real core manager per test.
   const freshSetup = setupIntegrationTestWithoutProject();
   const orgSetup = setupIntegrationTest();
+
+  beforeEach(() => {
+    // The provenance record is durable by design — it must not leak from the
+    // test that wrote it into the next device state.
+    organizationCreationProvenanceStore.setState({organizationIds: []});
+  });
 
   test('creation with a delayed project refresh stays on Home without offering creation again', async () => {
     await freshSetup.renderNavigationAsync();
@@ -226,6 +236,8 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       name: 'Monitoramento',
       projectDescription: markerFor(freshSetup.orgId, 'm', freshSetup.orgName),
     });
+    // The create this device started was interrupted before the second slot.
+    recordOrganizationCreationProvenance(freshSetup.orgId);
     await freshSetup.renderNavigationAsync({activeProjectId: mProjectId});
 
     expect(
@@ -235,6 +247,131 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     // so the screen offers to finish the interrupted provisioning.
     expect(screen.getByTestId('ORG.provisioning-retry-btn')).toBeOnTheScreen();
   });
+
+  test('a one-slot organization with no creation provenance refuses to finish', async () => {
+    // Same local state as the test above WITHOUT the record: this is what a
+    // leave or a remote removal leaves behind, and finishing it would create
+    // an unrelated project in the missing slot and call the organization
+    // ready without the original slot's data or members.
+    const mProjectId = await freshSetup.client.createProject({
+      name: 'Monitoramento',
+      projectDescription: markerFor(freshSetup.orgId, 'm', freshSetup.orgName),
+    });
+    await freshSetup.renderNavigationAsync({activeProjectId: mProjectId});
+
+    expect(
+      await screen.findByText(
+        'This Organization was not left half-created on this device, so its setup cannot be finished here.',
+      ),
+    ).toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('ORG.provisioning-retry-btn'),
+    ).not.toBeOnTheScreen();
+    // The escape hatch stays reachable: no permanent creation lockout.
+    expect(
+      screen.getByTestId('ORG.provisioning-discard-btn'),
+    ).toBeOnTheScreen();
+  });
+
+  test('leaving a slot of the only organization lands on the provisioning gate', async () => {
+    // SPEC 3.8/10.1: the surviving slot reconstructs as `incomplete`, which
+    // Home may not operate — the runtime gate must route there even though
+    // `initialRouteName` was read when the navigator mounted on Home.
+    await orgSetup.renderNavigation();
+    expect(await screen.findByTestId('MAIN.map-screen')).toBeOnTheScreen();
+    const navigation = mockNavigation;
+    await act(async () =>
+      navigation.navigate('LeaveProject', {memberType: 'participant'}),
+    );
+    await fireEvent.press(await screen.findByText('Yes, Leave'));
+
+    await waitFor(async () => {
+      const joined = (await orgSetup.manager.listProjects()).filter(
+        project => project.status === 'joined',
+      );
+      expect(joined).toHaveLength(1);
+    });
+    expect(
+      await screen.findByText('Setting up your Organization…'),
+    ).toBeOnTheScreen();
+    expect(navigation.getRootState().routes.map(route => route.name)).toEqual([
+      'OrganizationProvisioning',
+    ]);
+    expect(screen.queryByTestId('MAIN.map-screen')).not.toBeOnTheScreen();
+  }, 15000);
+
+  test('an invalid organization stays reachable from Home while another is ready', async () => {
+    // Mixed state: `some(ready)` sends the device to Home, so the invalid
+    // organization's diagnosis has to be reachable FROM Home — and must not
+    // bounce back to it the moment it renders.
+    const duplicateSlotMarker = markerFor('f'.repeat(16), 'm', 'Broken Org');
+    await orgSetup.client.createProject({
+      name: 'Monitoramento',
+      projectDescription: duplicateSlotMarker,
+    });
+    await orgSetup.client.createProject({
+      name: 'Monitoramento (duplicado)',
+      projectDescription: duplicateSlotMarker,
+    });
+    await orgSetup.renderNavigation();
+
+    expect(await screen.findByTestId('MAIN.map-screen')).toBeOnTheScreen();
+    const navigation = mockNavigation;
+    await fireEvent.press(await screen.findByTestId('HOME.org-repair-btn'));
+
+    expect(
+      await screen.findByText(
+        'Something is wrong with this Organization. Contact support.',
+      ),
+    ).toBeOnTheScreen();
+    expect(navigation.getRootState().routes.map(route => route.name)).toEqual([
+      'Home',
+      'OrganizationProvisioning',
+    ]);
+  }, 15000);
+
+  test('a standalone active id reaches Home on the ready organization even with an invalid one on the device (F7, Greptile P1)', async () => {
+    // The reported repro: a valid standalone (unmarked) active project, a
+    // READY organization and an INVALID one on the same device. The blanket
+    // `some(state !== 'ready')` gate read the invalid organization as
+    // evidence about the active id and parked the device on
+    // OrganizationProvisioning — with no marker linking the id to the broken
+    // organization, Home on the ready organization must stay reachable.
+    const readyOrgId = 'fedcba9876543210';
+    const readyMProjectId = await freshSetup.client.createProject({
+      name: 'Monitoramento',
+      projectDescription: markerFor(readyOrgId, 'm', 'Ready Org'),
+    });
+    await freshSetup.client.createProject({
+      name: 'Alertas',
+      projectDescription: markerFor(readyOrgId, 'a', 'Ready Org'),
+    });
+    const duplicateSlotMarker = markerFor('f'.repeat(16), 'm', 'Broken Org');
+    await freshSetup.client.createProject({
+      name: 'Monitoramento',
+      projectDescription: duplicateSlotMarker,
+    });
+    await freshSetup.client.createProject({
+      name: 'Monitoramento (duplicado)',
+      projectDescription: duplicateSlotMarker,
+    });
+    const standaloneProjectId = await freshSetup.client.createProject({
+      name: 'Standalone',
+    });
+    await freshSetup.renderNavigationAsync({
+      activeProjectId: standaloneProjectId,
+    });
+
+    expect(await screen.findByTestId('MAIN.map-screen')).toBeOnTheScreen();
+    // The rootless correction still runs: the id is repointed at the ready
+    // organization's Monitoramento slot, not left on the standalone project.
+    await waitFor(() =>
+      expect(freshSetup.activeProjectId).toBe(readyMProjectId),
+    );
+    expect(
+      mockNavigation.getRootState().routes.map(route => route.name),
+    ).toEqual(['Home']);
+  }, 15000);
 
   test('a duplicate-slot organization lands on OrganizationProvisioning and fails closed without crashing', async () => {
     const duplicateSlotMarker = markerFor(
@@ -283,4 +420,123 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     expect(headerTitle).toHaveTextContent('Monitoramento');
     expect(screen.queryByText('Unrelated')).not.toBeOnTheScreen();
   });
+
+  test('a degraded active organization is not silently switched to the ready one (F1)', async () => {
+    // Review round 2 F1: org B is ready while the ACTIVE organization (A)
+    // holds only its m slot — a leave or a remote removal degraded it. The
+    // buggy effect silently rewrote the active project to B's m slot
+    // (data-loss-adjacent: the user would operate another organization
+    // with no notice). The fix keeps the active id on A's slot and routes
+    // to the recovery surface (OrganizationProvisioning) through the same
+    // mechanism OrganizationDegradationGate uses.
+    const readyOrgId = 'fedcba9876543210';
+    await freshSetup.client.createProject({
+      name: 'Monitoramento',
+      projectDescription: markerFor(readyOrgId, 'm', 'Ready Org'),
+    });
+    await freshSetup.client.createProject({
+      name: 'Alertas',
+      projectDescription: markerFor(readyOrgId, 'a', 'Ready Org'),
+    });
+    const degradedMProjectId = await freshSetup.client.createProject({
+      name: 'Monitoramento',
+      projectDescription: markerFor(freshSetup.orgId, 'm', freshSetup.orgName),
+    });
+    await freshSetup.renderNavigationAsync({
+      activeProjectId: degradedMProjectId,
+    });
+
+    // The recovery surface renders — NOT Home operating the ready org.
+    expect(
+      await screen.findByText('Setting up your Organization…'),
+    ).toBeOnTheScreen();
+    expect(
+      mockNavigation.getRootState().routes.map(route => route.name),
+    ).toEqual(['OrganizationProvisioning']);
+    expect(screen.queryByTestId('MAIN.map-screen')).not.toBeOnTheScreen();
+    // NO silent switch: the persisted active id is still the degraded
+    // organization's slot, not the ready organization's.
+    expect(freshSetup.activeProjectId).toBe(degradedMProjectId);
+  }, 15000);
+
+  test('leaving the active slot while another organization is ready never repoints the active id at it (F6)', async () => {
+    // F6: the leave clears the active id, and the slot it left stops being
+    // reconstructed at all (only `joined` rows contribute slots) — so the
+    // active id is claimed by NO organization and the legacy SPEC 1.3
+    // correction used to repoint it at the ready organization's m slot.
+    // On the next start that ready slot makes the device look healthy and
+    // Home operates the OTHER organization with no notice.
+    const readyOrgId = 'fedcba9876543210';
+    const readyMProjectId = await freshSetup.client.createProject({
+      name: 'Monitoramento',
+      projectDescription: markerFor(readyOrgId, 'm', 'Ready Org'),
+    });
+    const readyAProjectId = await freshSetup.client.createProject({
+      name: 'Alertas',
+      projectDescription: markerFor(readyOrgId, 'a', 'Ready Org'),
+    });
+    const activeMProjectId = await freshSetup.client.createProject({
+      name: 'Monitoramento',
+      projectDescription: markerFor(freshSetup.orgId, 'm', freshSetup.orgName),
+    });
+    await freshSetup.client.createProject({
+      name: 'Alertas',
+      projectDescription: markerFor(freshSetup.orgId, 'a', freshSetup.orgName),
+    });
+    await freshSetup.renderNavigationAsync({
+      activeProjectId: activeMProjectId,
+    });
+
+    expect(await screen.findByTestId('MAIN.map-screen')).toBeOnTheScreen();
+    const navigation = mockNavigation;
+    await act(async () =>
+      navigation.navigate('LeaveProject', {memberType: 'participant'}),
+    );
+    await fireEvent.press(await screen.findByText('Yes, Leave'));
+
+    await waitFor(async () => {
+      const joined = (await freshSetup.manager.listProjects()).filter(
+        project => project.status === 'joined',
+      );
+      expect(joined).toHaveLength(3);
+    });
+    // Provenance note (F7/F10): the core KEEPS the project keys row with
+    // `hasLeftProject: true` and deletes only the project settings
+    // (mapeo-manager.js:1041 / :1044-1047), but `listProjects()` defaults to
+    // `includeLeft: false` (:636), so the row is invisible here — the active
+    // id names no local project and carries no marker to trace. That
+    // absence, asserted below against the real core, is the evidence.
+    await waitFor(async () => {
+      const rows = await freshSetup.manager.listProjects();
+      expect(rows.some(project => project.projectId === activeMProjectId)).toBe(
+        false,
+      );
+    });
+    expect(
+      await screen.findByText('Setting up your Organization…'),
+    ).toBeOnTheScreen();
+    // Let the post-leave project refresh settle: the buggy correction fires
+    // from an effect on the refreshed organization list.
+    await act(async () => {
+      await freshSetup.manager.listProjects();
+    });
+
+    expect(navigation.getRootState().routes.map(route => route.name)).toEqual([
+      'OrganizationProvisioning',
+    ]);
+    expect(screen.queryByTestId('MAIN.map-screen')).not.toBeOnTheScreen();
+    // NO silent switch: the active id is not repointed at EITHER slot of the
+    // other organization. It stays on the left slot's id, exactly as the
+    // single-organization leave already leaves it (the gate's reset unmounts
+    // LeaveProject before its mutation callback clears it) — stale, but
+    // fail-closed on the recovery surface instead of operating org B.
+    expect(freshSetup.activeProjectId).not.toBe(readyMProjectId);
+    expect(freshSetup.activeProjectId).not.toBe(readyAProjectId);
+    // Stronger than the two negatives: the only two outcomes the leave may
+    // leave behind are the left slot's own id (the gate's reset unmounts
+    // LeaveProject before its mutation callback clears it) or `undefined`
+    // (the callback ran first). Anything else — including a third project —
+    // would be a silent repoint.
+    expect([activeMProjectId, undefined]).toContain(freshSetup.activeProjectId);
+  }, 20000);
 });

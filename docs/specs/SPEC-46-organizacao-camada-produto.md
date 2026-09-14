@@ -149,7 +149,7 @@ Consequências:
 - não oferecer `Entrar em projeto` como jornada de produto;
 - não exigir compatibilidade de UX com projetos CoMapeo standalone;
 - permitir que `Monitoramento` e `Alertas` continuem sendo projetos reais internamente;
-- permitir múltiplas Organizações: entrar em uma segunda Organização é permitido e a UI renderiza todas as reconstruídas (política definitiva de multi-org em #25);
+- permitir múltiplas Organizações: entrar em uma segunda Organização é permitido e a UI renderiza todas as reconstruídas (decidido no MVP — ver #25);
 - considerar uma Organização incompleta como estado transitório — durante provisioning/join ou após degradação por remoção de slot — nunca como modo normal de uso.
 
 ### 1.4 Operações org-level são fan-out/fan-in
@@ -762,7 +762,7 @@ Organization XYZ
 └── alertas: DEF
 ```
 
-Múltiplas Organizações podem coexistir: o mapping é uma **coleção** de Organizações, não um singleton. Entrar em uma segunda Organização é permitido no MVP e a UI renderiza todas as reconstruídas. A política definitiva de multi-org é #25.
+Múltiplas Organizações podem coexistir: o mapping é uma **coleção** de Organizações, não um singleton. Entrar em uma segunda Organização é permitido no MVP (decisão registrada em #25) e a UI renderiza todas as reconstruídas.
 
 Um store local pode existir como cache/contexto de UI, mas não deve ser a única informação capaz de reconstruir a associação se o marcador funcionar.
 
@@ -1083,7 +1083,7 @@ Para `FRONTEND_ONLY_VIABLE`, o último comando deve permanecer vazio.
 A #46 não deve implementar a versão final de:
 
 - modelo de Organization (#24);
-- política de múltiplas organizações (#25);
+- interface de seleção e troca entre múltiplas organizações — a política multi-org foi **decidida no MVP** (#25), mas a UI correspondente (seletor/entrada em segunda organização) é trabalho próprio, fora do escopo da #46;
 - design visual final do onboarding Organization-first (#26/#27);
 - design final de navegação (#32/#33);
 - substituição da listagem crua de projetos (`AllProjects`) — durante o spike permanece alcançável como ferramenta de debug e E6 não falha por sua reachability; esconder/substituir é #32/#33;

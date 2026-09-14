@@ -83,17 +83,17 @@ export const OrganizationInviteReceived = ({
   navigation,
 }: NativeRootNavigationProps<'OrganizationInviteReceived'>) => {
   const {formatMessage} = useIntl();
-  const {organizationId, inviteId} = route.params;
+  const {inviteId} = route.params;
 
   const {data: invites} = useManyInvites();
   const {bundles} = groupPendingInvites(invites);
 
-  // The navigated invite is the bundle's entry point; when it was superseded
-  // by a duplicate (removed from the pending set), any bundle for the same
-  // organization is the same invitation.
-  const bundle =
-    bundleForInvite(bundles, inviteId) ??
-    bundles.find(b => b.organizationId === organizationId);
+  // The navigated invite IS the invitation: only the bundle that still holds
+  // it may be decided here. A same-organization fallback would render another
+  // inviter's bundle — a Join accepting invites the user was never routed to,
+  // and a Decline rejecting that inviter's pending invitation — so a routed
+  // invite that no longer exists closes this surface instead.
+  const bundle = bundleForInvite(bundles, inviteId);
 
   // P5 O3: no project-level cancel listener here — a cancellation must flow
   // through the grouped bundle state (a canceled slot turns the bundle

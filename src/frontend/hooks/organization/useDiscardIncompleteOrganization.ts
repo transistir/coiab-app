@@ -7,15 +7,19 @@ import {
   type DiscardResult,
 } from '../../lib/organization/fanout';
 import {projectsQueryKey} from '../../lib/organization/queryKeys';
+import {clearOrganizationCreationProvenance} from '../../lib/organization/creationProvenance';
+import {useOrganizationInviteIdentityActions} from '../../contexts/OrganizationInviteIdentityStoreContext';
 
 export type DiscardOrganizationStatus =
   'idle' | 'discarding' | 'success' | 'error';
 
 /**
  * The escape hatch for the fail-closed create: tears down the half-built
- * organization (`discardIncompleteOrganization` carries the provenance and
- * member checks, the pre-leave revalidation and the leaves) so creation can
- * restart fresh. Matches the other organization hooks' lifecycle (P6 Q2): a
+ * organization (`discardIncompleteOrganization` carries the pre-leave state
+ * revalidation and synchronized leaves) so creation can restart fresh. Core
+ * assigns this device the LEFT role and waits for it to sync; this device's
+ * copy and unsynced local data go, while other members keep theirs. Matches
+ * the other organization hooks' lifecycle (P6 Q2): a
  * synchronous busy guard against re-entry, an attempt token so a superseded
  * or unmounted attempt publishes nothing, invalidations that settle before
  * the terminal status is published, and a reset that is inert while busy.
@@ -23,10 +27,19 @@ export type DiscardOrganizationStatus =
 export function useDiscardIncompleteOrganization() {
   const clientApi = useClientApi();
   const queryClient = useQueryClient();
+  const {clearIdentity} = useOrganizationInviteIdentityActions();
 
   const [status, setStatus] = useState<DiscardOrganizationStatus>('idle');
   const [error, setError] = useState<unknown>(undefined);
   const [result, setResult] = useState<DiscardResult | undefined>(undefined);
+  // Which organizationId the settled attempt discarded — published so the
+  // screen can distinguish "THIS setup is gone" from "the whole collection
+  // is", which is what decides whether the start-over fork owns the next
+  // decision or another degraded organization still owns the repair surface.
+  const [discardedOrganizationId, setDiscardedOrganizationId] = useState<
+    string | undefined
+  >(undefined);
+  const discardedIdRef = useRef<string | undefined>(undefined);
 
   // A synchronous re-entry guard: a status check alone would let a second
   // call slip through before the rerender publishes 'discarding'.
@@ -56,6 +69,7 @@ export function useDiscardIncompleteOrganization() {
     setStatus('idle');
     setError(undefined);
     setResult(undefined);
+    setDiscardedOrganizationId(undefined);
   }, []);
 
   const discard = useCallback(
@@ -68,6 +82,7 @@ export function useDiscardIncompleteOrganization() {
       setStatus('discarding');
       setError(undefined);
       setResult(undefined);
+      discardedIdRef.current = organizationId;
 
       // The outcome is computed WITHOUT publishing it — terminal status
       // lands only after the invalidations below have settled.
@@ -84,6 +99,22 @@ export function useDiscardIncompleteOrganization() {
         outcome = {ok: false, error: e};
       }
 
+      // review round 2 (F4): a COMPLETED discard removed every slot project
+      // of the half-built organization, so this device no longer holds an
+      // unfinished creation for it — the durable provenance record must go
+      // with it, or the escape hatch of a refused create leaves a permanent
+      // MMKV entry. Durable cleanup is never token-gated (same as the
+      // invalidation below); a refused/failed discard keeps the record,
+      // because the organization (and its interrupted create) is still on
+      // the device.
+      // The persisted invite identity goes by the same rule: it pins a
+      // recovery accept, which a refused discard still needs and a completed
+      // one no longer has an organization for.
+      if (outcome.ok && outcome.result.ok) {
+        clearOrganizationCreationProvenance(organizationId);
+        clearIdentity(organizationId);
+      }
+
       try {
         // Direct clientApi calls bypass core-react's own invalidation, so
         // the project list (which feeds `useOrganizations` and the startup
@@ -96,6 +127,7 @@ export function useDiscardIncompleteOrganization() {
 
         if (outcome.ok) {
           setResult(outcome.result);
+          setDiscardedOrganizationId(discardedIdRef.current);
           setStatus('success');
         } else {
           setError(outcome.error);
@@ -107,8 +139,8 @@ export function useDiscardIncompleteOrganization() {
         }
       }
     },
-    [clientApi, queryClient],
+    [clientApi, queryClient, clearIdentity],
   );
 
-  return {discard, reset, status, error, result};
+  return {discard, reset, status, error, result, discardedOrganizationId};
 }

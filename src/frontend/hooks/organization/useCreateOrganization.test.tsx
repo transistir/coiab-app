@@ -24,6 +24,7 @@ import {
 } from '../../contexts/ActiveProjectIdStoreContext';
 import {OrganizationOperationError} from '../../lib/organization/fanout';
 import {markerFor, parseMarker} from '../../lib/organization/marker';
+import {organizationCreationProvenanceStore} from '../../lib/organization/creationProvenance';
 import {useCreateOrganization} from './useCreateOrganization';
 import {useOrganizations} from './useOrganizations';
 
@@ -68,6 +69,9 @@ describe('useCreateOrganization', () => {
   beforeEach(async () => {
     onTeardown = [];
     store = createActiveProjectIdStore();
+    // The provenance record is durable by design — it must not leak from
+    // the test that wrote it into the next device state.
+    organizationCreationProvenanceStore.setState({organizationIds: []});
 
     const managerSetup = await createManager({
       name: 'test',
@@ -402,6 +406,82 @@ describe('useCreateOrganization', () => {
     expect(
       parseMarker(projects[0]!.projectDescription ?? '')!.organizationId,
     ).toBe(interruptedOrganizationId);
+
+    hook.unmount();
+  });
+
+  test('a refused create leaves no provenance record (F4)', async () => {
+    // Review round 2 F4: the record used to be written BEFORE validation,
+    // so a refusal (here: the empty-name preflight) left a permanent MMKV
+    // entry for an organization that never got a single project.
+    const hook = await renderHook(
+      () => ({
+        create: useCreateOrganization(),
+        activeProjectId: useActiveProjectId(),
+      }),
+      {wrapper: createWrapper()},
+    );
+
+    await waitFor(() => {
+      expect(hook.result.current).not.toBeNull();
+    });
+
+    await act(async () => {
+      await hook.result.current!.create.start('   ');
+    });
+
+    expect(hook.result.current.create.status).toBe('error');
+    expect(
+      (hook.result.current.create.error as OrganizationOperationError).code,
+    ).toBe('empty-name');
+    // The refusal created nothing — the durable record must not survive
+    // the attempt either.
+    expect(
+      organizationCreationProvenanceStore.getState().organizationIds,
+    ).toEqual([]);
+
+    hook.unmount();
+  });
+
+  test('an interrupted create keeps its provenance record (F4 discrimination)', async () => {
+    // The complement of the refusal test: a fan-out that died MID-WAY
+    // left a half-built organization behind, and the record is exactly
+    // what makes the resume offer fail closed correctly — it must stay.
+    const {clientApi, createProject, projects} = createFakeCreateClient();
+    let createCalls = 0;
+    createProject.mockImplementation(
+      async (opts: {name: string; projectDescription?: string}) => {
+        createCalls += 1;
+        if (createCalls === 2) {
+          // The slot-a create dies after slot m was already created.
+          throw new Error('IPC_FAILURE');
+        }
+        const projectId = `project-${projects.length + 1}`;
+        projects.push({
+          projectId,
+          projectDescription: opts.projectDescription,
+          status: 'joined',
+        });
+        return projectId;
+      },
+    );
+
+    const hook = await renderHook(() => useCreateOrganization(), {
+      wrapper: createWrapper(clientApi),
+    });
+
+    await waitFor(() => {
+      expect(hook.result.current).not.toBeNull();
+    });
+
+    await act(async () => {
+      await hook.result.current!.start('Org Teste');
+    });
+
+    expect(hook.result.current!.status).toBe('error');
+    expect(
+      organizationCreationProvenanceStore.getState().organizationIds,
+    ).toEqual([hook.result.current!.organizationId]);
 
     hook.unmount();
   });

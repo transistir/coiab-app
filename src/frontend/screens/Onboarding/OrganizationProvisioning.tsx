@@ -16,6 +16,7 @@ import {useOrganizations} from '../../hooks/organization/useOrganizations';
 import {useCreateOrganization} from '../../hooks/organization/useCreateOrganization';
 import {useDiscardIncompleteOrganization} from '../../hooks/organization/useDiscardIncompleteOrganization';
 import {groupPendingInvites} from '../../lib/organization/bundle';
+import {useHasOrganizationCreationProvenance} from '../../lib/organization/creationProvenance';
 import {SLOTS, SLOT_PROJECT_NAMES} from '../../lib/organization/marker';
 import type {ReconstructedOrganization} from '../../lib/organization/reconstruct';
 
@@ -44,7 +45,7 @@ const m = defineMessages({
   discardConfirmBody: {
     id: '$1screens.OrganizationProvisioning.discardConfirmBody',
     defaultMessage:
-      'The projects created on this device for this setup will be removed. Projects shared with other devices are not affected.',
+      "This device will leave the projects in this setup. Other members will see this device leave the projects. If this device is a project's only coordinator, then no other device can add or remove devices, adjust project info, or update the categories set. Observations not yet synced from this device will no longer be available here, so export any important data first. Other members keep the projects and their copies.",
   },
   cancel: {
     id: '$1screens.OrganizationProvisioning.cancel',
@@ -55,28 +56,27 @@ const m = defineMessages({
     defaultMessage:
       'Something went wrong while discarding this setup. It was not fully removed — you can try again.',
   },
-  skippedShared: {
-    id: '$1screens.OrganizationProvisioning.skippedShared',
+  cannotFinish: {
+    id: '$1screens.OrganizationProvisioning.cannotFinish',
     defaultMessage:
-      '{projectName} is shared with other devices, so it was kept.',
-  },
-  skippedNotCreatedHere: {
-    id: '$1screens.OrganizationProvisioning.skippedNotCreatedHere',
-    defaultMessage:
-      '{projectName} was not created on this device, so it was kept.',
+      'This Organization was not left half-created on this device, so its setup cannot be finished here.',
   },
   skippedStale: {
     id: '$1screens.OrganizationProvisioning.skippedStale',
     defaultMessage:
       '{projectName} changed while it was being discarded, so it was kept.',
   },
+  skippedJoinPending: {
+    id: '$1screens.OrganizationProvisioning.skippedJoinPending',
+    defaultMessage:
+      'An invitation for this organization is still syncing. Try again once it finishes.',
+  },
 });
 
 /** Why each kept project is still on the device, per skip reason. */
 const SKIP_MESSAGES = {
-  'not-created-here': m.skippedNotCreatedHere,
-  'shared-with-other-devices': m.skippedShared,
   'no-longer-incomplete': m.skippedStale,
+  'join-pending': m.skippedJoinPending,
 } as const;
 
 /**
@@ -98,10 +98,10 @@ const SKIP_MESSAGES = {
  * expired, no name to resume under) must not be a permanent creation
  * lockout behind the fail-closed create, so the screen also offers to
  * DISCARD the half-built organization behind a destructive confirm and
- * start over. The discard fan-out only removes the projects this device
- * provably created and still holds alone; anything it refuses is reported
- * per project (with the reason), and the screen stays here to say so — as
- * it does when the discard itself fails.
+ * start over. The discard fan-out leaves every project of the setup; a
+ * project that changed while it ran or a slot invitation still joining is
+ * reported and kept, and the screen stays here to say so — as it does when
+ * the discard itself fails.
  */
 export const OrganizationProvisioning = ({
   navigation,
@@ -114,6 +114,7 @@ export const OrganizationProvisioning = ({
     reset: resetDiscard,
     status: discardStatus,
     result: discardResult,
+    discardedOrganizationId,
   } = useDiscardIncompleteOrganization();
 
   const isReady = organizations.some(org => org.state === 'ready');
@@ -125,7 +126,18 @@ export const OrganizationProvisioning = ({
     (org): org is Extract<ReconstructedOrganization, {state: 'incomplete'}> =>
       org.state === 'incomplete',
   );
+  // Durable creation provenance (Bug 46 follow-up): an organization degraded
+  // by a leave or a remote removal reconstructs as `incomplete` with a name
+  // too, so the local state alone cannot tell it from an interrupted create.
+  // Resuming the wrong one creates an unrelated project in the missing slot
+  // and calls the organization ready without the original slot's data or
+  // members, so the offer fails CLOSED without proof that this device started
+  // that create and never saw it finish.
+  const hasCreationProvenance = useHasOrganizationCreationProvenance(
+    incompleteOrganization?.organizationId,
+  );
   const retryOrganization =
+    hasCreationProvenance &&
     incompleteOrganization?.organizationName !== undefined &&
     incompleteOrganization.organizationName.length > 0
       ? {
@@ -153,25 +165,63 @@ export const OrganizationProvisioning = ({
         ),
     );
 
+  // Another organization being ready does not repair THIS one: in a mixed
+  // state the screen is the degraded organization's only diagnosis and
+  // recovery surface (reached from Home), so it stays until nothing on the
+  // device is degraded. The common case — everything ready — advances.
+  const hasDegradedOrganization = organizations.some(
+    org => org.state !== 'ready',
+  );
+  const discardSucceeded = discardStatus === 'success' && !!discardResult?.ok;
   React.useEffect(() => {
-    if (isReady) {
+    // Skip after an ok discard: the effect below routes to Success, and a
+    // Home reset here would flash Home first (post-discard Home flash).
+    if (discardSucceeded) return;
+    if (isReady && !hasDegradedOrganization) {
       navigation.reset({index: 0, routes: [{name: 'Home'}]});
     }
-  }, [isReady, navigation]);
+  }, [isReady, hasDegradedOrganization, discardSucceeded, navigation]);
 
-  // A settled discard either freed the device (`ok` — everything removed, so
-  // the start-over fork owns the next decision, like the startup gate's
-  // `none` state) or refused to remove something: then the setup is still
-  // here, the lines below say which projects were kept and why, and the
-  // result stays published so those lines remain on screen. A failure stays
-  // too, with its error line. Neither resets the hook — the user can retry.
+  // A settled discard either freed the device (`ok`) or refused to remove
+  // something: then the setup is still here, the lines below say which
+  // projects were kept and why, and the result stays published so those
+  // lines remain on screen. A failure stays too, with its error line.
+  // Neither resets the hook — the user can retry. A successful discard
+  // hands the next decision to the start-over fork only when nothing on
+  // the device is degraded anymore; while another organization still
+  // needs repair, THIS screen is that organization's repair surface, so
+  // it stays (the discarded setup itself is gone — it is filtered out of
+  // the collection the check runs on).
   React.useEffect(() => {
     if (discardStatus !== 'success') return;
     if (discardResult?.ok) {
-      navigation.reset({index: 0, routes: [{name: 'Success'}]});
-      resetDiscard();
+      const remainingDegraded = organizations.some(
+        org =>
+          org.state !== 'ready' &&
+          org.organizationId !== discardedOrganizationId,
+      );
+      if (remainingDegraded) {
+        resetDiscard();
+      } else {
+        navigation.reset({index: 0, routes: [{name: 'Success'}]});
+        resetDiscard();
+      }
     }
-  }, [discardStatus, discardResult, resetDiscard, navigation]);
+  }, [
+    discardStatus,
+    discardResult,
+    discardedOrganizationId,
+    organizations,
+    resetDiscard,
+    navigation,
+  ]);
+
+  // Say why the resume is not on offer — but not while an invite is the
+  // expected completion path, where finishing was never the answer anyway.
+  const cannotFinishSetup =
+    incompleteOrganization !== undefined &&
+    !hasCreationProvenance &&
+    !missingSlotCoveredByInvite;
 
   const canDiscard =
     incompleteOrganization !== undefined &&
@@ -187,6 +237,9 @@ export const OrganizationProvisioning = ({
       </HeaderText>
       {isInvalid && (
         <BodyText style={styles.errorText}>{t(m.invalid)}</BodyText>
+      )}
+      {cannotFinishSetup && (
+        <BodyText style={styles.errorText}>{t(m.cannotFinish)}</BodyText>
       )}
       {discardStatus === 'error' && (
         <BodyText style={styles.errorText}>{t(m.discardFailed)}</BodyText>

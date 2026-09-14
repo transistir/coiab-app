@@ -3,13 +3,37 @@ import {useQueryClient} from '@tanstack/react-query';
 import {useClientApi} from '@comapeo/core-react';
 
 import {useActiveProjectIdActions} from '../../contexts/ActiveProjectIdStoreContext';
-import {createOrganization} from '../../lib/organization/fanout';
+import {
+  createOrganization,
+  OrganizationOperationError,
+  type OrganizationErrorCode,
+} from '../../lib/organization/fanout';
 import {projectsQueryKey} from '../../lib/organization/queryKeys';
 import {getOrganizationCreationCompletion} from './useOrganizationCreationCompletion';
 import {generateOrganizationId} from '../../lib/organization/orgId';
+import {
+  clearOrganizationCreationProvenance,
+  organizationCreationProvenanceStore,
+  recordOrganizationCreationProvenance,
+} from '../../lib/organization/creationProvenance';
 
 export type CreateOrganizationStatus =
   'idle' | 'creating' | 'success' | 'error';
+
+/**
+ * Preflight refusals of `createOrganization` (review round 2 F4): the
+ * fan-out throws these BEFORE creating anything, so the attempt leaves no
+ * slot behind and its provenance record must not survive either. Any
+ * other failure (a createProject rejection mid-fan-out) leaves a partial
+ * organization — that record is the resume offer's fail-closed gate and
+ * stays.
+ */
+const REFUSAL_ERROR_CODES: ReadonlySet<OrganizationErrorCode> = new Set([
+  'empty-name',
+  'invalid-organization-id',
+  'invalid-local-state',
+  'incomplete-org-blocks-create',
+]);
 
 /**
  * SPEC 5: "Criar organização" — provisions the two internal projects of a
@@ -87,6 +111,19 @@ export function useCreateOrganization() {
     setStatus('creating');
     setError(undefined);
 
+    // Durable creation provenance, written BEFORE the fan-out: an attempt
+    // interrupted at any point (a killed app, a rejected slot write) is the
+    // only organization the provisioning screen may offer to finish.
+    // review round 2 (F4): a REFUSED create must not leave a permanent
+    // record for an organization that never got a project, so a preflight
+    // refusal rolls the record back — but only when THIS attempt wrote it
+    // (a retry of a partially-provisioned organization keeps the earlier
+    // attempt's record, which is what makes its resume offer legal).
+    const provenanceAlreadyRecorded = organizationCreationProvenanceStore
+      .getState()
+      .organizationIds.includes(nextOrganizationId);
+    recordOrganizationCreationProvenance(nextOrganizationId);
+
     let createdProjectId: string | undefined;
     try {
       const {projectIds} = await createOrganization(clientApi, {
@@ -94,7 +131,20 @@ export function useCreateOrganization() {
         organizationName,
       });
       createdProjectId = projectIds.m;
+      // The organization is whole: this device no longer holds an unfinished
+      // creation for it, so a later degradation (leave, removal) can never
+      // pass for one.
+      clearOrganizationCreationProvenance(nextOrganizationId);
     } catch (e) {
+      if (
+        !provenanceAlreadyRecorded &&
+        e instanceof OrganizationOperationError &&
+        REFUSAL_ERROR_CODES.has(e.code)
+      ) {
+        // Durable cleanup is never token-gated — same as the invalidation
+        // below, it must happen even for a superseded/unmounted attempt.
+        clearOrganizationCreationProvenance(nextOrganizationId);
+      }
       if (attemptRef.current !== attempt) return;
       setError(e);
       setStatus('error');

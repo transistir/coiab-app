@@ -184,6 +184,38 @@ describe('groupPendingInvites', () => {
     expect(bundles).toEqual([]);
   });
 
+  it('emits the valid same-role pair hidden behind a newer other-role invite', () => {
+    // Collapsing duplicates per slot BEFORE looking at roles let the newer
+    // Participant invite for slot m evict the older Coordinator one; the
+    // surviving pair then failed the role-consistency check and a perfectly
+    // joinable Coordinator bundle was dropped (SPEC 13 Q3).
+    const participantM = invite('m', 'm-part', {
+      roleName: 'Participant',
+      receivedAt: 3,
+    });
+    const coordinatorM = invite('m', 'm-coord', {
+      roleName: 'Coordinator',
+      receivedAt: 1,
+    });
+    const coordinatorA = invite('a', 'a-coord', {
+      roleName: 'Coordinator',
+      receivedAt: 2,
+    });
+    const {bundles} = groupPendingInvites([
+      participantM,
+      coordinatorM,
+      coordinatorA,
+    ]);
+    expect(bundles).toHaveLength(1);
+    expect(bundles[0]!.roleName).toBe('Coordinator');
+    expect(bundles[0]!.completeness).toBe('complete');
+    expect(bundles[0]!.invites.m).toBe(coordinatorM);
+    expect(bundles[0]!.invites.a).toBe(coordinatorA);
+    // The decline path rejects the bundle's ids only, so declining the
+    // Coordinator invitation leaves the Participant one pending.
+    expect(bundles[0]!.allInviteIds).toEqual(['m-coord', 'a-coord']);
+  });
+
   it('sorts bundles by organizationId', () => {
     const other = 'ffffffffffffffff';
     const {bundles} = groupPendingInvites([

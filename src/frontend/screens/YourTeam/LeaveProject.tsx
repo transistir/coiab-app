@@ -72,6 +72,7 @@ export const LeaveProject = ({
             // startup gate with no active project at all; a non-org
             // project switches to any remaining project, else clears.
             let noProjectRemains = false;
+            let organizationDegraded = false;
             const leftOrg = organizations.find(
               org => org.slots.m === projectId || org.slots.a === projectId,
             );
@@ -81,7 +82,7 @@ export const LeaveProject = ({
                   ? leftOrg.slots.a
                   : leftOrg.slots.m;
               if (survivingSlot) {
-                setActiveProjectId(survivingSlot);
+                organizationDegraded = true;
               } else {
                 noProjectRemains = true;
               }
@@ -98,7 +99,21 @@ export const LeaveProject = ({
             // Reset (rather than replace) so that no screen with queries
             // scoped to the left project stays mounted — refetching them
             // errors because leaving closes the project's data stores.
-            if (noProjectRemains) {
+            if (organizationDegraded) {
+              // SPEC 3.10/10.1: the surviving slot leaves the organization
+              // `incomplete`, which Home may not operate — the device belongs
+              // on the provisioning/repair surface, not on Home behind a
+              // confirmation. The reset goes out BEFORE the active id is
+              // cleared, so it is dispatched against the screen set this
+              // stack still has.
+              navigation.dispatch(
+                CommonActions.reset({
+                  index: 0,
+                  routes: [{name: 'OrganizationProvisioning'}],
+                }),
+              );
+              clearActiveProjectId();
+            } else if (noProjectRemains) {
               clearActiveProjectId();
               // SPEC 10.1: with no project left, the startup gate's
               // organization fork is the correct landing — navigate there

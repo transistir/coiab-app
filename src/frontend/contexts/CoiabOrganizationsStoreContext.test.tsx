@@ -1,35 +1,40 @@
-import * as React from 'react';
-import {renderHook} from '@testing-library/react-native';
-import {act} from '@testing-library/react-native';
+import {act, renderHook} from '@testing-library/react-native';
+import {type ReactNode} from 'react';
 
 import {
-  createCoiabOrganizationsStore,
+  COIAB_ORGANIZATIONS_STORAGE_KEY,
   CoiabOrganizationsStoreProvider,
-  STORAGE_KEY,
-  useCoiabOrganizationsDocument,
+  createCoiabOrganizationsStore,
   useCoiabOrganizationsActions,
-  type CoiabOrganizationsState,
+  useCoiabOrganizationsState,
   type CoiabOrganizationsStore,
 } from './CoiabOrganizationsStoreContext';
-import {
-  documentoInicial,
-  type EstadoOrganizacoes,
-  type OrganizacaoLocal,
-} from '../lib/organization/documento';
-import {MMKVStoreInitializer} from '../hooks/persistedState/createPersistedState';
+import type {
+  EstadoOrganizacoes,
+  OrganizacaoLocal,
+} from '../lib/organization/coiabOrganizations';
+import {criarEtapaAreaAusente} from '../lib/organization/coiabOrganizations';
 
-// NOTE (harness): @testing-library/react-native 14 makes `renderHook` and
-// `act` async (an unawaited `act` leaks its React act scope into later
-// tests). Every `act`/`renderHook` below is awaited — same pattern as
-// AppUsageStatsContext.test.tsx. Assertions are unchanged.
-
-const TEMPLATES = {
-  monitoramento: {versao: '1.0.0', hash: 'hash-m'},
-  alertas: {versao: '1.0.0', hash: 'hash-a'},
-};
+function criarOrganizacaoPreparando(
+  overrides: Partial<OrganizacaoLocal> = {},
+): OrganizacaoLocal {
+  return {
+    id: 'org-1',
+    nome: 'Primeira',
+    estado: 'preparando',
+    confirmacaoPendente: false,
+    materializacao: {
+      monitoramento: criarEtapaAreaAusente(),
+      alertas: criarEtapaAreaAusente(),
+    },
+    areaEmExecucao: null,
+    ultimoErro: null,
+    ...overrides,
+  };
+}
 
 function createWrapper(store: CoiabOrganizationsStore) {
-  return function Wrapper({children}: {children: React.ReactNode}) {
+  return ({children}: {children: ReactNode}) => {
     return (
       <CoiabOrganizationsStoreProvider store={store}>
         {children}
@@ -38,507 +43,590 @@ function createWrapper(store: CoiabOrganizationsStore) {
   };
 }
 
-function org(store: CoiabOrganizationsStore): OrganizacaoLocal {
-  const state = store.instance.getState();
-  if (state.organizacoes.length !== 1) {
-    throw new Error(
-      `expected exactly one organization, found ${state.organizacoes.length}`,
-    );
-  }
-  return state.organizacoes[0]!;
-}
-
-async function startedStore({persist} = {persist: false}) {
-  const store = createCoiabOrganizationsStore({persist});
-  await act(async () => {
-    store.actions.iniciarOrganizacao({
-      id: '0123456789abcdef',
-      nome: '  Órgão Teste  ',
-      templates: TEMPLATES,
-    });
-  });
-  return store;
-}
-
-describe('CoiabOrganizations document store (SPEC B §5.3)', () => {
-  beforeEach(() => {
-    MMKVStoreInitializer.removeItem(STORAGE_KEY);
-  });
-
-  test('starts with an empty versioned document and no active organization', () => {
+describe('CoiabOrganizationsStore', () => {
+  // SPEC A §4.2/D3: um único documento versionado, chave MMKV 'CoiabOrganizations'.
+  test('documento inicial vazio e versionado', () => {
     const store = createCoiabOrganizationsStore();
+
     expect(store.instance.getState()).toStrictEqual({
-      ...documentoInicial(),
-      hidratacaoFalhou: false,
-    });
-    const initial: EstadoOrganizacoes = {
       versao: 1,
       organizacoes: [],
       ativa: null,
-    };
-    // hidratacaoFalhou is runtime-only; the durable document shape matches.
-    expect(store.instance.getState()).toMatchObject(initial);
-  });
-
-  test('atomicSetState replace:true replaces the whole document, keeping only the runtime flag (from current)', async () => {
-    const store = createCoiabOrganizationsStore();
-    // Seed an `ativa` pointer via a full-state replace.
-    await act(async () => {
-      store.instance.setState(
-        {
-          versao: 1,
-          organizacoes: [],
-          ativa: {organizacaoId: '0123456789abcdef', area: 'monitoramento'},
-        },
-        true,
-      );
-    });
-    expect(store.instance.getState().ativa).toEqual({
-      organizacaoId: '0123456789abcdef',
-      area: 'monitoramento',
-    });
-
-    // A later full-state replace that OMITS `ativa` must clear it — and the
-    // replace payload cannot smuggle in the runtime-only `hidratacaoFalhou`.
-    const semAtiva: Partial<CoiabOrganizationsState> = {
-      versao: 1,
-      organizacoes: [],
-      hidratacaoFalhou: true,
-    };
-    await act(async () => {
-      store.instance.setState(semAtiva as CoiabOrganizationsState, true);
-    });
-    const state = store.instance.getState();
-    expect(state.ativa).toBeUndefined();
-    expect(state.hidratacaoFalhou).toBe(false);
-  });
-
-  test('iniciarOrganizacao persists the intent with estado preparando before any project exists', async () => {
-    const store = await startedStore();
-    const organizacao = org(store);
-    expect(organizacao).toMatchObject({
-      id: '0123456789abcdef',
-      nome: 'Órgão Teste',
-      estado: 'preparando',
-      confirmacaoPendente: false,
-      areaEmExecucao: null,
-      ultimoErro: null,
-    });
-    expect(organizacao.materializacao.monitoramento).toEqual({
-      etapa: 'ausente',
-      projectId: null,
-      template: TEMPLATES.monitoramento,
-      idsAntesDaCriacao: null,
-    });
-    expect(organizacao.materializacao.alertas).toEqual({
-      etapa: 'ausente',
-      projectId: null,
-      template: TEMPLATES.alertas,
-      idsAntesDaCriacao: null,
-    });
-    expect(store.instance.getState().ativa).toBeNull();
-  });
-
-  test('refuses to start a second organization while one exists (uma criação por vez)', async () => {
-    const store = await startedStore();
-    await act(async () => {
-      const accepted = store.actions.iniciarOrganizacao({
-        id: 'fedcba9876543210',
-        nome: 'Outra',
-        templates: TEMPLATES,
-      });
-      expect(accepted).toBe(false);
-    });
-    expect(org(store).id).toBe('0123456789abcdef');
-  });
-
-  test('iniciarEtapaCriacao records the listProjects snapshot and the running area', async () => {
-    const store = await startedStore();
-    await act(async () => {
-      store.actions.iniciarEtapaCriacao('monitoramento', ['antes-1']);
-    });
-    expect(org(store).materializacao.monitoramento).toEqual({
-      etapa: 'criando',
-      projectId: null,
-      template: TEMPLATES.monitoramento,
-      idsAntesDaCriacao: ['antes-1'],
-    });
-    expect(org(store).areaEmExecucao).toBe('monitoramento');
-  });
-
-  test('registrarProjetoCriado persists the public id before any import', async () => {
-    const store = await startedStore();
-    await act(async () => {
-      store.actions.iniciarEtapaCriacao('monitoramento', []);
-      store.actions.registrarProjetoCriado('monitoramento', 'p-m-1');
-    });
-    expect(org(store).materializacao.monitoramento).toMatchObject({
-      etapa: 'criado',
-      projectId: 'p-m-1',
+      hidratacaoFalhou: false,
     });
   });
 
-  test('tracks import and verification of each area', async () => {
-    const store = await startedStore();
-    await act(async () => {
-      store.actions.iniciarEtapaCriacao('monitoramento', []);
-      store.actions.registrarProjetoCriado('monitoramento', 'p-m-1');
-      store.actions.iniciarImportacao('monitoramento');
-    });
-    expect(org(store).materializacao.monitoramento.etapa).toBe('importando');
-    await act(async () => {
-      store.actions.registrarAreaVerificada('monitoramento');
-    });
-    expect(org(store).materializacao.monitoramento.etapa).toBe('verificado');
-    expect(org(store).areaEmExecucao).toBeNull();
+  test('chave de persistência é CoiabOrganizations', () => {
+    expect(COIAB_ORGANIZATIONS_STORAGE_KEY).toBe('CoiabOrganizations');
   });
 
-  test('registrarFalha keeps the journal and records ultimoErro without the organization name', async () => {
-    const store = await startedStore();
-    await act(async () => {
-      store.actions.iniciarEtapaCriacao('monitoramento', []);
-      store.actions.registrarProjetoCriado('monitoramento', 'p-m-1');
-      store.actions.registrarFalha({
-        codigo: 'import-failed',
-        area: 'monitoramento',
-      });
-    });
-    expect(org(store).estado).toBe('falha_recuperavel');
-    expect(org(store).materializacao.monitoramento.projectId).toBe('p-m-1');
-    expect(org(store).ultimoErro).toMatchObject({
-      codigo: 'import-failed',
-      area: 'monitoramento',
-    });
-    expect(org(store).ultimoErro?.ocorridoEm).toEqual(expect.any(String));
-    expect(JSON.stringify(org(store).ultimoErro)).not.toContain('Órgão Teste');
-  });
-
-  test('retomarPreparacao returns to preparando keeping the journal (Tentar novamente)', async () => {
-    const store = await startedStore();
-    await act(async () => {
-      store.actions.iniciarEtapaCriacao('monitoramento', []);
-      store.actions.registrarProjetoCriado('monitoramento', 'p-m-1');
-      store.actions.registrarFalha({codigo: 'x', area: 'monitoramento'});
-      store.actions.retomarPreparacao();
-    });
-    expect(org(store).estado).toBe('preparando');
-    expect(org(store).materializacao.monitoramento.projectId).toBe('p-m-1');
-  });
-
-  test('publicarPronta requires both areas verified with distinct ids', async () => {
-    const store = await startedStore();
-    await act(async () => {
-      const refused = store.actions.publicarPronta();
-      expect(refused).toBe(false);
-    });
-    expect(org(store).estado).toBe('preparando');
-
-    await act(async () => {
-      store.actions.iniciarEtapaCriacao('monitoramento', []);
-      store.actions.registrarProjetoCriado('monitoramento', 'p-m-1');
-      store.actions.registrarAreaVerificada('monitoramento');
-    });
-    await act(async () => {
-      const refused = store.actions.publicarPronta();
-      expect(refused).toBe(false);
-    });
-    expect(org(store).estado).toBe('preparando');
-
-    await act(async () => {
-      store.actions.iniciarEtapaCriacao('alertas', []);
-      store.actions.registrarProjetoCriado('alertas', 'p-a-1');
-      store.actions.registrarAreaVerificada('alertas');
-      const published = store.actions.publicarPronta();
-      expect(published).toBe(true);
-    });
-    expect(org(store).estado).toBe('pronta');
-    expect(org(store).confirmacaoPendente).toBe(true);
-  });
-
-  test('publicarPronta refuses duplicated project ids', async () => {
-    const store = await startedStore();
-    await act(async () => {
-      store.actions.iniciarEtapaCriacao('monitoramento', []);
-      store.actions.registrarProjetoCriado('monitoramento', 'p-1');
-      store.actions.registrarAreaVerificada('monitoramento');
-      store.actions.iniciarEtapaCriacao('alertas', []);
-      store.actions.registrarProjetoCriado('alertas', 'p-1');
-      store.actions.registrarAreaVerificada('alertas');
-      const published = store.actions.publicarPronta();
-      expect(published).toBe(false);
-    });
-    expect(org(store).estado).not.toBe('pronta');
-  });
-
-  test('reconhecerConfirmacao writes acknowledgement and activation in a single write', async () => {
-    const store = await startedStore();
-    await act(async () => {
-      store.actions.iniciarEtapaCriacao('monitoramento', []);
-      store.actions.registrarProjetoCriado('monitoramento', 'p-m-1');
-      store.actions.registrarAreaVerificada('monitoramento');
-      store.actions.iniciarEtapaCriacao('alertas', []);
-      store.actions.registrarProjetoCriado('alertas', 'p-a-1');
-      store.actions.registrarAreaVerificada('alertas');
-      store.actions.publicarPronta();
-    });
-
-    let notifications = 0;
-    store.instance.subscribe(() => {
-      notifications += 1;
-    });
-
-    await act(async () => {
-      store.actions.reconhecerConfirmacao();
-    });
-
-    expect(notifications).toBe(1);
-    expect(org(store).confirmacaoPendente).toBe(false);
-    expect(store.instance.getState().ativa).toEqual({
-      organizacaoId: '0123456789abcdef',
-      area: 'monitoramento',
-    });
-  });
-
-  test('reconhecerConfirmacao is refused before the organization is ready', async () => {
-    const store = await startedStore();
-    await act(async () => {
-      store.actions.reconhecerConfirmacao();
-    });
-    expect(store.instance.getState().ativa).toBeNull();
-    expect(org(store).confirmacaoPendente).toBe(false);
-  });
-
-  test('rehydrates the persisted document into a fresh store (restart)', async () => {
-    const persisted = createCoiabOrganizationsStore({persist: true});
-    await act(async () => {
-      persisted.actions.iniciarOrganizacao({
-        id: '0123456789abcdef',
-        nome: 'Órgão Persistido',
-        templates: TEMPLATES,
-      });
-      persisted.actions.iniciarEtapaCriacao('monitoramento', ['antes-1']);
-      persisted.actions.registrarProjetoCriado('monitoramento', 'p-m-1');
-    });
-
-    const rehydrated = createCoiabOrganizationsStore({persist: true});
-    expect(rehydrated.instance.getState().organizacoes).toHaveLength(1);
-    expect(rehydrated.instance.getState().organizacoes[0]).toMatchObject({
-      id: '0123456789abcdef',
-      nome: 'Órgão Persistido',
-      estado: 'preparando',
-    });
-    expect(
-      rehydrated.instance.getState().organizacoes[0]?.materializacao
-        .monitoramento,
-    ).toMatchObject({etapa: 'criado', projectId: 'p-m-1'});
-  });
-
-  test('an invalid persisted document exposes hidratacaoFalhou, keeps MMKV and blocks a new creation (SPEC B §6)', () => {
-    const raw = '{"versao": 99, "junk": true}';
-    MMKVStoreInitializer.setItem(STORAGE_KEY, raw);
-    const store = createCoiabOrganizationsStore({persist: true});
-    // In-memory state is the initial document, but the failure is exposed.
-    expect(store.instance.getState()).toStrictEqual({
-      ...documentoInicial(),
-      hidratacaoFalhou: true,
-    });
-    const antes = store.instance.getState();
-    let notifications = 0;
-    store.instance.subscribe(() => {
-      notifications += 1;
-    });
-    // A new creation is REFUSED — it can no longer overwrite the journal.
-    expect(
-      store.actions.iniciarOrganizacao({
-        id: '0123456789abcdef',
-        nome: 'Nova',
-        templates: TEMPLATES,
-      }),
-    ).toBe(false);
-    // Even a raw full-state write is blocked while the failure is active.
-    store.instance.setState({...documentoInicial(), organizacoes: []}, true);
-    expect(store.instance.getState()).toBe(antes);
-    expect(notifications).toBe(0);
-    // The persisted record is PRESERVED untouched — never fixed by deleting.
-    expect(MMKVStoreInitializer.getItem(STORAGE_KEY)).toBe(raw);
-    expect(store.actions.publicarPronta()).toBe(false);
-  });
-
-  test('a shape-valid pronta document that breaks the D9 activation invariant fails hydration and preserves storage (SPEC B §6)', () => {
-    const prontaComArea = (
-      monitoramento: OrganizacaoLocal['materializacao']['monitoramento'],
-      alertas: OrganizacaoLocal['materializacao']['alertas'],
-    ): EstadoOrganizacoes => ({
+  test('estado persistido é reidratado por um novo store (mesma chave)', () => {
+    const persistido: EstadoOrganizacoes = {
       versao: 1,
       organizacoes: [
         {
-          id: '0123456789abcdef',
-          nome: 'Inválida',
+          id: 'org-1',
+          nome: 'Primeira',
           estado: 'pronta',
-          confirmacaoPendente: true,
-          materializacao: {monitoramento, alertas},
+          confirmacaoPendente: false,
+          materializacao: {
+            monitoramento: {
+              etapa: 'verificado',
+              projectId: 'proj-m',
+              template: {versao: '1.0.0', hash: 'abc'},
+              idsAntesDaCriacao: null,
+            },
+            alertas: {
+              etapa: 'verificado',
+              projectId: 'proj-a',
+              template: {versao: '1.0.0', hash: 'abc'},
+              idsAntesDaCriacao: null,
+            },
+          },
           areaEmExecucao: null,
           ultimoErro: null,
         },
       ],
-      ativa: null,
-    });
-    const areaVerificada = (
-      projectId: string | null,
-    ): OrganizacaoLocal['materializacao']['monitoramento'] => ({
-      etapa: 'verificado',
-      projectId,
-      template: {versao: '1.0.0', hash: 'hash-x'},
-      idsAntesDaCriacao: null,
-    });
+      ativa: {organizacaoId: 'org-1', area: 'monitoramento'},
+    };
 
-    // A pronta org whose monitoramento area has no projectId — shape is valid
-    // (isEtapaArea allows projectId: null) but D9 requires two distinct real
-    // ids, so hydration must fail and leave the raw record in place.
-    const raw = JSON.stringify(
-      prontaComArea(areaVerificada(null), areaVerificada('p-a-1')),
-    );
-    MMKVStoreInitializer.setItem(STORAGE_KEY, raw);
-    const store = createCoiabOrganizationsStore({persist: true});
-    expect(store.instance.getState().hidratacaoFalhou).toBe(true);
-    expect(store.instance.getState().organizacoes).toEqual([]);
-    expect(MMKVStoreInitializer.getItem(STORAGE_KEY)).toBe(raw);
-  });
+    const primeiro = createCoiabOrganizationsStore({persist: true});
+    primeiro.instance.setState(persistido, true);
 
-  test('resolverFalhaHidratacao clears the record, resets the document and unblocks writes', () => {
-    const raw = '{"versao": 99, "junk": true}';
-    MMKVStoreInitializer.setItem(STORAGE_KEY, raw);
-    const store = createCoiabOrganizationsStore({persist: true});
-    expect(store.instance.getState().hidratacaoFalhou).toBe(true);
-    store.actions.resolverFalhaHidratacao();
-    expect(store.instance.getState()).toStrictEqual({
-      ...documentoInicial(),
+    const segundo = createCoiabOrganizationsStore({persist: true});
+    expect(segundo.instance.getState()).toStrictEqual({
+      ...persistido,
       hidratacaoFalhou: false,
     });
-    expect(MMKVStoreInitializer.getItem(STORAGE_KEY)).toBeNull();
-    // Writes work again and persist normally.
-    expect(
-      store.actions.iniciarOrganizacao({
-        id: '0123456789abcdef',
-        nome: 'Nova',
-        templates: TEMPLATES,
-      }),
-    ).toBe(true);
-    expect(org(store).nome).toBe('Nova');
-    expect(MMKVStoreInitializer.getItem(STORAGE_KEY)).not.toBeNull();
   });
 
-  test('resolverFalhaHidratacao is a no-op on a healthy store (never deletes a good record)', () => {
-    const store = createCoiabOrganizationsStore({persist: true});
-    store.actions.iniciarOrganizacao({
-      id: '0123456789abcdef',
-      nome: 'Íntegra',
-      templates: TEMPLATES,
-    });
-    const antes = store.instance.getState();
-    const remove = jest.spyOn(MMKVStoreInitializer, 'removeItem');
-    store.actions.resolverFalhaHidratacao();
-    expect(store.instance.getState()).toBe(antes);
-    expect(remove).not.toHaveBeenCalled();
-    remove.mockRestore();
-  });
-
-  test('exposes the document and actions through context hooks', async () => {
+  test('hooks expõem estado e ações sob o provider', async () => {
     const store = createCoiabOrganizationsStore();
-    const {result: documentResult} = await renderHook(
-      () => useCoiabOrganizationsDocument(),
-      {wrapper: createWrapper(store)},
-    );
-    const {result: actionsResult} = await renderHook(
-      () => useCoiabOrganizationsActions(),
-      {wrapper: createWrapper(store)},
-    );
-    expect(documentResult.current).toStrictEqual({
-      ...documentoInicial(),
+    const wrapper = createWrapper(store);
+
+    const stateHook = await renderHook(() => useCoiabOrganizationsState(), {
+      wrapper,
+    });
+    const actionsHook = await renderHook(() => useCoiabOrganizationsActions(), {
+      wrapper,
+    });
+
+    expect(stateHook.result.current).toStrictEqual({
+      versao: 1,
+      organizacoes: [],
+      ativa: null,
       hidratacaoFalhou: false,
     });
+    expect(typeof actionsHook.result.current.ativar).toBe('function');
+
     await act(async () => {
-      actionsResult.current.iniciarOrganizacao({
-        id: '0123456789abcdef',
-        nome: 'Contexto',
-        templates: TEMPLATES,
+      actionsHook.result.current.ativar({
+        organizacaoId: 'org-1',
+        area: 'alertas',
       });
     });
-    expect(documentResult.current.organizacoes).toHaveLength(1);
+
+    expect(stateHook.result.current.ativa).toBeNull();
   });
 });
 
-describe('falha de hidratação — leitura e persistência (SPEC B §6)', () => {
-  beforeEach(() => {
-    MMKVStoreInitializer.removeItem(STORAGE_KEY);
-  });
-
-  test('corrupt JSON raw exposes the failure and preserves the record', () => {
-    const raw = '{estado: quebrado';
-    MMKVStoreInitializer.setItem(STORAGE_KEY, raw);
-    const store = createCoiabOrganizationsStore({persist: true});
-    expect(store.instance.getState().hidratacaoFalhou).toBe(true);
-    expect(MMKVStoreInitializer.getItem(STORAGE_KEY)).toBe(raw);
-  });
-
-  test('a getItem read error gets the same treatment as an invalid record', () => {
-    MMKVStoreInitializer.setItem(
-      STORAGE_KEY,
-      JSON.stringify(documentoInicial()),
-    );
-    const getItem = jest
-      .spyOn(MMKVStoreInitializer, 'getItem')
-      .mockImplementationOnce(() => {
-        throw new Error('mmkv read failure');
-      });
-    const store = createCoiabOrganizationsStore({persist: true});
-    getItem.mockRestore();
-    expect(store.instance.getState().hidratacaoFalhou).toBe(true);
-    expect(store.instance.getState().organizacoes).toEqual([]);
-  });
-
-  test('a healthy rehydration keeps hidratacaoFalhou false', () => {
-    const primeiro = createCoiabOrganizationsStore({persist: true});
-    primeiro.actions.iniciarOrganizacao({
-      id: '0123456789abcdef',
-      nome: 'Órgão',
-      templates: TEMPLATES,
-    });
-    const segundo = createCoiabOrganizationsStore({persist: true});
-    expect(segundo.instance.getState().hidratacaoFalhou).toBe(false);
-    expect(segundo.instance.getState().organizacoes).toHaveLength(1);
-  });
-
-  test('the persisted document never carries the runtime flag', () => {
-    const store = createCoiabOrganizationsStore({persist: true});
-    store.actions.iniciarOrganizacao({
-      id: '0123456789abcdef',
-      nome: 'Órgão',
-      templates: TEMPLATES,
-    });
-    const raw = MMKVStoreInitializer.getItem(STORAGE_KEY);
-    expect(typeof raw).toBe('string');
-    const texto = raw as string;
-    expect(texto).not.toContain('hidratacaoFalhou');
-    const documento = JSON.parse(texto) as Record<string, unknown>;
-    expect(Object.keys(documento).sort()).toEqual([
-      'ativa',
-      'organizacoes',
-      'versao',
-    ]);
-    expect(documento.versao).toBe(1);
-  });
-
-  test('a non-persisted store resolves the failure without touching MMKV', () => {
-    MMKVStoreInitializer.setItem(STORAGE_KEY, 'registro intocado');
+describe('CoiabOrganizationsStore.publicarPronta (SPEC A §4.2 regras 2, 3 e 9)', () => {
+  function storeComOrganizacao(organizacao: OrganizacaoLocal) {
     const store = createCoiabOrganizationsStore();
+    store.instance.setState({
+      versao: 1,
+      organizacoes: [organizacao],
+      ativa: null,
+    });
+    return store;
+  }
+
+  const parValido = {
+    monitoramento: {projectId: 'proj-m-1', template: {versao: '1', hash: 'h1'}},
+    alertas: {projectId: 'proj-a-1', template: {versao: '1', hash: 'h1'}},
+  };
+
+  test('publica pronta + confirmação pendente + journal verificado numa escrita', () => {
+    const store = storeComOrganizacao(
+      criarOrganizacaoPreparando({
+        materializacao: {
+          monitoramento: {
+            ...criarEtapaAreaAusente(),
+            etapa: 'criado',
+            projectId: 'proj-m-1',
+            idsAntesDaCriacao: ['antigo-1'],
+          },
+          alertas: {
+            ...criarEtapaAreaAusente(),
+            etapa: 'importando',
+            projectId: 'proj-a-1',
+          },
+        },
+        areaEmExecucao: 'alertas',
+        ultimoErro: {
+          codigo: 'tentativa-anterior',
+          area: 'monitoramento',
+          ocorridoEm: '2026-09-06T00:00:00.000Z',
+        },
+      }),
+    );
+
+    store.actions.publicarPronta('org-1', parValido);
+
+    expect(store.instance.getState().organizacoes[0]).toStrictEqual({
+      id: 'org-1',
+      nome: 'Primeira',
+      estado: 'pronta',
+      confirmacaoPendente: true,
+      materializacao: {
+        monitoramento: {
+          etapa: 'verificado',
+          projectId: 'proj-m-1',
+          template: {versao: '1', hash: 'h1'},
+          idsAntesDaCriacao: ['antigo-1'],
+        },
+        alertas: {
+          etapa: 'verificado',
+          projectId: 'proj-a-1',
+          template: {versao: '1', hash: 'h1'},
+          idsAntesDaCriacao: null,
+        },
+      },
+      areaEmExecucao: null,
+      ultimoErro: null,
+    });
+    // Nenhuma outra parte do documento muda na mesma gravação.
+    expect(store.instance.getState().ativa).toBeNull();
+  });
+
+  test('par com projeto ausente não grava pronta', () => {
+    const store = storeComOrganizacao(criarOrganizacaoPreparando());
+
+    store.actions.publicarPronta('org-1', {
+      monitoramento: parValido.monitoramento,
+      alertas: {projectId: null, template: parValido.alertas.template},
+    } as never);
+
+    expect(store.instance.getState().organizacoes[0]?.estado).toBe(
+      'preparando',
+    );
+    expect(store.instance.getState().organizacoes[0]?.confirmacaoPendente).toBe(
+      false,
+    );
+  });
+
+  test('o mesmo projeto não pode ocupar as duas áreas (regra 2)', () => {
+    const store = storeComOrganizacao(criarOrganizacaoPreparando());
+
+    store.actions.publicarPronta('org-1', {
+      monitoramento: parValido.monitoramento,
+      alertas: {projectId: 'proj-m-1', template: parValido.alertas.template},
+    });
+
+    expect(store.instance.getState().organizacoes[0]?.estado).toBe(
+      'preparando',
+    );
+  });
+
+  test('projeto já associado a outra organização não publica (regra 2)', () => {
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState({
+      versao: 1,
+      organizacoes: [
+        criarOrganizacaoPreparando({id: 'org-1'}),
+        criarOrganizacaoPreparando({
+          id: 'org-2',
+          nome: 'Segunda',
+          materializacao: {
+            monitoramento: {
+              ...criarEtapaAreaAusente(),
+              etapa: 'verificado',
+              projectId: 'ocupado-m',
+            },
+            alertas: {
+              ...criarEtapaAreaAusente(),
+              etapa: 'verificado',
+              projectId: 'ocupado-a',
+            },
+          },
+        }),
+      ],
+      ativa: null,
+    });
+
+    store.actions.publicarPronta('org-1', {
+      monitoramento: {
+        projectId: 'ocupado-m',
+        template: {versao: '1', hash: 'h1'},
+      },
+      alertas: parValido.alertas,
+    });
+
+    expect(store.instance.getState().organizacoes[0]?.estado).toBe(
+      'preparando',
+    );
+  });
+
+  test('organização inexistente não grava nada', () => {
+    const store = storeComOrganizacao(criarOrganizacaoPreparando());
+    const antes = store.instance.getState();
+
+    store.actions.publicarPronta('fantasma', parValido);
+
+    expect(store.instance.getState()).toBe(antes);
+  });
+
+  // P1-1: um template com hash/versao vazios grava um documento que o próprio
+  // parser (§4.2) rejeitaria na próxima abertura — publicarPronta deve rejeitar.
+  test('template com hash/versao vazios não grava pronta', () => {
+    const store = storeComOrganizacao(criarOrganizacaoPreparando());
+    const publish = jest.fn();
+    store.instance.subscribe(publish);
+
+    store.actions.publicarPronta('org-1', {
+      monitoramento: {projectId: 'proj-m-1', template: {versao: '1', hash: ''}},
+      alertas: parValido.alertas,
+    });
+    expect(store.instance.getState().organizacoes[0]?.estado).toBe(
+      'preparando',
+    );
+
+    store.actions.publicarPronta('org-1', {
+      monitoramento: parValido.monitoramento,
+      alertas: {projectId: 'proj-a-1', template: {versao: '', hash: 'h1'}},
+    });
+    expect(store.instance.getState().organizacoes[0]?.estado).toBe(
+      'preparando',
+    );
+    expect(store.instance.getState().organizacoes[0]?.confirmacaoPendente).toBe(
+      false,
+    );
+    // Sem mudança de estado, nenhuma notificação é publicada.
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  // P1 (greptile it2): uma organização recuperável já tem projectId
+  // journalizado; publicar com outro ID apagaria o vínculo com o projeto já
+  // criado no core (vazamento de projeto órfão + perda da recuperação).
+  test('ID divergente do journal não-nulo não publica nem sobrescreve o journal', () => {
+    const store = storeComOrganizacao(
+      criarOrganizacaoPreparando({
+        estado: 'falha_recuperavel',
+        materializacao: {
+          monitoramento: {
+            ...criarEtapaAreaAusente(),
+            etapa: 'criado',
+            projectId: 'journaled-monitoring-project',
+          },
+          alertas: criarEtapaAreaAusente(),
+        },
+      }),
+    );
+    const publish = jest.fn();
+    store.instance.subscribe(publish);
+
+    store.actions.publicarPronta('org-1', {
+      monitoramento: {
+        projectId: 'recovered-monitoring-project',
+        template: {versao: '1', hash: 'h1'},
+      },
+      alertas: parValido.alertas,
+    });
+
+    const organizacao = store.instance.getState().organizacoes[0];
+    expect(organizacao?.estado).toBe('falha_recuperavel');
+    expect(organizacao?.confirmacaoPendente).toBe(false);
+    // O journal permanece intacto: o vínculo de recuperação não é perdido.
+    expect(organizacao?.materializacao.monitoramento).toStrictEqual({
+      etapa: 'criado',
+      projectId: 'journaled-monitoring-project',
+      template: null,
+      idsAntesDaCriacao: null,
+    });
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  test('journal nulo nas duas áreas aceita os IDs fornecidos (comportamento normal)', () => {
+    const store = storeComOrganizacao(criarOrganizacaoPreparando());
+
+    store.actions.publicarPronta('org-1', parValido);
+
+    const organizacao = store.instance.getState().organizacoes[0];
+    expect(organizacao?.estado).toBe('pronta');
+    expect(organizacao?.materializacao.monitoramento.projectId).toBe(
+      'proj-m-1',
+    );
+    expect(organizacao?.materializacao.alertas.projectId).toBe('proj-a-1');
+  });
+
+  test('IDs idênticos ao journal não-nulo das duas áreas publicam pronta', () => {
+    const store = storeComOrganizacao(
+      criarOrganizacaoPreparando({
+        estado: 'falha_recuperavel',
+        materializacao: {
+          monitoramento: {
+            ...criarEtapaAreaAusente(),
+            etapa: 'criado',
+            projectId: 'proj-m-1',
+          },
+          alertas: {
+            ...criarEtapaAreaAusente(),
+            etapa: 'importando',
+            projectId: 'proj-a-1',
+          },
+        },
+      }),
+    );
+
+    store.actions.publicarPronta('org-1', parValido);
+
+    const organizacao = store.instance.getState().organizacoes[0];
+    expect(organizacao?.estado).toBe('pronta');
+    expect(organizacao?.confirmacaoPendente).toBe(true);
+    expect(organizacao?.materializacao.monitoramento.etapa).toBe('verificado');
+    expect(organizacao?.materializacao.alertas.etapa).toBe('verificado');
+  });
+
+  test('template nulo ou somente whitespace não grava pronta', () => {
+    const store = storeComOrganizacao(criarOrganizacaoPreparando());
+
+    store.actions.publicarPronta('org-1', {
+      monitoramento: {projectId: 'proj-m-1', template: null},
+      alertas: parValido.alertas,
+    } as never);
+    expect(store.instance.getState().organizacoes[0]?.estado).toBe(
+      'preparando',
+    );
+
+    store.actions.publicarPronta('org-1', {
+      monitoramento: {
+        projectId: 'proj-m-1',
+        template: {versao: ' ', hash: '  '},
+      },
+      alertas: {projectId: 'proj-a-1', template: {versao: '\t', hash: 'h1'}},
+    });
+    expect(store.instance.getState().organizacoes[0]?.estado).toBe(
+      'preparando',
+    );
+    expect(store.instance.getState().organizacoes[0]?.confirmacaoPendente).toBe(
+      false,
+    );
+  });
+});
+
+describe('confirmação atômica e falha de persistência (CA02/CA09/CA14)', () => {
+  test('Abrir organização reconhece e seleciona Monitoramento em uma escrita, sobrevive à reabertura', () => {
+    const store = createCoiabOrganizationsStore({persist: true});
+    const org = {...readyOrganization(), confirmacaoPendente: true};
+    store.instance.setState(
+      {versao: 1, organizacoes: [org], ativa: null},
+      true,
+    );
+    const write = jest.spyOn(MMKVStoreInitializer, 'setItem');
+    store.actions.confirmarAbertura('A');
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(
+      createCoiabOrganizationsStore({persist: true}).instance.getState(),
+    ).toEqual({
+      versao: 1,
+      organizacoes: [{...org, confirmacaoPendente: false}],
+      ativa: {organizacaoId: 'A', area: 'monitoramento'},
+      hidratacaoFalhou: false,
+    });
+    write.mockRestore();
+  });
+
+  test('erro MMKV não publica seleção nem reconhecimento em memória', () => {
+    const store = createCoiabOrganizationsStore({persist: true});
+    store.instance.setState(organizationDocument(), true);
+    const before = store.instance.getState();
+    const publish = jest.fn();
+    store.instance.subscribe(publish);
+    const write = jest
+      .spyOn(MMKVStoreInitializer, 'setItem')
+      .mockImplementationOnce(() => {
+        throw new Error('disk full');
+      });
+    expect(() =>
+      store.actions.ativar({organizacaoId: 'B', area: 'monitoramento'}),
+    ).toThrow('disk full');
+    expect(store.instance.getState()).toBe(before);
+    expect(publish).not.toHaveBeenCalled();
+    write.mockRestore();
+  });
+});
+
+describe('falha de hidratação (SPEC A §5.3)', () => {
+  const documentoInvalido = JSON.stringify({
+    state: {versao: 1, organizacoes: 'lixo'},
+    version: 1,
+  });
+
+  afterEach(() => {
+    MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
+  });
+
+  test('documento inválido persistido expõe falha de hidratação e bloqueia escritas', () => {
+    MMKVStoreInitializer.setItem(
+      COIAB_ORGANIZATIONS_STORAGE_KEY,
+      documentoInvalido,
+    );
+    const store = createCoiabOrganizationsStore({persist: true});
+
+    expect(store.instance.getState()).toStrictEqual({
+      versao: 1,
+      organizacoes: [],
+      ativa: null,
+      hidratacaoFalhou: true,
+    });
+
+    const antes = store.instance.getState();
+    const publish = jest.fn();
+    store.instance.subscribe(publish);
+    store.actions.ativar({organizacaoId: 'org-1', area: 'monitoramento'});
+    store.actions.publicarPronta('org-1', {
+      monitoramento: {
+        projectId: 'proj-m-1',
+        template: {versao: '1', hash: 'h1'},
+      },
+      alertas: {projectId: 'proj-a-1', template: {versao: '1', hash: 'h1'}},
+    });
+    store.actions.confirmarAbertura('org-1');
+    // Qualquer setState de ação também fica bloqueado até a resolução.
+    store.instance.setState(organizationDocument(), true);
+
+    expect(store.instance.getState()).toBe(antes);
+    expect(publish).not.toHaveBeenCalled();
+    // O cadastro real permanece no MMKV: nada sobrescreveu o raw original.
+    expect(MMKVStoreInitializer.getItem(COIAB_ORGANIZATIONS_STORAGE_KEY)).toBe(
+      documentoInvalido,
+    );
+  });
+
+  test('resolverFalhaHidratacao limpa e destrava', () => {
+    MMKVStoreInitializer.setItem(
+      COIAB_ORGANIZATIONS_STORAGE_KEY,
+      documentoInvalido,
+    );
+    const store = createCoiabOrganizationsStore({persist: true});
+    expect(store.instance.getState().hidratacaoFalhou).toBe(true);
+
+    store.actions.resolverFalhaHidratacao();
+
+    expect(store.instance.getState()).toStrictEqual({
+      versao: 1,
+      organizacoes: [],
+      ativa: null,
+      hidratacaoFalhou: false,
+    });
+    expect(
+      MMKVStoreInitializer.getItem(COIAB_ORGANIZATIONS_STORAGE_KEY),
+    ).toBeNull();
+
+    // Escritas normais voltam a funcionar e persistem de novo.
+    store.instance.setState(organizationDocument(), true);
+    expect(store.instance.getState()).toStrictEqual({
+      ...organizationDocument(),
+      hidratacaoFalhou: false,
+    });
+    expect(
+      MMKVStoreInitializer.getItem(COIAB_ORGANIZATIONS_STORAGE_KEY),
+    ).not.toBeNull();
+
+    const reidratado = createCoiabOrganizationsStore({persist: true});
+    expect(reidratado.instance.getState().hidratacaoFalhou).toBe(false);
+    expect(reidratado.instance.getState().organizacoes).toHaveLength(2);
+  });
+
+  test('raw corrompido (JSON inválido) também expõe falha', () => {
+    const rawCorrompido = '{estado: quebrado';
+    MMKVStoreInitializer.setItem(
+      COIAB_ORGANIZATIONS_STORAGE_KEY,
+      rawCorrompido,
+    );
+    const store = createCoiabOrganizationsStore({persist: true});
+
+    expect(store.instance.getState()).toStrictEqual({
+      versao: 1,
+      organizacoes: [],
+      ativa: null,
+      hidratacaoFalhou: true,
+    });
+    expect(MMKVStoreInitializer.getItem(COIAB_ORGANIZATIONS_STORAGE_KEY)).toBe(
+      rawCorrompido,
+    );
+  });
+
+  // P1 (greptile): a LEITURA do storage acontece fora do tratamento de erro
+  // de hidratação — um adaptador que lança na leitura quebrava a construção
+  // do store (exceção propagada), e o fluxo de recuperação nunca renderizava.
+  test('leitura do storage que lança expõe falha de hidratação em vez de quebrar a construção', () => {
+    const read = jest
+      .spyOn(MMKVStoreInitializer, 'getItem')
+      .mockImplementation(() => {
+        throw new Error('mmkv adapter broken');
+      });
+
+    let store: ReturnType<typeof createCoiabOrganizationsStore> | undefined;
+    try {
+      expect(() => {
+        store = createCoiabOrganizationsStore({persist: true});
+      }).not.toThrow();
+    } finally {
+      // A construção (hoje) lança ANTES do fim do teste — restaura o spy
+      // mesmo assim, para não vazar para os testes seguintes.
+      read.mockRestore();
+    }
+
+    // A falha é exposta como hidratação falha (SPEC A §5.3) — o estado que a
+    // recuperação consome — e não como exceção de construção.
+    expect(store).toBeDefined();
+    expect(store!.instance.getState()).toMatchObject({hidratacaoFalhou: true});
+
+    // A resolução explícita destrava o store, como nas demais falhas.
+    store!.actions.resolverFalhaHidratacao();
+    expect(store!.instance.getState().hidratacaoFalhou).toBe(false);
+  });
+});
+
+import {MMKVStoreInitializer} from '../hooks/persistedState/createPersistedState';
+import {
+  organizationDocument,
+  readyOrganization,
+} from '../lib/organization/fixtures';
+
+describe('resolverFalhaHidratacao sobre cadastro saudável', () => {
+  afterEach(() => {
+    MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
+  });
+
+  test('sem falha de hidratação é no-op: não apaga o cadastro nem o MMKV', () => {
+    const store = createCoiabOrganizationsStore({persist: true});
+    store.instance.setState(organizationDocument(), true);
+    const antes = store.instance.getState();
+    const remove = jest.spyOn(MMKVStoreInitializer, 'removeItem');
+
+    store.actions.resolverFalhaHidratacao();
+
+    expect(store.instance.getState()).toBe(antes);
+    expect(remove).not.toHaveBeenCalled();
+    remove.mockRestore();
+    expect(
+      MMKVStoreInitializer.getItem(COIAB_ORGANIZATIONS_STORAGE_KEY),
+    ).not.toBeNull();
+  });
+
+  test('store não persistido não toca no MMKV ao resolver falha', () => {
+    const store = createCoiabOrganizationsStore();
+    // Força o flag para exercitar o caminho de resolução sem persistência.
     store.instance.setState({hidratacaoFalhou: true});
     expect(store.instance.getState().hidratacaoFalhou).toBe(true);
     const remove = jest.spyOn(MMKVStoreInitializer, 'removeItem');
+
     store.actions.resolverFalhaHidratacao();
+
     expect(remove).not.toHaveBeenCalled();
     remove.mockRestore();
     expect(store.instance.getState().hidratacaoFalhou).toBe(false);
-    expect(MMKVStoreInitializer.getItem(STORAGE_KEY)).toBe('registro intocado');
   });
 });

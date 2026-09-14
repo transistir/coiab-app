@@ -3,405 +3,294 @@ import {createStore, useStore} from 'zustand';
 
 import {MMKVStoreInitializer} from '../hooks/persistedState/createPersistedState';
 import {
-  AREAS,
-  documentoInicial,
-  type Area,
-  type EstadoOrganizacoes,
-  type EtapaArea,
-  type OrganizacaoLocal,
-  type TemplateRef,
-} from '../lib/organization/documento';
-import {organizationNameError} from '../lib/organization/materializar';
+  Area,
+  EstadoOrganizacoes,
+  EtapaArea,
+  OrganizacaoLocal,
+  TemplateRef,
+  criarEstadoInicialOrganizacoes,
+  parseEstadoOrganizacoes,
+} from '../lib/organization/coiabOrganizations';
 
 /**
- * The single durable COIAB organization document (SPEC B §5.3). One versioned
- * MMKV record holds registration, creation state, the materialization journal
- * (`materializacao`) and the pending confirmation — every mutation is one
- * atomic write of the whole document, persisted before subscribers see it.
+ * The single durable COIAB organization document (SPEC A §4.2/D3). Every
+ * mutation is one atomic write of the whole document: registration, creation
+ * state, materialization journal and pending confirmation are fields of it.
  */
 
 // NOTE: Do not change!
-export const STORAGE_KEY = 'CoiabOrganizations' as const;
+export const COIAB_ORGANIZATIONS_STORAGE_KEY = 'CoiabOrganizations' as const;
 
-const ESTADOS: readonly OrganizacaoLocal['estado'][] = [
-  'preparando',
-  'falha_recuperavel',
-  'pronta',
-];
-const ETAPAS: readonly EtapaArea['etapa'][] = [
-  'ausente',
-  'criando',
-  'criado',
-  'importando',
-  'verificado',
-];
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function isTemplateRef(value: unknown): value is TemplateRef {
-  return (
-    isRecord(value) &&
-    typeof value.versao === 'string' &&
-    typeof value.hash === 'string'
-  );
-}
-
-function isEtapaArea(value: unknown): value is EtapaArea {
-  return (
-    isRecord(value) &&
-    ETAPAS.includes(value.etapa as EtapaArea['etapa']) &&
-    (value.projectId === null || typeof value.projectId === 'string') &&
-    (value.template === null || isTemplateRef(value.template)) &&
-    (value.idsAntesDaCriacao === null ||
-      (Array.isArray(value.idsAntesDaCriacao) &&
-        value.idsAntesDaCriacao.every(id => typeof id === 'string')))
-  );
-}
-
-function isOrganizacaoLocal(value: unknown): value is OrganizacaoLocal {
-  if (!isRecord(value)) return false;
-  if (typeof value.id !== 'string' || typeof value.nome !== 'string') {
-    return false;
-  }
-  if (!ESTADOS.includes(value.estado as OrganizacaoLocal['estado'])) {
-    return false;
-  }
-  if (typeof value.confirmacaoPendente !== 'boolean') return false;
-  const materializacao = value.materializacao;
-  if (!isRecord(materializacao)) return false;
-  if (!AREAS.every(area => isEtapaArea(materializacao[area]))) {
-    return false;
-  }
-  if (
-    value.areaEmExecucao !== null &&
-    !AREAS.includes(value.areaEmExecucao as Area)
-  ) {
-    return false;
-  }
-  return (
-    value.ultimoErro === null ||
-    (isRecord(value.ultimoErro) &&
-      typeof value.ultimoErro.codigo === 'string' &&
-      (value.ultimoErro.area === null ||
-        AREAS.includes(value.ultimoErro.area as Area)) &&
-      typeof value.ultimoErro.ocorridoEm === 'string')
-  );
-}
-
-/**
- * Validates a rehydrated document (SPEC B §5.3). Returns null for anything
- * unreadable, corrupted or from another version — never migrates, and never
- * clears storage on its own (SPEC B §6: an invalid record is preserved and
- * the failure is surfaced, not silently replaced).
- */
-function parseEstadoOrganizacoes(value: unknown): EstadoOrganizacoes | null {
-  if (!isRecord(value)) return null;
-  if (value.versao !== 1) return null;
-  if (!Array.isArray(value.organizacoes)) return null;
-  if (!value.organizacoes.every(isOrganizacaoLocal)) return null;
-  if (value.ativa !== null) {
-    if (!isRecord(value.ativa)) return null;
-    if (typeof value.ativa.organizacaoId !== 'string') return null;
-    if (!AREAS.includes(value.ativa.area as Area)) return null;
-  }
-  // A `pronta` record must still satisfy the D9 activation invariant it was
-  // published under: both areas `verificado` with two distinct, real project
-  // ids. A shape-valid but semantically broken `pronta` doc (null/identical
-  // ids, an unverified area) surfaces as a hydration failure with storage
-  // preserved (SPEC B §6) — never rehydrated as something the confirmation
-  // flow can activate.
-  for (const org of value.organizacoes as OrganizacaoLocal[]) {
-    if (org.estado !== 'pronta') continue;
-    const {monitoramento, alertas} = org.materializacao;
-    if (
-      monitoramento.etapa !== 'verificado' ||
-      alertas.etapa !== 'verificado' ||
-      !monitoramento.projectId ||
-      !alertas.projectId ||
-      monitoramento.projectId === alertas.projectId
-    ) {
-      return null;
-    }
-  }
-  return value as unknown as EstadoOrganizacoes;
-}
-
-/**
- * Runtime document state: the durable §5.3 document plus `hidratacaoFalhou`,
- * a runtime-only flag (never persisted) exposing an unresolved hydration
- * failure (SPEC B §6).
- */
-export type CoiabOrganizationsState = EstadoOrganizacoes & {
+type CoiabOrganizationsState = EstadoOrganizacoes & {
+  /**
+   * True when the persisted document failed rehydration (SPEC A §5.3): the
+   * failure is exposed instead of silently swallowed, and normal writes stay
+   * blocked until the explicit `resolverFalhaHidratacao()` resolution.
+   * Optional so a plain `EstadoOrganizacoes` satisfies the state type; the
+   * runtime default is always `false` via `createInitialState()`.
+   */
   hidratacaoFalhou?: boolean;
 };
 
 function createInitialState(): CoiabOrganizationsState {
-  return {...documentoInicial(), hidratacaoFalhou: false};
+  return {...criarEstadoInicialOrganizacoes(), hidratacaoFalhou: false};
+}
+
+/** Ready organizations the activation rules may legally select. */
+export function encontrarOrganizacaoPronta(
+  state: CoiabOrganizationsState,
+  organizacaoId: string,
+): OrganizacaoLocal | undefined {
+  return state.organizacoes.find(
+    organizacao =>
+      organizacao.id === organizacaoId && organizacao.estado === 'pronta',
+  );
+}
+
+type ParMaterializado = {
+  monitoramento: {projectId: string; template: TemplateRef | null};
+  alertas: {projectId: string; template: TemplateRef | null};
+};
+
+/**
+ * A pinned template must survive the §4.2 parser on the next open: null or
+ * empty/whitespace-only hash/versao are rejected before writing `pronta`.
+ */
+function templateFixado(template: TemplateRef | null): boolean {
+  return !!template && !!template.hash?.trim() && !!template.versao?.trim();
 }
 
 /**
- * Reads the persisted document. An unreadable, corrupted or unknown-version
- * record is NEVER silently replaced by the initial state (SPEC B §6): the
- * initial document is exposed in memory with `hidratacaoFalhou: true`, the
- * MMKV record is preserved untouched, and normal writes stay blocked until an
- * explicit `resolverFalhaHidratacao()`.
+ * Every project already associated with a local organization occupies one
+ * area of one organization (SPEC A §4.2 rule 2) — a project cannot join a
+ * second organization or appear in both areas.
  */
-function rehydrate(): CoiabOrganizationsState {
-  const initial = createInitialState();
-  try {
-    const raw = MMKVStoreInitializer.getItem(STORAGE_KEY);
-    if (typeof raw !== 'string') return initial;
-    const parsed = parseEstadoOrganizacoes(JSON.parse(raw));
-    if (!parsed) return {...initial, hidratacaoFalhou: true};
-    return {...parsed, hidratacaoFalhou: false};
-  } catch {
-    return {...initial, hidratacaoFalhou: true};
-  }
+function projetoSemAssociacao(
+  state: CoiabOrganizationsState,
+  organizacaoId: string,
+  projectId: string,
+): boolean {
+  return !state.organizacoes.some(
+    organizacao =>
+      organizacao.id !== organizacaoId &&
+      (organizacao.materializacao.monitoramento.projectId === projectId ||
+        organizacao.materializacao.alertas.projectId === projectId),
+  );
 }
 
 export function createCoiabOrganizationsStore({persist} = {persist: false}) {
-  const store = createStore<CoiabOrganizationsState>(() =>
-    persist ? rehydrate() : createInitialState(),
-  );
+  let initial = createInitialState();
+  if (persist) {
+    // A read that THROWS (a broken storage adapter) is a hydration failure
+    // like an unreadable document (SPEC A §5.3): the failure is exposed on
+    // the store so the recovery flow renders — it must never crash the
+    // construction itself and take the recovery UI down with it.
+    let raw: string | null | undefined;
+    try {
+      raw = MMKVStoreInitializer.getItem(COIAB_ORGANIZATIONS_STORAGE_KEY) as
+        string | null | undefined;
+    } catch {
+      raw = undefined;
+      initial = {...initial, hidratacaoFalhou: true};
+    }
+    if (typeof raw === 'string') {
+      try {
+        const parsed = parseEstadoOrganizacoes(JSON.parse(raw).state);
+        // A present raw that fails parsing is never silently replaced (SPEC A
+        // §5.3): expose the failure and block normal writes until resolved.
+        initial = parsed
+          ? {...parsed, hidratacaoFalhou: false}
+          : {...initial, hidratacaoFalhou: true};
+      } catch {
+        // Preserve unreadable storage; never migrate or clear legacy/core data.
+        initial = {...initial, hidratacaoFalhou: true};
+      }
+    }
+  }
+  const store = createStore<CoiabOrganizationsState>(() => initial);
   const publish = store.setState;
-  /**
-   * MMKV is synchronous. Write the whole document before notifying Zustand
-   * subscribers so a failed disk write cannot expose an uncommitted document
-   * in memory (SPEC B §5.3: "se uma gravação necessária falhar, interromper o
-   * avanço; estado apenas em memória não autoriza sucesso").
-   *
-   * While `hidratacaoFalhou` is active every normal write is refused (SPEC B
-   * §6) — the persisted record can only change through the explicit resolver.
-   */
-  const atomicSetState = (
-    partial:
-      | CoiabOrganizationsState
-      | Partial<CoiabOrganizationsState>
-      | ((
-          state: CoiabOrganizationsState,
-        ) => CoiabOrganizationsState | Partial<CoiabOrganizationsState>),
-    replace?: boolean,
-  ): void => {
+  // MMKV is synchronous. Write before notifying Zustand subscribers so a
+  // failed disk write cannot expose an uncommitted context to consumers.
+  store.setState = (partial, replace = false) => {
     const current = store.getState();
+    // A hydration failure blocks every normal write (SPEC A §5.3): the raw
+    // document stays preserved in MMKV until the explicit resolution.
     if (current.hidratacaoFalhou) return;
     const value = typeof partial === 'function' ? partial(current) : partial;
-    if (Object.is(value, current)) return;
-    // `replace` truly replaces the document — an omitted key is cleared, not
-    // merged over from `current`. Only `hidratacaoFalhou` (runtime-only, never
-    // in the payload) is carried across, always taken from `current`.
-    const next: CoiabOrganizationsState = replace
-      ? {
-          ...(value as CoiabOrganizationsState),
-          hidratacaoFalhou: current.hidratacaoFalhou,
-        }
-      : {...current, ...value};
+    if (value === current) return;
+    // The flag survives every write because it is carried by `current`; a
+    // transition that must reset it assigns `next.hidratacaoFalhou` explicitly
+    // after the spread instead of relying on a duplicated literal.
+    const next: CoiabOrganizationsState = {
+      ...current,
+      ...(replace
+        ? (value as CoiabOrganizationsState)
+        : {...current, ...value}),
+    };
     if (persist) {
-      // The durable record keeps the exact §5.3 document shape.
-      const documento = {...next};
-      delete (documento as Partial<typeof next>).hidratacaoFalhou;
-      MMKVStoreInitializer.setItem(STORAGE_KEY, JSON.stringify(documento));
+      // The durable document keeps the exact §4.2 shape; the hydration flag
+      // is runtime-only state and is never written to MMKV.
+      const documento: EstadoOrganizacoes = {
+        versao: next.versao,
+        organizacoes: next.organizacoes,
+        ativa: next.ativa,
+      };
+      MMKVStoreInitializer.setItem(
+        COIAB_ORGANIZATIONS_STORAGE_KEY,
+        JSON.stringify({state: documento, version: 1}),
+      );
     }
     publish(next, true);
-  };
-  store.setState = atomicSetState as typeof store.setState;
-
-  const salvaOrganizacao = (organizacao: OrganizacaoLocal) => {
-    const state = store.getState();
-    atomicSetState(
-      {
-        ...state,
-        organizacoes: state.organizacoes.map(item =>
-          item.id === organizacao.id ? organizacao : item,
-        ),
-      },
-      true,
-    );
-  };
-
-  /** Journal patch for the single organization being created (one at a time). */
-  const patchArea = (
-    area: Area,
-    patch: Partial<EtapaArea>,
-    orgPatch: Partial<OrganizacaoLocal> = {},
-  ) => {
-    const org = store.getState().organizacoes[0];
-    if (!org) return;
-    salvaOrganizacao({
-      ...org,
-      ...orgPatch,
-      materializacao: {
-        ...org.materializacao,
-        [area]: {...org.materializacao[area], ...patch},
-      },
-    });
   };
 
   const actions = {
     /**
-     * Persists the creation intent with `estado: 'preparando'` before any
-     * project exists (SPEC B §5.4 step 2). Refused while an organization
-     * already exists — uma criação por vez (D8) — or with an invalid name
-     * (§6): the refusal persists nothing.
+     * Acknowledges the pending confirmation and selects the organization in
+     * one atomic write (SPEC A §4.2 rule 4). The acknowledged area is the one
+     * persisted as active — confirmation never publishes a different area
+     * than the one the caller acknowledged.
      */
-    iniciarOrganizacao: ({
-      id,
-      nome,
-      templates,
-    }: {
-      id: string;
-      nome: string;
-      templates: Record<Area, TemplateRef>;
-    }): boolean => {
+    confirmarAbertura: (
+      organizacaoId: string,
+      area: Area = 'monitoramento',
+    ) => {
       const state = store.getState();
-      if (state.hidratacaoFalhou) return false;
-      if (state.organizacoes.length > 0) return false;
-      if (organizationNameError(nome)) return false;
-      const areaVazia = (area: Area): EtapaArea => ({
-        etapa: 'ausente',
-        projectId: null,
-        template: templates[area],
-        idsAntesDaCriacao: null,
-      });
-      atomicSetState(
-        {
-          ...state,
-          organizacoes: [
-            {
-              id,
-              nome: nome.trim(),
-              estado: 'preparando',
-              confirmacaoPendente: false,
-              materializacao: {
-                monitoramento: areaVazia('monitoramento'),
-                alertas: areaVazia('alertas'),
-              },
-              areaEmExecucao: null,
-              ultimoErro: null,
-            },
-          ],
-        },
-        true,
-      );
-      return true;
-    },
-
-    /** Records the listProjects() snapshot and the running area (§5.4 step 3). */
-    iniciarEtapaCriacao: (area: Area, idsAntesDaCriacao: string[]) => {
-      patchArea(
-        area,
-        {etapa: 'criando', idsAntesDaCriacao},
-        {areaEmExecucao: area},
-      );
-    },
-
-    /** Persists the public id immediately, before any import (§5.4 step 3). */
-    registrarProjetoCriado: (area: Area, projectId: string) => {
-      patchArea(area, {etapa: 'criado', projectId});
-    },
-
-    iniciarImportacao: (area: Area) => {
-      patchArea(area, {etapa: 'importando'}, {areaEmExecucao: area});
-    },
-
-    registrarAreaVerificada: (area: Area) => {
-      patchArea(area, {etapa: 'verificado'}, {areaEmExecucao: null});
-    },
-
-    /**
-     * Keeps the journal intact and records `ultimoErro` WITHOUT the
-     * organization name (§5.3) — recovery reuses ids and templates.
-     */
-    registrarFalha: ({codigo, area}: {codigo: string; area: Area | null}) => {
-      const org = store.getState().organizacoes[0];
-      if (!org) return;
-      salvaOrganizacao({
-        ...org,
-        estado: 'falha_recuperavel',
-        ultimoErro: {codigo, area, ocorridoEm: new Date().toISOString()},
-      });
-    },
-
-    /** "Tentar novamente": back to `preparando`, journal preserved (§3.2). */
-    retomarPreparacao: () => {
-      const org = store.getState().organizacoes[0];
-      if (!org) return;
-      salvaOrganizacao({...org, estado: 'preparando', ultimoErro: null});
-    },
-
-    /**
-     * Publishes `pronta` + `confirmacaoPendente: true` in one write, only
-     * with both areas verified and two distinct project ids (D9). A refused
-     * publication leaves the document — and storage — untouched.
-     */
-    publicarPronta: (): boolean => {
-      const state = store.getState();
-      if (state.hidratacaoFalhou) return false;
-      const org = state.organizacoes[0];
-      if (!org || org.estado === 'pronta') return false;
-      const {monitoramento, alertas} = org.materializacao;
-      if (
-        monitoramento.etapa !== 'verificado' ||
-        alertas.etapa !== 'verificado'
-      ) {
-        return false;
-      }
-      const ids = [monitoramento.projectId, alertas.projectId];
-      if (ids.some(projectId => !projectId)) return false;
-      if (monitoramento.projectId === alertas.projectId) return false;
-      atomicSetState(
+      // Blocked while a hydration failure is unresolved (SPEC A §5.3).
+      if (state.hidratacaoFalhou) return;
+      const org = encontrarOrganizacaoPronta(state, organizacaoId);
+      if (!org || !parseEstadoOrganizacoes(state))
+        throw new Error('invalid-organization');
+      store.setState(
         {
           ...state,
           organizacoes: state.organizacoes.map(item =>
-            item.id === org.id
+            item.id === organizacaoId
+              ? {...item, confirmacaoPendente: false}
+              : item,
+          ),
+          ativa: {organizacaoId, area},
+        },
+        true,
+      );
+    },
+    /**
+     * Confirms the selection in one write (SPEC A §4.2 rule 4/§5.2 step 5).
+     * Only a ready organization whose confirmation was already acknowledged
+     * may be selected — anything else leaves the document untouched.
+     */
+    ativar: ({organizacaoId, area}: {organizacaoId: string; area: Area}) => {
+      store.setState(state => {
+        const organizacao = encontrarOrganizacaoPronta(state, organizacaoId);
+        if (
+          !organizacao ||
+          organizacao.confirmacaoPendente ||
+          !organizacao.materializacao[area].projectId
+        ) {
+          return state;
+        }
+        return {...state, ativa: {organizacaoId, area}};
+      });
+    },
+
+    /**
+     * Publishes preparation as complete (SPEC A §4.2 rules 2, 3 and 9) in
+     * one write: `pronta` + `confirmacaoPendente: true`, both areas
+     * journaled as `verificado`. The pair must be complete and exclusive —
+     * a missing or duplicated projectId (here or in another local
+     * organization) leaves the document untouched, and so does an id that
+     * contradicts a non-null journaled one.
+     */
+    publicarPronta: (organizacaoId: string, par: ParMaterializado) => {
+      store.setState(state => {
+        const organizacao = state.organizacoes.find(
+          candidata => candidata.id === organizacaoId,
+        );
+        if (!organizacao || organizacao.estado === 'pronta') {
+          return state;
+        }
+
+        const projectIds = [par.monitoramento.projectId, par.alertas.projectId];
+        if (projectIds.some(projectId => !projectId)) return state;
+        if (par.monitoramento.projectId === par.alertas.projectId) {
+          return state;
+        }
+        // Rule 3: both templates must be pinned with a real hash/versao — an
+        // empty one would be rejected by the §4.2 parser on the next open.
+        if (
+          !templateFixado(par.monitoramento.template) ||
+          !templateFixado(par.alertas.template)
+        ) {
+          return state;
+        }
+        if (
+          !projetoSemAssociacao(
+            state,
+            organizacaoId,
+            par.monitoramento.projectId,
+          ) ||
+          !projetoSemAssociacao(state, organizacaoId, par.alertas.projectId)
+        ) {
+          return state;
+        }
+
+        // An area whose journal already holds a projectId is bound to the
+        // project created in core: publishing a different id for it would
+        // overwrite the journal, orphan that project and lose the recovery
+        // link. Only an area with a null journal accepts the supplied id.
+        const journalDivergente = (area: Area): boolean => {
+          const journalizado = organizacao.materializacao[area].projectId;
+          return !!journalizado && journalizado !== par[area].projectId;
+        };
+        if (
+          journalDivergente('monitoramento') ||
+          journalDivergente('alertas')
+        ) {
+          return state;
+        }
+
+        const comAreaVerificada = (area: Area): EtapaArea => ({
+          ...organizacao.materializacao[area],
+          etapa: 'verificado',
+          projectId: par[area].projectId,
+          template: par[area].template,
+        });
+
+        return {
+          ...state,
+          organizacoes: state.organizacoes.map(candidata =>
+            candidata.id === organizacaoId
               ? {
-                  ...item,
-                  estado: 'pronta' as const,
+                  ...candidata,
+                  estado: 'pronta',
                   confirmacaoPendente: true,
+                  materializacao: {
+                    monitoramento: comAreaVerificada('monitoramento'),
+                    alertas: comAreaVerificada('alertas'),
+                  },
                   areaEmExecucao: null,
                   ultimoErro: null,
                 }
-              : item,
+              : candidata,
           ),
-        },
-        true,
-      );
-      return true;
+        };
+      });
     },
 
     /**
-     * "Abrir organização": acknowledgement (`confirmacaoPendente: false`) and
-     * activation (`ativa`) are written in a SINGLE write (SPEC A §4.2 rule 9,
-     * SPEC B §3.3) — refused, without any notification, before `pronta`.
-     */
-    reconhecerConfirmacao: () => {
-      const state = store.getState();
-      const org = state.organizacoes[0];
-      if (!org || org.estado !== 'pronta' || !org.confirmacaoPendente) return;
-      atomicSetState(
-        {
-          ...state,
-          organizacoes: state.organizacoes.map(item =>
-            item.id === org.id ? {...item, confirmacaoPendente: false} : item,
-          ),
-          ativa: {organizacaoId: org.id, area: 'monitoramento'},
-        },
-        true,
-      );
-    },
-
-    /**
-     * Explicit resolution of an unresolved hydration failure (SPEC B §6):
-     * removes the unreadable record (only when persisting, and only while the
-     * failure is active) and resets to the initial document, unblocking normal
-     * writes. A no-op on a healthy store — a good record is never deleted.
-     * Bypasses `atomicSetState` via the raw `publish` because that setter is
-     * blocked while the flag is active.
+     * Explicit resolution of a hydration failure (SPEC A §5.3): resets to the
+     * initial document and clears the MMKV key — a conscious loss of the
+     * unreadable registry — and unblocks normal writes. This is the only path
+     * through the write block, so it bypasses the guarded setState on purpose.
      */
     resolverFalhaHidratacao: () => {
+      // Only an actual hydration failure may be resolved: on a healthy
+      // registry this is a no-op, so it can never wipe a valid document.
       if (!store.getState().hidratacaoFalhou) return;
-      if (persist) MMKVStoreInitializer.removeItem(STORAGE_KEY);
+      // A non-persisted store never wrote the durable key; only clear MMKV
+      // when this store is the persisted one.
+      if (persist) {
+        MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
+      }
       publish(createInitialState(), true);
     },
   };
@@ -433,7 +322,7 @@ export const CoiabOrganizationsStoreProvider = ({
   );
 };
 
-function useCoiabOrganizationsStoreContext() {
+export function useCoiabOrganizationsStoreContext() {
   const value = useContext(CoiabOrganizationsStoreContext);
 
   if (!value) {
@@ -443,7 +332,7 @@ function useCoiabOrganizationsStoreContext() {
   return value;
 }
 
-export function useCoiabOrganizationsDocument(): CoiabOrganizationsState {
+export function useCoiabOrganizationsState(): CoiabOrganizationsState {
   const {instance} = useCoiabOrganizationsStoreContext();
   return useStore(instance);
 }

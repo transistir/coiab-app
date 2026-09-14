@@ -207,36 +207,21 @@ export async function createOrganization(
   return {projectIds: projectIds as Record<Slot, string>};
 }
 
-/**
- * A ManagerLike extended with what `discardIncompleteOrganization` needs,
- * mirroring `@comapeo/core`'s real API surface (`leaveProject`,
- * `getDeviceInfo` — sync on the manager, promised through the client-api
- * wrapper, hence the union — and `getProject(id).$getOwnRole()` /
- * `$member.getMany()`), so the client api satisfies it as-is.
- */
-export type DiscardableManagerLike = Omit<ManagerLike, 'getProject'> & {
+/** A ManagerLike extended with core's synchronized `leaveProject` operation. */
+export type DiscardableManagerLike = ManagerLike & {
   leaveProject(projectId: string): Promise<void>;
-  getDeviceInfo(): {deviceId: string} | Promise<{deviceId: string}>;
-  getProject(projectId: string): Promise<
-    ProjectLike & {
-      $getOwnRole(): Promise<{roleId: string}>;
-      $member: {getMany(): Promise<Array<{deviceId: string}>>};
-    }
-  >;
 };
 
 /**
- * Copied from `@comapeo/core/src/roles.js`, like `sharedTypes`' copy (the
- * constant is not exported by the package — digidem/mapeo-core-next#532).
+ * Copied from `@comapeo/core/src/roles.js`, like `sharedTypes`' copy.
  * `fanout.ts` keeps no `@comapeo/core` import so it stays unit-testable, so
- * the literal lives here too; if the two copies ever diverge, a discard can
- * only fail CLOSED (every project skipped), never delete a shared project.
+ * the literal lives here too; `fanout.test.ts` pins it to core's exported
+ * `roles.CREATOR_ROLE_ID` for organization modules that consume it.
  */
 export const CREATOR_ROLE_ID = 'a12a6702b93bd7ff';
 
 /** Why a discard did NOT remove a slot project it found. */
-export type DiscardSkipReason =
-  'not-created-here' | 'shared-with-other-devices' | 'no-longer-incomplete';
+export type DiscardSkipReason = 'no-longer-incomplete' | 'join-pending';
 
 /** What a discard settled on: the slots removed, and those it refused to. */
 export type DiscardResult = {
@@ -254,21 +239,24 @@ export type DiscardResult = {
  * organization state itself is derived from the project list, so leaving the
  * slot projects IS clearing it.
  *
- * Finding 1: a slot project is only removed when this device can PROVE it
- * created it — the project's creator role (`$getOwnRole`), which core
- * resolves locally from core ownership (the creator's auth core IS the
- * project key), so it is durable on the creating device and can never be
- * held by a device that joined. "No other member visible" alone proves
- * nothing: a project joined moments ago whose roles doc has not synced yet
- * looks memberless, and deleting it would destroy a shared project. A slot
- * whose provenance cannot be established is SKIPPED — neither removed nor
- * left behind silently — and reported in `skipped`, so the UI can say why
- * the discard did not finish and the organization stays on the device.
+ * Every slot is removed with core's `leaveProject`: it assigns this device
+ * the LEFT role and waits for that role change to sync, so other members see
+ * this device leave. This device's copy and unsynced local data are cleared;
+ * other members keep their copies. No project is deleted.
  *
- * Because the reads above take real time over IPC while sync runs, each
- * leave is revalidated immediately before it: the organization must still be
- * incomplete and the project still memberless (both re-read), or the slot is
- * skipped with the same reporting (TOCTOU).
+ * Because sync can change organization state while this runs, each leave is
+ * revalidated immediately before it: the organization must still be
+ * incomplete with this very project in the slot, or the slot is skipped
+ * (TOCTOU).
+ *
+ * Core marks the project left locally before it waits for the sync, so a
+ * leave can reject after it already happened. A rejected leave is therefore
+ * reconciled against a fresh project list: a project no longer joined is
+ * removed (never left twice); one still joined rethrows.
+ *
+ * A marker-bearing `joining` row is not a reconstructed slot, but it can
+ * later materialize as one. It is reported as pending rather than treating
+ * the organization as fully discarded, preserving its recovery metadata.
  *
  * A read failure (IPC, storage) is not a skip — it throws, since an
  * unclassifiable project must fail closed just as loudly.
@@ -300,47 +288,69 @@ export async function discardIncompleteOrganization(
     );
   }
 
-  const ownDeviceId = (await manager.getDeviceInfo()).deviceId;
-  const hasOtherMembers = (members: Array<{deviceId: string}>) =>
-    members.some(member => member.deviceId !== ownDeviceId);
-
   const removed: DiscardResult['removed'] = [];
   const skipped: DiscardResult['skipped'] = [];
   for (const slot of SLOTS) {
     const projectId = org.slots[slot];
     if (projectId === undefined) continue; // nothing built for this slot
-    const project = await manager.getProject(projectId);
-
-    // Creation provenance first: without durable proof this device created
-    // the project, nothing else about it matters — it is not ours to delete.
-    const {roleId} = await project.$getOwnRole();
-    if (roleId !== CREATOR_ROLE_ID) {
-      skipped.push({slot, projectId, reason: 'not-created-here'});
-      continue;
-    }
-
-    const members = await project.$member.getMany();
-    if (hasOtherMembers(members)) {
-      skipped.push({slot, projectId, reason: 'shared-with-other-devices'});
-      continue;
-    }
 
     // Revalidation, immediately before the destructive call (TOCTOU): the
-    // reads above are not instantaneous, and sync does not pause for them.
+    // initial read is not instantaneous, and sync does not pause for it.
     const fresh = reconstructOrganizations(await manager.listProjects()).find(
       o => o.organizationId === opts.organizationId,
     );
-    if (fresh === undefined || fresh.state !== 'incomplete') {
+    if (
+      fresh === undefined ||
+      fresh.state !== 'incomplete' ||
+      fresh.slots[slot] !== projectId
+    ) {
       skipped.push({slot, projectId, reason: 'no-longer-incomplete'});
       continue;
     }
-    if (hasOtherMembers(await project.$member.getMany())) {
-      skipped.push({slot, projectId, reason: 'shared-with-other-devices'});
+    try {
+      await manager.leaveProject(projectId);
+    } catch (error) {
+      // Reconciliation is best-effort: if this read also fails, preserve the
+      // destructive operation's original error instead of hiding it behind a
+      // secondary list failure. Unknown state fails closed as still joined.
+      let stillJoined = true;
+      try {
+        stillJoined = (await manager.listProjects()).some(
+          row => row.projectId === projectId && row.status === 'joined',
+        );
+      } catch {
+        // The original leave error wins.
+      }
+      if (stillJoined) throw error;
+    }
+    removed.push({slot, projectId});
+  }
+
+  // `reconstructOrganizations` intentionally gives slots only to joined
+  // rows. Core's default listProjects() still exposes a non-left row while an
+  // accepted invite is `joining`, including its marker in projectInfo. Such
+  // a row can materialize after the joined slot above is left, including
+  // between that reconstruction and this final read. Every target row not
+  // already handled keeps the discard partial and its recovery metadata.
+  const remainingRows = await manager.listProjects();
+  const removedProjectIds = new Set(removed.map(entry => entry.projectId));
+  const skippedProjectIds = new Set(skipped.map(entry => entry.projectId));
+  for (const row of remainingRows) {
+    if (row.status === 'left') continue;
+    const marker = parseMarker(row.projectDescription ?? '');
+    if (marker?.organizationId !== opts.organizationId) continue;
+    if (
+      removedProjectIds.has(row.projectId) ||
+      skippedProjectIds.has(row.projectId)
+    ) {
       continue;
     }
-
-    await manager.leaveProject(projectId);
-    removed.push({slot, projectId});
+    skipped.push({
+      slot: marker.slot,
+      projectId: row.projectId,
+      reason:
+        row.status === 'joining' ? 'join-pending' : 'no-longer-incomplete',
+    });
   }
   return {ok: skipped.length === 0, removed, skipped};
 }

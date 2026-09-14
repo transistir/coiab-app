@@ -1,5 +1,6 @@
 import {act, renderHook, waitFor} from '@testing-library/react-native';
 import React, {Suspense, type ReactNode} from 'react';
+import type {MapeoManager} from '@comapeo/core';
 import type {ComapeoCoreClientApi} from '@comapeo/ipc';
 
 import {MapeoApiWrapper} from '../../../../tests/integration/helpers/MapeoApiWrapper';
@@ -13,6 +14,11 @@ import {
   useActiveProjectIdActions,
   type ActiveProjectIdStore,
 } from '../../contexts/ActiveProjectIdStoreContext';
+import {
+  organizationCreationProvenanceStore,
+  recordOrganizationCreationProvenance,
+  useHasOrganizationCreationProvenance,
+} from '../../lib/organization/creationProvenance';
 import {markerFor} from '../../lib/organization/marker';
 import {useOrganizations, usePrimaryOrganization} from './useOrganizations';
 
@@ -24,17 +30,20 @@ const ORG_TWO_NAME = 'Org Dois';
 describe('useOrganizations', () => {
   let client: ComapeoCoreClientApi;
   let store: ActiveProjectIdStore;
+  let manager: MapeoManager;
   let onTeardown: Array<() => unknown> = [];
 
   beforeEach(async () => {
     onTeardown = [];
     store = createActiveProjectIdStore();
+    organizationCreationProvenanceStore.setState({organizationIds: []});
 
     const managerSetup = await createManager({
       name: 'test',
       deviceType: 'mobile',
     });
-    const {fastifyController} = managerSetup;
+    const {fastifyController, manager: createdManager} = managerSetup;
+    manager = createdManager;
 
     const ipcSetup = setUpIPC({manager: managerSetup.manager});
     ({client} = ipcSetup);
@@ -47,6 +56,7 @@ describe('useOrganizations', () => {
 
   afterEach(async () => {
     for (const fn of onTeardown) await fn();
+    organizationCreationProvenanceStore.setState({organizationIds: []});
   });
 
   function createWrapper() {
@@ -249,5 +259,54 @@ describe('useOrganizations', () => {
     });
 
     hook.unmount();
+  });
+
+  test('prova de criação órfã é conciliada na reconstrução de uma organização pronta', async () => {
+    await client.createProject({
+      name: 'Monitoramento',
+      projectDescription: markerFor(ORG_ONE_ID, 'm', ORG_ONE_NAME),
+    });
+    const alertasId = await client.createProject({
+      name: 'Alertas',
+      projectDescription: markerFor(ORG_ONE_ID, 'a', ORG_ONE_NAME),
+    });
+    // Prova órfã (SPEC 5/E7): o app morreu depois de o fan-out completar os
+    // DOIS projetos e antes de limpar a proveniência — o registro diz "uma
+    // criação foi interrompida aqui" sobre uma criação que de fato terminou.
+    recordOrganizationCreationProvenance(ORG_ONE_ID);
+
+    const hook = await renderHook(
+      () => ({
+        organizations: useOrganizations(),
+        hasProvenance: useHasOrganizationCreationProvenance(ORG_ONE_ID),
+      }),
+      {wrapper: createWrapper()},
+    );
+    await waitFor(() => {
+      expect(hook.result.current.organizations[0]?.state).toBe('ready');
+    });
+
+    // A reconstrução viu o par completo: a criação terminou, e a prova órfã
+    // é limpa NA reconstrução — nunca carregada para uma degradação futura.
+    await waitFor(() => {
+      expect(hook.result.current.hasProvenance).toBe(false);
+    });
+
+    // Sem prova, a remoção posterior do slot não pode mais oferecer
+    // "concluir a criação": retomar fabricaria um projeto NOVO (nova
+    // identidade) no lugar do removido, sem seus dados nem membros.
+    await manager.leaveProject(alertasId);
+    hook.unmount();
+
+    const remounted = await renderHook(() => useOrganizations(), {
+      wrapper: createWrapper(),
+    });
+    await waitFor(() => {
+      expect(remounted.result.current[0]?.state).toBe('incomplete');
+    });
+    expect(
+      organizationCreationProvenanceStore.getState().organizationIds,
+    ).not.toContain(ORG_ONE_ID);
+    remounted.unmount();
   });
 });

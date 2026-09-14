@@ -544,6 +544,12 @@
   "$1screens.OnboardingPrivacyPolicy.shareDiagnostics": {
     "message": "Compartilhar Informações de Diagnóstico"
   },
+  "$1screens.OrganizationProvisioning.discardConfirmBody": {
+    "message": "Este dispositivo sairá dos projetos desta configuração. Os outros membros verão que este dispositivo saiu dos projetos. Se este dispositivo for o único coordenador de um projeto, nenhum outro dispositivo poderá adicionar ou remover dispositivos, ajustar as informações do projeto ou atualizar o conjunto de categorias. As observações deste dispositivo que ainda não foram sincronizadas não estarão mais disponíveis aqui; exporte primeiro todos os dados importantes. Os outros membros manterão os projetos e suas cópias."
+  },
+  "$1screens.OrganizationProvisioning.skippedJoinPending": {
+    "message": "Um convite para esta organização ainda está sincronizando. Tente novamente quando ele terminar."
+  },
   "$1screens.PhotoPreviewModal.headerButtonText": {
     "message": "Excluir foto"
   },

@@ -142,6 +142,24 @@ beforeEach(() => {
 });
 
 describe('OrganizationInviteReceived', () => {
+  test('a vanished routed invite never renders another inviter’s bundle', async () => {
+    // Same organization, DIFFERENT inviter: falling back to it would offer a
+    // Join that accepts invites the user was never routed to, and a Decline
+    // that rejects the other inviter's pending invitation.
+    mockInvites([
+      makeInvite('m', {inviteId: 'b-m', invitorDeviceId: 'invitor-2'}),
+      makeInvite('a', {inviteId: 'b-a', invitorDeviceId: 'invitor-2'}),
+    ]);
+    await renderScreen({inviteId: 'invite-a-m'});
+
+    expect(screen.queryByText(ORG_NAME)).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('ORG.invite-join-btn')).not.toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('ORG.invite-decline-btn'),
+    ).not.toBeOnTheScreen();
+    expect(screen.getByTestId('ORG.invite-close-btn')).toBeOnTheScreen();
+  });
+
   test('a complete bundle shows the organization name and both actions', async () => {
     mockInvites([makeInvite('m'), makeInvite('a')]);
     await renderScreen();

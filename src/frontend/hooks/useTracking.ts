@@ -22,7 +22,21 @@ export function useTracking() {
       console.warn('Start tracking attempt while tracking already enabled');
       return;
     }
-    setTracking(true);
+    try {
+      setTracking(true);
+    } catch (err) {
+      // SPEC A CA09 / FIX-E: setTracking(true) synchronously refuses to
+      // resume a persisted track whose origin diverged from the active
+      // project. The refusal happens BEFORE any state change — the persisted
+      // track (origin + points) must stay intact, so do NOT blindly call
+      // setTracking(false) here. Report and surface the error instead.
+      Sentry.captureException(err);
+      // @ts-expect-error - this is a typing issue, we are using the non-strongly typed hook as this can technically be used in any screen. But regardless of the screen, we want to show the error bottom sheet.
+      navigation.navigate('ErrorBottomSheet', {
+        error: toError(err, 'Tracking failed'),
+      });
+      return;
+    }
     Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
       accuracy: Location.Accuracy.Highest,
       activityType: Location.LocationActivityType.Fitness,
