@@ -13,10 +13,6 @@
 # bytes exactly must pass even though it rewrote the file.
 
 set -euo pipefail
-# Without this, a failing command inside `$(make_fixture_repo ...)` is masked by
-# the function's final `printf`, and the case would run against a half-built
-# repository.
-shopt -s inherit_errexit
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 repo_root=$(cd -- "$script_dir/.." && pwd -P)
@@ -72,6 +68,19 @@ assert_output_contains() {
   fi
 }
 
+# Fixture setup runs inside command substitutions (`repo=$(make_fixture_repo ...)`),
+# where a failure would be masked by the function's final `printf`: the case
+# would then run against a half-built repository. `shopt -s inherit_errexit`
+# would propagate that automatically, but it is Bash 4.4+ only and macOS still
+# ships Bash 3.2 as /bin/bash, so every step that can fail does so explicitly.
+# The message goes to stderr, which a command substitution does not capture.
+fixture_git() {
+  if ! git "$@"; then
+    echo "message-catalog fixtures: 'git $*' failed while building a fixture repository" >&2
+    exit 1
+  fi
+}
+
 # Builds a fixture repository with a committed messages/ catalog. By default
 # the catalog files carry no trailing newline, matching what
 # scripts/extract-messages.mjs emits (`JSON.stringify(..., null, 2)`).
@@ -88,12 +97,12 @@ make_fixture_repo() {
     printf '{\n  "a": "one"\n}' >"$dir/messages/en-US/primary.json"
   fi
   printf '{\n  "b": "two"\n}' >"$dir/messages/en-US/secondary.json"
-  git -C "$dir" init -q
-  git -C "$dir" config user.email fixture@example.com
-  git -C "$dir" config user.name fixture
-  git -C "$dir" config commit.gpgsign false
-  git -C "$dir" add -A
-  git -C "$dir" commit -qm 'fixture catalog'
+  fixture_git -C "$dir" init -q
+  fixture_git -C "$dir" config user.email fixture@example.com
+  fixture_git -C "$dir" config user.name fixture
+  fixture_git -C "$dir" config commit.gpgsign false
+  fixture_git -C "$dir" add -A
+  fixture_git -C "$dir" commit -qm 'fixture catalog'
   printf '%s\n' "$dir"
 }
 
