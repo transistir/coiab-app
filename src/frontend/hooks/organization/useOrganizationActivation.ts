@@ -7,7 +7,23 @@ import {useCoiabOrganizationsStoreContext} from '../../contexts/CoiabOrganizatio
 import {
   createOrganizationActivation,
   type ActivationProject,
+  type ActivationState,
+  type OrganizationActivation,
 } from '../../lib/organization/activation';
+
+/**
+ * What the startup driver publishes to its consumers: the engine's observable
+ * state plus the three operations the UI may request. The engine itself stays
+ * private — nothing outside this hook can rebuild or replace it.
+ */
+export type OrganizationActivationHandle = Pick<
+  ActivationState,
+  'status' | 'projectId' | 'generation' | 'error' | 'pendingWorkOrigin'
+> & {
+  activate: OrganizationActivation['activate'];
+  retryPreparation: OrganizationActivation['retryPreparation'];
+  recoverPendingWork: OrganizationActivation['recoverPendingWork'];
+};
 
 /**
  * The engine reasons about an origin project by ending its sync and checking
@@ -37,7 +53,7 @@ function toActivationProject(
  * (StrictMode) joins the in-flight initialization through the engine's own
  * intent lock instead of activating twice.
  */
-export function useOrganizationActivation() {
+export function useOrganizationActivation(): OrganizationActivationHandle {
   const store = useCoiabOrganizationsStoreContext();
   const clientApi = useClientApi();
 
