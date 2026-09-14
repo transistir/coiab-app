@@ -9,6 +9,7 @@ import {BLUE_GREY, DARK_GREY} from '../lib/styles';
 import {useProjectRoleAndDetails} from '../hooks/useProjectRoleAndDetails';
 import {useActiveProject} from '../contexts/ActiveProjectContext';
 import {useCoiabOrganizationsState} from '../contexts/CoiabOrganizationsStoreContext';
+import {derivarProjectIdAtivo} from '../lib/organization/coiabOrganizations';
 import {isLowStorage} from '../lib/storage';
 import {useStorageReadingQuery} from '../hooks/useStorageReadingQuery';
 import {ExclamationBadge} from './Storage/ExclamationBadge';
@@ -27,19 +28,25 @@ export function HomeHeader({
 }: HomeHeaderProps) {
   const {projectId} = useActiveProject();
   const projectDetails = useProjectRoleAndDetails(projectId);
-  // Identifies the operational organization (SPEC A §4.2 rule 5) when the
-  // device has one, falling back to the active project otherwise: a stale,
-  // unready or unacknowledged selection is not the organization the app is
-  // operating, so it never names the header.
-  const {organizacoes, ativa} = useCoiabOrganizationsState();
-  const organizacaoAtiva = ativa
-    ? organizacoes.find(
-        organizacao =>
-          organizacao.id === ativa.organizacaoId &&
-          organizacao.estado === 'pronta' &&
-          !organizacao.confirmacaoPendente,
-      )
-    : undefined;
+  const estado = useCoiabOrganizationsState();
+  // SPEC A §4.2 regra 5: the operational projectId is DERIVED from the
+  // persisted document, and SPEC B §3.3 item 4 names the header after the
+  // organization only in that state. `derivarProjectIdAtivo` embeds the
+  // whole gate — parseable document, existing organization, `pronta`,
+  // `!confirmacaoPendente` and the slot of `ativa.area` — so comparing its
+  // result with the active projectId keeps the header naming the
+  // organization only when the app is operating it: any switch of the
+  // active project (AllProjects, LeaveProject, a create/accept repoint)
+  // makes the derivation diverge and the project name stands. `ativa` is
+  // born only in the single write of the "Abrir organização" tap (regra 9),
+  // so without a selection nothing names an organization.
+  const derivado = derivarProjectIdAtivo(estado);
+  const organizacaoAtiva =
+    derivado !== null && derivado === projectId
+      ? estado.organizacoes.find(
+          organizacao => organizacao.id === estado.ativa?.organizacaoId,
+        )
+      : undefined;
   const {data} = useStorageReadingQuery();
   const isLow = isLowStorage(data.freeBytes);
   const insets = useSafeAreaInsets();

@@ -98,16 +98,23 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
     return utils;
   };
 
-  it('mostra o nome da organização ativa', async () => {
+  it('mostra o nome da organização quando o projeto ativo é o derivado', async () => {
     // The active organization is deliberately the SECOND one: a lookup by
     // index/first element would show 'Organização A' and pass unnoticed.
+    // SPEC A §4.2 regra 5: the header names the organization only when the
+    // project the app IS operating is the one derived from the persisted
+    // document — org B's Alertas slot (the selected area) holds exactly the
+    // active projectId; the other slots keep fixture ids that exist in no
+    // core, which must not matter.
+    const documento = organizationDocument();
+    const organizacaoB = documento.organizacoes[1];
+    if (!organizacaoB) throw new Error('fixture: organization B missing');
+    organizacaoB.materializacao.alertas.projectId = projectId;
+
     MMKVStoreInitializer.setItem(
       COIAB_ORGANIZATIONS_STORAGE_KEY,
       JSON.stringify({
-        state: {
-          ...organizationDocument(),
-          ativa: {organizacaoId: 'B', area: 'alertas'},
-        },
+        state: {...documento, ativa: {organizacaoId: 'B', area: 'alertas'}},
         version: 1,
       }),
     );
@@ -119,7 +126,32 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
     );
   });
 
-  it('sem organização ativa mantém o nome do projeto', async () => {
+  it('não nomeia a organização quando o projeto ativo é outro projeto', async () => {
+    // RED case (SPEC A §4.2 regra 5): an untracked switch of the active
+    // project — AllProjects, LeaveProject, a create/accept repointing the id
+    // — leaves the persisted document untouched, so the derived projectId
+    // (org A's Monitoramento slot, a real second project) is NOT the project
+    // being operated. The header falls back to the project name; naming the
+    // organization here would lie about which organization the app runs.
+    const outroProjectId = await client.createProject({
+      name: 'Projeto Alternativo',
+    });
+    const documento = organizationDocument();
+    const organizacaoA = documento.organizacoes[0];
+    if (!organizacaoA) throw new Error('fixture: organization A missing');
+    organizacaoA.materializacao.monitoramento.projectId = outroProjectId;
+
+    MMKVStoreInitializer.setItem(
+      COIAB_ORGANIZATIONS_STORAGE_KEY,
+      JSON.stringify({
+        state: {
+          ...documento,
+          ativa: {organizacaoId: 'A', area: 'monitoramento'},
+        },
+        version: 1,
+      }),
+    );
+
     await renderHeader();
 
     expect(await screen.findByTestId('HOME.header-title')).toHaveTextContent(
@@ -128,8 +160,10 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
   });
 
   it('não nomeia a organização cuja confirmação está pendente', async () => {
-    // Parser-valid (org 'pronta' + confirmacaoPendente) but not acknowledged,
-    // so it is not the organization the app is operating. Asserting the
+    // Parser-valid (org 'pronta' + confirmacaoPendente) but not acknowledged:
+    // `derivarProjectIdAtivo` refuses it (SPEC A §4.2 regra 9 — `ativa` is
+    // born only in the single write of the "Abrir organização" tap, and a
+    // pending confirmation is not an operated organization). Asserting the
     // document parses keeps a failed hydration from making this pass without
     // exercising the gate (an unreadable document leaves no organization).
     const documento = {
@@ -147,6 +181,14 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
       JSON.stringify({state: documento, version: 1}),
     );
 
+    await renderHeader();
+
+    expect(await screen.findByTestId('HOME.header-title')).toHaveTextContent(
+      'Projeto Monitorado',
+    );
+  });
+
+  it('sem organização ativa mantém o nome do projeto', async () => {
     await renderHeader();
 
     expect(await screen.findByTestId('HOME.header-title')).toHaveTextContent(

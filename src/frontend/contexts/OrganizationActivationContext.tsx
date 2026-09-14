@@ -7,8 +7,8 @@ import {
 
 /**
  * The organization activation engine, mounted once at the root (SPEC A §5.2):
- * the provider builds the engine and drives the persisted selection on startup,
- * and every consumer — the drawer switch, the header — shares that one engine
+ * the provider builds the engine and drives the persisted selection on
+ * startup, so any consumer that needs activation state shares this one engine
  * instead of building its own.
  */
 const OrganizationActivationContext =
