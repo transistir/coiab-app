@@ -1,7 +1,4 @@
-import {
-  COIAB_ORGANIZATIONS_STORAGE_KEY,
-  type CoiabOrganizationsStore,
-} from '../../contexts/CoiabOrganizationsStoreContext';
+import {type CoiabOrganizationsStore} from '../../contexts/CoiabOrganizationsStoreContext';
 import {
   parseEstadoOrganizacoes,
   type EstadoOrganizacoes,

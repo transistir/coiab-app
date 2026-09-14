@@ -1,7 +1,6 @@
 import {
   COIAB_ORGANIZATIONS_STORAGE_KEY,
   createCoiabOrganizationsStore,
-  type CoiabOrganizationsStore,
 } from '../../contexts/CoiabOrganizationsStoreContext';
 import {MMKVStoreInitializer} from '../../hooks/persistedState/createPersistedState';
 import {
