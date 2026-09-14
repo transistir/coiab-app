@@ -207,7 +207,7 @@ export async function createOrganization(
   return {projectIds: projectIds as Record<Slot, string>};
 }
 
-/** A ManagerLike extended with core's local `leaveProject` operation. */
+/** A ManagerLike extended with core's synchronized `leaveProject` operation. */
 export type DiscardableManagerLike = ManagerLike & {
   leaveProject(projectId: string): Promise<void>;
 };
@@ -239,10 +239,10 @@ export type DiscardResult = {
  * organization state itself is derived from the project list, so leaving the
  * slot projects IS clearing it.
  *
- * Every slot is removed with core's local `leaveProject`: it marks this
- * device as having left and clears this device's settings and encryption
- * keys (except auth). Other members' copies survive untouched, whether this
- * device originally created or joined the project. No project is deleted.
+ * Every slot is removed with core's `leaveProject`: it assigns this device
+ * the LEFT role and waits for that role change to sync, so other members see
+ * this device leave. This device's copy and unsynced local data are cleared;
+ * other members keep their copies. No project is deleted.
  *
  * Because sync can change organization state while this runs, each leave is
  * revalidated immediately before it: the organization must still be

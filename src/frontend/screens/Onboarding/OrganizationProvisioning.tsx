@@ -45,7 +45,7 @@ const m = defineMessages({
   discardConfirmBody: {
     id: '$1screens.OrganizationProvisioning.discardConfirmBody',
     defaultMessage:
-      'This device will leave the projects in this setup. Observations not yet synced from this device will no longer be available here, so export any important data first. Other members keep the projects and their copies.',
+      "This device will leave the projects in this setup. Other members will see this device leave the projects. If this device is a project's only coordinator, then no other device can add or remove devices, adjust project info, or update the categories set. Observations not yet synced from this device will no longer be available here, so export any important data first. Other members keep the projects and their copies.",
   },
   cancel: {
     id: '$1screens.OrganizationProvisioning.cancel',

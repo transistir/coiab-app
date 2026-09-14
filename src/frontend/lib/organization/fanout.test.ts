@@ -746,8 +746,11 @@ describe('discardIncompleteOrganization', () => {
   });
 
   it('leaves a created project even if reading its shared membership would fail', async () => {
-    // Membership cannot block this local-only leave. In particular, discard
-    // must not depend on a membership read that can race or fail over IPC.
+    // Membership cannot block this synchronized leave: core assigns this
+    // device the LEFT role and waits for it to sync, so other members see the
+    // leave and keep their copies while this device's copy and unsynced local
+    // data go. Discard must not depend on a membership read that can race or
+    // fail over IPC.
     const manager = createFakeManager();
     const mProjectId = await seedIncompleteOrg(manager);
     const baseGetProject = manager.getProject.bind(manager);

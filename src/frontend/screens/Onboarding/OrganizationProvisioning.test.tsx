@@ -357,7 +357,7 @@ describe('OrganizationProvisioning', () => {
     expect(alertSpy).toHaveBeenCalledTimes(1);
     // The confirm must say what a leave costs: joined projects are left too.
     expect(alertSpy.mock.calls[0][1]).toBe(
-      'This device will leave the projects in this setup. Observations not yet synced from this device will no longer be available here, so export any important data first. Other members keep the projects and their copies.',
+      "This device will leave the projects in this setup. Other members will see this device leave the projects. If this device is a project's only coordinator, then no other device can add or remove devices, adjust project info, or update the categories set. Observations not yet synced from this device will no longer be available here, so export any important data first. Other members keep the projects and their copies.",
     );
     expect(discard).not.toHaveBeenCalled();
 

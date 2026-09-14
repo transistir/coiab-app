@@ -29,7 +29,7 @@ const DEVICE_ID = 'device-1';
 
 /**
  * A fake client satisfying what `discardIncompleteOrganization` reads: the
- * project list and local leave call, plus fixture helpers — enough of the
+ * project list and synchronized leave call, plus fixture helpers — enough of the
  * real client for the discard fan-out and the react-query cache.
  */
 function createFakeDiscardClient() {
@@ -51,8 +51,9 @@ function createFakeDiscardClient() {
     );
     if (index !== -1) projects.splice(index, 1);
   });
+  const listProjects = jest.fn(async () => [...projects]);
   const clientApi = {
-    listProjects: async () => [...projects],
+    listProjects,
     createProject,
     getProject: jest.fn(async () => ({
       $getOwnRole: async () => ({roleId: CREATOR_ROLE_ID}),
@@ -68,6 +69,7 @@ function createFakeDiscardClient() {
     createProject,
     getProject: clientApi.getProject as unknown as jest.Mock,
     leaveProject,
+    listProjects,
     projects,
   };
 }
@@ -134,19 +136,17 @@ describe('useDiscardIncompleteOrganization', () => {
     hook.unmount();
   });
 
-  test('discarding a shared created slot leaves it and clears the persisted invite identity', async () => {
-    const {clientApi, getProject, leaveProject} = createFakeDiscardClient();
+  test('discard depends only on the project list and leave operation', async () => {
+    const {clientApi, getProject, leaveProject, listProjects} =
+      createFakeDiscardClient();
     const organizationId = '0123456789abcdef';
     await clientApi.createProject({
       name: 'Monitoramento',
       projectDescription: markerFor(organizationId, 'm', 'Org Incompleta'),
     });
-    getProject.mockImplementation(async () => ({
-      $getOwnRole: async () => ({roleId: CREATOR_ROLE_ID}),
-      $member: {
-        getMany: async () => [{deviceId: DEVICE_ID}, {deviceId: 'device-2'}],
-      },
-    }));
+    getProject.mockRejectedValue(
+      new Error('discard must not read project membership or roles'),
+    );
     identityStore.actions.setIdentity(organizationId, IDENTITY);
 
     const hook = await discardWithHook(clientApi, organizationId);
@@ -157,6 +157,8 @@ describe('useDiscardIncompleteOrganization', () => {
       removed: [{slot: 'm', projectId: 'project-1'}],
       skipped: [],
     });
+    expect(getProject).not.toHaveBeenCalled();
+    expect(listProjects).toHaveBeenCalled();
     expect(leaveProject).toHaveBeenCalledWith('project-1');
     expect(identityStore.instance.getState()).toStrictEqual({});
 

@@ -16,7 +16,9 @@ export type DiscardOrganizationStatus =
 /**
  * The escape hatch for the fail-closed create: tears down the half-built
  * organization (`discardIncompleteOrganization` carries the pre-leave state
- * revalidation and the local leaves) so creation can restart fresh. Matches
+ * revalidation and synchronized leaves) so creation can restart fresh. Core
+ * assigns this device the LEFT role and waits for it to sync; this device's
+ * copy and unsynced local data go, while other members keep theirs. Matches
  * the other organization hooks' lifecycle (P6 Q2): a
  * synchronous busy guard against re-entry, an attempt token so a superseded
  * or unmounted attempt publishes nothing, invalidations that settle before
