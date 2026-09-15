@@ -1,11 +1,10 @@
-import {useEffect, useMemo} from 'react';
+import {useMemo} from 'react';
 import {useManyProjects} from '@comapeo/core-react';
 
 import {
   reconstructOrganizations,
   type ReconstructedOrganization,
 } from '../../lib/organization/reconstruct';
-import {clearOrganizationCreationProvenance} from '../../lib/organization/creationProvenance';
 import {useActiveProjectId} from '../../contexts/ActiveProjectIdStoreContext';
 
 /**
@@ -20,21 +19,6 @@ export function useOrganizations(): ReconstructedOrganization[] {
     () => reconstructOrganizations(projects),
     [projects],
   );
-
-  // Provenance reconciliation (SPEC 5/E7): a creation provenance record
-  // means "a create was interrupted here". If reconstruction sees the whole
-  // organization (both slots present), the creation in fact completed — the
-  // record is stale (e.g. the app died between fan-out completion and its
-  // cleanup) and must be cleared now, so a later slot removal can never be
-  // "concluded" by fabricating a replacement project. Genuinely incomplete
-  // organizations keep their record and the conclude-creation offer.
-  useEffect(() => {
-    for (const organization of organizations) {
-      if (organization.state === 'ready') {
-        clearOrganizationCreationProvenance(organization.organizationId);
-      }
-    }
-  }, [organizations]);
 
   return organizations;
 }

@@ -253,7 +253,6 @@ import {
   semearDocumentoPronta,
 } from '../../../../tests/integration/helpers/setupIntegrationTest';
 import {markerFor} from '../../lib/organization/marker';
-import {organizationCreationProvenanceStore} from '../../lib/organization/creationProvenance';
 
 /**
  * The startup gate mounted for real (SPEC 10.1): getInitialRoute picks the
@@ -266,12 +265,6 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
   // beforeEach/afterEach that boot and tear down a real core manager per test.
   const freshSetup = setupIntegrationTestWithoutProject();
   const orgSetup = setupIntegrationTest();
-
-  beforeEach(() => {
-    // The provenance record is durable by design — it must not leak from the
-    // test that wrote it into the next device state.
-    organizationCreationProvenanceStore.setState({organizationIds: []});
-  });
 
   afterEach(() => {
     // The document is durable by design too: a seeded pending confirmation
