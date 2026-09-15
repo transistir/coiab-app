@@ -68,9 +68,22 @@ describe('Observation Fields', () => {
         activeProjectId: integrationSetup.projectId,
       });
 
-      await user.press(await screen.findByTestId('MAIN.add-observation-btn'));
+      // I/O-bound waits under load (the JoinProjectIntro /
+      // index.navigator.test.tsx precedent, same class as 'correct back
+      // button behaviour' below): measured live — Home held an
+      // ActivityIndicator past the 1000 ms default while the organization
+      // gate and project queries resolved, failing this helper's findBy.
+      await user.press(
+        await screen.findByTestId('MAIN.add-observation-btn', undefined, {
+          timeout: 15_000,
+        }),
+      );
       // category set in assets folder has a category "Comprehensive Test" with all fields
-      await user.press(await screen.findByText('Comprehensive Test'));
+      await user.press(
+        await screen.findByText('Comprehensive Test', undefined, {
+          timeout: 15_000,
+        }),
+      );
       await user.press(await screen.findByText('Details'));
     }
     test('expects text value to change on screen, and remain when navigated back', async () => {
@@ -86,7 +99,7 @@ describe('Observation Fields', () => {
       expect(await screen.findByTestId('OBS.text-inp')).toHaveDisplayValue(
         'hello',
       );
-    });
+    }, 30_000);
 
     test('renders empty when tagValue is undefined/null', async () => {
       const user = userEvent.setup();
@@ -96,7 +109,7 @@ describe('Observation Fields', () => {
       await fireEvent.changeText(textInput, null as unknown as string);
 
       expect(textInput).toHaveDisplayValue('');
-    });
+    }, 30_000);
 
     test('renders empty when tagValue is not a string', async () => {
       const user = userEvent.setup();
@@ -106,7 +119,7 @@ describe('Observation Fields', () => {
       await fireEvent.changeText(textInput, {foo: 'bar'} as unknown as string);
 
       expect(textInput).toHaveDisplayValue('');
-    });
+    }, 30_000);
 
     test('calls updateTag with empty string when cleared', async () => {
       const user = userEvent.setup();
@@ -117,7 +130,7 @@ describe('Observation Fields', () => {
       await fireEvent.changeText(textInput, '');
 
       expect(textInput).toHaveDisplayValue('');
-    });
+    }, 30_000);
   });
 
   describe('Number Fields', () => {
@@ -136,9 +149,19 @@ describe('Observation Fields', () => {
         activeProjectId: integrationSetup.projectId,
       });
 
-      await user.press(await screen.findByTestId('MAIN.add-observation-btn'));
+      // Same I/O-bound waits as the TextArea helper (organization gate +
+      // categories query): the 1000 ms default is insufficient under load.
+      await user.press(
+        await screen.findByTestId('MAIN.add-observation-btn', undefined, {
+          timeout: 15_000,
+        }),
+      );
       // category set in assets folder has a category "Comprehensive Test" with all fields
-      await user.press(await screen.findByText('Comprehensive Test'));
+      await user.press(
+        await screen.findByText('Comprehensive Test', undefined, {
+          timeout: 15_000,
+        }),
+      );
       await user.press(await screen.findByText('Details'));
       await user.press(await screen.findByText('Next'));
     }
@@ -158,7 +181,7 @@ describe('Observation Fields', () => {
       expect(await screen.findByTestId('OBS.number-inp')).toHaveDisplayValue(
         '1.23',
       );
-    });
+    }, 30_000);
 
     test('sanitizes numbers properly', async () => {
       const user = userEvent.setup();
@@ -182,7 +205,7 @@ describe('Observation Fields', () => {
       expect(await screen.findByTestId('OBS.number-inp')).toHaveDisplayValue(
         '0',
       );
-    });
+    }, 30_000);
   });
 
   describe('Select one', () => {
@@ -201,9 +224,19 @@ describe('Observation Fields', () => {
         activeProjectId: integrationSetup.projectId,
       });
 
-      await user.press(await screen.findByTestId('MAIN.add-observation-btn'));
+      // Same I/O-bound waits as the TextArea helper (organization gate +
+      // categories query): the 1000 ms default is insufficient under load.
+      await user.press(
+        await screen.findByTestId('MAIN.add-observation-btn', undefined, {
+          timeout: 15_000,
+        }),
+      );
       // category set in assets folder has a category "Comprehensive Test" with all fields
-      await user.press(await screen.findByText('Comprehensive Test'));
+      await user.press(
+        await screen.findByText('Comprehensive Test', undefined, {
+          timeout: 15_000,
+        }),
+      );
       await user.press(await screen.findByText('Details'));
       await user.press(await screen.findByText('Next'));
       await user.press(await screen.findByText('Next'));
@@ -226,7 +259,7 @@ describe('Observation Fields', () => {
       await user.press(optionUnusual);
       expect(inputExpected).not.toBeChecked();
       expect(inputUnusual).toBeChecked();
-    });
+    }, 30_000);
   });
 
   describe('Select Multiple', () => {
@@ -245,9 +278,19 @@ describe('Observation Fields', () => {
         activeProjectId: integrationSetup.projectId,
       });
 
-      await user.press(await screen.findByTestId('MAIN.add-observation-btn'));
+      // Same I/O-bound waits as the TextArea helper (organization gate +
+      // categories query): the 1000 ms default is insufficient under load.
+      await user.press(
+        await screen.findByTestId('MAIN.add-observation-btn', undefined, {
+          timeout: 15_000,
+        }),
+      );
       // category set in assets folder has a category "Comprehensive Test" with all fields
-      await user.press(await screen.findByText('Comprehensive Test'));
+      await user.press(
+        await screen.findByText('Comprehensive Test', undefined, {
+          timeout: 15_000,
+        }),
+      );
       await user.press(await screen.findByText('Details'));
       await user.press(await screen.findByText('Next'));
       await user.press(await screen.findByText('Next'));
@@ -275,7 +318,7 @@ describe('Observation Fields', () => {
       //expect both to still be selected
       expect(inputHistory).toBeSelected();
       expect(inputMythology).toBeSelected();
-    });
+    }, 30_000);
   });
 
   describe('navigates in and out of the observation fields', () => {
@@ -294,12 +337,32 @@ describe('Observation Fields', () => {
         activeProjectId: integrationSetup.projectId,
       });
 
-      await user.press(await screen.findByTestId('MAIN.add-observation-btn'));
+      // I/O-bound waits under load (the JoinProjectIntro /
+      // index.navigator.test.tsx precedent): the create-observation button
+      // renders once Home clears the organization gate (persisted document
+      // + project queries), and 'Comprehensive Test' renders only after
+      // the categories query refetches the core after the import. The
+      // 1000 ms defaults broke this case under 3-worker load.
+      await user.press(
+        await screen.findByTestId('MAIN.add-observation-btn', undefined, {
+          timeout: 15_000,
+        }),
+      );
       // category set in assets folder has a category "Comprehensive Test" with all fields
-      await user.press(await screen.findByText('Comprehensive Test'));
+      await user.press(
+        await screen.findByText('Comprehensive Test', undefined, {
+          timeout: 15_000,
+        }),
+      );
       await user.press(await screen.findByText('Details'));
     }
 
+    // Real I/O on this test's budget: the beforeEach boots a real core
+    // (manager + IPC + fastify + two project creations), the body imports
+    // the .comapeocat from disk and walks four navigation round-trips —
+    // measured 4154 ms under 3-worker load against jest's default 5000 ms
+    // test timeout (the JoinProjectIntro precedent). The budget only
+    // bounds the wait: an element that never renders still fails the test.
     test('correct back button behaviour', async () => {
       const user = userEvent.setup();
       await navigateToObservationDetails(user);
@@ -350,6 +413,6 @@ describe('Observation Fields', () => {
       //should navigate back to create observation screen when done clicked
       await user.press(doneButton);
       expect(await screen.findByTestId('OBS.create-obs')).toBeVisible();
-    });
+    }, 30_000);
   });
 });
