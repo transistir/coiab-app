@@ -1,92 +1,29 @@
 import * as React from 'react';
-import {Alert, StyleSheet, View} from 'react-native';
+import {StyleSheet, View} from 'react-native';
 import {defineMessages, useIntl} from 'react-intl';
-import {useQueryClient} from '@tanstack/react-query';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
-import {useManyInvites} from '@comapeo/core-react';
 
 import {HeaderText} from '../../sharedComponents/Text/HeaderText';
 import {BodyText} from '../../sharedComponents/Text/BodyText';
 import {LoadingIndicator} from '../../sharedComponents/LoadingIndicator';
-import {
-  DestructiveButton,
-  PrimaryButton,
-  SecondaryButton,
-} from '../../sharedComponents/Buttons';
+import {PrimaryButton} from '../../sharedComponents/Buttons';
 import {AppStackParamsList} from '../../sharedTypes/navigation';
-import {useOrganizations} from '../../hooks/organization/useOrganizations';
-import {useCreateOrganization} from '../../hooks/organization/useCreateOrganization';
-import {useDiscardIncompleteOrganization} from '../../hooks/organization/useDiscardIncompleteOrganization';
-import {getOrganizationCreationCompletion} from '../../hooks/organization/useOrganizationCreationCompletion';
 import {useCoiabOrganizationsState} from '../../contexts/CoiabOrganizationsStoreContext';
 import {useOrganizationActivationContext} from '../../contexts/OrganizationActivationContext';
 import {useActiveProjectId} from '../../contexts/ActiveProjectIdStoreContext';
-import {useHasOrganizationCreationProvenance} from '../../lib/organization/creationProvenance';
-import {groupPendingInvites} from '../../lib/organization/bundle';
 import {
   AREAS,
   derivarProjectIdAtivo,
+  type EstadoOrganizacoes,
   type EtapaArea,
   type OrganizacaoLocal,
 } from '../../lib/organization/coiabOrganizations';
-import {SLOTS, SLOT_PROJECT_NAMES} from '../../lib/organization/marker';
 import {DARK_GREY, RED} from '../../lib/styles';
-import type {ReconstructedOrganization} from '../../lib/organization/reconstruct';
 
 const m = defineMessages({
-  settingUp: {
-    id: '$1screens.OrganizationProvisioning.settingUp',
-    defaultMessage: 'Setting up your Organization…',
-  },
-  invalid: {
-    id: '$1screens.OrganizationProvisioning.invalid',
-    defaultMessage:
-      'Something is wrong with this Organization. Contact support.',
-  },
-  finishSetup: {
-    id: '$1screens.OrganizationProvisioning.finishSetup',
-    defaultMessage: 'Finish setting up',
-  },
-  discardSetup: {
-    id: '$1screens.OrganizationProvisioning.discardSetup',
-    defaultMessage: 'Discard and start over',
-  },
-  discardConfirmTitle: {
-    id: '$1screens.OrganizationProvisioning.discardConfirmTitle',
-    defaultMessage: 'Discard this Organization setup?',
-  },
-  discardConfirmBody: {
-    id: '$1screens.OrganizationProvisioning.discardConfirmBody',
-    defaultMessage:
-      "This device will leave the projects in this setup. Other members will see this device leave the projects. If this device is a project's only coordinator, then no other device can add or remove devices, adjust project info, or update the categories set. Observations not yet synced from this device will no longer be available here, so export any important data first. Other members keep the projects and their copies.",
-  },
-  cancel: {
-    id: '$1screens.OrganizationProvisioning.cancel',
-    defaultMessage: 'Cancel',
-  },
-  discardFailed: {
-    id: '$1screens.OrganizationProvisioning.discardFailed',
-    defaultMessage:
-      'Something went wrong while discarding this setup. It was not fully removed — you can try again.',
-  },
-  cannotFinish: {
-    id: '$1screens.OrganizationProvisioning.cannotFinish',
-    defaultMessage:
-      'This Organization was not left half-created on this device, so its setup cannot be finished here.',
-  },
-  skippedStale: {
-    id: '$1screens.OrganizationProvisioning.skippedStale',
-    defaultMessage:
-      '{projectName} changed while it was being discarded, so it was kept.',
-  },
-  skippedJoinPending: {
-    id: '$1screens.OrganizationProvisioning.skippedJoinPending',
-    defaultMessage:
-      'An invitation for this organization is still syncing. Try again once it finishes.',
-  },
   // SPEC B §4.4: organization-owned concepts get their own descriptors — the
-  // document-driven preparation view, its failure recovery and its
-  // confirmation.
+  // document-driven preparation view, its failure recovery, its confirmation
+  // and the open/recovery states.
   preparingTitle: {
     id: '$1screens.OrganizationSetup.preparingTitle',
     defaultMessage: 'Preparing your organization…',
@@ -144,13 +81,26 @@ const m = defineMessages({
     id: '$1screens.OrganizationSetup.openOrganizationButton',
     defaultMessage: 'Open organization',
   },
+  unavailableTitle: {
+    id: '$1screens.OrganizationSetup.unavailableTitle',
+    defaultMessage: 'Could not open your organization',
+    description:
+      'A settled organization the engine could not open (SPEC B §4.4:120 / SPEC A §6.2:214, “Organização indisponível”)',
+  },
+  retryActivationButton: {
+    id: '$1screens.OrganizationSetup.retryActivationButton',
+    defaultMessage: 'Try again',
+    description:
+      'Reactivates the settled organization after a failed open (SPEC B §4.4:120, “Tentar novamente”)',
+  },
+  pendingWork: {
+    id: '$1screens.OrganizationSetup.pendingWork',
+    defaultMessage:
+      'Finish or discard the record before switching organization',
+    description:
+      'Blocked boot with work in progress (SPEC A §4.4:149 canonical pending-work string, CA15)',
+  },
 });
-
-/** Why each kept project is still on the device, per skip reason. */
-const SKIP_MESSAGES = {
-  'no-longer-incomplete': m.skippedStale,
-  'join-pending': m.skippedJoinPending,
-} as const;
 
 /** The row status an area's journal etapa displays (SPEC B §4.4). */
 function statusMessageForEtapa(etapa: EtapaArea['etapa']) {
@@ -200,40 +150,70 @@ function AreaStepRows({organizacao}: {organizacao: OrganizacaoLocal}) {
 /**
  * The document-driven view (SPEC B §4.4): the persisted organization document
  * exists, so the screen renders ITS state — preparation rows, the canonical
- * recoverable-failure sentences, or the confirmation — instead of the
- * reconstructed fan-out surface. The fanout retry/discard buttons have no
- * place here: the document owns recovery.
+ * recoverable-failure sentences, the confirmation, or the open/recovery
+ * states published by the activation engine. Every exit from this screen is
+ * the engine's: a preparation retry, an acknowledged activation, or a
+ * pending-work recovery; the reconstruction is never consulted here.
  */
 function DocumentDrivenProvisioning({
   organizacao,
+  ativa,
 }: {
   organizacao: OrganizacaoLocal;
+  ativa: EstadoOrganizacoes['ativa'];
 }) {
   const {formatMessage: t} = useIntl();
-  const activation = useOrganizationActivationContext();
-  const queryClient = useQueryClient();
-  const [activating, setActivating] = React.useState(false);
+  const {status, error, activate, retryPreparation, recoverPendingWork} =
+    useOrganizationActivationContext();
+  const [ativando, setAtivando] = React.useState(false);
   // Synchronous guard: the disabled prop alone lets a double tap queue a
   // second activate before the rerender publishes it.
-  const activatingRef = React.useRef(false);
+  const ativandoRef = React.useRef(false);
+
+  // SPEC A §4.4:149 (CA15): a blocked boot with work in progress maps to the
+  // single canonical pending-work string. Reopening the work's persisted
+  // origin is what concludes the work, and recoverPendingWork() is the
+  // engine's only path for it — the screen asks, the engine owns it.
+  const trabalhoPendente = status === 'unavailable' && error === 'pending-work';
+  React.useEffect(() => {
+    if (trabalhoPendente) void recoverPendingWork();
+  }, [trabalhoPendente, recoverPendingWork]);
+
+  // SPEC B §4.4:120 ("Organização indisponível"): the document is settled and
+  // acknowledged, but the engine refused to open it — recovery or
+  // unavailable, and not the pending-work blocked boot above, which shows
+  // its own string. The preparation rows stay: the data is all there; what
+  // failed is opening it.
+  const indisponivel =
+    organizacao.estado === 'pronta' &&
+    !organizacao.confirmacaoPendente &&
+    !trabalhoPendente &&
+    (status === 'recovery' || status === 'unavailable');
 
   const abrirOrganizacao = async () => {
-    if (activatingRef.current) return;
-    activatingRef.current = true;
-    setActivating(true);
+    if (ativandoRef.current) return;
+    ativandoRef.current = true;
+    setAtivando(true);
     try {
-      if (await activation.activate(organizacao.id, {acknowledge: true})) {
-        // SPEC A §4.2 regra 9: the activation engine acknowledged and
-        // selected in one write; this hands the navigation completion the
-        // project the document pinned for Monitoramento.
-        const projectId = organizacao.materializacao.monitoramento.projectId;
-        if (projectId) {
-          getOrganizationCreationCompletion(queryClient).setState({projectId});
-        }
-      }
+      // SPEC A §4.2 regra 9: the activation engine acknowledged and selected
+      // in one write. Routing to Home is the navigator's generation rule,
+      // never this screen's.
+      await activate(organizacao.id, {acknowledge: true});
     } finally {
-      activatingRef.current = false;
-      setActivating(false);
+      ativandoRef.current = false;
+      setAtivando(false);
+    }
+  };
+
+  const tentarNovamente = async () => {
+    if (ativandoRef.current || !ativa) return;
+    ativandoRef.current = true;
+    setAtivando(true);
+    try {
+      await activate(ativa.organizacaoId, {area: ativa.area});
+    } finally {
+      ativandoRef.current = false;
+      setAtivando(false);
     }
   };
 
@@ -259,14 +239,22 @@ function DocumentDrivenProvisioning({
         </>
       )}
       {organizacao.estado === 'pronta' && organizacao.confirmacaoPendente && (
+        <>
+          <HeaderText variant="header2" style={styles.title}>
+            {t(m.createdTitle)}
+          </HeaderText>
+          <BodyText style={styles.bodyText}>
+            {t(m.createdBody, {organizationName: organizacao.nome})}
+          </BodyText>
+        </>
+      )}
+      {indisponivel && (
         <HeaderText variant="header2" style={styles.title}>
-          {t(m.createdTitle)}
+          {t(m.unavailableTitle)}
         </HeaderText>
       )}
-      {organizacao.estado === 'pronta' && organizacao.confirmacaoPendente && (
-        <BodyText style={styles.bodyText}>
-          {t(m.createdBody, {organizationName: organizacao.nome})}
-        </BodyText>
+      {trabalhoPendente && (
+        <BodyText style={styles.bodyText}>{t(m.pendingWork)}</BodyText>
       )}
       <AreaStepRows organizacao={organizacao} />
       {organizacao.estado === 'falha_recuperavel' && (
@@ -277,7 +265,7 @@ function DocumentDrivenProvisioning({
           onPress={() => {
             // The engine's own lock joins a same-key in-flight retry, so a
             // double tap cannot double-resume either.
-            void activation.retryPreparation(organizacao.id);
+            void retryPreparation(organizacao.id);
           }}
         />
       )}
@@ -286,9 +274,20 @@ function DocumentDrivenProvisioning({
           testID="ORG.provisioning-open-organization-btn"
           fullSize
           text={t(m.openOrganizationButton)}
-          disabled={activating}
+          disabled={ativando}
           onPress={() => {
             void abrirOrganizacao();
+          }}
+        />
+      )}
+      {indisponivel && (
+        <PrimaryButton
+          testID="ORG.provisioning-retry-activation-btn"
+          fullSize
+          text={t(m.retryActivationButton)}
+          disabled={ativando || !ativa}
+          onPress={() => {
+            void tentarNovamente();
           }}
         />
       )}
@@ -300,232 +299,57 @@ function DocumentDrivenProvisioning({
  * Fail-closed screen for an Organization that is not an open, acknowledged
  * organization yet (SPEC 10.1 / SPEC B §3.3-§4.4).
  *
- * With a persisted organization document (`estado.organizacoes[0]`), the
- * document drives everything: `preparando` shows the two area rows with no
- * buttons; `falha_recuperavel` offers Tentar novamente through the activation
- * engine; `pronta` with a pending confirmation offers Abrir organização and
- * waits — it never resets to Home on the reconstruction's word. Without a
- * document (legacy data), the reconstructed fan-out surface keeps its
- * behavior: the resume offer gated on durable creation provenance and pending
- * invites, and the destructive-discard escape hatch.
+ * The persisted organization document (`estado.organizacoes[0]`) is the only
+ * content authority: `preparando` shows the two area rows with no buttons;
+ * `falha_recuperavel` offers Tentar novamente through the activation engine;
+ * `pronta` with a pending confirmation offers Abrir organização and waits;
+ * and a settled document the engine failed to open (`recovery` |
+ * `unavailable`) says so and reactivates through the engine — blocked work
+ * shows the §4.4 string and reopens its origin. Without a document the
+ * startup gate routes elsewhere ('nenhum' → Success), so this surface stays
+ * a bare, buttonless loader: nothing may act on a reconstruction's word.
  */
 export const OrganizationProvisioning = ({
   navigation,
 }: NativeStackScreenProps<AppStackParamsList, 'OrganizationProvisioning'>) => {
-  const {formatMessage: t} = useIntl();
   const estado = useCoiabOrganizationsState();
   const organizacaoDocument = estado.organizacoes[0];
-  const documentGuides = organizacaoDocument !== undefined;
   const {status: activationStatus} = useOrganizationActivationContext();
   // The document's own operational id (SPEC A §4.2 regra 5): null while the
   // confirmation is pending or the document cannot be parsed.
   const derivado = derivarProjectIdAtivo(estado);
   const activeProjectId = useActiveProjectId();
-  const organizations = useOrganizations();
-  const {start, status} = useCreateOrganization();
-  const {
-    discard,
-    reset: resetDiscard,
-    status: discardStatus,
-    result: discardResult,
-    discardedOrganizationId,
-  } = useDiscardIncompleteOrganization();
-
-  const isReady = organizations.some(org => org.state === 'ready');
-  const isInvalid = organizations.some(org => org.state === 'invalid');
-  const isCreating = status === 'creating';
-  const isDiscarding = discardStatus === 'discarding';
-
-  const incompleteOrganization = organizations.find(
-    (org): org is Extract<ReconstructedOrganization, {state: 'incomplete'}> =>
-      org.state === 'incomplete',
-  );
-  // Durable creation provenance (Bug 46 follow-up): an organization degraded
-  // by a leave or a remote removal reconstructs as `incomplete` with a name
-  // too, so the local state alone cannot tell it from an interrupted create.
-  // Resuming the wrong one creates an unrelated project in the missing slot
-  // and calls the organization ready without the original slot's data or
-  // members, so the offer fails CLOSED without proof that this device started
-  // that create and never saw it finish.
-  const hasCreationProvenance = useHasOrganizationCreationProvenance(
-    incompleteOrganization?.organizationId,
-  );
-  const retryOrganization =
-    hasCreationProvenance &&
-    incompleteOrganization?.organizationName !== undefined &&
-    incompleteOrganization.organizationName.length > 0
-      ? {
-          organizationId: incompleteOrganization.organizationId,
-          organizationName: incompleteOrganization.organizationName,
-        }
-      : undefined;
-
-  // Join-side recovery: when a pending invite covers one of the
-  // organization's missing slots, the invite sheet completes the org —
-  // fabricating the slot here would create a private project the invite
-  // flow then has to route around, so the buttons stay hidden while the
-  // invite is the expected completion path.
-  const {data: invites} = useManyInvites();
-  const {bundles} = groupPendingInvites(invites);
-  const missingSlotCoveredByInvite =
-    incompleteOrganization !== undefined &&
-    bundles.some(
-      bundle =>
-        bundle.organizationId === incompleteOrganization.organizationId &&
-        SLOTS.some(
-          slot =>
-            incompleteOrganization.slots[slot] === undefined &&
-            bundle.invites[slot] !== undefined,
-        ),
-    );
-
-  // Another organization being ready does not repair THIS one: in a mixed
-  // state the screen is the degraded organization's only diagnosis and
-  // recovery surface (reached from Home), so it stays until nothing on the
-  // device is degraded. The common case — everything ready — advances.
-  const hasDegradedOrganization = organizations.some(
-    org => org.state !== 'ready',
-  );
-  const discardSucceeded = discardStatus === 'success' && !!discardResult?.ok;
+  // SPEC B (5b): with a persisted organization document, the reconstruction
+  // alone must never navigate — Home opens only through a validated
+  // activation whose projected id matches the document's own derivation. The
+  // generation gate's own reset races the screen-set flip at this exact
+  // commit (the app screens' lazy mounts suspend the navigator away before
+  // its reset is handled), so this effect is the surviving hop: it re-runs
+  // after the Suspense remount and routes on the same validated condition.
   React.useEffect(() => {
-    // Skip after an ok discard: the effect below routes to Success, and a
-    // Home reset here would flash Home first (post-discard Home flash).
-    if (discardSucceeded) return;
-    // SPEC B (5b): with a persisted organization document, the
-    // reconstruction alone must never navigate — Home opens only through a
-    // validated activation whose projected id matches the document's own
-    // derivation. A pending confirmation or an in-flight preparation never
-    // satisfies it; neither does a recovery, where a stale cached
-    // reconstruction still says "ready" — routing on its word would bounce
-    // straight off the navigation gate.
-    if (
-      documentGuides &&
-      (activationStatus !== 'ready' || derivado !== activeProjectId)
-    )
-      return;
-    if (!isReady || hasDegradedOrganization) return;
+    if (organizacaoDocument === undefined) return;
+    if (activationStatus !== 'ready' || derivado !== activeProjectId) return;
     navigation.reset({index: 0, routes: [{name: 'Home'}]});
   }, [
-    discardSucceeded,
-    documentGuides,
+    organizacaoDocument,
     activationStatus,
     derivado,
     activeProjectId,
-    isReady,
-    hasDegradedOrganization,
     navigation,
   ]);
 
-  // A settled discard either freed the device (`ok`) or refused to remove
-  // something: then the setup is still here, the lines below say which
-  // projects were kept and why, and the result stays published so those
-  // lines remain on screen. A failure stays too, with its error line.
-  // Neither resets the hook — the user can retry. A successful discard
-  // hands the next decision to the start-over fork only when nothing on the
-  // device is degraded anymore; while another organization still
-  // needs repair, THIS screen is that organization's repair surface, so
-  // it stays (the discarded setup itself is gone — it is filtered out of
-  // the collection the check runs on).
-  React.useEffect(() => {
-    if (discardStatus !== 'success') return;
-    if (discardResult?.ok) {
-      const remainingDegraded = organizations.some(
-        org =>
-          org.state !== 'ready' &&
-          org.organizationId !== discardedOrganizationId,
-      );
-      if (remainingDegraded) {
-        resetDiscard();
-      } else {
-        navigation.reset({index: 0, routes: [{name: 'Success'}]});
-        resetDiscard();
-      }
-    }
-  }, [
-    discardStatus,
-    discardResult,
-    discardedOrganizationId,
-    organizations,
-    resetDiscard,
-    navigation,
-  ]);
-
-  // Say why the resume is not on offer — but not while an invite is the
-  // expected completion path, where finishing was never the answer anyway.
-  const cannotFinishSetup =
-    incompleteOrganization !== undefined &&
-    !hasCreationProvenance &&
-    !missingSlotCoveredByInvite;
-
-  const canDiscard =
-    incompleteOrganization !== undefined &&
-    !isCreating &&
-    !isDiscarding &&
-    !missingSlotCoveredByInvite;
-
-  // The document exists: the reconstruction alone must never navigate this
-  // device, and the fanout controls are hidden (SPEC B 5b).
-  if (organizacaoDocument) {
-    return <DocumentDrivenProvisioning organizacao={organizacaoDocument} />;
+  if (organizacaoDocument === undefined) {
+    return (
+      <View style={styles.container}>
+        <LoadingIndicator size="large" />
+      </View>
+    );
   }
-
   return (
-    <View style={styles.container}>
-      <LoadingIndicator size="large" />
-      <HeaderText variant="header2" style={styles.title}>
-        {t(m.settingUp)}
-      </HeaderText>
-      {isInvalid && (
-        <BodyText style={styles.errorText}>{t(m.invalid)}</BodyText>
-      )}
-      {cannotFinishSetup && (
-        <BodyText style={styles.errorText}>{t(m.cannotFinish)}</BodyText>
-      )}
-      {discardStatus === 'error' && (
-        <BodyText style={styles.errorText}>{t(m.discardFailed)}</BodyText>
-      )}
-      {discardStatus === 'success' &&
-        discardResult?.skipped.map(entry => (
-          <BodyText key={entry.projectId} style={styles.errorText}>
-            {t(SKIP_MESSAGES[entry.reason], {
-              projectName: SLOT_PROJECT_NAMES[entry.slot],
-            })}
-          </BodyText>
-        ))}
-      {retryOrganization && !isCreating && !missingSlotCoveredByInvite && (
-        <SecondaryButton
-          testID="ORG.provisioning-retry-btn"
-          fullSize
-          text={t(m.finishSetup)}
-          onPress={() => {
-            start(
-              retryOrganization.organizationName,
-              retryOrganization.organizationId,
-            );
-          }}
-        />
-      )}
-      {canDiscard && (
-        <DestructiveButton
-          testID="ORG.provisioning-discard-btn"
-          fullSize
-          text={t(m.discardSetup)}
-          onPress={() => {
-            if (incompleteOrganization === undefined) return;
-            Alert.alert(t(m.discardConfirmTitle), t(m.discardConfirmBody), [
-              {style: 'cancel', text: t(m.cancel)},
-              {
-                style: 'destructive',
-                text: t(m.discardSetup),
-                onPress: () => {
-                  discard(incompleteOrganization.organizationId);
-                },
-              },
-            ]);
-          }}
-        />
-      )}
-    </View>
+    <DocumentDrivenProvisioning
+      organizacao={organizacaoDocument}
+      ativa={estado.ativa}
+    />
   );
 };
 
@@ -541,9 +365,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   bodyText: {
-    textAlign: 'center',
-  },
-  errorText: {
     textAlign: 'center',
   },
   rows: {

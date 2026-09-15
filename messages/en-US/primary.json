@@ -668,39 +668,6 @@
   "$1screens.OrganizationInviteReceived.preparing": {
     "message": "Preparing invitation…"
   },
-  "$1screens.OrganizationProvisioning.cancel": {
-    "message": "Cancel"
-  },
-  "$1screens.OrganizationProvisioning.cannotFinish": {
-    "message": "This Organization was not left half-created on this device, so its setup cannot be finished here."
-  },
-  "$1screens.OrganizationProvisioning.discardConfirmBody": {
-    "message": "This device will leave the projects in this setup. Other members will see this device leave the projects. If this device is a project's only coordinator, then no other device can add or remove devices, adjust project info, or update the categories set. Observations not yet synced from this device will no longer be available here, so export any important data first. Other members keep the projects and their copies."
-  },
-  "$1screens.OrganizationProvisioning.discardConfirmTitle": {
-    "message": "Discard this Organization setup?"
-  },
-  "$1screens.OrganizationProvisioning.discardFailed": {
-    "message": "Something went wrong while discarding this setup. It was not fully removed — you can try again."
-  },
-  "$1screens.OrganizationProvisioning.discardSetup": {
-    "message": "Discard and start over"
-  },
-  "$1screens.OrganizationProvisioning.finishSetup": {
-    "message": "Finish setting up"
-  },
-  "$1screens.OrganizationProvisioning.invalid": {
-    "message": "Something is wrong with this Organization. Contact support."
-  },
-  "$1screens.OrganizationProvisioning.settingUp": {
-    "message": "Setting up your Organization…"
-  },
-  "$1screens.OrganizationProvisioning.skippedJoinPending": {
-    "message": "An invitation for this organization is still syncing. Try again once it finishes."
-  },
-  "$1screens.OrganizationProvisioning.skippedStale": {
-    "message": "{projectName} changed while it was being discarded, so it was kept."
-  },
   "$1screens.OrganizationSetup.alertsRow": {
     "message": "Alerts"
   },
@@ -740,14 +707,26 @@
   "$1screens.OrganizationSetup.pacoteNaoAprovado": {
     "message": "Could not prepare the necessary files on this device. Nothing was created."
   },
+  "$1screens.OrganizationSetup.pendingWork": {
+    "message": "Finish or discard the record before switching organization",
+    "description": "Blocked boot with work in progress (SPEC A §4.4:149 canonical pending-work string, CA15)"
+  },
   "$1screens.OrganizationSetup.preparingStepA11y": {
     "message": "Preparing your organization"
   },
   "$1screens.OrganizationSetup.preparingTitle": {
     "message": "Preparing your organization…"
   },
+  "$1screens.OrganizationSetup.retryActivationButton": {
+    "message": "Try again",
+    "description": "Reactivates the settled organization after a failed open (SPEC B §4.4:120, “Tentar novamente”)"
+  },
   "$1screens.OrganizationSetup.retryPreparationButton": {
     "message": "Try again"
+  },
+  "$1screens.OrganizationSetup.unavailableTitle": {
+    "message": "Could not open your organization",
+    "description": "A settled organization the engine could not open (SPEC B §4.4:120 / SPEC A §6.2:214, “Organização indisponível”)"
   },
   "$1screens.PhotoPreviewModal.headerButtonText": {
     "message": "Delete Photo"
