@@ -9,42 +9,97 @@ import {
   render,
   screen,
   fireEvent,
-  userEvent,
   waitFor,
 } from '@testing-library/react-native';
 import {IntlProvider} from 'react-intl';
 
 import {CreateOrganization} from './CreateOrganization';
-import {useCreateOrganization} from '../../hooks/organization/useCreateOrganization';
-import {OrganizationOperationError} from '../../lib/organization/fanout';
+import {
+  useOrganizationMaterializer,
+  type OrganizationMaterializerHandle,
+} from '../../contexts/OrganizationMaterializerContext';
+import {
+  CoiabOrganizationsStoreProvider,
+  createCoiabOrganizationsStore,
+  type CoiabOrganizationsStore,
+} from '../../contexts/CoiabOrganizationsStoreContext';
+import {useActiveProjectIdActions} from '../../contexts/ActiveProjectIdStoreContext';
 import {markerFor} from '../../lib/organization/marker';
+import type {
+  EstadoOrganizacoes,
+  OrganizacaoLocal,
+} from '../../lib/organization/coiabOrganizations';
 import type {AppStackParamsList} from '../../sharedTypes/navigation';
 
-jest.mock('../../hooks/organization/useCreateOrganization', () => ({
-  useCreateOrganization: jest.fn(),
+jest.mock('../../contexts/OrganizationMaterializerContext', () => ({
+  useOrganizationMaterializer: jest.fn(),
 }));
 
-const useCreateOrganizationMock = useCreateOrganization as jest.Mock;
+const useMaterializadorMock = useOrganizationMaterializer as jest.Mock;
 
-const start = jest.fn();
+jest.mock('../../contexts/ActiveProjectIdStoreContext', () => ({
+  useActiveProjectIdActions: jest.fn(),
+}));
 
-function mockCreateOrganization(
-  overrides?: Partial<ReturnType<typeof useCreateOrganization>>,
+const setActiveProjectId = jest.fn();
+// The screen chains `.catch/.finally` on the returned promise, so the
+// default mock must resolve like the real `iniciar` does.
+const iniciar = jest.fn(async () => {});
+
+function mockMaterializador(
+  overrides?: Partial<OrganizationMaterializerHandle>,
 ) {
-  useCreateOrganizationMock.mockReturnValue({
-    start,
-    reset: jest.fn(),
-    status: 'idle',
-    error: undefined,
-    organizationId: undefined,
+  useMaterializadorMock.mockReturnValue({
+    iniciar,
+    retomar: jest.fn(),
     ...overrides,
   });
 }
 
+// A parseable §4.2 document holding ONE organization in the state the
+// materializer persists right after `iniciar` registers it (SPEC B §5.4
+// step 2): `preparando`, both areas absent, no selection.
+function documentoComOrganizacao(nome: string): EstadoOrganizacoes {
+  return {
+    versao: 1,
+    organizacoes: [
+      {
+        id: '0123456789abcdef',
+        nome,
+        estado: 'preparando',
+        confirmacaoPendente: false,
+        materializacao: {
+          monitoramento: {
+            etapa: 'ausente',
+            projectId: null,
+            template: null,
+            idsAntesDaCriacao: null,
+          },
+          alertas: {
+            etapa: 'ausente',
+            projectId: null,
+            template: null,
+            idsAntesDaCriacao: null,
+          },
+        },
+        areaEmExecucao: null,
+        ultimoErro: null,
+      },
+    ],
+    ativa: null,
+  };
+}
+
+/** The materializer's observable side effect: the document gains the org. */
+const registrar = async (nome: string) => {
+  store.instance.setState(documentoComOrganizacao(nome));
+};
+
+let store: CoiabOrganizationsStore;
+
 const Stack = createNativeStackNavigator<AppStackParamsList>();
 
 const HomeStub = () => <Text>HOME-REACHED</Text>;
-
 const ProvisioningStub = () => <Text>PROVISIONING-REACHED</Text>;
 
 const ErrorStub = ({
@@ -57,23 +112,25 @@ async function renderScreen() {
   return render(
     <IntlProvider locale="en" messages={{}}>
       <NavigationContainer>
-        <Stack.Navigator>
-          <Stack.Screen
-            name="CreateOrganization"
-            component={CreateOrganization}
-            options={{headerShown: false}}
-          />
-          <Stack.Screen name="Home" component={HomeStub} />
-          <Stack.Screen
-            name="OrganizationProvisioning"
-            component={ProvisioningStub}
-          />
-          <Stack.Screen
-            name="ErrorBottomSheet"
-            component={ErrorStub}
-            options={{headerShown: false}}
-          />
-        </Stack.Navigator>
+        <CoiabOrganizationsStoreProvider store={store}>
+          <Stack.Navigator>
+            <Stack.Screen
+              name="CreateOrganization"
+              component={CreateOrganization}
+              options={{headerShown: false}}
+            />
+            <Stack.Screen name="Home" component={HomeStub} />
+            <Stack.Screen
+              name="OrganizationProvisioning"
+              component={ProvisioningStub}
+            />
+            <Stack.Screen
+              name="ErrorBottomSheet"
+              component={ErrorStub}
+              options={{headerShown: false}}
+            />
+          </Stack.Navigator>
+        </CoiabOrganizationsStoreProvider>
       </NavigationContainer>
     </IntlProvider>,
   );
@@ -81,7 +138,12 @@ async function renderScreen() {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockCreateOrganization();
+  store = createCoiabOrganizationsStore();
+  (useActiveProjectIdActions as jest.Mock).mockReturnValue({
+    setActiveProjectId,
+    clearActiveProjectId: jest.fn(),
+  });
+  mockMaterializador();
 });
 
 describe('CreateOrganization', () => {
@@ -123,23 +185,25 @@ describe('CreateOrganization', () => {
     expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
   });
 
-  test('presses create with the trimmed name', async () => {
-    const user = userEvent.setup();
+  test('presses create with the trimmed name and never writes the active project', async () => {
+    // SPEC B §3.3/§5.3: between `pronta` and the "Abrir organização" tap the
+    // device has NO active selection — `ativa` is born only in that tap's
+    // single write, so the form must hand the materializer the trimmed name
+    // and never repoint the legacy active id itself.
     await renderScreen();
 
-    await user.type(
+    await fireEvent.changeText(
       screen.getByTestId('ORG.create-name-inp'),
       '  Órgão Teste  ',
     );
 
-    const button = screen.getByTestId('ORG.create-btn');
-    await waitFor(() => {
-      expect(button).toBeEnabled();
-    });
-    await user.press(button);
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
     await waitFor(() => {
-      expect(start).toHaveBeenCalledWith('Órgão Teste');
+      expect(iniciar).toHaveBeenCalledWith('Órgão Teste');
+    });
+    await waitFor(() => {
+      expect(setActiveProjectId).not.toHaveBeenCalled();
     });
   });
 
@@ -152,7 +216,7 @@ describe('CreateOrganization', () => {
     );
     // Button stays disabled, but press guard is also asserted directly.
     expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
-    expect(start).not.toHaveBeenCalled();
+    expect(iniciar).not.toHaveBeenCalled();
   });
 
   test('an ASCII name at the exact encoded-marker boundary stays enabled', async () => {
@@ -257,44 +321,120 @@ describe('CreateOrganization', () => {
   });
 
   test('shows the loading state instead of the button while creating', async () => {
-    mockCreateOrganization({status: 'creating'});
+    // `iniciar` runs the whole materialization; until the document shows the
+    // organization the form stays loading — and never goes back to idle on
+    // its own (the promise keeps running at the root).
+    mockMaterializador({
+      iniciar: () => new Promise<void>(() => {}),
+    });
     await renderScreen();
+
+    await fireEvent.changeText(
+      screen.getByTestId('ORG.create-name-inp'),
+      'Minha Org',
+    );
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
     expect(screen.queryByTestId('ORG.create-btn')).not.toBeOnTheScreen();
   });
 
-  test('navigates to Home when the organization is created', async () => {
-    mockCreateOrganization({status: 'success'});
+  test('navigates to OrganizationProvisioning once the document shows the organization', async () => {
+    // SPEC B §3.3 item 2/§5.4: the form does not own the post-registration
+    // journey — as soon as the persisted document holds the organization
+    // (the promise still running at the root), the provisioning surface
+    // takes over. Home is never a form-local destination: only the
+    // confirmation's "Abrir organização" tap may open it.
+    mockMaterializador({iniciar: registrar});
     await renderScreen();
 
-    expect(await screen.findByText('HOME-REACHED')).toBeOnTheScreen();
+    await fireEvent.changeText(
+      screen.getByTestId('ORG.create-name-inp'),
+      'Órgão Teste',
+    );
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+
+    expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
+    // A replace, not a push: the form is gone with its draft handed over.
+    expect(screen.queryByTestId('ORG.create-name-inp')).not.toBeOnTheScreen();
+    expect(screen.queryByText('HOME-REACHED')).not.toBeOnTheScreen();
   });
 
-  test('navigates to ErrorBottomSheet when the create fails', async () => {
-    mockCreateOrganization({
-      status: 'error',
-      error: new Error('boom'),
+  test('a rejection with no document entry opens the error sheet and keeps the name', async () => {
+    // The materializer rejects before anything is persisted (a template
+    // package failure, an MMKV write refusal): nothing was created, so the
+    // form stays — draft intact — with the error explained.
+    mockMaterializador({
+      iniciar: async () => {
+        throw new Error('boom');
+      },
     });
     await renderScreen();
+
+    await fireEvent.changeText(
+      screen.getByTestId('ORG.create-name-inp'),
+      '  Órgão Teste  ',
+    );
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
     expect(await screen.findByText('ERROR: boom')).toBeOnTheScreen();
+    // The sheet is a modal over the form, so the form screen reads
+    // aria-hidden — the draft's persistence is asserted through the
+    // hidden query, exactly the value that was typed.
+    expect(
+      screen.getByTestId('ORG.create-name-inp', {includeHiddenElements: true}),
+    ).toHaveProp('value', '  Órgão Teste  ');
+    // The failure re-arms the form: the user can correct and retry.
+    expect(
+      screen.getByTestId('ORG.create-btn', {includeHiddenElements: true}),
+    ).toBeOnTheScreen();
   });
 
-  test('an incomplete-org-blocks-create failure routes to OrganizationProvisioning, not the error sheet', async () => {
-    // The device already holds a half-provisioned organization (the errored
-    // attempt's id was lost): the provisioning screen owns the repair — it
-    // retries the reconstructed id — so this error must not dead-end in the
-    // error sheet, and a naive resubmit here would mint a second org.
-    mockCreateOrganization({
-      status: 'error',
-      error: new OrganizationOperationError(
-        'incomplete-org-blocks-create',
-        'an incomplete organization is already being set up',
-      ),
-    });
+  test('an organization already in the document routes to OrganizationProvisioning instead of starting', async () => {
+    // SPEC B §5.5/:240: a persisted organization — here a half-provisioned
+    // one whose id survived an interrupted attempt — is never overwritten by
+    // a new `iniciar`: the provisioning screen owns its recovery, so the
+    // form must hand over before the first press.
+    store.instance.setState(documentoComOrganizacao('Órgão Pendente'));
     await renderScreen();
 
     expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
-    expect(screen.queryByText(/incomplete organization/)).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('ORG.create-name-inp')).not.toBeOnTheScreen();
+    expect(iniciar).not.toHaveBeenCalled();
+  });
+
+  test('a settled document (ready, acknowledged, active) leaves an explicitly opened form alone', async () => {
+    // CA12: with a ready organization operating (the §4.2 rule-5 projection
+    // resolves), opening the creation form from Home is an explicit act —
+    // it must not be bounced to a confirmation the user already consumed,
+    // and `iniciar` would refuse a second registration anyway.
+    const pronta: OrganizacaoLocal = {
+      ...documentoComOrganizacao('Órgão Ativa').organizacoes[0]!,
+      estado: 'pronta',
+      confirmacaoPendente: false,
+      materializacao: {
+        monitoramento: {
+          etapa: 'verificado',
+          projectId: 'p-m',
+          template: {versao: '1', hash: 'm'},
+          idsAntesDaCriacao: null,
+        },
+        alertas: {
+          etapa: 'verificado',
+          projectId: 'p-a',
+          template: {versao: '1', hash: 'a'},
+          idsAntesDaCriacao: null,
+        },
+      },
+    };
+    store.instance.setState({
+      versao: 1,
+      organizacoes: [pronta],
+      ativa: {organizacaoId: pronta.id, area: 'monitoramento'},
+    } as EstadoOrganizacoes);
+    await renderScreen();
+
+    expect(screen.getByTestId('ORG.create-name-inp')).toBeOnTheScreen();
+    expect(screen.queryByText('PROVISIONING-REACHED')).not.toBeOnTheScreen();
+    expect(iniciar).not.toHaveBeenCalled();
   });
 });

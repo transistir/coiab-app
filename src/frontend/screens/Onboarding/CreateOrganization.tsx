@@ -15,10 +15,14 @@ import {BodyText} from '../../sharedComponents/Text/BodyText';
 import {PrimaryButton} from '../../sharedComponents/Buttons';
 import {LoadingIndicator} from '../../sharedComponents/LoadingIndicator';
 import {BLACK, LIGHT_GREY} from '../../lib/styles';
-import {AppStackParamsList} from '../../sharedTypes/navigation';
-import {useCreateOrganization} from '../../hooks/organization/useCreateOrganization';
-import {OrganizationOperationError} from '../../lib/organization/fanout';
+import {useOrganizationMaterializer} from '../../contexts/OrganizationMaterializerContext';
+import {
+  useCoiabOrganizationsState,
+  useCoiabOrganizationsStoreContext,
+} from '../../contexts/CoiabOrganizationsStoreContext';
+import {derivarProjectIdAtivo} from '../../lib/organization/coiabOrganizations';
 import {markerFor} from '../../lib/organization/marker';
+import {AppStackParamsList} from '../../sharedTypes/navigation';
 
 const m = defineMessages({
   title: {
@@ -77,36 +81,75 @@ export const CreateOrganization = ({
 }: NativeStackScreenProps<AppStackParamsList, 'CreateOrganization'>) => {
   const [name, setName] = React.useState('');
   const {formatMessage: t} = useIntl();
-  const {start, status, error} = useCreateOrganization();
+  // The root-owned materialization engine (SPEC B §5.4): the screen only
+  // starts it and hands the journey over to the document — the promise
+  // keeps running at the root, surviving this screen's unmount.
+  const {instance} = useCoiabOrganizationsStoreContext();
+  const estado = useCoiabOrganizationsState();
+  const materializador = useOrganizationMaterializer();
+  const organizacaoNoDocumento = estado.organizacoes[0];
+  const [erro, setErro] = React.useState<Error | null>(null);
+  // A synchronous re-entry guard: a state check alone would let a second
+  // press slip through before the rerender publishes the loading UI.
+  const iniciandoRef = React.useRef(false);
+  const [iniciando, setIniciando] = React.useState(false);
 
-  const creating = status === 'creating';
   const trimmedName = name.trim();
   const tooLong = isNameTooLong(name);
 
+  // SPEC B §3.3 items 2-3 and §5.5:241: a persisted organization outranks
+  // the form — preparando/falha_recuperavel belong to the provisioning
+  // surface's recovery, and a pending confirmation to its "Abrir
+  // organização" tap — so starting a second operation over one is never
+  // authorized. The ONE state that leaves an explicitly opened form alone
+  // is the settled one (pronta, acknowledged, selection resolvable): there
+  // the device already operates the organization, and the materializer
+  // itself refuses a second registration.
   React.useEffect(() => {
-    if (status === 'success') {
-      navigation.reset({index: 0, routes: [{name: 'Home'}]});
-    } else if (status === 'error' && error !== undefined) {
-      // The fan-out refused to create a second organization while an
-      // incomplete one sits on the device (Bug 46): the provisioning screen
-      // owns that repair — it retries under the reconstructed id — so the
-      // error sheet would only dead-end a recoverable state.
-      if (
-        error instanceof OrganizationOperationError &&
-        error.code === 'incomplete-org-blocks-create'
-      ) {
-        navigation.navigate('OrganizationProvisioning');
-        return;
-      }
-      navigation.navigate('ErrorBottomSheet', {error: toError(error)});
+    if (organizacaoNoDocumento && derivarProjectIdAtivo(estado) === null) {
+      navigation.replace('OrganizationProvisioning');
     }
-  }, [status, error, navigation]);
+  }, [organizacaoNoDocumento, estado, navigation]);
+
+  // A rejection means NOTHING was persisted (the materializer routes every
+  // mid-materialization failure into the document as `falha_recuperavel`
+  // instead of throwing): the form stays with its draft and explains the
+  // error. A document that appeared during the attempt is the provisioning
+  // surface's business, not an error sheet.
+  React.useEffect(() => {
+    if (!erro || organizacaoNoDocumento) return;
+    navigation.navigate('ErrorBottomSheet', {error: erro});
+  }, [erro, organizacaoNoDocumento, navigation]);
 
   function handleCreatePress() {
-    if (creating || trimmedName.length === 0 || tooLong) return;
-    start(trimmedName);
+    if (
+      iniciandoRef.current ||
+      trimmedName.length === 0 ||
+      tooLong ||
+      organizacaoNoDocumento
+    ) {
+      return;
+    }
+    if (!materializador) {
+      // Absent capability is fail-closed feedback, not a silent no-op.
+      setErro(new Error('materialization-unavailable'));
+      return;
+    }
+    iniciandoRef.current = true;
+    setIniciando(true);
+    materializador
+      .iniciar(trimmedName)
+      .catch((error: unknown) => {
+        // The CURRENT document decides: a rejection that raced against a
+        // persisted intent is the provisioning surface's business.
+        if (instance.getState().organizacoes[0]) return;
+        setErro(toError(error));
+      })
+      .finally(() => {
+        iniciandoRef.current = false;
+        setIniciando(false);
+      });
   }
-
   return (
     <KeyboardAvoidingView style={{width: '100%', height: '100%'}}>
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
@@ -140,7 +183,7 @@ export const CreateOrganization = ({
             </View>
           </View>
           <View style={styles.buttonContainer}>
-            {creating ? (
+            {iniciando ? (
               <>
                 <LoadingIndicator size="large" style={{flex: 0}} />
                 <BodyText variant="smallMeta">{t(m.creating)}</BodyText>
