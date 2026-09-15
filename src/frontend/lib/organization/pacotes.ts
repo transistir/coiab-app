@@ -206,7 +206,16 @@ export type ConfiguracoesProjeto = {
   name?: string;
   sendStats?: boolean;
   defaultPresets?: {point?: string[]; line?: string[]};
-  configMetadata?: {name?: string; version?: string; fileVersion?: string};
+  // The PERSISTED shape (`mapeo-project.d.ts:4987-5011`,
+  // `additionalProperties: false`): core drops `version` at validation, so
+  // `configMetadata.version` can never be compared — the type BLOCKS any
+  // future `version` comparison (Decision D1).
+  configMetadata?: {
+    name?: string;
+    buildDate?: string;
+    importDate?: string;
+    fileVersion?: string;
+  };
 };
 
 /** Project surface needed to read the imported Core documents. */
@@ -215,6 +224,12 @@ export type ProjetoComPresets = {
   field?: {getMany(): Promise<CampoImportado[]>};
   icon?: {getMany(): Promise<IconeImportado[]>};
   $getProjectSettings?: () => Promise<ConfiguracoesProjeto>;
+  /**
+   * Resolves a referenced icon docId THROUGH CORE (Decision C): core's icon
+   * HTTP route runs `$icons[kGetIconBlob](docId)` and answers 404 on a
+   * dangling one, so `false` is an actual refusal, not a URL construction.
+   */
+  iconeResolvivel?: (docId: string) => Promise<boolean>;
 };
 
 /**
@@ -310,14 +325,19 @@ function mesmoConjunto(a: readonly string[], b: readonly string[]): boolean {
  *   canonical DEFINITIONS (tagKey, type and select options — never the names
  *   alone) equal those of the category's package fields;
  * - `iconRef` mirrors the category's `icon` AND resolves. With the icon read
- *   surface, the docId must be an active icon document whose `name` is the
- *   category's package icon; when the surface is NOT exposed (real core rpc
- *   has no icon listing), the references are proven by reference alone: no
- *   icon document may carry two different package icons, and the distinct
- *   docIds must equal the declared icon names.
+ *   surface (a listing on the rpc surface), the docId must be an active icon
+ *   document whose `name` is the category's package icon. WITHOUT it (real
+ *   core rpc has no icon listing), the references are proven BY REFERENCE
+ *   first (no icon document may carry two different package icons, and the
+ *   distinct docIds must equal the declared icon names) and then resolved
+ *   THROUGH CORE via `iconeResolvivel` — core's icon HTTP route (Decision
+ *   C): every referenced docId must resolve there, a refusal is
+ *   `icone_divergente`, and a read failure (a rejected listing or a throwing
+ *   resolver) is `leitura_falhou` — retryable, never a weaker silent proof.
  * - the default selection (`defaultPresets.point/line`) equals the preset
  *   docIds of the package `categorySelection` (observation/track);
- * - `configMetadata` (name/version/fileVersion) equals the package metadata.
+ * - `configMetadata` (name/fileVersion; version proven by the pinned hash —
+ *   Decision D) equals the package metadata.
  *
  * Any missing REQUIRED read surface (preset/field/settings), empty-fallback
  * settings read or divergence returns the SPECIFIC `MotivoDivergencia` —
@@ -340,44 +360,33 @@ export async function conferirImportacao(
     if (!project.preset || !project.field || !project.$getProjectSettings) {
       return 'superficie_ausente';
     }
-    // Icons the categories reference. The read surface is OPTIONAL: real
-    // core 7.4.0 / ipc 9.0.1 exposes NO icon listing (`icon.getMany` is not
-    // on the rpc surface — `ReferenceError: icon is not defined`,
-    // tests/integration/cliente-superficie.test.ts). Without it — absent,
-    // or present-but-unusable — the references are still proven BY REFERENCE
-    // (no docId behind two different package icons; distinct docIds ===
-    // declared icon names); with a WORKING listing, the name bijection
-    // holds as before.
+    // Icons the categories reference. The listing is OPTIONAL — real core
+    // 7.4.0 / ipc 9.0.1 exposes NO icon listing (`icon.getMany` is not on
+    // the rpc surface — `ReferenceError: icon is not defined`,
+    // tests/integration/cliente-superficie.test.ts) — and its PRESENCE is
+    // decided STATICALLY by the adapter: on rpc-reflector every property is
+    // a callable proxy (rpc-reflector/client.js:316), so a runtime
+    // `typeof === 'function'` check is always true, and core ships inside
+    // the same binary (core-react-native/src/version.ts:49), so a member
+    // the adapter declares cannot be stale. A REJECTING read is a real read
+    // failure and is NOT swallowed: it surfaces as `leitura_falhou`
+    // (retryable) instead of silently degrading to a weaker proof.
+    const lerIcones = project.icon;
     const iconesDoPacote = new Set(
       conteudo.categorias
         .map(categoria => categoria.icon)
         .filter((icone): icone is string => typeof icone === 'string'),
     );
-    const lerIcones =
-      typeof project.icon?.getMany === 'function' ? project.icon : undefined;
     const [presetsBrutos, camposBrutos, iconesBrutos, settings] =
       await Promise.all([
         project.preset.getMany(),
         project.field.getMany(),
-        lerIcones
-          ? // An OPTIONAL surface cannot sink the verification: a member
-            // that is present but REJECTS (e.g. the rpc proxy throwing
-            // `ReferenceError: icon is not defined`) degrades to the
-            // by-reference proof — `leitura_falhou` is for a package that
-            // cannot be re-read, not for an optional extra read.
-            lerIcones.getMany().catch(() => undefined)
-          : Promise.resolve([]),
+        lerIcones ? lerIcones.getMany() : Promise.resolve([]),
         project.$getProjectSettings(),
       ]);
     const presets = presetsBrutos.filter(preset => !preset.deleted);
     const campos = camposBrutos.filter(campo => !campo.deleted);
-    // The listing is USABLE only when the member EXISTS and the read
-    // actually returned an array: no member at all, or a degraded read
-    // (present-but-rejecting member → `undefined`), collapses to the
-    // by-reference proof. A member that cannot prove anything cannot be the
-    // reason a verification fails either; an EMPTY array from a working
-    // member is a real result and keeps the strict name bijection.
-    const temListagem = lerIcones !== undefined && Array.isArray(iconesBrutos);
+    const temListagem = lerIcones !== undefined;
     if (presets.length !== conteudo.categorias.length) {
       return 'quantidade_de_presets';
     }
@@ -413,7 +422,8 @@ export async function conferirImportacao(
     if (camposPorDocId.size !== campos.length) return 'campos_divergentes';
 
     // Active icon documents by docId: `name` is the package icon id. Only
-    // built from a usable listing (never from a degraded `undefined`).
+    // built when the adapter exposes the listing (presence is static, a
+    // rejecting read already surfaced as `leitura_falhou` above).
     const nomePorIconeDocId = new Map<string, string>();
     if (temListagem) {
       for (const icone of iconesBrutos) {
@@ -509,6 +519,15 @@ export async function conferirImportacao(
     if (!temListagem && referenciasPorDocId.size !== iconesDoPacote.size) {
       return 'icone_divergente';
     }
+
+    // Without the listing, every referenced docId must resolve THROUGH CORE
+    // (Decision C): `iconeResolvivel` runs core's icon HTTP route, which
+    // answers 404 on a dangling docId — a real refusal, `icone_divergente`.
+    // A resolver THROW is a read failure like any other: it propagates to
+    // the outer catch as `leitura_falhou` (retryable) — not treated apart.
+    if (!temListagem && project.iconeResolvivel)
+      for (const docId of referenciasPorDocId.keys())
+        if (!(await project.iconeResolvivel(docId))) return 'icone_divergente';
 
     // Default selection: categorySelection ↔ defaultPresets docIds.
     const parPorCategoria = new Map(pares.map(par => [par.categoria.id, par]));

@@ -905,11 +905,15 @@ describe('verificarImportacao (Core preset shape + §5.4 canonical conferência 
     ).resolves.toBe(true);
   });
 
-  test('icon listing present but REJECTING degrades to the by-reference proof → null (never leitura_falhou)', async () => {
-    // Defense in depth (the adapter must not announce a listing the core
-    // cannot serve — see clienteDeCriacao.ts — but a member that is present
-    // yet unusable cannot prove anything and must not sink the verification
-    // either: `leitura_falhou` is for a PACKAGE that cannot be re-read).
+  test('icon listing present but REJECTING → leitura_falhou (retryable)', async () => {
+    // Presence is decided STATICALLY in the adapter: on rpc-reflector every
+    // property is a callable proxy (rpc-reflector/client.js:316), so a
+    // runtime `typeof === 'function'` check is always true, and core ships
+    // inside the same binary (core-react-native/src/version.ts:49), so a
+    // listing member the adapter declares cannot be stale. A listing that
+    // REJECTS is a real read failure — swallowing it would turn a real
+    // failure into a silently weaker by-reference proof — so it surfaces as
+    // `leitura_falhou` (retryable), the same as any failing read.
     const {pacote, leitor, importado} = await abrir();
     const projeto = {
       ...projetoCore(importado),
@@ -919,18 +923,18 @@ describe('verificarImportacao (Core preset shape + §5.4 canonical conferência 
         }),
       },
     };
-    await expect(
-      conferirImportacao(projeto, pacote, leitor),
-    ).resolves.toBeNull();
+    await expect(conferirImportacao(projeto, pacote, leitor)).resolves.toBe(
+      'leitura_falhou',
+    );
     await expect(verificarImportacao(projeto, pacote, leitor)).resolves.toBe(
-      true,
+      false,
     );
   });
 
-  test('icon listing present but REJECTING on a multi-icon package still verifies by reference → true', async () => {
-    // The production shape: real packages declare several icons; with the
-    // listing unusable the distinct referenced docIds must still equal the
-    // distinct declared icon names.
+  test('icon listing REJECTING on a multi-icon package → leitura_falhou (retryable)', async () => {
+    // The production shape: real packages declare several icons. A listing
+    // that rejects cannot fall back to the by-reference proof: that would
+    // silently weaken the evidence instead of reporting the read failure.
     const {pacote, leitor, importado} = await abrirIcones();
     const projeto = {
       ...projetoCore(importado),
@@ -940,11 +944,48 @@ describe('verificarImportacao (Core preset shape + §5.4 canonical conferência 
         }),
       },
     };
-    await expect(
-      conferirImportacao(projeto, pacote, leitor),
-    ).resolves.toBeNull();
+    await expect(conferirImportacao(projeto, pacote, leitor)).resolves.toBe(
+      'leitura_falhou',
+    );
     await expect(verificarImportacao(projeto, pacote, leitor)).resolves.toBe(
-      true,
+      false,
+    );
+  });
+
+  test('iconeResolvivel resolves false → icone_divergente', async () => {
+    // Without the listing, the by-reference structure is proven first and
+    // then every referenced docId is resolved THROUGH CORE: a docId that
+    // does not resolve (e.g. a dangling iconRef after an interrupted import)
+    // diverges.
+    const {pacote, leitor, importado} = await abrir();
+    const projeto = {
+      ...semListagemDe(projetoCore(importado)),
+      iconeResolvivel: async () => false,
+    };
+    await expect(conferirImportacao(projeto, pacote, leitor)).resolves.toBe(
+      'icone_divergente',
+    );
+    await expect(verificarImportacao(projeto, pacote, leitor)).resolves.toBe(
+      false,
+    );
+  });
+
+  test('iconeResolvivel throwing → leitura_falhou (retryable, not treated apart)', async () => {
+    // A throw from the resolver is a READ failure like any other: the outer
+    // catch turns it into `leitura_falhou` — verification never treats a
+    // failing icon read as a divergence, and it is retryable.
+    const {pacote, leitor, importado} = await abrir();
+    const projeto = {
+      ...semListagemDe(projetoCore(importado)),
+      iconeResolvivel: async () => {
+        throw new Error('route unavailable');
+      },
+    };
+    await expect(conferirImportacao(projeto, pacote, leitor)).resolves.toBe(
+      'leitura_falhou',
+    );
+    await expect(verificarImportacao(projeto, pacote, leitor)).resolves.toBe(
+      false,
     );
   });
 

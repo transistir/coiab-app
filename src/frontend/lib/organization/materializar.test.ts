@@ -1100,12 +1100,21 @@ describe('validação real dos pacotes (#30 / SPEC B §5.2 CA5)', () => {
     };
   }
 
+  // Fakes mirror what `$getProjectSettings` actually returns: the strict
+  // projectSettings schema (mapeo-project.d.ts:4987-5011) persists exactly
+  // {name, buildDate, importDate, fileVersion} — `version` is dropped at
+  // validation (Decision D3).
   type SettingsCore = {
     name?: string;
     sendStats?: boolean;
     projectDescription?: string;
     defaultPresets?: {point: string[]; line: string[]};
-    configMetadata?: {name?: string; version?: string; fileVersion?: string};
+    configMetadata?: {
+      name?: string;
+      buildDate?: string;
+      importDate?: string;
+      fileVersion?: string;
+    };
   };
 
   /**
@@ -1159,7 +1168,6 @@ describe('validação real dos pacotes (#30 / SPEC B §5.2 CA5)', () => {
       },
       configMetadata: {
         name: conteudo.metadata.name,
-        version: conteudo.metadata.version,
         fileVersion: conteudo.fileVersion,
       },
     };

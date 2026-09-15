@@ -55,17 +55,31 @@ function criarProjetoDeCriacao(
     field: {
       getMany: () => p.field.getMany(),
     },
-    // NO `icon` member, BY EVIDENCE: core 7.4.0 / ipc 9.0.1 exposes NO public
-    // icon DataType on MapeoProject — `icon.getMany()` REJECTS at runtime
-    // ("ReferenceError: icon is not defined"; the icon DataType lives in the
-    // private `#dataTypes`, Symbol-keyed, so rpc-reflector cannot expose it).
-    // Announcing the member here made the optional guard in
-    // `conferirImportacao` (pacotes.ts) believe a usable listing existed and
-    // sank every verification as `leitura_falhou`; icon verification runs BY
-    // REFERENCE instead (pacotes.ts `referenciasPorDocId`). To reintroduce
-    // it when a core upgrade exposes a public listing: add the member back
-    // ONLY after `tests/integration/cliente-superficie.test.ts` ("icon.getMany
-    // NÃO existe no IPC") flips to a positive proof on the new core.
+    // NO `icon` listing member, BY EVIDENCE: core 7.4.0 / ipc 9.0.1 exposes
+    // NO public icon DataType on MapeoProject — `icon.getMany()` REJECTS at
+    // runtime ("ReferenceError: icon is not defined"; the icon DataType
+    // lives in the private `#dataTypes`, Symbol-keyed, so rpc-reflector
+    // cannot expose it). `conferirImportacao` decides the listing's
+    // presence STATICALLY (rpc-reflector proxies make every property
+    // callable), so no member is announced unless a core upgrade exposes a
+    // public listing — readd it ONLY after
+    // tests/integration/cliente-superficie.test.ts ("icon.getMany NÃO
+    // existe no IPC") flips to a positive proof.
+    // The icon PROOF instead resolves each referenced docId THROUGH CORE's
+    // icon HTTP route (Decision C): `getIconUrl` only builds a URL, so the
+    // fetch is what actually reads the blob — the route 404s a dangling
+    // docId, and `fetch(...).ok` surfaces that as false. The options are
+    // the ONLY variant `$importCategories` writes (import-categories.js
+    // :82-91): `{mimeType: 'image/svg+xml', size: 'medium'}`.
+    iconeResolvivel: async (docId: string) =>
+      (
+        await fetch(
+          await p.$icons.getIconUrl(docId, {
+            mimeType: 'image/svg+xml',
+            size: 'medium',
+          }),
+        )
+      ).ok,
   };
 }
 

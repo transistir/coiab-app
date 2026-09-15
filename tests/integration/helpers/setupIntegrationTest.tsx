@@ -1,7 +1,7 @@
 import {render} from '@testing-library/react-native';
 import type {MapeoManager} from '@comapeo/core';
 import type {ComapeoCoreClientApi} from '@comapeo/ipc';
-import {createManager, setUpIPC} from './core';
+import {createManager, setUpIPC, useRealFetch} from './core';
 import {createAppProvidersWrapper} from './react';
 import type {ActiveProjectIdStore} from '../../../src/frontend/contexts/ActiveProjectIdStoreContext';
 import {MockedAppNavigator} from './navigation';
@@ -25,6 +25,10 @@ export function setupIntegrationTest() {
   beforeEach(async () => {
     onTeardown = [];
 
+    // jest-expo replaces `fetch` with a non-working stub; the icon
+    // verification resolves the real HTTP route (`$icons.getIconUrl` +
+    // `fetch().ok`), so the suite needs undici's real fetch.
+    onTeardown.push(useRealFetch());
     const managerSetup = await createManager({
       name: 'test',
       deviceType: 'mobile',
@@ -113,6 +117,9 @@ export function setupIntegrationTestWithoutProject() {
   beforeEach(async () => {
     onTeardown = [];
 
+    // Same reason as in `setupIntegrationTest`: real fetch for the icon
+    // verification HTTP route.
+    onTeardown.push(useRealFetch());
     const managerSetup = await createManager({
       name: 'test',
       deviceType: 'mobile',

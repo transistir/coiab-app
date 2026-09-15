@@ -1,26 +1,28 @@
 /**
- * PROOF (plan Phase 2, "beco sem saída" risk): the REAL @comapeo/core project
- * exposed over the REAL IPC client (`createManager` + `setUpIPC`) must expose
- * the surface the materializer's package verification (`conferirImportacao`)
- * needs: `preset.getMany`, `field.getMany`, `icon.getMany`, `$getOwnRole`,
- * `$setProjectSettings`, `$getProjectSettings`, `$importCategories`.
+ * PROOF (plan Phase 2, "beco sem saída" risk) + CANARY: the REAL
+ * @comapeo/core project exposed over the REAL IPC client (`createManager` +
+ * `setUpIPC`) must expose the surface the materializer's package
+ * verification (`conferirImportacao`) needs, and must NOT expose what it
+ * does not have: `preset.getMany`, `field.getMany`, `$getOwnRole`,
+ * `$setProjectSettings`, `$getProjectSettings`, `$importCategories` EXIST;
+ * `icon.getMany` DOES NOT — `mapeo-project.js` exposes prototype getters
+ * for `preset` and `field` but NOT for `icon` (the icon DataType lives in
+ * the private `#dataTypes`, Symbol-keyed — rpc-reflector refuses Symbol
+ * property paths). `project.$icons` (IconApi) has no listing either — its
+ * only reads are URL construction (`getIconUrl`).
  *
- * EMPIRICAL VERDICT on @comapeo/core 7.4.0 / @comapeo/ipc 9.0.1:
- * - preset.getMany, field.getMany, $getOwnRole, $setProjectSettings,
- *   $getProjectSettings, $importCategories, $member.getById — EXIST and work.
- * - icon.getMany — DOES NOT EXIST: `ReferenceError: icon is not defined`.
- *   `mapeo-project.js` exposes prototype getters for `preset` and `field`
- *   but NOT for `icon`; the icon DataType lives in the private `#dataTypes`
- *   (`kDataTypes`, Symbol-keyed — rpc-reflector refuses Symbol property
- *   paths). `project.$icons` (IconApi) has no getMany/getAll either — its
- *   only reads are URL construction (`getIconUrl`), which never verifies a
- *   docId. This test pins the absence so a core upgrade that adds a public
- *   icon surface flips it and unblocks the plan.
+ * Final design (Decision C), verified end-to-end in
+ * tests/integration/verificacao-pacotes.test.ts: because rpc-reflector
+ * proxies make every property callable, the adapter announces NO listing
+ * member (client) and `conferirImportacao` decides presence STATICALLY and
+ * never swallows a rejecting read (`leitura_falhou`). Without a listing,
+ * icons are proven BY REFERENCE and then resolved THROUGH CORE's icon HTTP
+ * route via `iconeResolvivel` — the route 404s a dangling docId, which
+ * `fetch(...).ok` surfaces as false.
  *
- * Consequence for the plan: with a real package that declares icons,
- * `conferirImportacao` hits its `superficie_ausente` guard forever, so
- * materialized creation never reaches `pronta` — the icon verification
- * needs a plan decision (read surface on core, or a non-list verification).
+ * This file pins the ABSENCE: a core upgrade that adds a public icon
+ * surface flips the negative test here — readd the listing member in
+ * `clienteDeCriacao` ONLY then (the by-reference + resolver proof stays).
  */
 import type {ComapeoCoreClientApi} from '@comapeo/ipc';
 import path from 'node:path';

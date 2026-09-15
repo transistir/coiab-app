@@ -29,6 +29,7 @@ const projetoFake = {
   preset: {getMany: jest.fn(async () => [{docId: 'preset-1'}])},
   field: {getMany: jest.fn(async () => [{docId: 'field-1'}])},
   icon: {getMany: jest.fn(async () => [{docId: 'icon-1', name: 'icone'}])},
+  $icons: {getIconUrl: jest.fn(async () => 'http://icone/url')},
 };
 
 const api = apiFake as unknown as ComapeoCoreClientApi;
@@ -122,6 +123,44 @@ describe('clienteDeCriacao', () => {
     // hide it. Reintroduce the member only when
     // tests/integration/cliente-superficie.test.ts proves a public listing.
     expect(project.icon).toBeUndefined();
+  });
+
+  test('iconeResolvivel pede getIconUrl na ÚNICA variante que o core escreve e devolve fetch().ok', async () => {
+    // `$importCategories` writes icons ONLY as `{mimeType: 'image/svg+xml',
+    // size: 'medium'}` (import-categories.js:82-91), so that is the variant
+    // the proof resolves; the HTTP route answers 404 on a dangling docId,
+    // which `fetch(...).ok` surfaces as false.
+    const fetchOriginal = global.fetch;
+    const fetchFake = jest.fn(async () => ({ok: true}));
+    global.fetch = fetchFake as unknown as typeof global.fetch; // stub só assina o método chamado
+    try {
+      const cliente = clienteDeCriacao(api);
+      const project = await cliente.getProject('p1');
+      await expect(project.iconeResolvivel!('icone-doc-1')).resolves.toBe(true);
+      expect(projetoFake.$icons.getIconUrl).toHaveBeenCalledWith(
+        'icone-doc-1',
+        {mimeType: 'image/svg+xml', size: 'medium'},
+      );
+      expect(fetchFake).toHaveBeenCalledWith('http://icone/url');
+    } finally {
+      global.fetch = fetchOriginal;
+    }
+  });
+
+  test('iconeResolvivel devolve false quando a rota do core não resolve o docId (404 → ok: false)', async () => {
+    const fetchOriginal = global.fetch;
+    global.fetch = jest.fn(
+      async () => ({ok: false}) as unknown as Response, // stub só assina `ok`
+    );
+    try {
+      const cliente = clienteDeCriacao(api);
+      const project = await cliente.getProject('p1');
+      await expect(project.iconeResolvivel!('icone-doc-1')).resolves.toBe(
+        false,
+      );
+    } finally {
+      global.fetch = fetchOriginal;
+    }
   });
 
   test('os métodos do gerenciador passam inalterados', async () => {
