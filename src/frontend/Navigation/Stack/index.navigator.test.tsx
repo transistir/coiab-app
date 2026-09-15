@@ -1,6 +1,11 @@
 import type {NavigationContainerRef} from '@react-navigation/native';
 import type {AppStackParamsList} from '../../sharedTypes/navigation';
 
+// The engine's async publications (zustand → navigation resets) must run
+// under React's act scheduler; RNTL toggles the flag only around its own
+// calls, and this test's transitions arrive in core callbacks outside them.
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
 let mockNavigation: NavigationContainerRef<AppStackParamsList>;
 jest.mock('../../../../tests/integration/helpers/navigation', () => {
   const {AppNavigator} = require('../../AppNavigator');
@@ -433,10 +438,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     });
   }, 20000);
 
-  test('leaving a slot of the only organization lands on the provisioning gate', async () => {
-    // The leave flow owns this routing (LeaveProject's own reset): the
-    // surviving Alertas slot keeps the organization degraded, so the device
-    // belongs on the provisioning surface, not on Home.
+  test('remoção da área NÃO selecionada em runtime: o motor publica a perda e a área não troca (A CA10)', async () => {
     semearDocumentoPronta(
       orgSetup.projectId,
       orgSetup.alertasProjectId,
@@ -444,29 +446,33 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       orgSetup.orgName,
     );
     await orgSetup.renderNavigation();
-    expect(await screen.findByTestId('MAIN.map-screen')).toBeOnTheScreen();
-    const navigation = mockNavigation;
-    await act(async () =>
-      navigation.navigate('LeaveProject', {memberType: 'participant'}),
-    );
-    await fireEvent.press(await screen.findByText('Yes, Leave'));
-
-    await waitFor(async () => {
-      const joined = (await orgSetup.manager.listProjects()).filter(
-        project => project.status === 'joined',
+    try {
+      globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+      await orgSetup.manager.leaveProject(orgSetup.alertasProjectId);
+      await waitFor(
+        () => {
+          expect(
+            mockNavigation.getRootState()?.routes.map(route => route.name),
+          ).toEqual(['OrganizationProvisioning']);
+        },
+        {timeout: 15000},
       );
-      expect(joined).toHaveLength(1);
-    });
-    await waitFor(
-      () => {
-        expect(
-          navigation.getRootState().routes.map(route => route.name),
-        ).toEqual(['OrganizationProvisioning']);
-      },
-      {timeout: 10000},
-    );
+    } catch {
+      throw new Error('CA10 did not route to provisioning');
+    }
+    expect(
+      await screen.findByText('Monitoring', {}, {timeout: 15000}),
+    ).toBeOnTheScreen();
+    expect(
+      mockNavigation.getRootState().routes.map(route => route.name),
+    ).toEqual(['OrganizationProvisioning']);
     expect(screen.queryByTestId('MAIN.map-screen')).not.toBeOnTheScreen();
-  }, 15000);
+    const raw = documentoPersistido();
+    expect(raw.ativa).toEqual({
+      organizacaoId: orgSetup.orgId,
+      area: 'monitoramento',
+    });
+  }, 30000);
 
   test('um documento pronta com confirmação pendente não deixa o navigator abrir Home (SPEC B §3.3 2-3)', async () => {
     // Os dois marcadores do par m/a existem no core; o documento persistido

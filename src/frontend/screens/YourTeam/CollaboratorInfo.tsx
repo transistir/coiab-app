@@ -13,11 +13,8 @@ import {useActiveProject} from '../../contexts/ActiveProjectContext';
 import {BodyText} from '../../sharedComponents/Text/BodyText';
 import {COORDINATOR_ROLE_ID, CREATOR_ROLE_ID} from '../../sharedTypes';
 import {SecondaryDestructiveButton} from '../../sharedComponents/Buttons';
-
 import MaterialIcon from '@react-native-vector-icons/material-icons';
-import MaterialDesignIcons from '@react-native-vector-icons/material-design-icons';
-import {useIsLastCoordinator} from '../../hooks/useIsLastCoordinator';
-import {useIsLastMember} from '../../hooks/useIsLastMember';
+
 import {DeviceIcon} from '../../sharedComponents/DeviceIcon';
 
 const m = defineMessages({
@@ -32,10 +29,6 @@ const m = defineMessages({
   removeDevice: {
     id: 'screens.CollaboratorInfo.removeDevice',
     defaultMessage: 'Remove Device',
-  },
-  leaveProject: {
-    id: 'screens.CollaboratorInfo.leaveProject',
-    defaultMessage: 'Leave Project',
   },
   participant: {
     id: 'screens.CollaboratorInfo.participant',
@@ -71,7 +64,6 @@ export const CollaboratorInfo: NativeNavigationComponent<
   'CollaboratorInfo'
 > = ({route, navigation}) => {
   const {projectId} = useActiveProject();
-  const isOwnDevice = route.params.isOwnDevice;
   const {formatDate, formatMessage} = useIntl();
   const {data: member} = useSingleMember({
     projectId,
@@ -88,11 +80,6 @@ export const CollaboratorInfo: NativeNavigationComponent<
     ownRole.roleId === CREATOR_ROLE_ID;
 
   const isDesktop = deviceType === 'desktop';
-
-  const isLastCoordinator = useIsLastCoordinator({
-    deviceId: route.params.deviceId,
-  });
-  const isLastMember = useIsLastMember({deviceId: route.params.deviceId});
 
   const canShowActionButton = !isArchiveServer && !isDesktop;
 
@@ -131,37 +118,7 @@ export const CollaboratorInfo: NativeNavigationComponent<
         </BodyText>
       </View>
       {canShowActionButton &&
-        (isOwnDevice ? (
-          <SecondaryDestructiveButton
-            text={formatMessage(m.leaveProject)}
-            fullSize={true}
-            style={styles.buttonStyle}
-            renderIcon={({size, color}) => (
-              <MaterialDesignIcons size={size} color={color} name="export" />
-            )}
-            onPress={() => {
-              if (isLastMember) {
-                navigation.navigate('LeaveProjectWarning', {
-                  memberType: route.params.memberType,
-                  warningType: 'lastDevice',
-                  deviceType,
-                });
-                return;
-              }
-              if (isLastCoordinator) {
-                navigation.navigate('LeaveProjectWarning', {
-                  memberType: route.params.memberType,
-                  warningType: 'lastCoordinator',
-                  deviceType,
-                });
-                return;
-              }
-              navigation.navigate('LeaveProject', {
-                memberType: route.params.memberType,
-              });
-            }}
-          />
-        ) : ownRoleIsCoordinator ? (
+        (ownRoleIsCoordinator ? (
           <SecondaryDestructiveButton
             text={formatMessage(m.removeDevice)}
             fullSize={true}

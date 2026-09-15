@@ -7,17 +7,13 @@ import {HeaderText} from '../sharedComponents/Text/HeaderText';
 import {BLACK} from '../lib/styles';
 import {
   useLeaveProject,
-  useManyProjects,
   useOwnRoleInProject,
   useProjectSettings,
 } from '@comapeo/core-react';
 import {useActiveProject} from '../contexts/ActiveProjectContext';
-import {useProjetarProjectIdAtivo} from '../contexts/ActiveProjectIdStoreContext';
-import {useOrganizations} from '../hooks/organization/useOrganizations';
 import {LoadingIndicator} from '../sharedComponents/LoadingIndicator';
 import {ColorCard} from '../sharedComponents/ColorCard';
 import {DEFAULT_PROJECT_COLOR} from '../constants';
-
 const m = defineMessages({
   close: {
     id: '$1screens.RemovedFromProjectBottomSheet.close',
@@ -44,9 +40,6 @@ export const RemovedFromProjectBottomSheet = ({
   const {
     data: {name, projectColor},
   } = useProjectSettings({projectId});
-  const {data: projects} = useManyProjects();
-  const organizations = useOrganizations();
-  const projetar = useProjetarProjectIdAtivo();
   const leaveProject = useLeaveProject();
 
   return (
@@ -76,56 +69,21 @@ export const RemovedFromProjectBottomSheet = ({
             <SecondaryButton
               fullSize
               onPress={() => {
+                // Fase 11b: no project switching. Leaving the slot the device
+                // was removed from degrades the organization — the engine's
+                // revalidation (the slot listener's own change → revalidate)
+                // publishes the loss and the navigator's gate owns the
+                // landing on the provisioning surface; this screen never
+                // writes the active id (the surviving slot is never
+                // repointed — A §5.2, mixed-pair defect).
                 leaveProject.mutate(
                   {projectId},
                   {
                     onSuccess: () => {
-                      // SPEC 3.8/3.10: leaving a project never materializes
-                      // a standalone (unnamed) project — for ANY project, a
-                      // leftover one would resurrect the `solo` role and
-                      // the Collaborate product entry (SPEC 3.11). An org
-                      // project degrades to `incomplete` by switching to
-                      // the surviving slot, or hands off to the startup
-                      // gate with no active project at all.
-                      let noProjectRemains = false;
-                      const leftOrg = organizations.find(
-                        org =>
-                          org.slots.m === projectId ||
-                          org.slots.a === projectId,
-                      );
-                      if (leftOrg) {
-                        const survivingSlot =
-                          leftOrg.slots.m === projectId
-                            ? leftOrg.slots.a
-                            : leftOrg.slots.m;
-                        if (survivingSlot) {
-                          projetar(survivingSlot);
-                        } else {
-                          noProjectRemains = true;
-                        }
-                      } else {
-                        const remainingProject = projects.find(
-                          proj => proj.projectId !== projectId,
-                        );
-                        if (remainingProject) {
-                          projetar(remainingProject.projectId);
-                        } else {
-                          noProjectRemains = true;
-                        }
-                      }
-                      if (noProjectRemains) {
-                        projetar(undefined);
-                        // SPEC 10.1: with no project left, the startup
-                        // gate's organization fork is the correct landing —
-                        // navigate there explicitly so a cleared active id
-                        // never drops the user on IntroToCoMapeo.
-                        navigation.reset({
-                          index: 0,
-                          routes: [{name: 'Success'}],
-                        });
-                      } else {
-                        navigation.popToTop();
-                      }
+                      navigation.reset({
+                        index: 0,
+                        routes: [{name: 'OrganizationProvisioning'}],
+                      });
                     },
                   },
                 );

@@ -174,15 +174,6 @@ export type RootStackParamsList = {
   EarlyAccess: undefined;
   EarlyAccessOff: undefined;
   EditQADeviceName: undefined;
-  LeaveProjectWarning: {
-    memberType: 'coordinator' | 'participant';
-    warningType: 'lastCoordinator' | 'lastDevice';
-    deviceType: DeviceType;
-  };
-  LeaveProject: {
-    memberType: 'coordinator' | 'participant';
-  };
-  LeftProjectConfirmation: {projectName: string};
   CollaboratorInfo: {
     deviceId: string;
     isOwnDevice: boolean;

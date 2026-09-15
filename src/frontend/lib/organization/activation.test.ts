@@ -8,7 +8,7 @@ import {
   createOrganizationActivation,
   type ActivationProject,
 } from './activation';
-import {parseEstadoOrganizacoes} from './coiabOrganizations';
+import {parseEstadoOrganizacoes, type Area} from './coiabOrganizations';
 import {MEMBER_ROLE_ID} from '../../sharedTypes';
 
 function setup() {
@@ -1218,5 +1218,127 @@ describe('revalidate(): o motor publica a perda de acesso do contexto aberto (Fa
     // O loop para na primeira negação (Monitoramento precede Alertas): a
     // área ativa não foi consultada depois dela.
     expect(getProject.mock.calls.map(call => call[0])).toEqual(['A-m']);
+  });
+});
+
+describe('revalidate(): delegação ao motor com force (Fase 11b)', () => {
+  function setupComAtiva(area: Area) {
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState(
+      {...organizationDocument(), ativa: {organizacaoId: 'A', area}},
+      true,
+    );
+    const getProject = jest.fn<Promise<ActivationProject>, [id: string]>(
+      async () => ({
+        $getOwnRole: jest.fn(async () => ({roleId: MEMBER_ROLE_ID})),
+        $sync: {
+          stop: jest.fn(async () => {}),
+        },
+        disconnectServers: jest.fn(async () => {}),
+      }),
+    );
+    const activation = createOrganizationActivation({store, getProject});
+    return {store, getProject, activation};
+  }
+
+  test('revogação na área NÃO selecionada: delegação força a revalidação e publica recovery sem trocar a seleção nem desligar a origem (A CA10)', async () => {
+    const {store, getProject, activation} = setupComAtiva('monitoramento');
+    await activation.initialize();
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'ready',
+      projectId: 'A-m',
+      generation: 1,
+    });
+    const before = activation.instance.getState();
+    const documentBefore = store.instance.getState();
+    getProject.mockImplementation(async id => ({
+      $getOwnRole: jest.fn(async () => ({
+        roleId: id === 'A-a' ? 'blocked' : MEMBER_ROLE_ID,
+      })),
+      $sync: {stop: jest.fn(async () => {})},
+      disconnectServers: jest.fn(async () => {}),
+    }));
+
+    expect(await activation.revalidate()).toBe(false);
+
+    // A negação em Alertas (a área NÃO selecionada) é fatal: a checagem
+    // cobre os DOIS slots e o motor publica a perda pelo caminho de falha
+    // da organização aberta (FIX-C), preservando `ativa` por identidade
+    // (regra 8) e a identidade da origem (FIX-D).
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'recovery',
+      error: 'access-unavailable',
+      projectId: 'A-m',
+      generation: 1,
+    });
+    // A delegação é READ-ONLY: nenhum teardown de sync, nenhuma gravação
+    // durável, nenhuma geração nova.
+    for (const call of getProject.mock.results) {
+      const project = await call.value;
+      expect(project.$sync?.stop).not.toHaveBeenCalled();
+      expect(project.disconnectServers).not.toHaveBeenCalled();
+    }
+    expect(store.instance.getState()).toBe(documentBefore);
+    expect(activation.instance.getState().generation).toBe(before.generation);
+  });
+
+  test('delegação saudável depois de uma troca de área: revalida as duas áreas e publica nada (mesma geração, mesmo objeto)', async () => {
+    const {store, getProject, activation} = setupComAtiva('alertas');
+    await activation.initialize();
+    expect(await activation.activate('A', {area: 'monitoramento'})).toBe(true);
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'ready',
+      projectId: 'A-m',
+      generation: 2,
+    });
+    const before = activation.instance.getState();
+    const documentBefore = store.instance.getState();
+    getProject.mockClear();
+
+    expect(await activation.revalidate()).toBe(true);
+
+    // A passagem forçada re-observa as duas áreas, na ordem canônica — e
+    // NADA publica: o contexto saudável nunca anda de geração nem sofre
+    // teardown (o usuário não é jogado para Home/Map por uma checagem).
+    expect(getProject.mock.calls.map(call => call[0])).toEqual(['A-m', 'A-a']);
+    expect(activation.instance.getState()).toBe(before);
+    expect(store.instance.getState()).toBe(documentBefore);
+  });
+
+  test('sob o travamento compartilhado: delegação durante uma ativação em voo é recusada sem publicar', async () => {
+    const {store, getProject, activation} = setupComAtiva('alertas');
+    await activation.initialize();
+    const documentBefore = store.instance.getState();
+    let releaseValidacao!: () => void;
+    const validacaoPresa = new Promise<void>(resolve => {
+      releaseValidacao = resolve;
+    });
+    let consultas = 0;
+    getProject.mockImplementation(async () => ({
+      $getOwnRole: jest.fn(async () => {
+        consultas += 1;
+        if (consultas === 1) await validacaoPresa;
+        return {roleId: MEMBER_ROLE_ID};
+      }),
+    }));
+    const troca = activation.activate('A', {area: 'monitoramento'});
+    // A ativação está em voo: a intenção DELEGADA é distinta e é recusada
+    // com o motivo publicado na mesma superfície de erro — nunca aliada ao
+    // resultado da troca em voo.
+    expect(await activation.revalidate()).toBe(false);
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'opening',
+      error: 'operation-in-progress',
+    });
+    expect(store.instance.getState()).toBe(documentBefore);
+    releaseValidacao();
+    expect(await troca).toBe(true);
+    // O assentamento da troca sobrescreve o erro da recusa, como de costume.
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'ready',
+      projectId: 'A-m',
+      generation: 2,
+      error: undefined,
+    });
   });
 });

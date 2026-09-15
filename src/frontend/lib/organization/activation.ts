@@ -174,6 +174,7 @@ export function createOrganizationActivation({
     id: string,
     options: ActivationOptions,
     restoring = false,
+    force = false,
   ) {
     const previous = instance.getState();
     const document = store.instance.getState();
@@ -189,8 +190,16 @@ export function createOrganizationActivation({
       previous.status === 'ready' &&
       sameOrganization &&
       (!options.area || options.area === document.ativa?.area)
-    )
+    ) {
+      // Fase 11b: `force` (the revalidate delegation) must not trust the
+      // open context — the attempt re-observes BOTH materialized projects
+      // through the 10a-fix-1 revalidation. That pass is READ-ONLY: it
+      // never touches the document and never bumps the generation, so it
+      // deliberately runs before the pending-work guard (blocking a
+      // re-check of the same context is not a context change, SPEC A §5.2).
+      if (force) return performRevalidation();
       return true;
+    }
     // A-v4-1 (SPEC A §5.2:172/§5.3:180): the pending-work guard applies to
     // EVERY context change — including an area switch with `organizacaoId`
     // unchanged. The predicate is global ("is there work in progress?"): the
@@ -317,24 +326,35 @@ export function createOrganizationActivation({
     }
   }
 
-  // Fase 10a-fix-1 (SPEC A §4.2 regra 8 :114 / §5.3:189): the motor itself
-  // publishes the loss of access. `activate` short-circuits for the same
-  // organization and area without revalidating, and `initialize` runs once
-  // per engine — after a project leaves, the context would stay 'ready'
-  // forever. `revalidate` re-observes BOTH materialized projects of the
-  // organization the document selects:
-  // - success publishes NOTHING and records no generation — a healthy
-  //   context is never bumped, so the user is never thrown to Home/Map by a
-  //   successful check;
-  // - failure clears `origemValidada` and publishes the same recovery
-  //   publication the open-organization failure path uses (FIX-C): status
-  //   'recovery' with 'access-unavailable', preserving `ativa` (regra 8:
-  //   "indisponível" never erases it) and the origin identity (FIX-D).
-  // Any other status is a strict no-op: nothing published, no core call.
-  // Like every other entry point, the operation runs under the shared
-  // intent lock.
+  // Fase 11b (consult Phase 11): `revalidate` delegates to the activation
+  // engine itself — the forced re-open of the EXACT selection the document
+  // holds (`ativa.organizacaoId` + `ativa.area`), serialized under the same
+  // shared intent lock as every other entry point. `force` skips
+  // performActivation's same-organization ready short-circuit, so the open
+  // context is genuinely RE-OBSERVED (both materialized projects, canonical
+  // area order) instead of being trusted.
+  //
+  // The Fase 10a-fix-1 entry guard survives INSIDE the delegation: the
+  // revalidation only ACTS on an open context (`ready` with `ativa`). During
+  // `loading`/`opening` an activation owns the engine; from `recovery`,
+  // `absent`, `selection`, `preparing` or `failure` the call is a strict
+  // no-op — nothing published, no core call — and the 10a-fix-1 tests pin
+  // exactly that. The forced re-pass itself keeps the 10a-fix-1 contract
+  // (`performRevalidation`): success publishes NOTHING and creates no
+  // generation; failure clears `origemValidada` and publishes the same
+  // recovery publication the open-organization failure path uses (FIX-C),
+  // preserving `ativa` (regra 8) and the origin identity (FIX-D).
   function revalidate() {
-    return runExclusive('revalidate', () => performRevalidation());
+    return runExclusive('revalidate', async () => {
+      const {ativa} = store.instance.getState();
+      if (!ativa || instance.getState().status !== 'ready') return false;
+      return performActivation(
+        ativa.organizacaoId,
+        {area: ativa.area},
+        true,
+        true,
+      );
+    });
   }
 
   async function performRevalidation() {
