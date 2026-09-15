@@ -114,6 +114,14 @@ export function useOrganizationActivation(): OrganizationActivationHandle {
         confirmarAbertura: gateAction(store.actions.confirmarAbertura),
         ativar: gateAction(store.actions.ativar),
         publicarPronta: gateAction(store.actions.publicarPronta),
+        // Boolean result: a disarmed gate refuses the registration
+        // (returning `false`, no write) instead of voiding it.
+        registrarEntradaPorConvite: (
+          ...args: Parameters<typeof store.actions.registrarEntradaPorConvite>
+        ) =>
+          gate.armed
+            ? store.actions.registrarEntradaPorConvite(...args)
+            : false,
         resolverFalhaHidratacao: gateAction(
           store.actions.resolverFalhaHidratacao,
         ),
