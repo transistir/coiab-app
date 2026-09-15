@@ -343,10 +343,11 @@ export async function conferirImportacao(
     // Icons the categories reference. The read surface is OPTIONAL: real
     // core 7.4.0 / ipc 9.0.1 exposes NO icon listing (`icon.getMany` is not
     // on the rpc surface — `ReferenceError: icon is not defined`,
-    // tests/integration/cliente-superficie.test.ts). Without it the
-    // references are still proven BY REFERENCE (no docId behind two
-    // different package icons; distinct docIds === declared icon names);
-    // with it, the name bijection holds as before.
+    // tests/integration/cliente-superficie.test.ts). Without it — absent,
+    // or present-but-unusable — the references are still proven BY REFERENCE
+    // (no docId behind two different package icons; distinct docIds ===
+    // declared icon names); with a WORKING listing, the name bijection
+    // holds as before.
     const iconesDoPacote = new Set(
       conteudo.categorias
         .map(categoria => categoria.icon)
@@ -358,11 +359,25 @@ export async function conferirImportacao(
       await Promise.all([
         project.preset.getMany(),
         project.field.getMany(),
-        lerIcones ? lerIcones.getMany() : Promise.resolve([]),
+        lerIcones
+          ? // An OPTIONAL surface cannot sink the verification: a member
+            // that is present but REJECTS (e.g. the rpc proxy throwing
+            // `ReferenceError: icon is not defined`) degrades to the
+            // by-reference proof — `leitura_falhou` is for a package that
+            // cannot be re-read, not for an optional extra read.
+            lerIcones.getMany().catch(() => undefined)
+          : Promise.resolve([]),
         project.$getProjectSettings(),
       ]);
     const presets = presetsBrutos.filter(preset => !preset.deleted);
     const campos = camposBrutos.filter(campo => !campo.deleted);
+    // The listing is USABLE only when the member EXISTS and the read
+    // actually returned an array: no member at all, or a degraded read
+    // (present-but-rejecting member → `undefined`), collapses to the
+    // by-reference proof. A member that cannot prove anything cannot be the
+    // reason a verification fails either; an EMPTY array from a working
+    // member is a real result and keeps the strict name bijection.
+    const temListagem = lerIcones !== undefined && Array.isArray(iconesBrutos);
     if (presets.length !== conteudo.categorias.length) {
       return 'quantidade_de_presets';
     }
@@ -397,14 +412,17 @@ export async function conferirImportacao(
     );
     if (camposPorDocId.size !== campos.length) return 'campos_divergentes';
 
-    // Active icon documents by docId: `name` is the package icon id.
+    // Active icon documents by docId: `name` is the package icon id. Only
+    // built from a usable listing (never from a degraded `undefined`).
     const nomePorIconeDocId = new Map<string, string>();
-    for (const icone of iconesBrutos) {
-      if (icone.deleted) continue;
-      if (typeof icone.docId !== 'string' || typeof icone.name !== 'string') {
-        continue;
+    if (temListagem) {
+      for (const icone of iconesBrutos) {
+        if (icone.deleted) continue;
+        if (typeof icone.docId !== 'string' || typeof icone.name !== 'string') {
+          continue;
+        }
+        nomePorIconeDocId.set(icone.docId, icone.name);
       }
-      nomePorIconeDocId.set(icone.docId, icone.name);
     }
 
     // Strict bijection categories ↔ presets via canonical tags.
@@ -443,7 +461,7 @@ export async function conferirImportacao(
       if (categoria.icon != null) {
         const docIdIcone = preset.iconRef?.docId;
         if (typeof docIdIcone !== 'string') return 'icone_divergente';
-        if (lerIcones) {
+        if (temListagem) {
           if (nomePorIconeDocId.get(docIdIcone) !== categoria.icon) {
             return 'icone_divergente';
           }
@@ -488,7 +506,7 @@ export async function conferirImportacao(
     // Without the listing, the distinct referenced docIds must equal the
     // distinct declared icon names: every declared icon referenced, none
     // duplicated, none missing.
-    if (!lerIcones && referenciasPorDocId.size !== iconesDoPacote.size) {
+    if (!temListagem && referenciasPorDocId.size !== iconesDoPacote.size) {
       return 'icone_divergente';
     }
 
@@ -539,9 +557,15 @@ export async function conferirImportacao(
     if (configMetadata.name !== conteudo.metadata.name) {
       return 'metadata_divergente';
     }
-    if (configMetadata.version !== conteudo.metadata.version) {
-      return 'metadata_divergente';
-    }
+    // NO `version` comparison, BY EVIDENCE: the strict projectSettings schema
+    // (node_modules/@comapeo/core/dist/mapeo-project.d.ts:4987-5009) defines
+    // configMetadata as exactly {name, buildDate, importDate, fileVersion}
+    // with `additionalProperties: false`, and `$importCategories`
+    // (import-categories.js:276-283) spreads the package metadata
+    // (`{name, version}`) into it — `version` is dropped at validation, so
+    // `configMetadata.version` is ALWAYS absent on a persisted project and
+    // this comparison could never be satisfied (every real import would read
+    // `metadata_divergente`). Reintroduce only if core persists a version.
     if (configMetadata.fileVersion !== conteudo.fileVersion) {
       return 'metadata_divergente';
     }

@@ -282,9 +282,15 @@ async function emularImportacaoCore(bytes: Uint8Array) {
       point: conteudo.selecao.observation.map(id => `preset-${id}`),
       line: conteudo.selecao.track.map(id => `preset-${id}`),
     },
+    // The PERSISTED shape: core spreads the package `{name, version}` into
+    // configMetadata (import-categories.js:276-283), but the strict
+    // projectSettings schema (node_modules/@comapeo/core/dist/
+    // mapeo-project.d.ts:4987-5009, `additionalProperties: false`) drops
+    // `version` — the persisted doc carries exactly {name, buildDate,
+    // importDate, fileVersion}. The emulation mirrors what
+    // `$getProjectSettings` can ever return, NOT what was passed in.
     configMetadata: {
       name: conteudo.metadata.name,
-      version: conteudo.metadata.version,
       fileVersion: conteudo.fileVersion,
     },
   };
@@ -899,6 +905,49 @@ describe('verificarImportacao (Core preset shape + §5.4 canonical conferência 
     ).resolves.toBe(true);
   });
 
+  test('icon listing present but REJECTING degrades to the by-reference proof → null (never leitura_falhou)', async () => {
+    // Defense in depth (the adapter must not announce a listing the core
+    // cannot serve — see clienteDeCriacao.ts — but a member that is present
+    // yet unusable cannot prove anything and must not sink the verification
+    // either: `leitura_falhou` is for a PACKAGE that cannot be re-read).
+    const {pacote, leitor, importado} = await abrir();
+    const projeto = {
+      ...projetoCore(importado),
+      icon: {
+        getMany: jest.fn(async () => {
+          throw new ReferenceError('icon is not defined');
+        }),
+      },
+    };
+    await expect(
+      conferirImportacao(projeto, pacote, leitor),
+    ).resolves.toBeNull();
+    await expect(verificarImportacao(projeto, pacote, leitor)).resolves.toBe(
+      true,
+    );
+  });
+
+  test('icon listing present but REJECTING on a multi-icon package still verifies by reference → true', async () => {
+    // The production shape: real packages declare several icons; with the
+    // listing unusable the distinct referenced docIds must still equal the
+    // distinct declared icon names.
+    const {pacote, leitor, importado} = await abrirIcones();
+    const projeto = {
+      ...projetoCore(importado),
+      icon: {
+        getMany: jest.fn(async () => {
+          throw new ReferenceError('icon is not defined');
+        }),
+      },
+    };
+    await expect(
+      conferirImportacao(projeto, pacote, leitor),
+    ).resolves.toBeNull();
+    await expect(verificarImportacao(projeto, pacote, leitor)).resolves.toBe(
+      true,
+    );
+  });
+
   test('icon listing absent: two categories with DIFFERENT icons whose presets share one docId → icone_divergente', async () => {
     const {pacote, leitor, importado} = await abrirIcones();
     // `peixe` and `flor` carry different package icons but both presets
@@ -1069,7 +1118,16 @@ describe('verificarImportacao (Core preset shape + §5.4 canonical conferência 
     ).resolves.toBe(false);
   });
 
-  test('configMetadata version diverging from the package metadata → false', async () => {
+  test('configMetadata.version never persists (strict core schema) → a divergent version cannot reject → true', async () => {
+    // node_modules/@comapeo/core/dist/mapeo-project.d.ts:4987-5009:
+    // projectSettings' configMetadata is exactly {name, buildDate,
+    // importDate, fileVersion} with `additionalProperties: false`, while
+    // `$importCategories` (import-categories.js:276-283) passes the package
+    // `{name, version}` in — `version` is dropped at validation, so
+    // `configMetadata.version` is ALWAYS absent on a persisted project. The
+    // conferência must not demand it (no real import could ever pass); a
+    // version a read surface reports that differs from the package is not
+    // proof of divergence.
     const {pacote, leitor, importado} = await abrir();
     await expect(
       verificarImportacao(
@@ -1080,6 +1138,26 @@ describe('verificarImportacao (Core preset shape + §5.4 canonical conferência 
             configMetadata: {
               ...importado.settings.configMetadata,
               version: '9.9.9',
+            },
+          },
+        }),
+        pacote,
+        leitor,
+      ),
+    ).resolves.toBe(true);
+  });
+
+  test('configMetadata fileVersion diverging from the package → false', async () => {
+    const {pacote, leitor, importado} = await abrir();
+    await expect(
+      verificarImportacao(
+        projetoCore({
+          ...importado,
+          settings: {
+            ...importado.settings,
+            configMetadata: {
+              ...importado.settings.configMetadata,
+              fileVersion: '0.0.0',
             },
           },
         }),

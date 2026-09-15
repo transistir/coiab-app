@@ -100,6 +100,63 @@ jest.mock('../../hooks/server/presets', () => ({
   usePresetsQuery: () => ({data: []}),
 }));
 
+// The REAL installed template source cannot run under jest: there is no
+// `comapeocat` entry in jest-expo's asset registry (the bundled `.comapeocat`
+// require cannot even resolve) and the legacy FileSystem mock is a no-op
+// stub. This mock keeps everything downstream real — the materializer, the
+// core `$importCategories` and the canonical conferência — and simulates
+// only the on-device download/copy plumbing with plain node fs over the
+// BUNDLED packages, whose bytes the embedded manifests hash (`abrirPacote`
+// still verifies them).
+jest.mock('../../lib/organization/pacotesInstalados', () => {
+  const path = require('node:path');
+  const fsPromises = require('node:fs/promises');
+  const {
+    abrirPacote,
+    verificarImportacao,
+    manifestosEmbarcados,
+  } = require('../../lib/organization/pacotes');
+
+  const ler = async (filePath: string) => {
+    try {
+      return new Uint8Array(await fsPromises.readFile(filePath));
+    } catch {
+      return null;
+    }
+  };
+
+  return {
+    criarTemplateSourceInstalado: () => ({
+      prepare: async () => ({
+        monitoramento: await abrirPacote(
+          path.resolve(
+            __dirname,
+            '../../../../assets/categorias/monitoramento.comapeocat',
+          ),
+          manifestosEmbarcados.monitoramento.ref,
+          manifestosEmbarcados.monitoramento,
+          ler,
+        ),
+        alertas: await abrirPacote(
+          path.resolve(
+            __dirname,
+            '../../../../assets/categorias/alertas.comapeocat',
+          ),
+          manifestosEmbarcados.alertas.ref,
+          manifestosEmbarcados.alertas,
+          ler,
+        ),
+      }),
+      verify: (project: unknown, pacote: unknown) =>
+        verificarImportacao(
+          project as Parameters<typeof verificarImportacao>[0],
+          pacote as Parameters<typeof verificarImportacao>[1],
+          ler,
+        ),
+    }),
+  };
+});
+
 import {MMKVStoreInitializer} from '../../hooks/persistedState/createPersistedState';
 import {COIAB_ORGANIZATIONS_STORAGE_KEY} from '../../contexts/CoiabOrganizationsStoreContext';
 import {type EstadoOrganizacoes} from '../../lib/organization/coiabOrganizations';
@@ -169,6 +226,18 @@ function documentoComConfirmacaoPendente(
     ativa: null,
   };
 }
+
+/**
+ * The RAW persisted document, exactly as the store writes it: `ativa` and
+ * the organization list are asserted from the disk-level truth, not from
+ * any subscribed store view.
+ */
+function documentoPersistido(): EstadoOrganizacoes {
+  const raw = MMKVStoreInitializer.getItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
+  if (typeof raw !== 'string') throw new Error('documento ausente');
+  return JSON.parse(raw).state;
+}
+
 import {
   setupIntegrationTest,
   setupIntegrationTestWithoutProject,
@@ -203,7 +272,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
   });
 
-  test('creation with a delayed project refresh stays on Home without offering creation again', async () => {
+  test('a delayed project refresh holds the confirmation up without offering creation again', async () => {
     await freshSetup.renderNavigationAsync();
     await fireEvent.press(
       await screen.findByTestId('ONBOARDING.create-org-btn'),
@@ -233,13 +302,26 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       });
     try {
       await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+      // The form is already gone: as soon as the document registered the
+      // organization the screen replaced itself with the provisioning
+      // surface (the promise keeps running at the root).
+      await waitFor(() =>
+        expect(
+          mockNavigation.getRootState().routes.map(route => route.name),
+        ).toEqual(['Success', 'OrganizationProvisioning']),
+      );
+      // The gate only trips on the first 2-project read: the materializer
+      // has already published `pronta` and invalidated the queries.
       await waitFor(() => expect(refreshWaiting).toBe(true));
       expect(await listProjects()).toHaveLength(2);
-      expect(screen.getByText('Creating Organization…')).toBeOnTheScreen();
-      expect(
-        screen.queryByTestId('ONBOARDING.create-org-btn'),
-      ).not.toBeOnTheScreen();
       await act(async () => releaseRefresh());
+      // While the refresh was gated the document had already published the
+      // confirmation; nothing bounced to Home and nothing offers creation.
+      expect(await screen.findByText('Organization created')).toBeOnTheScreen();
+      // The tap is the ONLY way Home opens (SPEC A §4.2 regra 9).
+      await fireEvent.press(
+        screen.getByTestId('ORG.provisioning-open-organization-btn'),
+      );
       expect(await screen.findByTestId('MAIN.map-screen')).toBeOnTheScreen();
       await act(async () => {
         await listProjects();
@@ -272,8 +354,20 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       'Second Org',
     );
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+    // The document routed the journey: the form replaced itself with the
+    // provisioning surface, which completes with the pending confirmation.
+    await waitFor(() =>
+      expect(
+        mockNavigation.getRootState().routes.map(route => route.name),
+      ).toEqual(['Home', 'OrganizationProvisioning']),
+    );
     await waitFor(async () =>
       expect(await orgSetup.manager.listProjects()).toHaveLength(4),
+    );
+    expect(await screen.findByText('Organization created')).toBeOnTheScreen();
+    // The tap is the ONLY way Home opens (SPEC A §4.2 regra 9).
+    await fireEvent.press(
+      screen.getByTestId('ORG.provisioning-open-organization-btn'),
     );
     await waitFor(
       () => {
@@ -691,5 +785,77 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     // (the callback ran first). Anything else — including a third project —
     // would be a silent repoint.
     expect([activeMProjectId, undefined]).toContain(freshSetup.activeProjectId);
+  }, 20000);
+  test('e2e: criar → confirmação → Abrir organização → Home com o nome da organização (SPEC B §3.3)', async () => {
+    await freshSetup.renderNavigationAsync();
+    await fireEvent.press(
+      await screen.findByTestId('ONBOARDING.create-org-btn'),
+    );
+    await fireEvent.changeText(
+      screen.getByTestId('ORG.create-name-inp'),
+      '  Minha Org  ',
+    );
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+
+    // O documento assumiu a viagem: a tela substituiu o formulário pela
+    // superfície de provisionamento enquanto a promessa roda na raiz.
+    await waitFor(() =>
+      expect(
+        mockNavigation.getRootState().routes.map(route => route.name),
+      ).toEqual(['Success', 'OrganizationProvisioning']),
+    );
+    // 2/2 verificado → confirmação pendente; o toque é o único caminho
+    // para a Home (SPEC A §4.2 regra 9).
+    expect(await screen.findByText('Organization created')).toBeOnTheScreen();
+    await fireEvent.press(
+      screen.getByTestId('ORG.provisioning-open-organization-btn'),
+    );
+
+    expect(await screen.findByTestId('MAIN.map-screen')).toBeOnTheScreen();
+    // SPEC B §7: a evidência de organização aberta é o nome no cabeçalho —
+    // com espaços das bordas removidos no save.
+    expect(await screen.findByTestId('HOME.header-title')).toHaveTextContent(
+      'Minha Org',
+    );
+    // A escrita única do toque gravou reconhecimento e seleção juntos.
+    const raw = documentoPersistido();
+    const organizacaoCriada = raw.organizacoes[0];
+    expect(organizacaoCriada).toBeDefined();
+    expect(raw.ativa).toEqual({
+      organizacaoId: organizacaoCriada!.id,
+      area: 'monitoramento',
+    });
+    // CA4: exatamente dois projetos, sem um terceiro.
+    expect(await freshSetup.manager.listProjects()).toHaveLength(2);
+  }, 20000);
+
+  test('reinício antes do toque reapresenta a confirmação e mantém ativa nula (CA10)', async () => {
+    const desmontar = await freshSetup.renderNavigationAsync();
+    await fireEvent.press(
+      await screen.findByTestId('ONBOARDING.create-org-btn'),
+    );
+    await fireEvent.changeText(
+      screen.getByTestId('ORG.create-name-inp'),
+      'Minha Org',
+    );
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+    // Aguarda a publicação pronta SEM tocar em Abrir organização.
+    await screen.findByText('Organization created');
+
+    // Reinício: um NOVO store sobre o MESMO MMKV (o mock MMKV do jest
+    // persiste no processo inteiro, como o MMKV real persiste no app).
+    await desmontar();
+    await freshSetup.renderNavigationAsync();
+
+    // A confirmação é reapresentada — não a preparação, não a Home.
+    expect(await screen.findByText('Organization created')).toBeOnTheScreen();
+    expect(
+      await screen.findByTestId('ORG.provisioning-open-organization-btn'),
+    ).toBeOnTheScreen();
+    expect(screen.queryByTestId('MAIN.map-screen')).not.toBeOnTheScreen();
+    // Nenhuma seleção foi reconstruída ou inferida (regra 9/CA10).
+    expect(documentoPersistido().ativa).toBe(null);
+    // Nada é recriado: os dois projetos persistidos continuam sendo os mesmos.
+    expect(await freshSetup.manager.listProjects()).toHaveLength(2);
   }, 20000);
 });

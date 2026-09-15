@@ -55,23 +55,17 @@ function criarProjetoDeCriacao(
     field: {
       getMany: () => p.field.getMany(),
     },
-    icon: {
-      // PLAN: core 7.4.0 has NO public `icon` DataType on MapeoProject —
-      // `icon.getMany()` REJECTS at runtime ("ReferenceError: icon is not
-      // defined"; see tests/integration/cliente-superficie.test.ts). The
-      // member is kept to match the planned surface until the plan decides
-      // how icon verification reads icons.
-      getMany: () =>
-        (
-          p as unknown as {
-            icon: {
-              getMany(): Promise<
-                Array<{docId?: string; name?: string; deleted?: boolean}>
-              >;
-            };
-          }
-        ).icon.getMany(),
-    },
+    // NO `icon` member, BY EVIDENCE: core 7.4.0 / ipc 9.0.1 exposes NO public
+    // icon DataType on MapeoProject — `icon.getMany()` REJECTS at runtime
+    // ("ReferenceError: icon is not defined"; the icon DataType lives in the
+    // private `#dataTypes`, Symbol-keyed, so rpc-reflector cannot expose it).
+    // Announcing the member here made the optional guard in
+    // `conferirImportacao` (pacotes.ts) believe a usable listing existed and
+    // sank every verification as `leitura_falhou`; icon verification runs BY
+    // REFERENCE instead (pacotes.ts `referenciasPorDocId`). To reintroduce
+    // it when a core upgrade exposes a public listing: add the member back
+    // ONLY after `tests/integration/cliente-superficie.test.ts` ("icon.getMany
+    // NÃO existe no IPC") flips to a positive proof on the new core.
   };
 }
 

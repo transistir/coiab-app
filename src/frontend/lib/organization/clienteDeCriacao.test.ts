@@ -115,9 +115,13 @@ describe('clienteDeCriacao', () => {
     await expect(project.field!.getMany()).resolves.toStrictEqual([
       {docId: 'field-1'},
     ]);
-    await expect(project.icon!.getMany()).resolves.toStrictEqual([
-      {docId: 'icon-1', name: 'icone'},
-    ]);
+    // NO `icon` member (BY EVIDENCE: core 7.4.0 / ipc 9.0.1 has no public
+    // icon DataType — `icon.getMany` rejects on the real proxy), so
+    // `conferirImportacao` takes its by-reference icon path. The fake below
+    // still carries an `icon` member on the RAW proxy: the wrapper must
+    // hide it. Reintroduce the member only when
+    // tests/integration/cliente-superficie.test.ts proves a public listing.
+    expect(project.icon).toBeUndefined();
   });
 
   test('os métodos do gerenciador passam inalterados', async () => {
