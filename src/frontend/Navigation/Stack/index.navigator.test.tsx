@@ -179,8 +179,6 @@ import {
  * The §4.2 document for the pending-confirmation startup (SPEC B §3.3
  * items 2-3): the materialized organization is `pronta` with its pending
  * confirmation, `ativa` stays `null` until the "Abrir organização" tap,
- * and a second record is still `preparando` — so the document, not the
- * reconstruction, decides what the device may open.
  */
 function documentoComConfirmacaoPendente(
   monitoramentoId: string,
@@ -277,6 +275,19 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
   });
 
+  beforeEach(() => {
+    // The teardown of a FAILED test cannot be awaited by the next one: an
+    // engine operation left mid-flight by a failure is killed when Core's
+    // IPC stops, and its rejection path writes the recovered journal
+    // (fail()) into MMKV AFTER the afterEach above. The next device state
+    // must hydrate empty, so the reset repeats at the start of every test —
+    // the write always settles during the afterEach teardown phase (the
+    // closed RPC channel rejects before the next test boots Core), and
+    // nothing reads the durable key between here and each test's own
+    // render/seed.
+    MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
+  });
+
   test('a delayed project refresh holds the confirmation up without offering creation again', async () => {
     await freshSetup.renderNavigationAsync();
     await fireEvent.press(
@@ -318,7 +329,12 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       );
       // The gate only trips on the first 2-project read: the materializer
       // has already published `pronta` and invalidated the queries.
-      await waitFor(() => expect(refreshWaiting).toBe(true));
+      // I/O-bound wait (real project creation, package imports, the
+      // invalidated refetch): the CI job's 1000 ms default budget broke
+      // this under 3-worker load — the JoinProjectIntro precedent.
+      await waitFor(() => expect(refreshWaiting).toBe(true), {
+        timeout: 15_000,
+      });
       expect(await listProjects()).toHaveLength(2);
       await act(async () => releaseRefresh());
       // While the refresh was gated the document had already published the
@@ -342,7 +358,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       releaseRefresh();
       spy.mockRestore();
     }
-  });
+  }, 20000);
 
   test('an unmarked project with an active id lands on the Success fork (none-with-projects)', async () => {
     // e.g. a legacy invite accept: a plain project, no Organization.
@@ -541,7 +557,11 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       await freshSetup.renderNavigationAsync({
         activeProjectId: standaloneProjectId,
       });
-      await waitFor(() => expect(refreshWaiting).toBe(true));
+      // Mesma espera de I/O do teste 1 (refresh de query atrasada sob
+      // carga): o orçamento de 1000 ms do waitFor é insuficiente no CI.
+      await waitFor(() => expect(refreshWaiting).toBe(true), {
+        timeout: 15_000,
+      });
 
       await act(async () => releaseRefresh());
 
@@ -557,7 +577,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       releaseRefresh();
       spy.mockRestore();
     }
-  }, 15000);
+  }, 20000);
 
   test('e2e: criar → confirmação → Abrir organização → Home com o nome da organização (SPEC B §3.3)', async () => {
     await freshSetup.renderNavigationAsync();
@@ -579,8 +599,14 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       ).toEqual(['Success', 'OrganizationProvisioning']),
     );
     // 2/2 verificado → confirmação pendente; o toque é o único caminho
-    // para a Home (SPEC A §4.2 regra 9).
-    expect(await screen.findByText('Organization created')).toBeOnTheScreen();
+    // para a Home (SPEC A §4.2 regra 9). Espera de I/O real (materialização
+    // no core: dois projetos + imports + conferência): o default de 1000 ms
+    // é insuficiente sob carga — precedente JoinProjectIntro.
+    expect(
+      await screen.findByText('Organization created', undefined, {
+        timeout: 15_000,
+      }),
+    ).toBeOnTheScreen();
     await fireEvent.press(
       screen.getByTestId('ORG.provisioning-open-organization-btn'),
     );
@@ -614,8 +640,12 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       'Minha Org',
     );
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
-    // Aguarda a publicação pronta SEM tocar em Abrir organização.
-    await screen.findByText('Organization created');
+    // Aguarda a publicação pronta SEM tocar em Abrir organização. Espera de
+    // I/O real (materialização no core): o default de 1000 ms é insuficiente
+    // sob carga — precedente JoinProjectIntro.
+    await screen.findByText('Organization created', undefined, {
+      timeout: 15_000,
+    });
 
     // Reinício: um NOVO store sobre o MESMO MMKV (o mock MMKV do jest
     // persiste no processo inteiro, como o MMKV real persiste no app).
@@ -751,8 +781,11 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       );
       // O refresh de query do destino atrasa (o remount do grupo consultou o
       // papel do projeto de Alertas de novo e ficou preso no gate): a Home
-      // suspende sobre ele — nada da área antiga reaparece.
-      await waitFor(() => expect(refreshWaiting).toBe(true));
+      // suspende sobre ele — nada da área antiga reaparece. Espera de I/O
+      // real: o default de 1000 ms é insuficiente sob carga.
+      await waitFor(() => expect(refreshWaiting).toBe(true), {
+        timeout: 15_000,
+      });
       expect(
         mockNavigation.getRootState().routes.map(route => route.name),
       ).toEqual(['Home']);
@@ -792,5 +825,5 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       releaseRefresh();
       spy.mockRestore();
     }
-  }, 20000);
+  }, 30000);
 });
