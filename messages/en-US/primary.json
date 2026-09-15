@@ -767,6 +767,9 @@
   "$1screens.OrganizationSetup.openOrganizationButton": {
     "message": "Open organization"
   },
+  "$1screens.OrganizationSetup.pacoteNaoAprovado": {
+    "message": "Could not prepare the necessary files on this device. Nothing was created."
+  },
   "$1screens.OrganizationSetup.preparingStepA11y": {
     "message": "Preparing your organization"
   },

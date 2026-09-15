@@ -64,6 +64,7 @@ export type CodigoErroPacote =
   | 'pacote_ausente'
   | 'pacote_corrompido'
   | 'pacote_hash_mismatch'
+  | 'pacote_nao_aprovado'
   | 'pacote_versao_mismatch'
   | 'pacote_retencao_falhou';
 

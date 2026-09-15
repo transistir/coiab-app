@@ -27,6 +27,7 @@ import {
   type PresetImportado,
   type ProjetoComPresets,
 } from './pacotes';
+import {VERSAO_INTERINA} from './pacotesInstalados';
 
 // FS tests never touch the disk: the reader is injected as an in-memory map
 // of ORIGINAL BYTES. Fixtures are real `.comapeocat` archives built with the
@@ -1553,12 +1554,15 @@ describe('criarTemplateSourceDePacotes (real adapter behind TemplateSource)', ()
 
 describe('extrairManifesto (extração Node — R1 bundling, anti-drift)', () => {
   test('deep-equals the real package canonical content and hashes like node:crypto sha256', async () => {
-    const bytes = await pacoteMonitoramentoBytes();
+    const bytes = await construirPacote({
+      ...FIXTURE_MONITORAMENTO,
+      metadata: {...FIXTURE_MONITORAMENTO.metadata, version: VERSAO_INTERINA},
+    });
     const {hash, conteudo} = await extrairManifesto(bytes);
     expect(hash).toBe(createHash('sha256').update(bytes).digest('hex'));
     expect(conteudo).toEqual({
       fileVersion: expect.any(String),
-      metadata: {name: 'Monitoramento COIAB', version: '1.0.0'},
+      metadata: {name: 'Monitoramento COIAB', version: VERSAO_INTERINA},
       categorias: [
         {
           id: 'arvore',
@@ -1600,8 +1604,14 @@ describe('manifestos.generated.json (manifestos embarcados — anti-drift)', () 
       Area,
       ManifestoPacote
     >;
-    const bytesM = await pacoteMonitoramentoBytes();
-    const bytesA = await construirPacote(FIXTURE_ALERTAS);
+    const bytesM = await construirPacote({
+      ...FIXTURE_MONITORAMENTO,
+      metadata: {...FIXTURE_MONITORAMENTO.metadata, version: VERSAO_INTERINA},
+    });
+    const bytesA = await construirPacote({
+      ...FIXTURE_ALERTAS,
+      metadata: {...FIXTURE_ALERTAS.metadata, version: VERSAO_INTERINA},
+    });
     const pares: Array<[Area, Uint8Array]> = [
       ['monitoramento', bytesM],
       ['alertas', bytesA],

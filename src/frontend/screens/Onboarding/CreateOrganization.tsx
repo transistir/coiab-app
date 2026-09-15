@@ -22,6 +22,7 @@ import {
 } from '../../contexts/CoiabOrganizationsStoreContext';
 import {derivarProjectIdAtivo} from '../../lib/organization/coiabOrganizations';
 import {markerFor} from '../../lib/organization/marker';
+import {ErroPacote} from '../../lib/organization/pacotes';
 import {AppStackParamsList} from '../../sharedTypes/navigation';
 
 const m = defineMessages({
@@ -49,6 +50,15 @@ const m = defineMessages({
   tooLong: {
     id: '$1screens.Onboarding.CreateOrganization.tooLong',
     defaultMessage: 'Organization name is too long',
+  },
+  // ⚑ SPEC (A4): there is no canonical string yet for a package failure
+  // BEFORE any write — `$1screens.OrganizationSetup.failureBody`
+  // ("…está salvo") would be false here, so this NEW minimal factual
+  // descriptor fills the gap. COPY PENDING A SPEC DECISION.
+  pacoteNaoAprovado: {
+    id: '$1screens.OrganizationSetup.pacoteNaoAprovado',
+    defaultMessage:
+      'Could not prepare the necessary files on this device. Nothing was created.',
   },
 });
 
@@ -143,7 +153,20 @@ export const CreateOrganization = ({
         // The CURRENT document decides: a rejection that raced against a
         // persisted intent is the provisioning surface's business.
         if (instance.getState().organizacoes[0]) return;
-        setErro(toError(error));
+        const falha = toError(error);
+        if (falha instanceof ErroPacote) {
+          // Decisão A/A4: ErrorBottomSheet surfaces `error.code` in its
+          // advanced section — the machine code rides through unchanged.
+          (falha as ErroPacote & {code?: string}).code = falha.codigo;
+          if (falha.codigo === 'pacote_nao_aprovado') {
+            // ⚑ SPEC (A4): no canonical copy for a package failure before
+            // any write — see the descriptor's comment. The message the
+            // sheet receives is the minimal factual one, never a
+            // "salvo/está salvo" claim.
+            falha.message = t(m.pacoteNaoAprovado);
+          }
+        }
+        setErro(falha);
       })
       .finally(() => {
         iniciandoRef.current = false;

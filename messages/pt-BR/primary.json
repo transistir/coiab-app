@@ -580,6 +580,9 @@
   "$1screens.OrganizationSetup.monitoringRow": {
     "message": "Monitoramento"
   },
+  "$1screens.OrganizationSetup.pacoteNaoAprovado": {
+    "message": "Não foi possível preparar os arquivos necessários neste aparelho. Nada foi criado."
+  },
   "$1screens.OrganizationSetup.openOrganizationButton": {
     "message": "Abrir organização"
   },

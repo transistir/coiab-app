@@ -25,6 +25,7 @@ import {
 } from '../../contexts/CoiabOrganizationsStoreContext';
 import {useActiveProjectIdActions} from '../../contexts/ActiveProjectIdStoreContext';
 import {markerFor} from '../../lib/organization/marker';
+import {ErroPacote} from '../../lib/organization/pacotes';
 import type {
   EstadoOrganizacoes,
   OrganizacaoLocal,
@@ -105,7 +106,13 @@ const ProvisioningStub = () => <Text>PROVISIONING-REACHED</Text>;
 const ErrorStub = ({
   route,
 }: NativeStackScreenProps<AppStackParamsList, 'ErrorBottomSheet'>) => (
-  <Text>ERROR: {route.params.error.message}</Text>
+  <>
+    <Text>ERROR: {route.params.error.message}</Text>
+    {/* The sheet's advanced section surfaces `error.code` (A4 pass-through). */}
+    <Text>
+      CODE: {(route.params.error as Error & {code?: string}).code ?? 'none'}
+    </Text>
+  </>
 );
 
 async function renderScreen() {
@@ -384,6 +391,41 @@ describe('CreateOrganization', () => {
       screen.getByTestId('ORG.create-name-inp', {includeHiddenElements: true}),
     ).toHaveProp('value', '  Órgão Teste  ');
     // The failure re-arms the form: the user can correct and retry.
+    expect(
+      screen.getByTestId('ORG.create-btn', {includeHiddenElements: true}),
+    ).toBeOnTheScreen();
+  });
+
+  test('a pacote_nao_aprovado rejection reaches the sheet with its machine code and factual copy', async () => {
+    // Decisão A/A2+A4: on a delivery binary that skipped the build hook,
+    // the runtime gate refuses with zero writes; the sheet receives the
+    // machine code (advanced section) and the minimal factual copy — never
+    // a "…está salvo" claim (SPEC gap A4).
+    mockMaterializador({
+      iniciar: async () => {
+        throw new ErroPacote(
+          'pacote_nao_aprovado',
+          'file:///fake-docs/coiab/pacotes/monitoramento.comapeocat',
+        );
+      },
+    });
+    await renderScreen();
+
+    await fireEvent.changeText(
+      screen.getByTestId('ORG.create-name-inp'),
+      '  Órgão Teste  ',
+    );
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+
+    expect(
+      await screen.findByText(
+        'ERROR: Could not prepare the necessary files on this device. Nothing was created.',
+      ),
+    ).toBeOnTheScreen();
+    expect(
+      await screen.findByText('CODE: pacote_nao_aprovado'),
+    ).toBeOnTheScreen();
+    // The failure re-arms the form: draft intact for a retry.
     expect(
       screen.getByTestId('ORG.create-btn', {includeHiddenElements: true}),
     ).toBeOnTheScreen();

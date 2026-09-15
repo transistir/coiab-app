@@ -57,9 +57,13 @@ const SVG_ARVORE =
 
 // Fixtures canônicas — o mesmo conteúdo dos testes (pacotes.test.ts /
 // materializar.test.ts) até a entrega dos pacotes aprovados de #30.
+// A1: a versão carrega o sufixo canônico `-interino` — os bytes marcam a si
+// mesmos; o gate de runtime (pacotesInstalados.ts) e o gate de build
+// (verificar-pacotes-entrega.mjs) recusam este sufixo nas variantes de
+// entrega (production/preRelease).
 const FIXTURES = {
   monitoramento: {
-    metadata: {name: 'Monitoramento COIAB', version: '1.0.0'},
+    metadata: {name: 'Monitoramento COIAB', version: '0.0.0-interino'},
     categorias: [
       {
         id: 'arvore',
@@ -82,7 +86,7 @@ const FIXTURES = {
     selecao: {observation: ['arvore'], track: ['rio']},
   },
   alertas: {
-    metadata: {name: 'Alertas COIAB', version: '1.0.0'},
+    metadata: {name: 'Alertas COIAB', version: '0.0.0-interino'},
     categorias: [
       {
         id: 'alerta-fogo',

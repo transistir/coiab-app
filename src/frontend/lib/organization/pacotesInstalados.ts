@@ -1,7 +1,7 @@
 import {Asset} from 'expo-asset';
 import * as FileSystem from 'expo-file-system/legacy';
-
-import {AREAS, type Area} from './documento';
+import {APP_VARIANT} from '../appVariant';
+import {AREAS, type Area, type TemplateRef} from './documento';
 import type {CreationProject, TemplateSource} from './materializar';
 import {
   ErroPacote,
@@ -35,7 +35,30 @@ export type DependenciasInstalacao = {
   fs?: AdaptadorFileSystem;
   ler?: LeitorArquivo;
   gravar?: GravadorArquivo;
+  /** Overrides the variant default — tests and deliberately-forced paths. */
+  permitirInterinos?: boolean;
 };
+
+/** Canonical suffix marking interim (invented, pre-#30) package bytes. */
+export const SUFIXO_INTERINO = '-interino';
+
+/** Interim placeholder version stamped into the pre-#30 fixture packages. */
+export const VERSAO_INTERINA = `0.0.0${SUFIXO_INTERINO}`;
+
+/** True when the package's pinned version is an interim fixture. */
+export const pacoteInterino = (ref: TemplateRef) =>
+  ref.versao.endsWith(SUFIXO_INTERINO);
+
+/**
+ * Interim packages are allowed ONLY on disposable devices (Decisão A):
+ * development builds and release candidates (`test`/`storybook`/
+ * `release-candidate` EAS profiles). Delivery variants (production,
+ * preRelease) refuse them — SPEC B `:313` (nothing invented is delivered)
+ * and `:279` (templates cannot be upgraded after use). The build-time twin
+ * of this gate is `scripts/verificar-pacotes-entrega.mjs`.
+ */
+export const PERMITE_PACOTES_INTERINOS =
+  APP_VARIANT === 'development' || APP_VARIANT === 'releaseCandidate';
 
 const DIRETORIO_PACOTES = `${FileSystem.documentDirectory}coiab/pacotes`;
 
@@ -90,11 +113,12 @@ export async function instalarPacotes(
 
 /**
  * The INSTALLED template source (Phase 3 — the wire point `useOrganizationActivation`
- * will receive in Phase 4): `prepare` first puts the two packages at their
- * installed paths and then delegates to `criarTemplateSourceDePacotes`, which
- * verifies existence, size, SHA-256 against the EMBEDDED manifests and
- * canonical content BEFORE anything is created. CONSTRUCTION DOES NO I/O —
- * building the source at the root is cheap; the asset download and every
+ * will receive in Phase 4): `prepare` first REFUSES interim packages on
+ * delivery variants (below), then puts the two packages at their installed
+ * paths and delegates to `criarTemplateSourceDePacotes`, which verifies
+ * existence, size, SHA-256 against the EMBEDDED manifests and canonical
+ * content BEFORE anything is created. CONSTRUCTION DOES NO I/O — building
+ * the source at the root is cheap; the gate, the asset download and every
  * filesystem touch happen inside `prepare`.
  */
 export function criarTemplateSourceInstalado(
@@ -113,6 +137,22 @@ export function criarTemplateSourceInstalado(
   });
   return {
     async prepare(pinned) {
+      // Decisão A/A2 gate: BEFORE installing anything, the version that
+      // WOULD be pinned — the journal's pinned ref when resuming, the
+      // embedded one for a fresh start — must be approved. A refusal
+      // throws before the first `save` of `start` (materializar.ts runs
+      // `templates.prepare()` before its first `save`), so nothing is
+      // written and no project is created.
+      const permitir = deps?.permitirInterinos ?? PERMITE_PACOTES_INTERINOS;
+      for (const area of AREAS) {
+        const ref = pinned?.[area] ?? manifestosEmbarcados[area].ref;
+        if (!permitir && pacoteInterino(ref)) {
+          throw new ErroPacote(
+            'pacote_nao_aprovado',
+            CAMINHOS_INSTALADOS[area],
+          );
+        }
+      }
       await instalarPacotes(deps);
       return fonte.prepare(pinned);
     },

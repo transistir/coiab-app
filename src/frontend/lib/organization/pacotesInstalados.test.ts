@@ -12,6 +12,8 @@ import {
   CAMINHOS_INSTALADOS,
   criarTemplateSourceInstalado,
   instalarPacotes,
+  pacoteInterino,
+  SUFIXO_INTERINO,
 } from './pacotesInstalados';
 
 // Both modules are MOCKED with throwing spies: every test injects its own
@@ -190,6 +192,9 @@ describe('criarTemplateSourceInstalado atrás do materializador', () => {
       asset,
       fs: fsFalso(),
       ler: async () => null,
+      // Jest resolve APP_VARIANT para production: fixtures interinas só
+      // passam com a permissão explícita do caso (Decisão A/A2).
+      permitirInterinos: true,
     });
     const materializador = createMaterializer({
       client: cliente,
@@ -221,5 +226,86 @@ describe('criarTemplateSourceInstalado atrás do materializador', () => {
     for (const espia of espiasFileSystem) {
       expect(espia).not.toHaveBeenCalled();
     }
+  });
+});
+
+describe('gate de pacotes interinos (Decisão A/A2 — recusa nas variantes de entrega)', () => {
+  test('pacoteInterino reconhece o sufixo canônico e libera versões aprovadas', () => {
+    expect(SUFIXO_INTERINO).toBe('-interino');
+    expect(pacoteInterino({versao: '0.0.0-interino', hash: 'h'})).toBe(true);
+    expect(pacoteInterino({versao: '2.1.0-interino', hash: 'h'})).toBe(true);
+    expect(pacoteInterino({versao: '1.0.0', hash: 'h'})).toBe(false);
+  });
+
+  // TEMPORÁRIO (A1): o par asset↔manifesto é fixture INTERINA até os
+  // pacotes aprovados de #30 — apagar ESTE teste no commit da troca
+  // (procedimento em assets/categorias/README.md).
+  test('o manifesto embarcado é interino até os pacotes de #30', () => {
+    expect(pacoteInterino(manifestosEmbarcados.monitoramento.ref)).toBe(true);
+    expect(pacoteInterino(manifestosEmbarcados.alertas.ref)).toBe(true);
+  });
+
+  test('permitirInterinos:false → prepare recusa com pacote_nao_aprovado ANTES de qualquer I/O', async () => {
+    const fs = fsFalso();
+    const asset = assetFalso({monitoramento: 'm', alertas: 'a'});
+    const fonte = criarTemplateSourceInstalado({
+      asset,
+      fs,
+      ler: async () => null,
+      permitirInterinos: false,
+    });
+
+    await expect(fonte.prepare()).rejects.toMatchObject({
+      name: 'ErroPacote',
+      codigo: 'pacote_nao_aprovado',
+      filePath: CAMINHOS_INSTALADOS.monitoramento,
+    });
+    // A recusa é anterior à instalação: nenhum download, nenhum touch de fs.
+    expect(asset.monitoramento.downloadAsync).not.toHaveBeenCalled();
+    expect(asset.alertas.downloadAsync).not.toHaveBeenCalled();
+    for (const espia of espiasFileSystem) {
+      expect(espia).not.toHaveBeenCalled();
+    }
+  });
+
+  test('a mesma recusa atravessa createMaterializer().start(): zero write, zero createProject', async () => {
+    const repositorio = {
+      read: () => documentoInicial(),
+      write: jest.fn(),
+    };
+    const cliente = {
+      listProjects: jest.fn(async () => []),
+      createProject: jest.fn(),
+      getDeviceInfo: jest.fn(),
+      setDeviceInfo: jest.fn(),
+      getProject: jest.fn(),
+    };
+    const asset = assetFalso({monitoramento: 'm', alertas: 'a'});
+    const fonte = criarTemplateSourceInstalado({
+      asset,
+      fs: fsFalso(),
+      ler: async () => null,
+      permitirInterinos: false,
+    });
+    const materializador = createMaterializer({
+      client: cliente,
+      templates: fonte,
+      repository: repositorio,
+      generateId: () => '0123456789abcdef',
+    });
+
+    await expect(
+      materializador.start('Organização de Teste'),
+    ).rejects.toMatchObject({
+      name: 'ErroPacote',
+      codigo: 'pacote_nao_aprovado',
+      filePath: CAMINHOS_INSTALADOS.monitoramento,
+    });
+    // O gate roda antes do primeiro save de start (materializar.ts:364 → :375):
+    // nada escrito, nada criado.
+    expect(asset.monitoramento.downloadAsync).not.toHaveBeenCalled();
+    expect(repositorio.write).not.toHaveBeenCalled();
+    expect(cliente.createProject).not.toHaveBeenCalled();
+    expect(repositorio.read().organizacoes).toEqual([]);
   });
 });
