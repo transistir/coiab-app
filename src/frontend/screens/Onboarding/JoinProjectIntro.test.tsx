@@ -26,6 +26,13 @@ describe('Onboarding Screens', () => {
   const inviteeSetup = setupIntegrationTestWithoutProject();
   const invitorSetup = setupIntegrationTest();
 
+  // Real navigators and real core peers end-to-end: two managers, invite
+  // sync, two invite.accept IPC calls, reconstruction, query invalidations
+  // and the engine's verification attempt — the whole path legitimately
+  // runs past jest's 5000ms default test timeout on this 2-core/3.8GB box
+  // (the old destination made the 5000ms cap fire). The 45000ms budget
+  // only bounds the wait: if the provisioning surface never appears, the
+  // waitFor below fails and this test still fails.
   test('should show the org fork, receive the organization invite bundle, and accept it', async () => {
     const user = userEvent.setup();
     await inviteeSetup.renderNavigationAsync();
@@ -71,17 +78,32 @@ describe('Onboarding Screens', () => {
     expect(screen.queryByText('Join')).not.toBeOnTheScreen();
 
     await user.press(joinButton);
-    // The accept runs real core work (two invite.accept IPC calls, project
-    // sync, listProjects/reconstruction, query invalidations) and must fit
-    // RNTL's default 1000ms findBy timeout — measured 527ms quiet and up to
-    // ~900ms on a churned 2-core/3.8GB box, so any heavier transient makes
-    // the default flake. Give it an explicit budget; the assertion itself
-    // is unchanged.
+    // 6b-ii: a REGISTERED accept no longer renders the joined-confirmation
+    // sheet — it resets (not goBack) to OrganizationProvisioning, whose
+    // document-driven view owns the flow from here (SPEC B §5.5). The
+    // accept runs real core work (two invite.accept IPC calls, project
+    // sync, listProjects/reconstruction, query invalidations) and the
+    // engine's verification attempt — fired by the registration — then
+    // settles that view's title: 'Organization created' when the joined
+    // projects carry the imported package categories, the
+    // recoverable-failure sentence otherwise (this fixture's invitor
+    // projects carry none, so the failure sentence is the settled state).
+    // The alternation covers the document-driven view's three titles —
+    // each unique to OrganizationProvisioning in production code — so the
+    // assertion is the surface, not the verdict; the 30000ms budget only
+    // bounds the wait: if the provisioning surface never appears,
+    // findByText fails and so does the test.
     expect(
-      await screen.findByText('You have joined Test Org', undefined, {
-        timeout: 15_000,
-      }),
+      await screen.findByText(
+        /Could not finish creating the organization\.|Organization created|Preparing your organization…/,
+        undefined,
+        {timeout: 30_000},
+      ),
     ).toBeVisible();
+    // The joined-confirmation sheet never renders for a registered accept.
+    expect(
+      screen.queryByText('You have joined Test Org'),
+    ).not.toBeOnTheScreen();
 
     // Accepting invalidates the project/invite queries; let those refetches
     // settle so teardown doesn't close the IPC channel under an in-flight
@@ -119,10 +141,11 @@ describe('Onboarding Screens', () => {
     // Fase 6b-i: a complete accept REGISTERS the joined organization
     // (SPEC B §5.5) and hands activation to the engine — it no longer
     // forces a project active, so the store keeps what it was seeded with
-    // (nothing here). Activation becomes the "Abrir organização" tap on
-    // the confirmation screen; the accept replaces the waiting screen
-    // with it, and the org-first landing into Home is covered by the
-    // getInitialRoute unit tests (SPEC 10.1/E6).
+    // (nothing here). Fase 6b-ii: the accept's destination is the
+    // OrganizationProvisioning reset asserted above — activation becomes
+    // the "Abrir organização" tap on THAT surface once the engine
+    // publishes `pronta`, and the org-first landing into Home is covered
+    // by the getInitialRoute unit tests (SPEC 10.1/E6).
     expect(inviteeSetup.activeProjectId).toBeUndefined();
 
     // The durable document holds the invite entry: both accepted
@@ -147,5 +170,5 @@ describe('Onboarding Screens', () => {
       template: null,
       idsAntesDaCriacao: null,
     });
-  });
+  }, 45_000);
 });
