@@ -16,7 +16,7 @@ import {
 } from '../../src/frontend/contexts/SecurityStoreContext';
 import {
   useActiveProjectId,
-  useActiveProjectIdActions,
+  useProjetarProjectIdAtivo,
 } from '../../src/frontend/contexts/ActiveProjectIdStoreContext';
 import {
   useDraftObservationActions,
@@ -168,8 +168,7 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
   const {mutateAsync: setDeviceInfo} = useSetOwnDeviceInfo();
 
   const activeProjectId = useActiveProjectId();
-  const {setActiveProjectId, clearActiveProjectId} =
-    useActiveProjectIdActions();
+  const projetar = useProjetarProjectIdAtivo();
 
   const projectName =
     typeof spec?.project === 'object' ? spec.project.name : '';
@@ -261,7 +260,7 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
       // alternation and the state would never converge.
       if (spec_.project === 'none' && activeProjectId && !spec_.organization) {
         setReady(null);
-        clearActiveProjectId();
+        projetar(undefined);
         return;
       }
 
@@ -274,7 +273,7 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
         if (cancelled) return;
 
         if (projectId !== activeProjectId) {
-          setActiveProjectId(projectId);
+          projetar(projectId);
           return;
         }
 
@@ -288,7 +287,7 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
         if (cancelled) return;
 
         if (monitoramentoId !== activeProjectId) {
-          setActiveProjectId(monitoramentoId);
+          projetar(monitoramentoId);
           return;
         }
         projectId = monitoramentoId;
@@ -382,7 +381,7 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
     };
   }, [
     activeProjectId,
-    clearActiveProjectId,
+    projetar,
     clearDraft,
     createDraft,
     deviceInfo.name,
@@ -393,7 +392,6 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
     isReadyForCurrentSpec,
     passcode,
     resolvePointPreset,
-    setActiveProjectId,
     setDeviceInfo,
     setPasscode,
     spec,

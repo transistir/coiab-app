@@ -1,4 +1,4 @@
-import {createContext, ReactNode, useContext, useEffect, useState} from 'react';
+import {createContext, ReactNode, useContext} from 'react';
 import {createStore, useStore, type StoreApi} from 'zustand';
 import {
   createJSONStorage,
@@ -6,8 +6,6 @@ import {
 } from 'zustand/middleware';
 
 import {MMKVStoreInitializer} from '../hooks/persistedState/createPersistedState';
-import {useClientApi} from '@comapeo/core-react';
-import {FullScreenCenteredLoader} from '../sharedComponents/FullScreenCenteredLoader';
 
 type ActiveProjectIdState = {
   projectId?: string;
@@ -39,11 +37,8 @@ export function createActiveProjectIdStore({persist} = {persist: false}) {
   }
 
   const actions = {
-    setActiveProjectId: (projectId: string) => {
+    projetar: (projectId: string | undefined) => {
       store.setState({projectId});
-    },
-    clearActiveProjectId: () => {
-      store.setState({projectId: undefined});
     },
   };
 
@@ -53,9 +48,12 @@ export function createActiveProjectIdStore({persist} = {persist: false}) {
   };
 }
 
-export type ActiveProjectIdStore = ReturnType<
-  typeof createActiveProjectIdStore
->;
+export interface ActiveProjectIdStore {
+  instance: StoreApi<ActiveProjectIdState>;
+  actions: {
+    projetar: (projectId: string | undefined) => void;
+  };
+}
 
 const ActiveProjectIdStoreContext = createContext<ActiveProjectIdStore | null>(
   null,
@@ -68,33 +66,10 @@ export const ActiveProjectIdStoreProvider = ({
   children: ReactNode;
   store: ActiveProjectIdStore;
 }) => {
-  const {listProjects} = useClientApi();
-  const [isInitialized, setIsInitialized] = useState(() =>
-    Boolean(store.instance.getState().projectId),
-  );
-
-  useEffect(() => {
-    if (isInitialized) return;
-
-    listProjects()
-      .then(projects => {
-        if (!projects || projects.length === 0) {
-          return;
-        }
-
-        const fallbackProjectId = projects[0]?.projectId;
-        if (fallbackProjectId) {
-          store.actions.setActiveProjectId(fallbackProjectId);
-        }
-      })
-      .finally(() => {
-        setIsInitialized(true);
-      });
-  }, [store, isInitialized, listProjects]);
-
-  return !isInitialized ? (
-    <FullScreenCenteredLoader />
-  ) : (
+  // The active id is a PROJECTION (Phase 11): the provider renders children
+  // immediately and owns no selection authority of its own — whoever holds
+  // a validated selection projects it.
+  return (
     <ActiveProjectIdStoreContext value={store}>
       {children}
     </ActiveProjectIdStoreContext>
@@ -116,7 +91,7 @@ export function useActiveProjectId(): string | undefined {
   return useStore(instance).projectId;
 }
 
-export function useActiveProjectIdActions() {
+export function useProjetarProjectIdAtivo(): (id: string | undefined) => void {
   const {actions} = useActiveProjectIdStoreContext();
-  return actions;
+  return actions.projetar;
 }

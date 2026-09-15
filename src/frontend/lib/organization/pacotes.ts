@@ -64,6 +64,7 @@ export type CodigoErroPacote =
   | 'pacote_ausente'
   | 'pacote_corrompido'
   | 'pacote_hash_mismatch'
+  | 'pacote_nao_aprovado'
   | 'pacote_versao_mismatch'
   | 'pacote_retencao_falhou';
 
@@ -206,7 +207,16 @@ export type ConfiguracoesProjeto = {
   name?: string;
   sendStats?: boolean;
   defaultPresets?: {point?: string[]; line?: string[]};
-  configMetadata?: {name?: string; version?: string; fileVersion?: string};
+  // The PERSISTED shape (`mapeo-project.d.ts:4987-5011`,
+  // `additionalProperties: false`): core drops `version` at validation, so
+  // `configMetadata.version` can never be compared — the type BLOCKS any
+  // future `version` comparison (Decision D1).
+  configMetadata?: {
+    name?: string;
+    buildDate?: string;
+    importDate?: string;
+    fileVersion?: string;
+  };
 };
 
 /** Project surface needed to read the imported Core documents. */
@@ -215,6 +225,12 @@ export type ProjetoComPresets = {
   field?: {getMany(): Promise<CampoImportado[]>};
   icon?: {getMany(): Promise<IconeImportado[]>};
   $getProjectSettings?: () => Promise<ConfiguracoesProjeto>;
+  /**
+   * Resolves a referenced icon docId THROUGH CORE (Decision C): core's icon
+   * HTTP route runs `$icons[kGetIconBlob](docId)` and answers 404 on a
+   * dangling one, so `false` is an actual refusal, not a URL construction.
+   */
+  iconeResolvivel?: (docId: string) => Promise<boolean>;
 };
 
 /**
@@ -309,15 +325,24 @@ function mesmoConjunto(a: readonly string[], b: readonly string[]): boolean {
  * - every `fieldRefs` entry resolves to an existing non-deleted field whose
  *   canonical DEFINITIONS (tagKey, type and select options — never the names
  *   alone) equal those of the category's package fields;
- * - `iconRef` mirrors the category's `icon` AND resolves: its docId must be an
- *   active icon document whose `name` is the category's package icon — a
- *   reference to another (or missing) icon document is a divergence;
+ * - `iconRef` mirrors the category's `icon` AND resolves. With the icon read
+ *   surface (a listing on the rpc surface), the docId must be an active icon
+ *   document whose `name` is the category's package icon. WITHOUT it (real
+ *   core rpc has no icon listing), the references are proven BY REFERENCE
+ *   first (no icon document may carry two different package icons, and the
+ *   distinct docIds must equal the declared icon names) and then resolved
+ *   THROUGH CORE via `iconeResolvivel` — core's icon HTTP route (Decision
+ *   C): every referenced docId must resolve there, a refusal is
+ *   `icone_divergente`, and a read failure (a rejected listing or a throwing
+ *   resolver) is `leitura_falhou` — retryable, never a weaker silent proof.
  * - the default selection (`defaultPresets.point/line`) equals the preset
  *   docIds of the package `categorySelection` (observation/track);
- * - `configMetadata` (name/version/fileVersion) equals the package metadata.
+ * - `configMetadata` (name/fileVersion; version proven by the pinned hash —
+ *   Decision D) equals the package metadata.
  *
- * Any missing read surface, empty-fallback settings read or divergence
- * returns the SPECIFIC `MotivoDivergencia` — verification never throws.
+ * Any missing REQUIRED read surface (preset/field/settings), empty-fallback
+ * settings read or divergence returns the SPECIFIC `MotivoDivergencia` —
+ * verification never throws.
  */
 export async function conferirImportacao(
   project: ProjetoComPresets,
@@ -336,15 +361,23 @@ export async function conferirImportacao(
     if (!project.preset || !project.field || !project.$getProjectSettings) {
       return 'superficie_ausente';
     }
-    // Icons the categories reference: without the icon read surface their
-    // references cannot be proven, so the import cannot be declared complete.
+    // Icons the categories reference. The listing is OPTIONAL — real core
+    // 7.4.0 / ipc 9.0.1 exposes NO icon listing (`icon.getMany` is not on
+    // the rpc surface — `ReferenceError: icon is not defined`,
+    // tests/integration/cliente-superficie.test.ts) — and its PRESENCE is
+    // decided STATICALLY by the adapter: on rpc-reflector every property is
+    // a callable proxy (rpc-reflector/client.js:316), so a runtime
+    // `typeof === 'function'` check is always true, and core ships inside
+    // the same binary (core-react-native/src/version.ts:49), so a member
+    // the adapter declares cannot be stale. A REJECTING read is a real read
+    // failure and is NOT swallowed: it surfaces as `leitura_falhou`
+    // (retryable) instead of silently degrading to a weaker proof.
+    const lerIcones = project.icon;
     const iconesDoPacote = new Set(
       conteudo.categorias
         .map(categoria => categoria.icon)
         .filter((icone): icone is string => typeof icone === 'string'),
     );
-    if (iconesDoPacote.size > 0 && !project.icon) return 'superficie_ausente';
-    const lerIcones = project.icon;
     const [presetsBrutos, camposBrutos, iconesBrutos, settings] =
       await Promise.all([
         project.preset.getMany(),
@@ -354,6 +387,7 @@ export async function conferirImportacao(
       ]);
     const presets = presetsBrutos.filter(preset => !preset.deleted);
     const campos = camposBrutos.filter(campo => !campo.deleted);
+    const temListagem = lerIcones !== undefined;
     if (presets.length !== conteudo.categorias.length) {
       return 'quantidade_de_presets';
     }
@@ -388,20 +422,28 @@ export async function conferirImportacao(
     );
     if (camposPorDocId.size !== campos.length) return 'campos_divergentes';
 
-    // Active icon documents by docId: `name` is the package icon id.
+    // Active icon documents by docId: `name` is the package icon id. Only
+    // built when the adapter exposes the listing (presence is static, a
+    // rejecting read already surfaced as `leitura_falhou` above).
     const nomePorIconeDocId = new Map<string, string>();
-    for (const icone of iconesBrutos) {
-      if (icone.deleted) continue;
-      if (typeof icone.docId !== 'string' || typeof icone.name !== 'string') {
-        continue;
+    if (temListagem) {
+      for (const icone of iconesBrutos) {
+        if (icone.deleted) continue;
+        if (typeof icone.docId !== 'string' || typeof icone.name !== 'string') {
+          continue;
+        }
+        nomePorIconeDocId.set(icone.docId, icone.name);
       }
-      nomePorIconeDocId.set(icone.docId, icone.name);
     }
 
     // Strict bijection categories ↔ presets via canonical tags.
     const usados = new Set<number>();
     const pares: Array<{categoria: CategoriaPacote; preset: PresetImportado}> =
       [];
+
+    // Reference-only icon validation (no listing): docId → package icon
+    // names seen behind it. One docId with two different names diverges.
+    const referenciasPorDocId = new Map<string, Set<string>>();
     for (const categoria of conteudo.categorias) {
       const chave = chaveTags(categoria.tags);
       if (chave === null) return 'preset_ausente';
@@ -430,8 +472,17 @@ export async function conferirImportacao(
       if (categoria.icon != null) {
         const docIdIcone = preset.iconRef?.docId;
         if (typeof docIdIcone !== 'string') return 'icone_divergente';
-        if (nomePorIconeDocId.get(docIdIcone) !== categoria.icon) {
-          return 'icone_divergente';
+        if (temListagem) {
+          if (nomePorIconeDocId.get(docIdIcone) !== categoria.icon) {
+            return 'icone_divergente';
+          }
+        } else {
+          const nomes = referenciasPorDocId.get(docIdIcone);
+          if (nomes === undefined) {
+            referenciasPorDocId.set(docIdIcone, new Set([categoria.icon]));
+          } else if (!nomes.has(categoria.icon)) {
+            return 'icone_divergente';
+          }
         }
       }
       const definicoesEsperadas = categoria.fields.map(id =>
@@ -462,6 +513,22 @@ export async function conferirImportacao(
       }
       pares.push({categoria, preset});
     }
+
+    // Without the listing, the distinct referenced docIds must equal the
+    // distinct declared icon names: every declared icon referenced, none
+    // duplicated, none missing.
+    if (!temListagem && referenciasPorDocId.size !== iconesDoPacote.size) {
+      return 'icone_divergente';
+    }
+
+    // Without the listing, every referenced docId must resolve THROUGH CORE
+    // (Decision C): `iconeResolvivel` runs core's icon HTTP route, which
+    // answers 404 on a dangling docId — a real refusal, `icone_divergente`.
+    // A resolver THROW is a read failure like any other: it propagates to
+    // the outer catch as `leitura_falhou` (retryable) — not treated apart.
+    if (!temListagem && project.iconeResolvivel)
+      for (const docId of referenciasPorDocId.keys())
+        if (!(await project.iconeResolvivel(docId))) return 'icone_divergente';
 
     // Default selection: categorySelection ↔ defaultPresets docIds.
     const parPorCategoria = new Map(pares.map(par => [par.categoria.id, par]));
@@ -510,9 +577,15 @@ export async function conferirImportacao(
     if (configMetadata.name !== conteudo.metadata.name) {
       return 'metadata_divergente';
     }
-    if (configMetadata.version !== conteudo.metadata.version) {
-      return 'metadata_divergente';
-    }
+    // NO `version` comparison, BY EVIDENCE: the strict projectSettings schema
+    // (node_modules/@comapeo/core/dist/mapeo-project.d.ts:4987-5009) defines
+    // configMetadata as exactly {name, buildDate, importDate, fileVersion}
+    // with `additionalProperties: false`, and `$importCategories`
+    // (import-categories.js:276-283) spreads the package metadata
+    // (`{name, version}`) into it — `version` is dropped at validation, so
+    // `configMetadata.version` is ALWAYS absent on a persisted project and
+    // this comparison could never be satisfied (every real import would read
+    // `metadata_divergente`). Reintroduce only if core persists a version.
     if (configMetadata.fileVersion !== conteudo.fileVersion) {
       return 'metadata_divergente';
     }

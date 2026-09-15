@@ -1,87 +1,192 @@
 import * as React from 'react';
 import {Text} from 'react-native';
-import {NavigationContainer} from '@react-navigation/native';
+import {
+  NavigationContainer,
+  createNavigationContainerRef,
+} from '@react-navigation/native';
 import {
   createNativeStackNavigator,
   NativeStackScreenProps,
 } from '@react-navigation/native-stack';
 import {
+  act,
   render,
   screen,
   fireEvent,
-  userEvent,
   waitFor,
 } from '@testing-library/react-native';
 import {IntlProvider} from 'react-intl';
 
 import {CreateOrganization} from './CreateOrganization';
-import {useCreateOrganization} from '../../hooks/organization/useCreateOrganization';
-import {OrganizationOperationError} from '../../lib/organization/fanout';
+import {
+  useOrganizationMaterializer,
+  type OrganizationMaterializerHandle,
+} from '../../contexts/OrganizationMaterializerContext';
+import {
+  CoiabOrganizationsStoreProvider,
+  createCoiabOrganizationsStore,
+  type CoiabOrganizationsStore,
+} from '../../contexts/CoiabOrganizationsStoreContext';
+import {useProjetarProjectIdAtivo} from '../../contexts/ActiveProjectIdStoreContext';
 import {markerFor} from '../../lib/organization/marker';
+import {ErroPacote} from '../../lib/organization/pacotes';
+import type {
+  EstadoOrganizacoes,
+  OrganizacaoLocal,
+} from '../../lib/organization/coiabOrganizations';
 import type {AppStackParamsList} from '../../sharedTypes/navigation';
 
-jest.mock('../../hooks/organization/useCreateOrganization', () => ({
-  useCreateOrganization: jest.fn(),
+// pt-BR copied verbatim from SPEC B :54/:55/:252. The copy is asserted
+// through the i18n keys (exact pt-BR text), not the English defaultMessage
+// (SPEC B :100-102). `tooLong` is deliberately absent: the marker-bound
+// message (flag #14) is preserved as-is and asserted by its English
+// defaultMessage below.
+const PT_MESSAGES = {
+  '$1screens.OrganizationSetup.createOrganization': 'Criar organização',
+  '$1screens.OrganizationSetup.createIntroBody':
+    'Sua organização terá Monitoramento e Alertas, com categorias prontas para usar. Você pode criá-la sem internet.',
+  '$1screens.OrganizationSetup.continueButton': 'Continuar',
+  '$1screens.OrganizationSetup.nameLabel': 'Nome da organização',
+  '$1screens.OrganizationSetup.nameGuidance':
+    'Escolha um nome para sua organização.',
+  '$1screens.OrganizationSetup.nameNotIdentity':
+    'Usar o mesmo nome de outra organização não conecta os dispositivos. Para participar de uma organização existente, aguarde um convite.',
+  '$1screens.OrganizationSetup.emptyName': 'Informe o nome da organização.',
+};
+
+jest.mock('../../contexts/OrganizationMaterializerContext', () => ({
+  useOrganizationMaterializer: jest.fn(),
 }));
 
-const useCreateOrganizationMock = useCreateOrganization as jest.Mock;
+const useMaterializadorMock = useOrganizationMaterializer as jest.Mock;
 
-const start = jest.fn();
+jest.mock('../../contexts/ActiveProjectIdStoreContext', () => ({
+  useProjetarProjectIdAtivo: jest.fn(),
+}));
 
-function mockCreateOrganization(
-  overrides?: Partial<ReturnType<typeof useCreateOrganization>>,
+const projetar = jest.fn();
+// The screen chains `.catch/.finally` on the returned promise, so the
+// default mock must resolve like the real `iniciar` does.
+const iniciar = jest.fn(async () => {});
+
+function mockMaterializador(
+  overrides?: Partial<OrganizationMaterializerHandle>,
 ) {
-  useCreateOrganizationMock.mockReturnValue({
-    start,
-    reset: jest.fn(),
-    status: 'idle',
-    error: undefined,
-    organizationId: undefined,
+  useMaterializadorMock.mockReturnValue({
+    iniciar,
+    retomar: jest.fn(),
     ...overrides,
   });
 }
 
+// A parseable §4.2 document holding ONE organization in the state the
+// materializer persists right after `iniciar` registers it (SPEC B §5.4
+// step 2): `preparando`, both areas absent, no selection.
+function documentoComOrganizacao(nome: string): EstadoOrganizacoes {
+  return {
+    versao: 1,
+    organizacoes: [
+      {
+        id: '0123456789abcdef',
+        nome,
+        estado: 'preparando',
+        confirmacaoPendente: false,
+        materializacao: {
+          monitoramento: {
+            etapa: 'ausente',
+            projectId: null,
+            template: null,
+            idsAntesDaCriacao: null,
+          },
+          alertas: {
+            etapa: 'ausente',
+            projectId: null,
+            template: null,
+            idsAntesDaCriacao: null,
+          },
+        },
+        areaEmExecucao: null,
+        ultimoErro: null,
+      },
+    ],
+    ativa: null,
+  };
+}
+
+/** The materializer's observable side effect: the document gains the org. */
+const registrar = async (nome: string) => {
+  store.instance.setState(documentoComOrganizacao(nome));
+};
+
+let store: CoiabOrganizationsStore;
+
 const Stack = createNativeStackNavigator<AppStackParamsList>();
+const navigationRef = createNavigationContainerRef<AppStackParamsList>();
+
+const SuccessStub = () => <Text>SUCCESS-STUB</Text>;
 
 const HomeStub = () => <Text>HOME-REACHED</Text>;
-
 const ProvisioningStub = () => <Text>PROVISIONING-REACHED</Text>;
 
 const ErrorStub = ({
   route,
 }: NativeStackScreenProps<AppStackParamsList, 'ErrorBottomSheet'>) => (
-  <Text>ERROR: {route.params.error.message}</Text>
+  <>
+    <Text>ERROR: {route.params.error.message}</Text>
+    {/* The sheet's advanced section surfaces `error.code` (A4 pass-through). */}
+    <Text>
+      CODE: {(route.params.error as Error & {code?: string}).code ?? 'none'}
+    </Text>
+  </>
 );
 
 async function renderScreen() {
-  return render(
-    <IntlProvider locale="en" messages={{}}>
-      <NavigationContainer>
-        <Stack.Navigator>
-          <Stack.Screen
-            name="CreateOrganization"
-            component={CreateOrganization}
-            options={{headerShown: false}}
-          />
-          <Stack.Screen name="Home" component={HomeStub} />
-          <Stack.Screen
-            name="OrganizationProvisioning"
-            component={ProvisioningStub}
-          />
-          <Stack.Screen
-            name="ErrorBottomSheet"
-            component={ErrorStub}
-            options={{headerShown: false}}
-          />
-        </Stack.Navigator>
+  await render(
+    <IntlProvider locale="pt-BR" messages={PT_MESSAGES}>
+      <NavigationContainer ref={navigationRef}>
+        <CoiabOrganizationsStoreProvider store={store}>
+          <Stack.Navigator initialRouteName="Success">
+            <Stack.Screen name="Success" component={SuccessStub} />
+            <Stack.Screen
+              name="CreateOrganization"
+              component={CreateOrganization}
+              options={{headerShown: false}}
+            />
+            <Stack.Screen name="Home" component={HomeStub} />
+            <Stack.Screen
+              name="OrganizationProvisioning"
+              component={ProvisioningStub}
+            />
+            <Stack.Screen
+              name="ErrorBottomSheet"
+              component={ErrorStub}
+              options={{headerShown: false}}
+            />
+          </Stack.Navigator>
+        </CoiabOrganizationsStoreProvider>
       </NavigationContainer>
     </IntlProvider>,
   );
+  // The native-stack navigator mounts asynchronously: wait for the initial
+  // route to settle before dispatching, or the navigate becomes a no-op
+  // ("navigation object hasn't been initialized").
+  await screen.findByText('SUCCESS-STUB');
+  await act(async () => {
+    navigationRef.navigate('CreateOrganization');
+  });
+}
+
+// The SPEC B §3.1 journey: Continuar on the intro leads to the name step.
+async function irParaEtapaNome() {
+  await fireEvent.press(screen.getByTestId('ORG.create-intro-continue-btn'));
+  expect(screen.getByTestId('ORG.create-name-inp')).toBeOnTheScreen();
 }
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockCreateOrganization();
+  store = createCoiabOrganizationsStore();
+  (useProjetarProjectIdAtivo as jest.Mock).mockReturnValue(projetar);
+  mockMaterializador();
 });
 
 describe('CreateOrganization', () => {
@@ -104,59 +209,118 @@ describe('CreateOrganization', () => {
     ).toHaveLength(61);
   });
 
-  test('renders title, name input and create button', async () => {
+  test('the intro step renders the SPEC B :54 copy and leads to the name step', async () => {
     await renderScreen();
 
-    expect(screen.getByText('Name your Organization')).toBeOnTheScreen();
+    expect(screen.getByText('Criar organização')).toBeOnTheScreen();
     expect(
       screen.getByText(
-        'The Organization is the way CoMapeo organizes mapping. It contains the Monitoramento and Alertas projects.',
+        'Sua organização terá Monitoramento e Alertas, com categorias prontas para usar. Você pode criá-la sem internet.',
+      ),
+    ).toBeOnTheScreen();
+    expect(
+      screen.getByTestId('ORG.create-intro-continue-btn'),
+    ).toBeOnTheScreen();
+    expect(screen.queryByTestId('ORG.create-name-inp')).not.toBeOnTheScreen();
+
+    await irParaEtapaNome();
+
+    expect(
+      screen.getByText('Escolha um nome para sua organização.'),
+    ).toBeOnTheScreen();
+    expect(
+      screen.getByText(
+        'Usar o mesmo nome de outra organização não conecta os dispositivos. Para participar de uma organização existente, aguarde um convite.',
       ),
     ).toBeOnTheScreen();
     expect(screen.getByTestId('ORG.create-name-inp')).toBeOnTheScreen();
     expect(screen.getByTestId('ORG.create-btn')).toBeOnTheScreen();
   });
 
-  test('create button is disabled while the name is empty', async () => {
+  test('back from the name step returns to the intro with no effects', async () => {
     await renderScreen();
 
-    expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+    await irParaEtapaNome();
+
+    navigationRef.goBack();
+
+    expect(
+      await screen.findByTestId('ORG.create-intro-continue-btn'),
+    ).toBeOnTheScreen();
+    expect(screen.queryByTestId('ORG.create-name-inp')).not.toBeOnTheScreen();
+    expect(iniciar).not.toHaveBeenCalled();
+    // "sem efeitos": the document is untouched by the round-trip.
+    expect(store.instance.getState().organizacoes).toHaveLength(0);
   });
 
-  test('presses create with the trimmed name', async () => {
-    const user = userEvent.setup();
+  test('the name step labels the field and the submit button per SPEC B :55', async () => {
     await renderScreen();
 
-    await user.type(
-      screen.getByTestId('ORG.create-name-inp'),
-      '  Órgão Teste  ',
+    await irParaEtapaNome();
+
+    expect(screen.getByTestId('ORG.create-name-inp')).toHaveProp(
+      'placeholder',
+      'Nome da organização',
     );
-
-    const button = screen.getByTestId('ORG.create-btn');
-    await waitFor(() => {
-      expect(button).toBeEnabled();
-    });
-    await user.press(button);
-
-    await waitFor(() => {
-      expect(start).toHaveBeenCalledWith('Órgão Teste');
-    });
+    expect(screen.getByTestId('ORG.create-btn')).toHaveTextContent(
+      'Criar organização',
+    );
   });
 
-  test('does not start while the name is only whitespace', async () => {
+  test('an empty submit shows the required-name message and never calls the core', async () => {
+    // SPEC B :252: an empty (or whitespace-only) name is rejected BEFORE
+    // persisting the intent — the message explains, nothing is created.
     await renderScreen();
 
+    await irParaEtapaNome();
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+
+    expect(
+      screen.getByText('Informe o nome da organização.'),
+    ).toBeOnTheScreen();
+    expect(iniciar).not.toHaveBeenCalled();
+
+    // A whitespace-only name is equally rejected (trim).
     await fireEvent.changeText(
       screen.getByTestId('ORG.create-name-inp'),
       '   ',
     );
-    // Button stays disabled, but press guard is also asserted directly.
-    expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
-    expect(start).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText('Informe o nome da organização.'),
+    ).not.toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+    expect(
+      screen.getByText('Informe o nome da organização.'),
+    ).toBeOnTheScreen();
+    expect(iniciar).not.toHaveBeenCalled();
+  });
+
+  test('presses create with the trimmed name and never writes the active project', async () => {
+    // SPEC B §3.3/§5.3: between `pronta` and the "Abrir organização" tap the
+    // device has NO active selection — `ativa` is born only in that tap's
+    // single write, so the form must hand the materializer the trimmed name
+    // and never repoint the legacy active id itself.
+    await renderScreen();
+    await irParaEtapaNome();
+
+    await fireEvent.changeText(
+      screen.getByTestId('ORG.create-name-inp'),
+      '  Órgão Teste  ',
+    );
+
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+
+    await waitFor(() => {
+      expect(iniciar).toHaveBeenCalledWith('Órgão Teste');
+    });
+    await waitFor(() => {
+      expect(projetar).not.toHaveBeenCalled();
+    });
   });
 
   test('an ASCII name at the exact encoded-marker boundary stays enabled', async () => {
     await renderScreen();
+    await irParaEtapaNome();
 
     // 32 + 28 = 60 — the marker fits exactly.
     await fireEvent.changeText(
@@ -180,6 +344,7 @@ describe('CreateOrganization', () => {
 
   test('an accented name is guarded by its encoded length, not the raw one', async () => {
     await renderScreen();
+    await irParaEtapaNome();
 
     // 'Órganização' is 11 raw chars but encodes to 26 (each accented char
     // becomes %XX%XX): 32 + 26 = 58, inside the bound. Pinned so the
@@ -213,6 +378,7 @@ describe('CreateOrganization', () => {
 
   test('an emoji name is guarded by its encoded length', async () => {
     await renderScreen();
+    await irParaEtapaNome();
 
     // Each 🌴 encodes to 12 chars (%F0%9F%8C%B4, 4 bytes × 3): two fit the
     // 28-char encoded-name bound, three do not — both far below the raw
@@ -233,6 +399,7 @@ describe('CreateOrganization', () => {
 
   test('the character counter reads the encoded length against the guard bound', async () => {
     await renderScreen();
+    await irParaEtapaNome();
 
     // ASCII only: encoded and raw lengths agree, and the denominator is the
     // encoded-name bound (28), not the marker length (60).
@@ -257,44 +424,157 @@ describe('CreateOrganization', () => {
   });
 
   test('shows the loading state instead of the button while creating', async () => {
-    mockCreateOrganization({status: 'creating'});
+    // `iniciar` runs the whole materialization; until the document shows the
+    // organization the form stays loading — and never goes back to idle on
+    // its own (the promise keeps running at the root).
+    mockMaterializador({
+      iniciar: () => new Promise<void>(() => {}),
+    });
     await renderScreen();
+    await irParaEtapaNome();
+
+    await fireEvent.changeText(
+      screen.getByTestId('ORG.create-name-inp'),
+      'Minha Org',
+    );
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
     expect(screen.queryByTestId('ORG.create-btn')).not.toBeOnTheScreen();
   });
 
-  test('navigates to Home when the organization is created', async () => {
-    mockCreateOrganization({status: 'success'});
+  test('navigates to OrganizationProvisioning once the document shows the organization', async () => {
+    // SPEC B §3.3 item 2/§5.4: the form does not own the post-registration
+    // journey — as soon as the persisted document holds the organization
+    // (the promise still running at the root), the provisioning surface
+    // takes over. Home is never a form-local destination: only the
+    // confirmation's "Abrir organização" tap may open it.
+    mockMaterializador({iniciar: registrar});
     await renderScreen();
+    await irParaEtapaNome();
 
-    expect(await screen.findByText('HOME-REACHED')).toBeOnTheScreen();
+    await fireEvent.changeText(
+      screen.getByTestId('ORG.create-name-inp'),
+      'Órgão Teste',
+    );
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+
+    expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
+    // A replace, not a push: the form is gone with its draft handed over.
+    expect(screen.queryByTestId('ORG.create-name-inp')).not.toBeOnTheScreen();
+    expect(screen.queryByText('HOME-REACHED')).not.toBeOnTheScreen();
   });
 
-  test('navigates to ErrorBottomSheet when the create fails', async () => {
-    mockCreateOrganization({
-      status: 'error',
-      error: new Error('boom'),
+  test('a rejection with no document entry opens the error sheet and keeps the name', async () => {
+    // The materializer rejects before anything is persisted (a template
+    // package failure, an MMKV write refusal): nothing was created, so the
+    // form stays — draft intact — with the error explained.
+    mockMaterializador({
+      iniciar: async () => {
+        throw new Error('boom');
+      },
     });
     await renderScreen();
+    await irParaEtapaNome();
+    await fireEvent.changeText(
+      screen.getByTestId('ORG.create-name-inp'),
+      '  Órgão Teste  ',
+    );
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
     expect(await screen.findByText('ERROR: boom')).toBeOnTheScreen();
+    // The sheet is a modal over the form, so the form screen reads
+    // aria-hidden — the draft's persistence is asserted through the
+    // hidden query, exactly the value that was typed.
+    expect(
+      screen.getByTestId('ORG.create-name-inp', {includeHiddenElements: true}),
+    ).toHaveProp('value', '  Órgão Teste  ');
+    // The failure re-arms the form: the user can correct and retry.
+    expect(
+      screen.getByTestId('ORG.create-btn', {includeHiddenElements: true}),
+    ).toBeOnTheScreen();
   });
 
-  test('an incomplete-org-blocks-create failure routes to OrganizationProvisioning, not the error sheet', async () => {
-    // The device already holds a half-provisioned organization (the errored
-    // attempt's id was lost): the provisioning screen owns the repair — it
-    // retries the reconstructed id — so this error must not dead-end in the
-    // error sheet, and a naive resubmit here would mint a second org.
-    mockCreateOrganization({
-      status: 'error',
-      error: new OrganizationOperationError(
-        'incomplete-org-blocks-create',
-        'an incomplete organization is already being set up',
-      ),
+  test('a pacote_nao_aprovado rejection reaches the sheet with its machine code and factual copy', async () => {
+    // Decisão A/A2+A4: on a delivery binary that skipped the build hook,
+    // the runtime gate refuses with zero writes; the sheet receives the
+    // machine code (advanced section) and the minimal factual copy — never
+    // a "…está salvo" claim (SPEC gap A4).
+    mockMaterializador({
+      iniciar: async () => {
+        throw new ErroPacote(
+          'pacote_nao_aprovado',
+          'file:///fake-docs/coiab/pacotes/monitoramento.comapeocat',
+        );
+      },
     });
+    await renderScreen();
+    await irParaEtapaNome();
+    await fireEvent.changeText(
+      screen.getByTestId('ORG.create-name-inp'),
+      '  Órgão Teste  ',
+    );
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+
+    expect(
+      await screen.findByText(
+        'ERROR: Could not prepare the necessary files on this device. Nothing was created.',
+      ),
+    ).toBeOnTheScreen();
+    expect(
+      await screen.findByText('CODE: pacote_nao_aprovado'),
+    ).toBeOnTheScreen();
+    // The failure re-arms the form: draft intact for a retry.
+    expect(
+      screen.getByTestId('ORG.create-btn', {includeHiddenElements: true}),
+    ).toBeOnTheScreen();
+  });
+
+  test('an organization already in the document routes to OrganizationProvisioning instead of starting', async () => {
+    // SPEC B §5.5/:240: a persisted organization — here a half-provisioned
+    // one whose id survived an interrupted attempt — is never overwritten by
+    // a new `iniciar`: the provisioning screen owns its recovery, so the
+    // form must hand over before the first press.
+    store.instance.setState(documentoComOrganizacao('Órgão Pendente'));
     await renderScreen();
 
     expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
-    expect(screen.queryByText(/incomplete organization/)).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('ORG.create-name-inp')).not.toBeOnTheScreen();
+    expect(iniciar).not.toHaveBeenCalled();
+  });
+
+  test('a settled document (ready, acknowledged, active) leaves an explicitly opened form alone', async () => {
+    // CA12: with a ready organization operating (the §4.2 rule-5 projection
+    // resolves), opening the creation form from Home is an explicit act —
+    // it must not be bounced to a confirmation the user already consumed,
+    // and `iniciar` would refuse a second registration anyway.
+    const pronta: OrganizacaoLocal = {
+      ...documentoComOrganizacao('Órgão Ativa').organizacoes[0]!,
+      estado: 'pronta',
+      confirmacaoPendente: false,
+      materializacao: {
+        monitoramento: {
+          etapa: 'verificado',
+          projectId: 'p-m',
+          template: {versao: '1', hash: 'm'},
+          idsAntesDaCriacao: null,
+        },
+        alertas: {
+          etapa: 'verificado',
+          projectId: 'p-a',
+          template: {versao: '1', hash: 'a'},
+          idsAntesDaCriacao: null,
+        },
+      },
+    };
+    store.instance.setState({
+      versao: 1,
+      organizacoes: [pronta],
+      ativa: {organizacaoId: pronta.id, area: 'monitoramento'},
+    } as EstadoOrganizacoes);
+    await renderScreen();
+    await irParaEtapaNome();
+    expect(screen.getByTestId('ORG.create-name-inp')).toBeOnTheScreen();
+    expect(screen.queryByText('PROVISIONING-REACHED')).not.toBeOnTheScreen();
+    expect(iniciar).not.toHaveBeenCalled();
   });
 });

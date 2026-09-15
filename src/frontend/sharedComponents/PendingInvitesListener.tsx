@@ -5,6 +5,8 @@ import {parseMarker} from '../lib/organization/marker';
 import type {InviteLike} from '../lib/organization/bundle';
 import type {ReconstructedOrganization} from '../lib/organization/reconstruct';
 import {useOrganizations} from '../hooks/organization/useOrganizations';
+import {classificarDocumento} from '../lib/organization/coiabOrganizations';
+import {useCoiabOrganizationsState} from '../contexts/CoiabOrganizationsStoreContext';
 
 /**
  * Which invite surface (if any) the currently pending invites ask for:
@@ -75,8 +77,14 @@ export const PendingInvitesListener = ({
   const {data: invites} = useManyInvites();
   // Suspends like the invite list (rendered inside a Suspense boundary).
   const organizations = useOrganizations();
+  // SPEC B §5.5: while the document is 'preparando' the provisioning screen
+  // owns the flow — a pending invite must not navigate; it stays pending
+  // and routes again once the document reaches 'confirmacao', 'pronta' or
+  // 'nenhum'. The listener never rejects or alters the invite.
+  const documento = classificarDocumento(useCoiabOrganizationsState());
 
   useEffect(() => {
+    if (documento === 'preparando') return;
     const route = selectPendingInviteRoute(
       invites,
       currentRouteName,
@@ -91,6 +99,7 @@ export const PendingInvitesListener = ({
   }, [
     invites,
     organizations,
+    documento,
     currentRouteName,
     navigateToInviteScreen,
     navigateToOrgInviteScreen,

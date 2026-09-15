@@ -43,9 +43,7 @@ export function createOrganizationActivation({
   hasPendingWork = () => false,
   getPendingWorkProjectId = () => null,
   cancelPresentation = async () => {},
-  resumePreparation = async () => {
-    throw new Error('preparation-adapter-required');
-  },
+  resumePreparation,
 }: {
   store: CoiabOrganizationsStore;
   hasPendingWork?: () => boolean;
@@ -157,10 +155,26 @@ export function createOrganizationActivation({
     );
   }
 
+  // SPEC A §5.3:189 — the 2/2 role validation: the device must hold a real
+  // role in BOTH materialized projects, in the canonical area order. The
+  // single definition is shared by the opening attempt and the public
+  // revalidation so neither can diverge on what "access" means.
+  async function validarPapeis(org: OrganizacaoLocal) {
+    for (const area of AREAS) {
+      const project = await getProject(org.materializacao[area].projectId!);
+      const {roleId} = await project.$getOwnRole();
+      if (
+        ![CREATOR_ROLE_ID, COORDINATOR_ROLE_ID, MEMBER_ROLE_ID].includes(roleId)
+      )
+        throw new Error('access-unavailable');
+    }
+  }
+
   async function performActivation(
     id: string,
     options: ActivationOptions,
     restoring = false,
+    force = false,
   ) {
     const previous = instance.getState();
     const document = store.instance.getState();
@@ -176,8 +190,16 @@ export function createOrganizationActivation({
       previous.status === 'ready' &&
       sameOrganization &&
       (!options.area || options.area === document.ativa?.area)
-    )
+    ) {
+      // Fase 11b: `force` (the revalidate delegation) must not trust the
+      // open context — the attempt re-observes BOTH materialized projects
+      // through the 10a-fix-1 revalidation. That pass is READ-ONLY: it
+      // never touches the document and never bumps the generation, so it
+      // deliberately runs before the pending-work guard (blocking a
+      // re-check of the same context is not a context change, SPEC A §5.2).
+      if (force) return performRevalidation();
       return true;
+    }
     // A-v4-1 (SPEC A §5.2:172/§5.3:180): the pending-work guard applies to
     // EVERY context change — including an area switch with `organizacaoId`
     // unchanged. The predicate is global ("is there work in progress?"): the
@@ -208,16 +230,7 @@ export function createOrganizationActivation({
         (org.confirmacaoPendente && !options.acknowledge)
       )
         throw new Error('invalid-organization');
-      for (const area of AREAS) {
-        const project = await getProject(org.materializacao[area].projectId!);
-        const {roleId} = await project.$getOwnRole();
-        if (
-          ![CREATOR_ROLE_ID, COORDINATOR_ROLE_ID, MEMBER_ROLE_ID].includes(
-            roleId,
-          )
-        )
-          throw new Error('access-unavailable');
-      }
+      await validarPapeis(org);
       revalidating = false;
       // A-v4-1: the same global predicate re-checked before the commit — work
       // that appeared during validation still blocks it (§5.2:164).
@@ -313,6 +326,61 @@ export function createOrganizationActivation({
     }
   }
 
+  // Fase 11b (consult Phase 11): `revalidate` delegates to the activation
+  // engine itself — the forced re-open of the EXACT selection the document
+  // holds (`ativa.organizacaoId` + `ativa.area`), serialized under the same
+  // shared intent lock as every other entry point. `force` skips
+  // performActivation's same-organization ready short-circuit, so the open
+  // context is genuinely RE-OBSERVED (both materialized projects, canonical
+  // area order) instead of being trusted.
+  //
+  // The Fase 10a-fix-1 entry guard survives INSIDE the delegation: the
+  // revalidation only ACTS on an open context (`ready` with `ativa`). During
+  // `loading`/`opening` an activation owns the engine; from `recovery`,
+  // `absent`, `selection`, `preparing` or `failure` the call is a strict
+  // no-op — nothing published, no core call — and the 10a-fix-1 tests pin
+  // exactly that. The forced re-pass itself keeps the 10a-fix-1 contract
+  // (`performRevalidation`): success publishes NOTHING and creates no
+  // generation; failure clears `origemValidada` and publishes the same
+  // recovery publication the open-organization failure path uses (FIX-C),
+  // preserving `ativa` (regra 8) and the origin identity (FIX-D).
+  function revalidate() {
+    return runExclusive('revalidate', async () => {
+      const {ativa} = store.instance.getState();
+      if (!ativa || instance.getState().status !== 'ready') return false;
+      return performActivation(
+        ativa.organizacaoId,
+        {area: ativa.area},
+        true,
+        true,
+      );
+    });
+  }
+
+  async function performRevalidation() {
+    const previous = instance.getState();
+    if (previous.status !== 'ready') return false;
+    const document = store.instance.getState();
+    const {ativa} = document;
+    if (!ativa) return false;
+    try {
+      const org = document.organizacoes.find(
+        item => item.id === ativa.organizacaoId,
+      );
+      if (!org || org.estado !== 'pronta')
+        throw new Error('invalid-organization');
+      await validarPapeis(org);
+      return true;
+    } catch {
+      origemValidada = undefined;
+      instance.setState(
+        {...previous, status: 'recovery', error: 'access-unavailable'},
+        true,
+      );
+      return false;
+    }
+  }
+
   const automaticallyResumed = new Set<string>();
   function retryPreparation(id: string) {
     return runExclusive(`retryPreparation:${id}`, () => performPreparation(id));
@@ -323,6 +391,18 @@ export function createOrganizationActivation({
       .getState()
       .organizacoes.find(item => item.id === id);
     if (!org || org.estado === 'pronta') return false;
+    // SPEC A §4.2 regra 7: 'falha_recuperavel' is recorded when a resume was
+    // ATTEMPTED and failed. A missing adapter is absent capability, not a
+    // failed attempt: the organization stays exactly as persisted
+    // ('preparando', areaEmExecucao intact, no journal write) and the
+    // published state says why using statuses the engine already has.
+    if (!resumePreparation) {
+      instance.setState({
+        status: 'unavailable',
+        error: 'preparation-adapter-required',
+      });
+      return false;
+    }
     store.instance.setState(state => ({
       organizacoes: state.organizacoes.map(item =>
         item.id === id ? {...item, estado: 'preparando' as const} : item,
@@ -472,6 +552,7 @@ export function createOrganizationActivation({
   return {
     instance,
     activate,
+    revalidate,
     initialize,
     retryPreparation,
     recoverPendingWork,

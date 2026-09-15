@@ -41,7 +41,7 @@ describe('Onboarding - Device Naming Test', () => {
     await expect(deviceReadyMessage).toBeDisplayed();
 
     // SPEC 10.1: the Success fork is organization-first — Create Organization
-    // (primary) and Join an Organization (secondary).
+    // (primary) and Wait for an invitation (secondary).
     const createOrgButton = await $(byResourceId('ONBOARDING.create-org-btn'));
     await expect(createOrgButton).toBeDisplayed();
 

@@ -129,6 +129,81 @@ export function derivarProjectIdAtivo(
 }
 
 /**
+ * The startup gate's document-first read (SPEC B §3.3 items 2-3): the
+ * persisted document decides what the device may open BEFORE the
+ * reconstructed core state is consulted. Any organization still being
+ * prepared — including a recoverable failure, which SPEC B treats as the
+ * same "preparation in progress" case — keeps the whole document in
+ * 'preparando'; a ready organization whose confirmation was never
+ * acknowledged is 'confirmacao'; only when every organization is ready
+ * and acknowledged does the document say 'pronta'; with no organizations
+ * at all it says 'nenhum' and the reconstruction alone rules.
+ */
+export type DocumentoGate = 'nenhum' | 'preparando' | 'confirmacao' | 'pronta';
+
+export function classificarDocumento(
+  estado: EstadoOrganizacoes,
+): DocumentoGate {
+  if (!estado.organizacoes.length) return 'nenhum';
+  if (estado.organizacoes.some(organizacao => organizacao.estado !== 'pronta'))
+    return 'preparando';
+  if (estado.organizacoes.some(organizacao => organizacao.confirmacaoPendente))
+    return 'confirmacao';
+  return 'pronta';
+}
+
+/**
+ * §6.1 presentation read for the Organizations selector (CA05): the active
+ * organization comes first, and only it is marked `atual`; every other
+ * organization follows by name (`localeCompare`), with the id as tie-break.
+ * Duplicate names receive a shortened local identifier
+ * (`nome · id.slice(0, 4)`) — on EVERY organization sharing the name, not
+ * just the second: a bare name beside suffixed siblings would still be
+ * ambiguous. Incomplete/unavailable organizations are identified but never
+ * `ativavel` (activation needs `pronta` without a pending confirmation;
+ * recovery and the confirmation itself are separate actions). Pure: reads
+ * the document, never mutates it or its organization list.
+ */
+export function ordenarOrganizacoes(
+  estado: EstadoOrganizacoes,
+): Array<{id: string; rotulo: string; atual: boolean; ativavel: boolean}> {
+  const nomesRepetidos = new Map<string, number>();
+  for (const organizacao of estado.organizacoes) {
+    nomesRepetidos.set(
+      organizacao.nome,
+      (nomesRepetidos.get(organizacao.nome) ?? 0) + 1,
+    );
+  }
+  const rotulo = (organizacao: OrganizacaoLocal): string => {
+    const repetido = (nomesRepetidos.get(organizacao.nome) ?? 0) > 1;
+    return repetido
+      ? `${organizacao.nome} · ${organizacao.id.slice(0, 4)}`
+      : organizacao.nome;
+  };
+  const ativaId = estado.ativa?.organizacaoId;
+  const listados = [...estado.organizacoes]
+    .sort(
+      (a, b) =>
+        a.nome.localeCompare(b.nome) ||
+        (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+    )
+    .map(organizacao => ({
+      id: organizacao.id,
+      rotulo: rotulo(organizacao),
+      atual: organizacao.id === ativaId,
+      ativavel:
+        organizacao.estado === 'pronta' && !organizacao.confirmacaoPendente,
+    }));
+  const indiceAtiva = ativaId
+    ? listados.findIndex(linha => linha.id === ativaId)
+    : -1;
+  if (indiceAtiva > 0) {
+    const [ativa] = listados.splice(indiceAtiva, 1);
+    if (ativa) listados.unshift(ativa);
+  }
+  return listados;
+}
+/**
  * Parses a persisted document, rejecting anything that does not satisfy the
  * §4.2 shape — a corrupt or foreign payload must never be rehydrated as the
  * organizational source of truth.

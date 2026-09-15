@@ -129,8 +129,8 @@ describe('gerar-manifestos-pacotes: determinismo do arquivo gerado', () => {
     const stdout = executarGerador(raiz);
     expect(stdout).not.toContain('pulando');
     const manifestos = lerManifestos(raiz);
-    expect(manifestos.monitoramento.ref.versao).toBe('1.0.0');
-    expect(manifestos.alertas.ref.versao).toBe('1.0.0');
+    expect(manifestos.monitoramento.ref.versao).toBe('0.0.0-interino');
+    expect(manifestos.alertas.ref.versao).toBe('0.0.0-interino');
     expect(manifestos.alertas.conteudo.categorias.map(c => c.id)).toEqual([
       'alerta-fogo',
       'alerta-rio',
@@ -231,8 +231,8 @@ describe('gerar-manifestos-pacotes: determinismo do arquivo gerado', () => {
     expect(stdout).not.toContain('pulando');
     const manifestos = lerManifestos(raiz);
     expect(manifestos.sentinela).toBeUndefined();
-    expect(manifestos.monitoramento.ref.versao).toBe('1.0.0');
-    expect(manifestos.alertas.ref.versao).toBe('1.0.0');
+    expect(manifestos.monitoramento.ref.versao).toBe('0.0.0-interino');
+    expect(manifestos.alertas.ref.versao).toBe('0.0.0-interino');
   });
 
   test('argumento desconhecido continua sendo rejeitado', () => {

@@ -5,8 +5,6 @@ onboarding	flows-onboarding--device-naming	route:DeviceNaming	2	04 Device Naming
 onboarding	flows-onboarding--success	route:Success	2	05 Success
 onboarding	flows-onboarding--join-organization-intro	route:JoinOrganizationIntro	2	06a Join Organization Intro
 onboarding	flows-onboarding--create-organization	route:CreateOrganization	2	06b Create Organization
-onboarding	flows-onboarding--join-project-intro	route:JoinProjectIntro	2	07a Join Project Intro (legacy)
-onboarding	flows-onboarding--map-on-your-own-intro	route:MapOnYourOwnIntro	2	07b Map On Your Own Intro (legacy)
 org-layer	flows-orglayer--organization-provisioning	route:OrganizationProvisioning	2	01 Organization Provisioning
 org-layer	flows-orglayer--organization-invite-received	route:OrganizationInviteReceived	2	02 Organization Invite Received (no bundle)
 org-layer	flows-orglayer--review-organization-invite	route:ReviewOrganizationInvite	2	03 Review Organization Invite

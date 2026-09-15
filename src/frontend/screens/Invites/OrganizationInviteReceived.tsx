@@ -171,6 +171,19 @@ export const OrganizationInviteReceived = ({
       return;
     }
 
+    // 6b-i/SPEC B §5.5: a complete accept REGISTERS the organization and
+    // activates no project — the provisioning surface owns the `pronta`
+    // publication and the pending confirmation (SPEC A §4.2 rule 9), so
+    // the project-id ladder below does not apply. Reset (not goBack) so
+    // the stale invite context cannot return to this sheet.
+    if (result.registeredOrganizationId !== undefined) {
+      navigation.reset({
+        index: 0,
+        routes: [{name: 'OrganizationProvisioning'}],
+      });
+      return;
+    }
+
     // SPEC 8.6: land on the Monitoramento slot of the organization — this
     // accept's own result first, then the id the hook activated.
     const projectId =
@@ -190,11 +203,7 @@ export const OrganizationInviteReceived = ({
     // confirmation — the gate decides the landing (SPEC 10.1/E6).
     const isInOnboarding = navigation
       .getState()
-      .routes.find(
-        route =>
-          route.name === 'JoinProjectIntro' ||
-          route.name === 'JoinOrganizationIntro',
-      );
+      .routes.find(route => route.name === 'JoinOrganizationIntro');
     if (isInOnboarding) {
       navigation.replace('InviteSuccessfullyAccepted', {
         projectName,

@@ -11,6 +11,16 @@ import {IntlProvider} from 'react-intl';
 import {JoinOrganizationIntro} from './JoinOrganizationIntro';
 import type {AppStackParamsList} from '../../sharedTypes/navigation';
 
+// pt-BR copied verbatim from SPEC A :143 and SPEC B :60. The copy is
+// asserted through the i18n keys (exact pt-BR text), not the English
+// defaultMessage (SPEC B :100-102).
+const PT_MESSAGES = {
+  '$1screens.OrganizationSetup.waitInviteTitle': 'Aguardar convite',
+  '$1screens.OrganizationSetup.waitInviteBody':
+    'Peça a uma pessoa responsável pela organização para convidar este dispositivo.',
+  '$1screens.OrganizationSetup.backButton': 'Voltar',
+};
+
 const Stack = createNativeStackNavigator<AppStackParamsList>();
 const navigationRef = createNavigationContainerRef<AppStackParamsList>();
 
@@ -18,7 +28,7 @@ const SuccessStub = () => <Text>BACK-REACHED</Text>;
 
 async function renderScreen() {
   return render(
-    <IntlProvider locale="en" messages={{}}>
+    <IntlProvider locale="pt-BR" messages={PT_MESSAGES}>
       <NavigationContainer ref={navigationRef}>
         <Stack.Navigator initialRouteName="Success">
           <Stack.Screen name="Success" component={SuccessStub} />
@@ -34,26 +44,26 @@ async function renderScreen() {
 }
 
 describe('JoinOrganizationIntro', () => {
-  test('renders title, waiting body and OK button', async () => {
+  test('renders title, waiting body and back button in exact pt-BR', async () => {
     await renderScreen();
     navigationRef.navigate('JoinOrganizationIntro');
 
-    expect(await screen.findByText('Join an Organization')).toBeOnTheScreen();
+    expect(await screen.findByText('Aguardar convite')).toBeOnTheScreen();
     expect(
       screen.getByText(
-        'Ask a coordinator of an existing Organization to invite this device. When the invitation arrives it will appear on this screen.',
+        'Peça a uma pessoa responsável pela organização para convidar este dispositivo.',
       ),
     ).toBeOnTheScreen();
-    expect(screen.getByTestId('ORG.join-intro-ok-btn')).toBeOnTheScreen();
+    expect(screen.getByTestId('ORG.join-intro-back-btn')).toBeOnTheScreen();
   });
 
-  test('OK goes back to the previous screen', async () => {
+  test('the back button returns to the previous screen', async () => {
     await renderScreen();
     navigationRef.navigate('JoinOrganizationIntro');
 
-    expect(await screen.findByText('Join an Organization')).toBeOnTheScreen();
+    expect(await screen.findByText('Aguardar convite')).toBeOnTheScreen();
 
-    await fireEvent.press(screen.getByTestId('ORG.join-intro-ok-btn'));
+    await fireEvent.press(screen.getByTestId('ORG.join-intro-back-btn'));
 
     expect(await screen.findByText('BACK-REACHED')).toBeOnTheScreen();
   });

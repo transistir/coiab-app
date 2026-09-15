@@ -7,26 +7,33 @@ import {byResourceId, byTextMatches} from '../../utils/selectors';
 // Create Organization journey (the fork's primary path), which lands on the
 // Map screen the same way the old solo journey did.
 describe('Onboarding - Create Organization Journey', () => {
-  it('should navigate to Create Organization screen', async () => {
+  it('should navigate to the Create Organization intro', async () => {
     const createOrgButton = await $(byResourceId('ONBOARDING.create-org-btn'));
     await createOrgButton.click();
 
-    const title = await $(byTextMatches('Name your Organization'));
+    const title = await $(byTextMatches('Create Organization'));
     await expect(title).toBeDisplayed();
-  });
 
-  it('should display intro content', async () => {
-    await expect(
-      $(byTextMatches('It contains the Monitoramento and Alertas projects')),
-    ).toBeDisplayed();
+    const introBody = await $(
+      byTextMatches('Monitoramento and Alertas, with categories ready to use'),
+    );
+    await expect(introBody).toBeDisplayed();
+
+    const continueButton = await $(
+      byResourceId('ORG.create-intro-continue-btn'),
+    );
+    await continueButton.click();
 
     const nameInput = await $(byResourceId('ORG.create-name-inp'));
     await expect(nameInput).toBeDisplayed();
   });
 
-  it('should disable the create button while the name is empty', async () => {
+  it('should reject an empty submit with the required-name message', async () => {
     const createButton = await $(byResourceId('ORG.create-btn'));
-    await expect(createButton).not.toBeEnabled();
+    await createButton.click();
+
+    const emptyError = await $(byTextMatches('Enter the Organization name'));
+    await expect(emptyError).toBeDisplayed();
   });
 
   it('should create the Organization and navigate to the map', async () => {
