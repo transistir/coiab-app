@@ -83,11 +83,8 @@ export const InviteReceived = ({
         onSuccess: projectId => {
           const isInOnboarding = navigation.getState().routes.find(
             // SPEC E6: the onboarding fork is organization-first — the
-            // waiting screen is JoinOrganizationIntro; JoinProjectIntro stays
-            // reachable via deep link/debug (SPEC 18).
-            route =>
-              route.name === 'JoinProjectIntro' ||
-              route.name === 'JoinOrganizationIntro',
+            // waiting screen is JoinOrganizationIntro.
+            route => route.name === 'JoinOrganizationIntro',
           );
 
           // If the user is on the onboarding screen, simply show the invites accepted modal

@@ -18,11 +18,6 @@ import {ObservationScreen} from '../../screens/Observation';
 import {AppSettings} from '../../screens/ComapeoSettings/index.tsx';
 import {ProjectSettings} from '../../screens/ProjectSettings';
 import {CoordinateFormat} from '../../screens/ComapeoSettings/CoordinateFormat.tsx';
-import {
-  CreateOrNameSoloProject,
-  createNavigationOptions as createNameProjectNavOptions,
-} from '../../screens/ProjectCreation/CreateOrNameSoloProject';
-import {ProjectCreated} from '../../screens/ProjectCreation/CreateOrNameSoloProject/ProjectCreated';
 import {YourTeam} from '../../screens/YourTeam';
 import {SelectInviteDevice} from '../../screens/YourTeam/SelectInviteDevice';
 import {SelectMapShareDevice} from '../../screens/BackgroundMaps/SelectMapShareDevice';
@@ -71,7 +66,6 @@ import {DataAndPrivacy} from '../../screens/ComapeoSettings/DataAndPrivacy/DataA
 import {SettingsPrivacyPolicy} from '../../screens/ComapeoSettings/DataAndPrivacy/SettingsPrivacyPolicy';
 import {TrackEdit} from '../../screens/TrackEdit';
 import {HeaderLeft as HeaderLeftTrackEdit} from '../../screens/TrackEdit/HeaderLeft';
-import {Categories} from '../../screens/Categories.tsx';
 import {SaveButton} from '../../sharedComponents/SaveButton.tsx';
 import {AddRemoteArchive} from '../../screens/RemoteArchive/AddRemoteArchive.tsx';
 import {SuccessfullyAddedArchive} from '../../screens/RemoteArchive/SuccessfullyAddedArchive.tsx';
@@ -85,9 +79,6 @@ import {AudioRecording} from '../../screens/Audio/AudioRecording/index.tsx';
 import {RemovedFromProjectBottomSheet} from '../../screens/RemovedFromProjectBottomSheet.tsx';
 import {ObservationMetadata} from '../../screens/ObservationMetadata.tsx';
 import {BackgroundMapErrorBottomSheet} from '../../screens/BackgroundMaps/ErrorBottomSheet.tsx';
-import {InviteCollaboratorsScreen} from '../../screens/YourTeam/InviteCollaborators.tsx';
-import {EditProjectDetails} from '../../screens/ProjectSettings/EditProjectDetails.tsx';
-import {AllProjects} from '../../screens/AllProjects.tsx';
 import {TrackRecordingActive} from '../../screens/TrackRecordingActive.tsx';
 import {
   RemoteArchiveScreen,
@@ -112,7 +103,6 @@ import {
 import {AttachedPhotoPreviewModal} from '../../screens/PhotoPreviewModal/AttachedPhotoPreviewModal.tsx';
 import {sharedPhotoPreviewNavOptions} from '../../screens/PhotoPreviewModal/sharedNavOptions.tsx';
 import {ConfirmPasscodeBottomSheet} from '../../screens/ComapeoSettings/Security/AppPasscode/ConfirmPasscodeSheet.tsx';
-import {ShareProjectStats} from '../../screens/ProjectCreation/ShareProjectStats.tsx';
 import {ExportSuccess} from '../../screens/ExportSuccess.tsx';
 import {AppUsagePromptInterstitial} from '../../screens/AppUsagePromptInterstitial.tsx';
 import {AppUsageSharingSuccess} from '../../screens/AppUsageSharingSuccess.tsx';
@@ -120,10 +110,6 @@ import {ProjectStatistics} from '../../screens/ProjectStatistics/index.tsx';
 import {ProjectStatsTurnedOffBottomSheet} from '../../screens/ProjectStatistics/ProjectStatsTurnedOffBottomSheet.tsx';
 import {EarlyAccessOffBottomSheet} from '../../screens/ComapeoSettings/EarlyAccessOffBottomSheet.tsx';
 import {EarlyAccess} from '../../screens/ComapeoSettings/EarlyAccess.tsx';
-import {Collaborate} from '../../screens/ProjectCreation/Collaborate.tsx';
-import {JoinAProject} from '../../screens/ProjectCreation/JoinAProject.tsx';
-import {StartNewProjectIntro} from '../../screens/ProjectCreation/StartNewProjectIntro.tsx';
-import {NameDefaultProjectIntro} from '../../screens/ProjectCreation/NameDefaultProjectIntro.tsx';
 import {
   CollaboratorInfo,
   createNavigationOptions as createCollaboratorInfoNavOptions,
@@ -252,31 +238,6 @@ export const createAppScreens = ({
         name="CoordinateFormat"
         component={CoordinateFormat}
         options={{headerTitle: intl(CoordinateFormat.navTitle)}}
-      />
-      <RootStack.Screen
-        name="Collaborate"
-        component={Collaborate}
-        options={{headerTitle: intl(Collaborate.navTitle)}}
-      />
-      <RootStack.Screen
-        name="JoinAProject"
-        component={JoinAProject}
-        options={{headerTitle: intl(JoinAProject.navTitle)}}
-      />
-      <RootStack.Screen
-        name="CreateProject"
-        component={CreateOrNameSoloProject}
-        options={createNameProjectNavOptions({intl})}
-      />
-      <RootStack.Screen
-        name="NameSoloProject"
-        component={CreateOrNameSoloProject}
-        options={createNameProjectNavOptions({intl})}
-      />
-      <RootStack.Screen
-        name="ProjectCreated"
-        component={ProjectCreated}
-        options={{headerShown: false}}
       />
       <RootStack.Screen
         name="YourTeam"
@@ -414,11 +375,6 @@ export const createAppScreens = ({
         })}
       />
       <RootStack.Screen
-        name="Categories"
-        component={Categories}
-        options={{headerTitle: intl(Categories.navTitle)}}
-      />
-      <RootStack.Screen
         name="BackgroundMaps"
         component={BackgroundMapsScreen}
         options={createBackgroundMapsNavigationOptions({intl})}
@@ -508,28 +464,6 @@ export const createAppScreens = ({
         options={{headerTitle: intl(ObservationMetadata.navTitle)}}
       />
       <RootStack.Screen
-        name="InviteCollaborators"
-        component={InviteCollaboratorsScreen}
-        options={{
-          headerShown: false,
-        }}
-      />
-      <RootStack.Screen
-        name="EditProjectDetails"
-        component={EditProjectDetails}
-        options={{
-          headerTitle: intl(EditProjectDetails.navTitle),
-          headerRight: () => (
-            <SaveButton onPress={() => {}} isLoading={false} />
-          ),
-        }}
-      />
-      <RootStack.Screen
-        name="ShareProjectStats"
-        component={ShareProjectStats}
-        options={{headerShown: false}}
-      />
-      <RootStack.Screen
         name="DraftPhotoPreviewModal"
         component={DraftPhotoPreviewModal}
         options={DraftPhotoPreviewModalNavOptions({intl})}
@@ -553,16 +487,6 @@ export const createAppScreens = ({
         name="EarlyAccess"
         component={EarlyAccess}
         options={{headerTitle: intl(EarlyAccess.navTitle)}}
-      />
-      <RootStack.Screen
-        name="StartNewProjectIntro"
-        component={StartNewProjectIntro}
-        options={{headerTitle: intl(StartNewProjectIntro.navTitle)}}
-      />
-      <RootStack.Screen
-        name="NameDefaultProjectIntro"
-        component={NameDefaultProjectIntro}
-        options={{headerTitle: intl(NameDefaultProjectIntro.navTitle)}}
       />
       <RootStack.Screen
         name="LeaveProjectWarning"
@@ -644,13 +568,6 @@ export const createAppScreens = ({
       <RootStack.Screen
         name="EarlyAccessOff"
         component={EarlyAccessOffBottomSheet}
-      />
-      <RootStack.Screen
-        name="AllProjects"
-        component={AllProjects}
-        options={{
-          headerShown: false,
-        }}
       />
       <RootStack.Screen
         name="ConfirmTrackDiscardBottomSheet"

@@ -11,9 +11,6 @@
   "$1Navigation.Menu.bgMap": {
     "message": "Background Map"
   },
-  "$1Navigation.Menu.collaborate": {
-    "message": "Collaborate"
-  },
   "$1Navigation.Menu.coordinator": {
     "message": "Coordinator"
   },
@@ -103,9 +100,6 @@
   },
   "$1SaveTrack.HeaderLeft.discardTrackDescription": {
     "message": "Your Track will not be saved. This cannot be undone."
-  },
-  "$1Screens.ProjectSettings.configTitle": {
-    "message": "Project Categories"
   },
   "$1Screens.ProjectSettings.projectStatsOff": {
     "message": "Project Statistics | OFF"
@@ -199,21 +193,6 @@
   },
   "$1TrackBottomSheet.StartStopTrack.trackingRequirement": {
     "message": "Move one meter to see track."
-  },
-  "$1allProjects.close": {
-    "message": "Close"
-  },
-  "$1allProjects.newCollab": {
-    "message": "New Collaboration"
-  },
-  "$1screen.EditProjectDetails.navTitle": {
-    "message": "Edit Info"
-  },
-  "$1screen.EditProjectDetails.projectDescription": {
-    "message": "Project Description"
-  },
-  "$1screen.EditProjectDetails.projectName": {
-    "message": "Project Name"
   },
   "$1screen.Settings.ProjectSettings.YourTeam.ReviewAndInvite.ReviewInvitation.sendInvite": {
     "message": "Send Invite"
@@ -656,27 +635,6 @@
   "$1screens.Onboarding.JoinOrganizationIntro.title": {
     "message": "Join an Organization"
   },
-  "$1screens.Onboarding.MapOnYourOwnIntro.addAudio": {
-    "message": "Add audio recordings."
-  },
-  "$1screens.Onboarding.MapOnYourOwnIntro.exploreOnYourOwn": {
-    "message": "Explore CoMapeo on your own."
-  },
-  "$1screens.Onboarding.MapOnYourOwnIntro.inviteCollaborators": {
-    "message": "Invite collaborators anytime."
-  },
-  "$1screens.Onboarding.MapOnYourOwnIntro.snapPhotos": {
-    "message": "Snap photos on-the-go."
-  },
-  "$1screens.Onboarding.MapOnYourOwnIntro.startFirstMap": {
-    "message": "Start First Map"
-  },
-  "$1screens.Onboarding.MapOnYourOwnIntro.title": {
-    "message": "Map On Your Own"
-  },
-  "$1screens.Onboarding.MapOnYourOwnIntro.trackPaths": {
-    "message": "Track paths walked."
-  },
   "$1screens.OnboardingPrivacyPolicy.shareDiagnostics": {
     "message": "Share Diagnostic Information"
   },
@@ -885,63 +843,6 @@
   "$1screens.Setting.ProjectSettings.YourTeam.title": {
     "message": "Team"
   },
-  "$1screens.Settings.Collaborate.inviteDevices": {
-    "message": "Invite Devices"
-  },
-  "$1screens.Settings.Collaborate.joinProject": {
-    "message": "Join a Project"
-  },
-  "$1screens.Settings.Collaborate.startNewProject": {
-    "message": "Start New Project"
-  },
-  "$1screens.Settings.Collaborate.title": {
-    "message": "Collaborate"
-  },
-  "$1screens.Settings.Config.importCategories": {
-    "message": "Import Categories"
-  },
-  "$1screens.Settings.Config.importSuccessTitle": {
-    "message": "Successfully imported categories:"
-  },
-  "$1screens.Settings.Config.navTitle": {
-    "message": "Categories"
-  },
-  "$1screens.Settings.Config.okButton": {
-    "message": "OK"
-  },
-  "$1screens.Settings.CreateOrJoinProject.CreateProject.title": {
-    "message": "Start New Project"
-  },
-  "$1screens.Settings.CreateOrJoinProject.CreateProject.titleSoloProject": {
-    "message": "Name My Project"
-  },
-  "$1screens.Settings.CreateOrJoinProject.ProjectCreated.done": {
-    "message": "Done"
-  },
-  "$1screens.Settings.CreateOrJoinProject.ProjectCreated.inviteDevice": {
-    "message": "Invite a Device"
-  },
-  "$1screens.Settings.CreateOrJoinProject.ProjectCreated.success": {
-    "message": "Success!"
-  },
-  "$1screens.Settings.CreateOrJoinProject.createProjectButton": {
-    "message": "Create"
-  },
-  "$1screens.Settings.CreateOrJoinProject.enterName": {
-    "message": "Project Name"
-  },
-  "$1screens.Settings.CreateOrJoinProject.saveProjectButton": {
-    "message": "Save"
-  },
-  "$1screens.Settings.JoinAProject.description": {
-    "message": "Ask a project coordinator to receive a project invitation."
-  },
-  "$1screens.Settings.JoinAProject.heading": {
-    "message": "Coordinate with your team."
-  },
-  "$1screens.Settings.JoinAProject.title": {
-    "message": "Join a Project"
-  },
   "$1screens.Settings.MapManagement.BackgroundMaps.cannotBeUndone": {
     "message": "This cannot be undone."
   },
@@ -972,18 +873,6 @@
   "$1screens.Settings.MapManagement.BackgroundMaps.sendMap": {
     "message": "Send Map"
   },
-  "$1screens.Settings.StartNewProjectIntro.description": {
-    "message": "Invite devices to a separate and empty project."
-  },
-  "$1screens.Settings.StartNewProjectIntro.heading": {
-    "message": "Start a new project with no observations."
-  },
-  "$1screens.Settings.StartNewProjectIntro.nextButton": {
-    "message": "Next"
-  },
-  "$1screens.Settings.StartNewProjectIntro.title": {
-    "message": "Start New Project"
-  },
   "$1screens.Settings.YourTeam.InviteDeclined": {
     "message": "Invitation Declined"
   },
@@ -992,15 +881,6 @@
   },
   "$1screens.Settings.YourTeam.inviteDeclinedOrganizationDes": {
     "message": "This device has declined your invitation. They have not joined the Organization."
-  },
-  "$1screens.ShareProjectStats.shareProjectStats": {
-    "message": "Share Project Statistics"
-  },
-  "$1screens.ShareProjectStats.skip": {
-    "message": "No, Skip for Now"
-  },
-  "$1screens.ShareProjectStats.yesShare": {
-    "message": "Yes, Share Stats"
   },
   "$1screens.Sync.NoWifiDisplay.buttonText": {
     "message": "Close"

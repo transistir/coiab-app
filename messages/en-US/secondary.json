@@ -116,9 +116,6 @@
   "ProjectSettings.RemoteArchive.WhatsIncludedSheet.tracks": {
     "message": "Tracks"
   },
-  "Screens.ProjectSettings.editInfo": {
-    "message": "Edit Info"
-  },
   "Screens.ProjectSettings.projectStatsOffDesc": {
     "message": "Project statistics are not being shared."
   },
@@ -130,9 +127,6 @@
   },
   "Screens.ProjectSettings.update": {
     "message": "Update"
-  },
-  "Screens.ProjectSettings.updateCategories": {
-    "message": "Update Set"
   },
   "Screens.ProjectSettings.viewDetails": {
     "message": "View Details"
@@ -312,12 +306,6 @@
   },
   "screen.BackgroundMaps.SelectDevice.titleMapShare": {
     "message": "Select Device"
-  },
-  "screen.EditProjectDetails.descriptionPlaceholder": {
-    "message": "Short Description of the Project, less than 60 characters."
-  },
-  "screen.EditProjectDetails.projectColors": {
-    "message": "Project Card Colors"
   },
   "screen.Settings.ProjectSettings.YourTeam.SelectInviteeRole.coordinatorDescription": {
     "message": "As a Coordinator this device can invite and remove users, and manage project details."
@@ -1114,33 +1102,6 @@
   "screens.Setting.ProjectSettings.YourTeam.pastCollaboratorsDescription": {
     "message": "Devices no longer contributing to this project."
   },
-  "screens.Settings.Config.created": {
-    "message": "Created {date} at {time}"
-  },
-  "screens.Settings.Config.name": {
-    "message": "Category Set:"
-  },
-  "screens.Settings.Config.projectName": {
-    "message": "Project Name:"
-  },
-  "screens.Settings.CreateOrJoinProject.ProjectCreated.projectReady": {
-    "message": "{projectName} is now ready for you to invite devices."
-  },
-  "screens.Settings.CreateOrJoinProject.ProjectCreated.sharedLine": {
-    "message": "Project statistics are being shared with Awana Digital"
-  },
-  "screens.Settings.CreateOrJoinProject.existingProjectName": {
-    "message": "Using an existing project name does not make them the same project."
-  },
-  "screens.Settings.CreateOrJoinProject.keepInMind": {
-    "message": "Keep in mind"
-  },
-  "screens.Settings.CreateOrJoinProject.projectUnique": {
-    "message": "Each project is unique and cannot exchange with another project."
-  },
-  "screens.Settings.CreateOrJoinProject.requestInvites": {
-    "message": "Request invites to join existing projects."
-  },
   "screens.Settings.MapManagement.BackgroundMapUpdated.done": {
     "message": "Done"
   },
@@ -1264,18 +1225,6 @@
   "screens.Settings.MapManagement.UpdatingBackgroundMap.updating": {
     "message": "Updating..."
   },
-  "screens.Settings.NameDefaultProjectIntro.description": {
-    "message": "Invite devices to a new project with all your observations."
-  },
-  "screens.Settings.NameDefaultProjectIntro.heading": {
-    "message": "Start a new project using my observations."
-  },
-  "screens.Settings.NameDefaultProjectIntro.nextButton": {
-    "message": "Next"
-  },
-  "screens.Settings.NameDefaultProjectIntro.title": {
-    "message": "Invite Devices"
-  },
   "screens.Settings.YourTeam.close": {
     "message": "Close"
   },
@@ -1290,15 +1239,6 @@
   },
   "screens.SettingsPrivacyPolicy.navTitle": {
     "message": "Privacy Policy"
-  },
-  "screens.ShareProjectStats.description": {
-    "message": "This will help us gather data about how CoMapeo is being used and what additional features are needed."
-  },
-  "screens.ShareProjectStats.fullyEncrypted": {
-    "message": "Your project will stay fully encrypted"
-  },
-  "screens.ShareProjectStats.infoAnonymized": {
-    "message": "Shared information will be completely anonymized"
   },
   "screens.Sync.NoWifiDisplay.description": {
     "message": "Check device’s settings and connectivity."
@@ -1402,26 +1342,5 @@
   },
   "sharedComponents.RoleWithIcon.participant": {
     "message": "Participant"
-  },
-  "soloProject.inviteCollaborators.goBack": {
-    "message": "Go Back"
-  },
-  "soloProject.inviteCollaborators.introText": {
-    "message": "Share observations with others using CoMapeo."
-  },
-  "soloProject.inviteCollaborators.inviteOnly": {
-    "message": "Only devices invited to this project can contribute."
-  },
-  "soloProject.inviteCollaborators.manageControl": {
-    "message": "Easily manage project contributors and settings."
-  },
-  "soloProject.inviteCollaborators.nameProject": {
-    "message": "Name My Project"
-  },
-  "soloProject.inviteCollaborators.nameProjectDescription": {
-    "message": "Name your project to start collaborating."
-  },
-  "soloProject.inviteCollaborators.title": {
-    "message": "Invite Collaborators"
   }
 }

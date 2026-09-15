@@ -14,7 +14,6 @@ import MaterialIcon from '@react-native-vector-icons/material-icons';
 
 import {useNavigationFromRoot} from '../hooks/useNavigationWithTypes.ts';
 import Exchange from '../images/Exchange.svg';
-import CollaborateIcon from '../images/ProjectParticipant.svg';
 import {BodyText} from '../sharedComponents/Text/BodyText.tsx';
 import {useProjectRoleAndDetails} from '../hooks/useProjectRoleAndDetails.ts';
 import {
@@ -84,10 +83,6 @@ const m = defineMessages({
   coordinatorTools: {
     id: '$1Navigation.Menu.coordinatorTools',
     defaultMessage: 'Coordinator Tools',
-  },
-  collaborate: {
-    id: '$1Navigation.Menu.collaborate',
-    defaultMessage: 'Collaborate',
   },
 });
 export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
@@ -261,19 +256,11 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
             maxWidth: 280,
           }}
           onPress={() => {
-            if (role === 'solo') {
-              navigation.navigate('Collaborate');
-              return;
-            }
             navigation.navigate('Sync');
           }}
           fullSize={false}
-          text={formatMessage(role === 'solo' ? m.collaborate : m.exchange)}
-          renderIcon={
-            role === 'solo'
-              ? () => <CollaborateIcon color={WHITE} />
-              : () => <Exchange color={WHITE} />
-          }
+          text={formatMessage(m.exchange)}
+          renderIcon={() => <Exchange color={WHITE} />}
         />
       </View>
     </View>

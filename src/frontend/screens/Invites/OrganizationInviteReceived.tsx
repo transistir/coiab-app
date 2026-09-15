@@ -203,11 +203,7 @@ export const OrganizationInviteReceived = ({
     // confirmation — the gate decides the landing (SPEC 10.1/E6).
     const isInOnboarding = navigation
       .getState()
-      .routes.find(
-        route =>
-          route.name === 'JoinProjectIntro' ||
-          route.name === 'JoinOrganizationIntro',
-      );
+      .routes.find(route => route.name === 'JoinOrganizationIntro');
     if (isInOnboarding) {
       navigation.replace('InviteSuccessfullyAccepted', {
         projectName,

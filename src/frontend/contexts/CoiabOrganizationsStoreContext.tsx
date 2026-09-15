@@ -196,9 +196,11 @@ export function createCoiabOrganizationsStore({persist} = {persist: false}) {
 
     /**
      * Registers an organization entered by ACCEPTING an invite (SPEC A §4.2
-     * rule 9, :127) in ONE write. The MVP device holds at most one
-     * organization, so any document content refuses the registration, and
-     * every id must be fresh: the organization id must match the marker
+     * rule 9, :127) in ONE write. Decision #25 keeps the MVP open to multiple
+     * organizations per device; what :127 refuses is only STARTING an entry
+     * into another organization while one is already registered — so a call
+     * with any registration present refuses here — and every id must be
+     * fresh: the organization id must match the marker
      * pattern and must differ from both project ids, and the two project
      * ids must differ — otherwise the §4.2 parser would reject the
      * document on the next open. A refusal returns `false` with NO write:
@@ -216,7 +218,10 @@ export function createCoiabOrganizationsStore({persist} = {persist: false}) {
       const state = store.getState();
       // Blocked while a hydration failure is unresolved (SPEC A §5.3).
       if (state.hidratacaoFalhou) return false;
-      // SPEC A :127 — one organization per device in the MVP.
+      // SPEC A :127 — refuses *starting an entry* into another organization
+      // while one is registered (decision #25: the MVP model holds multiple
+      // organizations per device; this is an entry-policy refusal, not a
+      // one-organization limit).
       if (state.organizacoes.length > 0) return false;
       if (!ORGANIZATION_ID_PATTERN.test(p.organizacaoId)) return false;
       const nome = p.nome.trim();

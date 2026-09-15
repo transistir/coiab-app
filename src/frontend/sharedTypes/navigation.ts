@@ -53,7 +53,6 @@ export type RootStackParamsList = {
   Home: NavigatorScreenParams<HomeTabsParamsList>;
   GpsModal: undefined;
   Settings: undefined;
-  Categories: undefined;
   AboutSettings: undefined;
   LanguageSettings: undefined;
   CoordinateFormat: undefined;
@@ -79,8 +78,6 @@ export type RootStackParamsList = {
   Observation: {observationId: string};
   ObservationEdit: undefined;
   ManualGpsScreen: undefined;
-  CreateProject: undefined;
-  NameSoloProject: undefined;
   Security: undefined;
   ObservationFields: {
     fieldIds: string[];
@@ -95,14 +92,6 @@ export type RootStackParamsList = {
   EnterPassToTurnOff: undefined;
   AppSettings: undefined;
   ProjectSettings: undefined;
-  Collaborate: undefined;
-  JoinAProject: undefined;
-  StartNewProjectIntro: undefined;
-  NameDefaultProjectIntro: undefined;
-  ProjectCreated: {
-    name: string;
-    statsShared: boolean;
-  };
   YourTeam: undefined;
   SelectDevice: undefined;
   SelectMapShareDevice: undefined;
@@ -167,9 +156,6 @@ export type RootStackParamsList = {
   ObservationMetadata: {observationId: string};
   ErrorBottomSheet: {error: Error};
   BackgroundMapErrorBottomSheet: {title: string; description: string};
-  AllProjects: undefined;
-  InviteCollaborators: undefined;
-  EditProjectDetails: undefined;
   TrackRecordingActive: undefined;
   RemoteArchive: undefined;
   AddRemoteArchive: undefined;
@@ -180,7 +166,6 @@ export type RootStackParamsList = {
   };
   ExportObservations: undefined;
   DidNotMoveBottomSheet: undefined;
-  ShareProjectStats: {projectName: string};
   AppUsagePromptInterstitial: undefined;
   AppUsageSharingSuccess: undefined;
   ExportSuccess: {exportType: Exports};
@@ -227,8 +212,6 @@ export type OnboardingParamsList = {
   CreateOrganization: undefined;
   JoinOrganizationIntro: undefined;
   OrganizationProvisioning: undefined;
-  JoinProjectIntro: undefined;
-  MapOnYourOwnIntro: undefined;
   ErrorBottomSheet: {error: Error};
 };
 
