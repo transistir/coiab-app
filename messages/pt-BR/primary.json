@@ -622,6 +622,9 @@
   "$1screens.OrganizationSetup.openOrganizationButton": {
     "message": "Abrir organização"
   },
+  "$1screens.OrganizationSetup.preparingSlowNotice": {
+    "message": "A preparação está demorando. Se não continuar, feche e abra o aplicativo."
+  },
   "$1screens.OrganizationSetup.preparingStepA11y": {
     "message": "Preparando sua organização"
   },

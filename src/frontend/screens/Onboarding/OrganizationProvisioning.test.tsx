@@ -1,5 +1,6 @@
 import * as React from 'react';
 import {
+  act,
   render,
   screen,
   userEvent,
@@ -35,15 +36,15 @@ const activeProjectIdMock = jest.requireMock(
   '../../contexts/ActiveProjectIdStoreContext',
 ) as {__projetarProjectIdAtivo(projectId: string | undefined): void};
 import type {AppStackParamsList} from '../../sharedTypes/navigation';
-
 /**
  * The screen's own Home reset is exercised at the navigator level; the stub
  * keeps the unit tree free of a navigator while still failing loudly if a
  * state change ever reaches for it.
  */
 const navigationReset = jest.fn();
+const navigationAddListener: jest.Mock = jest.fn(() => () => {});
 const screenProps = {
-  navigation: {reset: navigationReset},
+  navigation: {reset: navigationReset, addListener: navigationAddListener},
   route: {
     key: 'OrganizationProvisioning',
     name: 'OrganizationProvisioning',
@@ -52,6 +53,40 @@ const screenProps = {
   AppStackParamsList,
   'OrganizationProvisioning'
 >;
+
+/**
+ * jest-expo resolves the iOS no-op BackHandler (nothing dispatches), so the
+ * hardware layer is asserted against the same module path the app runs on
+ * Android, with subscriptions recorded for removal checks.
+ */
+jest.mock('react-native/Libraries/Utilities/BackHandler', () => {
+  const live: Array<{handler: () => boolean}> = [];
+  const addEventListener = jest.fn((_event: string, handler: () => boolean) => {
+    live.push({handler});
+    return {
+      remove: jest.fn(() => {
+        live.splice(
+          live.findIndex(item => item.handler === handler),
+          1,
+        );
+      }),
+    };
+  });
+  // The deep-import shim is consumed as `.default` by react-native's index,
+  // so the mock must carry the same shape.
+  return {
+    __esModule: true,
+    __live: live,
+    default: {exitApp: () => {}, addEventListener},
+  };
+});
+
+const backHandlerMock = jest.requireMock(
+  'react-native/Libraries/Utilities/BackHandler',
+) as {
+  __live: Array<{handler: () => boolean}>;
+  default: {addEventListener: jest.Mock};
+};
 
 jest.mock('../../contexts/OrganizationActivationContext', () => {
   const holder = {current: undefined as unknown};
@@ -147,6 +182,10 @@ function seedDocument(
   );
 }
 
+/** Exact English text of the slow-preparation notice (SPEC B §3.2:68). */
+const SLOW_NOTICE =
+  'Preparation is taking a while. If it does not continue, close and reopen the application.';
+
 beforeEach(() => {
   jest.clearAllMocks();
   store = createCoiabOrganizationsStore({persist: false});
@@ -159,6 +198,7 @@ beforeEach(() => {
     recoverPendingWork,
   });
   activeProjectIdMock.__projetarProjectIdAtivo(undefined);
+  backHandlerMock.__live.length = 0;
 });
 
 describe('OrganizationProvisioning', () => {
@@ -431,5 +471,200 @@ describe('OrganizationProvisioning', () => {
         screen.queryByTestId('ORG.provisioning-retry-activation-btn'),
       ).not.toBeOnTheScreen();
     });
+  });
+
+  // SPEC B §3.2:68 — after 30 s in preparando the screen says so and NEVER
+  // retries: a presentation timeout does not cancel a native operation, so
+  // time alone must not authorize another call.
+  describe('slow preparation notice', () => {
+    test('after 30 s the notice shows and no retry is ever fired', async () => {
+      seedDocument([organizacao({estado: 'preparando'})]);
+      jest.useFakeTimers();
+      try {
+        await renderScreen();
+
+        await act(async () => {
+          jest.advanceTimersByTime(29_999);
+        });
+        expect(screen.queryByText(SLOW_NOTICE)).not.toBeOnTheScreen();
+
+        await act(async () => {
+          jest.advanceTimersByTime(1);
+        });
+        expect(screen.getByText(SLOW_NOTICE)).toBeOnTheScreen();
+
+        // Far past the notice: still shown, still no call.
+        await act(async () => {
+          jest.advanceTimersByTime(300_000);
+        });
+        expect(screen.getByText(SLOW_NOTICE)).toBeOnTheScreen();
+        expect(retryPreparation).not.toHaveBeenCalled();
+        expect(activate).not.toHaveBeenCalled();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    test('leaving preparando hides the notice and re-entering restarts the wait', async () => {
+      seedDocument([organizacao({estado: 'preparando'})]);
+      jest.useFakeTimers();
+      try {
+        await renderScreen();
+        await act(async () => {
+          jest.advanceTimersByTime(30_000);
+        });
+        expect(screen.getByText(SLOW_NOTICE)).toBeOnTheScreen();
+
+        await act(async () => {
+          seedDocument([organizacao({estado: 'falha_recuperavel'})]);
+        });
+        expect(screen.queryByText(SLOW_NOTICE)).not.toBeOnTheScreen();
+
+        // A fresh wait: nothing before the new 30 s.
+        await act(async () => {
+          seedDocument([organizacao({estado: 'preparando'})]);
+        });
+        await act(async () => {
+          jest.advanceTimersByTime(29_999);
+        });
+        expect(screen.queryByText(SLOW_NOTICE)).not.toBeOnTheScreen();
+        await act(async () => {
+          jest.advanceTimersByTime(1);
+        });
+        expect(screen.getByText(SLOW_NOTICE)).toBeOnTheScreen();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+  });
+
+  // SPEC B §3.2:64/:68 (consult Phase 12:315): while preparando, Back is
+  // blocked at every layer. In any other state the user leaves normally —
+  // the 10b-i states' own exits must stay untouched.
+  describe('back lock', () => {
+    /** Dispatches a synthetic beforeRemove event at the active listener. */
+    function preventBeforeRemove(actionType: string) {
+      const registrations = navigationAddListener.mock.calls.filter(
+        ([event]) => event === 'beforeRemove',
+      );
+      const listener = registrations.at(-1)?.[1] as
+        | ((e: {
+            data: {action: {type: string}};
+            preventDefault: () => void;
+          }) => void)
+        | undefined;
+      if (!listener) {
+        throw new Error('no beforeRemove listener registered');
+      }
+      const preventDefault = jest.fn();
+      listener({data: {action: {type: actionType}}, preventDefault});
+      return preventDefault;
+    }
+
+    test('back is prevented while preparando', async () => {
+      seedDocument([organizacao({estado: 'preparando'})]);
+      await renderScreen();
+
+      // Android hardware back is consumed.
+      expect(backHandlerMock.default.addEventListener).toHaveBeenCalledTimes(1);
+      expect(backHandlerMock.__live).toHaveLength(1);
+      const [backEvent, backHandler] =
+        backHandlerMock.default.addEventListener.mock.calls[0];
+      expect(backEvent).toBe('hardwareBackPress');
+      expect(backHandler()).toBe(true);
+
+      // Back-type removals are prevented…
+      expect(preventBeforeRemove('GO_BACK')).toHaveBeenCalled();
+      expect(preventBeforeRemove('POP')).toHaveBeenCalled();
+      // …while the screen's own Home reset passes untouched.
+      expect(preventBeforeRemove('RESET')).not.toHaveBeenCalled();
+    });
+
+    test('leaving preparando removes the hardware-back consumption', async () => {
+      seedDocument([organizacao({estado: 'preparando'})]);
+      await renderScreen();
+      expect(backHandlerMock.__live).toHaveLength(1);
+
+      await act(async () => {
+        seedDocument([organizacao({estado: 'falha_recuperavel'})]);
+      });
+      expect(backHandlerMock.__live).toHaveLength(0);
+    });
+
+    test.each([
+      [
+        'a recoverable failure',
+        () => seedDocument([organizacao({estado: 'falha_recuperavel'})]),
+      ],
+      [
+        'a pending confirmation',
+        () =>
+          seedDocument([
+            organizacao({
+              estado: 'pronta',
+              confirmacaoPendente: true,
+              materializacao: PAR_PRONTA,
+            }),
+          ]),
+      ],
+      [
+        'an unavailable settled organization',
+        () => {
+          seedDocument(
+            [
+              organizacao({
+                estado: 'pronta',
+                confirmacaoPendente: false,
+                materializacao: PAR_PRONTA,
+              }),
+            ],
+            {organizacaoId: 'org-1', area: 'monitoramento'},
+          );
+          activationMock.__setActivation({
+            status: 'unavailable',
+            error: 'unavailable',
+            activate,
+            retryPreparation,
+            recoverPendingWork,
+          });
+        },
+      ],
+      [
+        'a pending-work blocked boot',
+        () => {
+          seedDocument(
+            [
+              organizacao({
+                estado: 'pronta',
+                confirmacaoPendente: false,
+                materializacao: PAR_PRONTA,
+              }),
+            ],
+            {organizacaoId: 'org-1', area: 'monitoramento'},
+          );
+          activationMock.__setActivation({
+            status: 'unavailable',
+            error: 'pending-work',
+            activate,
+            retryPreparation,
+            recoverPendingWork,
+          });
+        },
+      ],
+      ['a missing document', () => {}],
+    ] as Array<[string, () => void]>)(
+      'back is not blocked while there is %s',
+      async (_label, seed) => {
+        seed();
+        await renderScreen();
+
+        expect(
+          navigationAddListener.mock.calls.filter(
+            ([event]) => event === 'beforeRemove',
+          ),
+        ).toHaveLength(0);
+        expect(backHandlerMock.default.addEventListener).not.toHaveBeenCalled();
+      },
+    );
   });
 });

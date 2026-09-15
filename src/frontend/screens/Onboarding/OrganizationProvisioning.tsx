@@ -1,5 +1,5 @@
 import * as React from 'react';
-import {StyleSheet, View} from 'react-native';
+import {BackHandler, StyleSheet, View} from 'react-native';
 import {defineMessages, useIntl} from 'react-intl';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 
@@ -20,6 +20,9 @@ import {
 } from '../../lib/organization/coiabOrganizations';
 import {DARK_GREY, RED} from '../../lib/styles';
 
+/** SPEC B §3.2:68 — 30 s without conclusion shows the notice; never a retry. */
+const AVISO_DEMORA_MS = 30_000;
+
 const m = defineMessages({
   // SPEC B §4.4: organization-owned concepts get their own descriptors — the
   // document-driven preparation view, its failure recovery, its confirmation
@@ -31,6 +34,13 @@ const m = defineMessages({
   preparingStepA11y: {
     id: '$1screens.OrganizationSetup.preparingStepA11y',
     defaultMessage: 'Preparing your organization',
+  },
+  preparingSlowNotice: {
+    id: '$1screens.OrganizationSetup.preparingSlowNotice',
+    defaultMessage:
+      'Preparation is taking a while. If it does not continue, close and reopen the application.',
+    description:
+      'Shown after 30 s inside preparando (SPEC B §3.2:68); the wait never authorizes another call',
   },
   monitoringRow: {
     id: '$1screens.OrganizationSetup.monitoringRow',
@@ -158,9 +168,12 @@ function AreaStepRows({organizacao}: {organizacao: OrganizacaoLocal}) {
 function DocumentDrivenProvisioning({
   organizacao,
   ativa,
+  avisoDemora,
 }: {
   organizacao: OrganizacaoLocal;
   ativa: EstadoOrganizacoes['ativa'];
+  /** SPEC B §3.2:68: shown after 30 s in preparando; never authorizes a retry. */
+  avisoDemora: boolean;
 }) {
   const {formatMessage: t} = useIntl();
   const {status, error, activate, retryPreparation, recoverPendingWork} =
@@ -228,6 +241,11 @@ function DocumentDrivenProvisioning({
           <HeaderText variant="header2" style={styles.title}>
             {t(m.preparingTitle)}
           </HeaderText>
+          {avisoDemora && (
+            <BodyText style={styles.bodyText}>
+              {t(m.preparingSlowNotice)}
+            </BodyText>
+          )}
         </>
       )}
       {organizacao.estado === 'falha_recuperavel' && (
@@ -319,6 +337,44 @@ export const OrganizationProvisioning = ({
   // confirmation is pending or the document cannot be parsed.
   const derivado = derivarProjectIdAtivo(estado);
   const activeProjectId = useActiveProjectId();
+  // SPEC B §3.2:68 — the slow-preparation notice is a presentation concern:
+  // 30 s ON SCREEN in preparando, reset when the document leaves preparando.
+  // It never authorizes a retry — a presentation timeout does not cancel a
+  // native operation.
+  const preparando = organizacaoDocument?.estado === 'preparando';
+  const [avisoDemora, setAvisoDemora] = React.useState(false);
+  React.useEffect(() => {
+    if (!preparando) return;
+    const aviso = setTimeout(() => setAvisoDemora(true), AVISO_DEMORA_MS);
+    // Leaving preparando (or unmounting) ends the wait: the next preparando
+    // entry starts a fresh 30 s with the notice hidden again.
+    return () => {
+      clearTimeout(aviso);
+      setAvisoDemora(false);
+    };
+  }, [preparando]);
+  // SPEC B §3.2:64/:68 (consult Phase 12:315): while preparando, Back is
+  // blocked at every layer — the router's back-type removals (header back,
+  // the hardware button's GO_BACK dispatch) are prevented, and the Android
+  // hardware handler consumes the press before the native stack pops. Any
+  // other state leaves freely, including this screen's own Home reset, so
+  // only back-type actions are prevented.
+  React.useEffect(() => {
+    if (!preparando) return;
+    const unsubscribe = navigation.addListener('beforeRemove', e => {
+      const type = e.data.action.type;
+      if (type !== 'GO_BACK' && type !== 'POP') return;
+      e.preventDefault();
+    });
+    const hardware = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => true,
+    );
+    return () => {
+      unsubscribe();
+      hardware.remove();
+    };
+  }, [preparando, navigation]);
   // SPEC B (5b): with a persisted organization document, the reconstruction
   // alone must never navigate — Home opens only through a validated
   // activation whose projected id matches the document's own derivation. The
@@ -349,6 +405,7 @@ export const OrganizationProvisioning = ({
     <DocumentDrivenProvisioning
       organizacao={organizacaoDocument}
       ativa={estado.ativa}
+      avisoDemora={avisoDemora}
     />
   );
 };

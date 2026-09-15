@@ -672,6 +672,10 @@
     "message": "Finish or discard the record before switching organization",
     "description": "Blocked boot with work in progress (SPEC A §4.4:149 canonical pending-work string, CA15)"
   },
+  "$1screens.OrganizationSetup.preparingSlowNotice": {
+    "message": "Preparation is taking a while. If it does not continue, close and reopen the application.",
+    "description": "Shown after 30 s inside preparando (SPEC B §3.2:68); the wait never authorizes another call"
+  },
   "$1screens.OrganizationSetup.preparingStepA11y": {
     "message": "Preparing your organization"
   },
