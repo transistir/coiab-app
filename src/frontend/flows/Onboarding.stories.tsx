@@ -43,16 +43,6 @@ const successState: InitialState = {
   index: 0,
 };
 
-const joinProjectIntroState: InitialState = {
-  routes: [{name: 'Success'}, {name: 'JoinProjectIntro'}],
-  index: 1,
-};
-
-const mapOnYourOwnIntroState: InitialState = {
-  routes: [{name: 'Success'}, {name: 'MapOnYourOwnIntro'}],
-  index: 1,
-};
-
 const joinOrganizationIntroState: InitialState = {
   routes: [{name: 'Success'}, {name: 'JoinOrganizationIntro'}],
   index: 1,
@@ -64,9 +54,9 @@ const createOrganizationState: InitialState = {
 };
 
 /**
- * The complete first-launch journey. The canonical walkthrough follows the
- * Map On Your Own branch after Success. Completing DeviceNaming mutates real
- * backend state, so re-apply freshInstall before replaying this story.
+ * The complete first-launch journey through the two Organization branches
+ * after Success. Completing DeviceNaming mutates real backend state, so
+ * re-apply freshInstall before replaying this story.
  */
 export const Walkthrough: Story = {
   parameters: {
@@ -135,32 +125,6 @@ export const CreateOrganization: Story = {
     flow: {
       state: FLOW_STATES.namedNoProject,
       initialState: createOrganizationState,
-    },
-  },
-};
-
-/**
- * The legacy standalone-project branches. Still registered as routes for
- * deep links/debug (SPEC-46 §18) but no longer reachable from the onboarding
- * fork, which offers only the two Organization journeys.
- */
-export const JoinProjectIntro: Story = {
-  name: '07a Join Project Intro (legacy)',
-  parameters: {
-    flow: {
-      state: FLOW_STATES.namedNoProject,
-      initialState: joinProjectIntroState,
-    },
-  },
-};
-
-/** Legacy standalone-project branch (see JoinProjectIntro). */
-export const MapOnYourOwnIntro: Story = {
-  name: '07b Map On Your Own Intro (legacy)',
-  parameters: {
-    flow: {
-      state: FLOW_STATES.namedNoProject,
-      initialState: mapOnYourOwnIntroState,
     },
   },
 };

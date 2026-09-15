@@ -36,8 +36,8 @@ export function HomeHeader({
   // `!confirmacaoPendente` and the slot of `ativa.area` — so comparing its
   // result with the active projectId keeps the header naming the
   // organization only when the app is operating it: any switch of the
-  // active project (AllProjects, LeaveProject, a create/accept repoint)
-  // makes the derivation diverge and the project name stands. `ativa` is
+  // active project (LeaveProject, a create/accept repoint) makes the
+  // derivation diverge and the project name stands. `ativa` is
   // born only in the single write of the "Abrir organização" tap (regra 9),
   // so without a selection nothing names an organization.
   const derivado = derivarProjectIdAtivo(estado);

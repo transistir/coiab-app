@@ -128,7 +128,7 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
 
   it('não nomeia a organização quando o projeto ativo é outro projeto', async () => {
     // RED case (SPEC A §4.2 regra 5): an untracked switch of the active
-    // project — AllProjects, LeaveProject, a create/accept repointing the id
+    // project — LeaveProject, a create/accept repointing the id
     // — leaves the persisted document untouched, so the derived projectId
     // (org A's Monitoramento slot, a real second project) is NOT the project
     // being operated. The header falls back to the project name; naming the
