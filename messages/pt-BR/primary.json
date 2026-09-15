@@ -550,6 +550,48 @@
   "$1screens.OrganizationProvisioning.skippedJoinPending": {
     "message": "Um convite para esta organização ainda está sincronizando. Tente novamente quando ele terminar."
   },
+  "$1screens.OrganizationSetup.alertsRow": {
+    "message": "Alertas"
+  },
+  "$1screens.OrganizationSetup.areaNotComplete": {
+    "message": "Não concluído"
+  },
+  "$1screens.OrganizationSetup.areaPreparing": {
+    "message": "Preparando"
+  },
+  "$1screens.OrganizationSetup.areaReady": {
+    "message": "Pronto"
+  },
+  "$1screens.OrganizationSetup.areaWaiting": {
+    "message": "Aguardando"
+  },
+  "$1screens.OrganizationSetup.createdBody": {
+    "message": "{organizationName} está pronta. Monitoramento e Alertas já estão disponíveis."
+  },
+  "$1screens.OrganizationSetup.createdTitle": {
+    "message": "Organização criada"
+  },
+  "$1screens.OrganizationSetup.failureBody": {
+    "message": "O que já foi preparado está salvo. Tente novamente para concluir."
+  },
+  "$1screens.OrganizationSetup.failureTitle": {
+    "message": "Não foi possível concluir a criação."
+  },
+  "$1screens.OrganizationSetup.monitoringRow": {
+    "message": "Monitoramento"
+  },
+  "$1screens.OrganizationSetup.openOrganizationButton": {
+    "message": "Abrir organização"
+  },
+  "$1screens.OrganizationSetup.preparingStepA11y": {
+    "message": "Preparando sua organização"
+  },
+  "$1screens.OrganizationSetup.preparingTitle": {
+    "message": "Preparando sua organização…"
+  },
+  "$1screens.OrganizationSetup.retryPreparationButton": {
+    "message": "Tentar novamente"
+  },
   "$1screens.PhotoPreviewModal.headerButtonText": {
     "message": "Excluir foto"
   },

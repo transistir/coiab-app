@@ -1,6 +1,7 @@
 import * as React from 'react';
 import {Alert, StyleSheet, View} from 'react-native';
 import {defineMessages, useIntl} from 'react-intl';
+import {useQueryClient} from '@tanstack/react-query';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {useManyInvites} from '@comapeo/core-react';
 
@@ -9,15 +10,27 @@ import {BodyText} from '../../sharedComponents/Text/BodyText';
 import {LoadingIndicator} from '../../sharedComponents/LoadingIndicator';
 import {
   DestructiveButton,
+  PrimaryButton,
   SecondaryButton,
 } from '../../sharedComponents/Buttons';
 import {AppStackParamsList} from '../../sharedTypes/navigation';
 import {useOrganizations} from '../../hooks/organization/useOrganizations';
 import {useCreateOrganization} from '../../hooks/organization/useCreateOrganization';
 import {useDiscardIncompleteOrganization} from '../../hooks/organization/useDiscardIncompleteOrganization';
+import {getOrganizationCreationCompletion} from '../../hooks/organization/useOrganizationCreationCompletion';
+import {useCoiabOrganizationsState} from '../../contexts/CoiabOrganizationsStoreContext';
+import {useOrganizationActivationContext} from '../../contexts/OrganizationActivationContext';
+import {useActiveProjectId} from '../../contexts/ActiveProjectIdStoreContext';
 import {groupPendingInvites} from '../../lib/organization/bundle';
 import {useHasOrganizationCreationProvenance} from '../../lib/organization/creationProvenance';
+import {
+  AREAS,
+  derivarProjectIdAtivo,
+  type EtapaArea,
+  type OrganizacaoLocal,
+} from '../../lib/organization/coiabOrganizations';
 import {SLOTS, SLOT_PROJECT_NAMES} from '../../lib/organization/marker';
+import {DARK_GREY, RED} from '../../lib/styles';
 import type {ReconstructedOrganization} from '../../lib/organization/reconstruct';
 
 const m = defineMessages({
@@ -71,6 +84,66 @@ const m = defineMessages({
     defaultMessage:
       'An invitation for this organization is still syncing. Try again once it finishes.',
   },
+  // SPEC B §4.4: organization-owned concepts get their own descriptors — the
+  // document-driven preparation view, its failure recovery and its
+  // confirmation.
+  preparingTitle: {
+    id: '$1screens.OrganizationSetup.preparingTitle',
+    defaultMessage: 'Preparing your organization…',
+  },
+  preparingStepA11y: {
+    id: '$1screens.OrganizationSetup.preparingStepA11y',
+    defaultMessage: 'Preparing your organization',
+  },
+  monitoringRow: {
+    id: '$1screens.OrganizationSetup.monitoringRow',
+    defaultMessage: 'Monitoring',
+  },
+  alertsRow: {
+    id: '$1screens.OrganizationSetup.alertsRow',
+    defaultMessage: 'Alerts',
+  },
+  areaWaiting: {
+    id: '$1screens.OrganizationSetup.areaWaiting',
+    defaultMessage: 'Waiting',
+  },
+  areaPreparing: {
+    id: '$1screens.OrganizationSetup.areaPreparing',
+    defaultMessage: 'Preparing',
+  },
+  areaReady: {
+    id: '$1screens.OrganizationSetup.areaReady',
+    defaultMessage: 'Ready',
+  },
+  areaNotComplete: {
+    id: '$1screens.OrganizationSetup.areaNotComplete',
+    defaultMessage: 'Not completed',
+  },
+  failureTitle: {
+    id: '$1screens.OrganizationSetup.failureTitle',
+    defaultMessage: 'Could not finish creating the organization.',
+  },
+  failureBody: {
+    id: '$1screens.OrganizationSetup.failureBody',
+    defaultMessage: 'What was already prepared is saved. Try again to finish.',
+  },
+  retryPreparationButton: {
+    id: '$1screens.OrganizationSetup.retryPreparationButton',
+    defaultMessage: 'Try again',
+  },
+  createdTitle: {
+    id: '$1screens.OrganizationSetup.createdTitle',
+    defaultMessage: 'Organization created',
+  },
+  createdBody: {
+    id: '$1screens.OrganizationSetup.createdBody',
+    defaultMessage:
+      '{organizationName} is ready. Monitoring and Alerts are already available.',
+  },
+  openOrganizationButton: {
+    id: '$1screens.OrganizationSetup.openOrganizationButton',
+    defaultMessage: 'Open organization',
+  },
 });
 
 /** Why each kept project is still on the device, per skip reason. */
@@ -79,34 +152,175 @@ const SKIP_MESSAGES = {
   'join-pending': m.skippedJoinPending,
 } as const;
 
+/** The row status an area's journal etapa displays (SPEC B §4.4). */
+function statusMessageForEtapa(etapa: EtapaArea['etapa']) {
+  switch (etapa) {
+    case 'ausente':
+      return m.areaWaiting;
+    case 'verificado':
+      return m.areaReady;
+    default:
+      return m.areaPreparing;
+  }
+}
+
+/** One row per area, in the document's own preparation vocabulary. */
+function AreaStepRows({organizacao}: {organizacao: OrganizacaoLocal}) {
+  const {formatMessage: t} = useIntl();
+  return (
+    <View style={styles.rows}>
+      {AREAS.map(area => {
+        // Only a persisted failure names an area Não concluído; a stale
+        // error left behind by a retry in flight is never displayed.
+        const errored =
+          organizacao.estado === 'falha_recuperavel' &&
+          organizacao.ultimoErro?.area === area;
+        const areaName = t(
+          area === 'monitoramento' ? m.monitoringRow : m.alertsRow,
+        );
+        const status = t(
+          errored
+            ? m.areaNotComplete
+            : statusMessageForEtapa(organizacao.materializacao[area].etapa),
+        );
+        return (
+          <View key={area} style={styles.row}>
+            <BodyText style={styles.rowArea}>{areaName}</BodyText>
+            <BodyText
+              style={errored ? styles.rowStatusError : styles.rowStatus}>
+              {status}
+            </BodyText>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 /**
- * Transient fail-closed screen (SPEC 10.1): rendered while the device holds
- * an Organization that is not `ready` yet. It auto-advances to Home when the
- * Organization becomes `ready`, and stays (surfacing the error) when it is
- * `invalid`.
+ * The document-driven view (SPEC B §4.4): the persisted organization document
+ * exists, so the screen renders ITS state — preparation rows, the canonical
+ * recoverable-failure sentences, or the confirmation — instead of the
+ * reconstructed fan-out surface. The fanout retry/discard buttons have no
+ * place here: the document owns recovery.
+ */
+function DocumentDrivenProvisioning({
+  organizacao,
+}: {
+  organizacao: OrganizacaoLocal;
+}) {
+  const {formatMessage: t} = useIntl();
+  const activation = useOrganizationActivationContext();
+  const queryClient = useQueryClient();
+  const [activating, setActivating] = React.useState(false);
+  // Synchronous guard: the disabled prop alone lets a double tap queue a
+  // second activate before the rerender publishes it.
+  const activatingRef = React.useRef(false);
+
+  const abrirOrganizacao = async () => {
+    if (activatingRef.current) return;
+    activatingRef.current = true;
+    setActivating(true);
+    try {
+      if (await activation.activate(organizacao.id, {acknowledge: true})) {
+        // SPEC A §4.2 regra 9: the activation engine acknowledged and
+        // selected in one write; this hands the navigation completion the
+        // project the document pinned for Monitoramento.
+        const projectId = organizacao.materializacao.monitoramento.projectId;
+        if (projectId) {
+          getOrganizationCreationCompletion(queryClient).setState({projectId});
+        }
+      }
+    } finally {
+      activatingRef.current = false;
+      setActivating(false);
+    }
+  };
+
+  return (
+    <View style={styles.container}>
+      {organizacao.estado === 'preparando' && (
+        <>
+          <LoadingIndicator
+            size="large"
+            accessibilityLabel={t(m.preparingStepA11y)}
+          />
+          <HeaderText variant="header2" style={styles.title}>
+            {t(m.preparingTitle)}
+          </HeaderText>
+        </>
+      )}
+      {organizacao.estado === 'falha_recuperavel' && (
+        <>
+          <HeaderText variant="header2" style={styles.title}>
+            {t(m.failureTitle)}
+          </HeaderText>
+          <BodyText style={styles.bodyText}>{t(m.failureBody)}</BodyText>
+        </>
+      )}
+      {organizacao.estado === 'pronta' && organizacao.confirmacaoPendente && (
+        <HeaderText variant="header2" style={styles.title}>
+          {t(m.createdTitle)}
+        </HeaderText>
+      )}
+      {organizacao.estado === 'pronta' && organizacao.confirmacaoPendente && (
+        <BodyText style={styles.bodyText}>
+          {t(m.createdBody, {organizationName: organizacao.nome})}
+        </BodyText>
+      )}
+      <AreaStepRows organizacao={organizacao} />
+      {organizacao.estado === 'falha_recuperavel' && (
+        <PrimaryButton
+          testID="ORG.provisioning-retry-preparation-btn"
+          fullSize
+          text={t(m.retryPreparationButton)}
+          onPress={() => {
+            // The engine's own lock joins a same-key in-flight retry, so a
+            // double tap cannot double-resume either.
+            void activation.retryPreparation(organizacao.id);
+          }}
+        />
+      )}
+      {organizacao.estado === 'pronta' && organizacao.confirmacaoPendente && (
+        <PrimaryButton
+          testID="ORG.provisioning-open-organization-btn"
+          fullSize
+          text={t(m.openOrganizationButton)}
+          disabled={activating}
+          onPress={() => {
+            void abrirOrganizacao();
+          }}
+        />
+      )}
+    </View>
+  );
+}
+
+/**
+ * Fail-closed screen for an Organization that is not an open, acknowledged
+ * organization yet (SPEC 10.1 / SPEC B §3.3-§4.4).
  *
- * An `incomplete` organization with a recoverable name offers to finish the
- * interrupted provisioning (SPEC 5 / E7 create-side): the fan-out is
- * idempotent — it creates only the missing slot, under the reconstructed
- * organization id, so a restart mid-create never bricks the device. Without
- * a name no marker can be minted, so the screen stays passive (fail-closed;
- * manual repair is out of scope). The offer is also suppressed while a
- * pending invite covers a missing slot — the invite sheet completes the
- * organization instead (join-side recovery).
- *
- * A setup the user may never complete (the invitor is gone, the invite
- * expired, no name to resume under) must not be a permanent creation
- * lockout behind the fail-closed create, so the screen also offers to
- * DISCARD the half-built organization behind a destructive confirm and
- * start over. The discard fan-out leaves every project of the setup; a
- * project that changed while it ran or a slot invitation still joining is
- * reported and kept, and the screen stays here to say so — as it does when
- * the discard itself fails.
+ * With a persisted organization document (`estado.organizacoes[0]`), the
+ * document drives everything: `preparando` shows the two area rows with no
+ * buttons; `falha_recuperavel` offers Tentar novamente through the activation
+ * engine; `pronta` with a pending confirmation offers Abrir organização and
+ * waits — it never resets to Home on the reconstruction's word. Without a
+ * document (legacy data), the reconstructed fan-out surface keeps its
+ * behavior: the resume offer gated on durable creation provenance and pending
+ * invites, and the destructive-discard escape hatch.
  */
 export const OrganizationProvisioning = ({
   navigation,
 }: NativeStackScreenProps<AppStackParamsList, 'OrganizationProvisioning'>) => {
   const {formatMessage: t} = useIntl();
+  const estado = useCoiabOrganizationsState();
+  const organizacaoDocument = estado.organizacoes[0];
+  const documentGuides = organizacaoDocument !== undefined;
+  // The document's own operational id (SPEC A §4.2 regra 5): null while the
+  // confirmation is pending or the document cannot be parsed.
+  const derivado = derivarProjectIdAtivo(estado);
+  const activeProjectId = useActiveProjectId();
+
   const organizations = useOrganizations();
   const {start, status} = useCreateOrganization();
   const {
@@ -177,18 +391,30 @@ export const OrganizationProvisioning = ({
     // Skip after an ok discard: the effect below routes to Success, and a
     // Home reset here would flash Home first (post-discard Home flash).
     if (discardSucceeded) return;
-    if (isReady && !hasDegradedOrganization) {
-      navigation.reset({index: 0, routes: [{name: 'Home'}]});
-    }
-  }, [isReady, hasDegradedOrganization, discardSucceeded, navigation]);
+    if (!isReady || hasDegradedOrganization) return;
+    // SPEC B (5b): with a persisted organization, the document itself decides
+    // when Home opens — its derived active id must equal the projected one. A
+    // pending confirmation or an in-flight preparation never satisfies it,
+    // even when the reconstruction already calls the organization ready.
+    if (!(!documentGuides || derivado === activeProjectId)) return;
+    navigation.reset({index: 0, routes: [{name: 'Home'}]});
+  }, [
+    isReady,
+    hasDegradedOrganization,
+    discardSucceeded,
+    documentGuides,
+    derivado,
+    activeProjectId,
+    navigation,
+  ]);
 
   // A settled discard either freed the device (`ok`) or refused to remove
   // something: then the setup is still here, the lines below say which
   // projects were kept and why, and the result stays published so those
   // lines remain on screen. A failure stays too, with its error line.
   // Neither resets the hook — the user can retry. A successful discard
-  // hands the next decision to the start-over fork only when nothing on
-  // the device is degraded anymore; while another organization still
+  // hands the next decision to the start-over fork only when nothing on the
+  // device is degraded anymore; while another organization still
   // needs repair, THIS screen is that organization's repair surface, so
   // it stays (the discarded setup itself is gone — it is filtered out of
   // the collection the check runs on).
@@ -228,6 +454,12 @@ export const OrganizationProvisioning = ({
     !isCreating &&
     !isDiscarding &&
     !missingSlotCoveredByInvite;
+
+  // The document exists: the reconstruction alone must never navigate this
+  // device, and the fanout controls are hidden (SPEC B 5b).
+  if (organizacaoDocument) {
+    return <DocumentDrivenProvisioning organizacao={organizacaoDocument} />;
+  }
 
   return (
     <View style={styles.container}>
@@ -300,7 +532,29 @@ const styles = StyleSheet.create({
   title: {
     textAlign: 'center',
   },
+  bodyText: {
+    textAlign: 'center',
+  },
   errorText: {
     textAlign: 'center',
+  },
+  rows: {
+    gap: 12,
+    alignSelf: 'stretch',
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 10,
+  },
+  rowArea: {
+    flexShrink: 1,
+  },
+  rowStatus: {
+    color: DARK_GREY,
+  },
+  rowStatusError: {
+    color: RED,
   },
 });

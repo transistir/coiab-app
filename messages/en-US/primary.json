@@ -734,6 +734,48 @@
   "$1screens.OrganizationProvisioning.skippedStale": {
     "message": "{projectName} changed while it was being discarded, so it was kept."
   },
+  "$1screens.OrganizationSetup.alertsRow": {
+    "message": "Alerts"
+  },
+  "$1screens.OrganizationSetup.areaNotComplete": {
+    "message": "Not completed"
+  },
+  "$1screens.OrganizationSetup.areaPreparing": {
+    "message": "Preparing"
+  },
+  "$1screens.OrganizationSetup.areaReady": {
+    "message": "Ready"
+  },
+  "$1screens.OrganizationSetup.areaWaiting": {
+    "message": "Waiting"
+  },
+  "$1screens.OrganizationSetup.createdBody": {
+    "message": "{organizationName} is ready. Monitoring and Alerts are already available."
+  },
+  "$1screens.OrganizationSetup.createdTitle": {
+    "message": "Organization created"
+  },
+  "$1screens.OrganizationSetup.failureBody": {
+    "message": "What was already prepared is saved. Try again to finish."
+  },
+  "$1screens.OrganizationSetup.failureTitle": {
+    "message": "Could not finish creating the organization."
+  },
+  "$1screens.OrganizationSetup.monitoringRow": {
+    "message": "Monitoring"
+  },
+  "$1screens.OrganizationSetup.openOrganizationButton": {
+    "message": "Open organization"
+  },
+  "$1screens.OrganizationSetup.preparingStepA11y": {
+    "message": "Preparing your organization"
+  },
+  "$1screens.OrganizationSetup.preparingTitle": {
+    "message": "Preparing your organization…"
+  },
+  "$1screens.OrganizationSetup.retryPreparationButton": {
+    "message": "Try again"
+  },
   "$1screens.PhotoPreviewModal.headerButtonText": {
     "message": "Delete Photo"
   },

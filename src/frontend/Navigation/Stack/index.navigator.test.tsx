@@ -599,10 +599,10 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       await act(async () => releaseRefresh());
 
       // O documento roteia o arranque ANTES de qualquer estado
-      // reconstruído: a confirmação pendente é a superfície de abertura.
-      expect(
-        await screen.findByText('Setting up your Organization…'),
-      ).toBeOnTheScreen();
+      // reconstruído: a confirmação pendente é a superfície de abertura e,
+      // com 5b-1, renderiza a visão guiada pelo documento (a confirmação),
+      // não o texto genérico de preparação da era fanout.
+      expect(await screen.findByText('Organization created')).toBeOnTheScreen();
       // Nenhum escritor projetou o slot por baixo da confirmação pendente:
       // o id legado segue exatamente o valor semeado.
       expect(freshSetup.activeProjectId).toBe(standaloneProjectId);
