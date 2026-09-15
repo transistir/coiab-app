@@ -36,14 +36,15 @@ describe('Onboarding Screens', () => {
   test('should show the org fork, receive the organization invite bundle, and accept it', async () => {
     const user = userEvent.setup();
     await inviteeSetup.renderNavigationAsync();
-    // SPEC E6: the Success fork is organization-first — joining an
-    // Organization is a waiting state until an invite bundle arrives.
-    const JoinOrgButton = await screen.findByText('Join an Organization');
-    expect(JoinOrgButton).toBeVisible();
-    await user.press(JoinOrgButton);
+    // SPEC E6: the Success fork is organization-first — the waiting state
+    // (Aguardar convite) is what joining looks like until an invite bundle
+    // arrives.
+    const waitInviteButton = await screen.findByText('Wait for an invitation');
+    expect(waitInviteButton).toBeVisible();
+    await user.press(waitInviteButton);
     expect(
       await screen.findByText(
-        'Ask a coordinator of an existing Organization to invite this device. When the invitation arrives it will appear on this screen.',
+        'Ask a person responsible for the Organization to invite this device.',
       ),
     ).toBeVisible();
 

@@ -107,7 +107,7 @@ export const Success: Story = {
   },
 };
 
-/** The branch reached when the user chooses Join an Organization at Success. */
+/** The branch reached when the user chooses Wait for an invitation at Success. */
 export const JoinOrganizationIntro: Story = {
   name: '06a Join Organization Intro',
   parameters: {

@@ -301,9 +301,6 @@
   "$1screens.DataPrivacy.title": {
     "message": "O CoMapeo é privado por padrão."
   },
-  "$1screens.DeviceNaming.Success.chooseProject": {
-    "message": "Escolha abaixo para iniciar seu primeiro projeto."
-  },
   "$1screens.DeviceNaming.Success.deviceReady": {
     "message": "{deviceName} está pronto!"
   },
@@ -574,6 +571,18 @@
   "$1screens.OrganizationSetup.areaWaiting": {
     "message": "Aguardando"
   },
+  "$1screens.OrganizationSetup.backButton": {
+    "message": "Voltar"
+  },
+  "$1screens.OrganizationSetup.continueButton": {
+    "message": "Continuar"
+  },
+  "$1screens.OrganizationSetup.createIntroBody": {
+    "message": "Sua organização terá Monitoramento e Alertas, com categorias prontas para usar. Você pode criá-la sem internet."
+  },
+  "$1screens.OrganizationSetup.createOrganization": {
+    "message": "Criar organização"
+  },
   "$1screens.OrganizationSetup.createdBody": {
     "message": "{organizationName} está pronta. Monitoramento e Alertas já estão disponíveis."
   },
@@ -586,8 +595,26 @@
   "$1screens.OrganizationSetup.failureTitle": {
     "message": "Não foi possível concluir a criação."
   },
+  "$1screens.OrganizationSetup.emptyName": {
+    "message": "Informe o nome da organização."
+  },
   "$1screens.OrganizationSetup.monitoringRow": {
     "message": "Monitoramento"
+  },
+  "$1screens.OrganizationSetup.nameGuidance": {
+    "message": "Escolha um nome para sua organização."
+  },
+  "$1screens.OrganizationSetup.nameLabel": {
+    "message": "Nome da organização"
+  },
+  "$1screens.OrganizationSetup.nameNotIdentity": {
+    "message": "Usar o mesmo nome de outra organização não conecta os dispositivos. Para participar de uma organização existente, aguarde um convite."
+  },
+  "$1screens.OrganizationSetup.noOrganizationBody": {
+    "message": "Seu dispositivo ainda não está em uma organização"
+  },
+  "$1screens.OrganizationSetup.noOrganizationGuidance": {
+    "message": "Crie uma organização ou aguarde um convite para participar de uma existente."
   },
   "$1screens.OrganizationSetup.pacoteNaoAprovado": {
     "message": "Não foi possível preparar os arquivos necessários neste aparelho. Nada foi criado."
@@ -603,6 +630,15 @@
   },
   "$1screens.OrganizationSetup.retryPreparationButton": {
     "message": "Tentar novamente"
+  },
+  "$1screens.OrganizationSetup.waitInviteBody": {
+    "message": "Peça a uma pessoa responsável pela organização para convidar este dispositivo."
+  },
+  "$1screens.OrganizationSetup.waitInviteButton": {
+    "message": "Aguardar convite"
+  },
+  "$1screens.OrganizationSetup.waitInviteTitle": {
+    "message": "Aguardar convite"
   },
   "$1screens.PhotoPreviewModal.headerButtonText": {
     "message": "Excluir foto"

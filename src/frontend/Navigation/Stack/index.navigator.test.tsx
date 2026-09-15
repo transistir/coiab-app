@@ -282,6 +282,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     await fireEvent.press(
       await screen.findByTestId('ONBOARDING.create-org-btn'),
     );
+    await fireEvent.press(screen.getByTestId('ORG.create-intro-continue-btn'));
     await fireEvent.changeText(
       screen.getByTestId('ORG.create-name-inp'),
       'New Org',
@@ -350,7 +351,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     });
     await freshSetup.renderNavigationAsync({activeProjectId: legacyProjectId});
 
-    expect(await screen.findByText('Join an Organization')).toBeOnTheScreen();
+    expect(await screen.findByText('Wait for an invitation')).toBeOnTheScreen();
     expect(screen.getByText('test is ready!')).toBeOnTheScreen();
   });
 
@@ -361,7 +362,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     // dados marcados ficam preservados (plan Q7), porém não são
     // reconhecidos como organização.
     await orgSetup.renderNavigation();
-    expect(await screen.findByText('Join an Organization')).toBeOnTheScreen();
+    expect(await screen.findByText('Wait for an invitation')).toBeOnTheScreen();
     expect(screen.getByText('test is ready!')).toBeOnTheScreen();
     expect(screen.queryByTestId('MAIN.map-screen')).not.toBeOnTheScreen();
   });
@@ -394,7 +395,9 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       expect(
         await screen.findByText('Loading organization…'),
       ).toBeOnTheScreen();
-      expect(screen.queryByText('Join an Organization')).not.toBeOnTheScreen();
+      expect(
+        screen.queryByText('Wait for an invitation'),
+      ).not.toBeOnTheScreen();
       expect(screen.queryByTestId('MAIN.map-screen')).not.toBeOnTheScreen();
       await act(async () => {
         releaseValidacao();
@@ -402,7 +405,9 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       expect(
         await screen.findByTestId('MAIN.map-screen', {}, {timeout: 10000}),
       ).toBeOnTheScreen();
-      expect(screen.queryByText('Join an Organization')).not.toBeOnTheScreen();
+      expect(
+        screen.queryByText('Wait for an invitation'),
+      ).not.toBeOnTheScreen();
     } finally {
       releaseValidacao();
       spy.mockRestore();
@@ -559,6 +564,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     await fireEvent.press(
       await screen.findByTestId('ONBOARDING.create-org-btn'),
     );
+    await fireEvent.press(screen.getByTestId('ORG.create-intro-continue-btn'));
     await fireEvent.changeText(
       screen.getByTestId('ORG.create-name-inp'),
       '  Minha Org  ',
@@ -602,6 +608,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     await fireEvent.press(
       await screen.findByTestId('ONBOARDING.create-org-btn'),
     );
+    await fireEvent.press(screen.getByTestId('ORG.create-intro-continue-btn'));
     await fireEvent.changeText(
       screen.getByTestId('ORG.create-name-inp'),
       'Minha Org',

@@ -26,30 +26,49 @@ import {ErroPacote} from '../../lib/organization/pacotes';
 import {AppStackParamsList} from '../../sharedTypes/navigation';
 
 const m = defineMessages({
-  title: {
-    id: '$1screens.Onboarding.CreateOrganization.title',
-    defaultMessage: 'Name your Organization',
+  // SPEC B :54/:55: both stages share the title and the submit button
+  // "Criar organização" — one descriptor. Success's primary button uses
+  // the SAME id with the SAME defaultMessage (identical duplicates are
+  // allowed by the extraction gate).
+  createOrganization: {
+    id: '$1screens.OrganizationSetup.createOrganization',
+    defaultMessage: 'Create Organization',
   },
-  body: {
-    id: '$1screens.Onboarding.CreateOrganization.body',
+  createIntroBody: {
+    id: '$1screens.OrganizationSetup.createIntroBody',
+    // SPEC B :54 — verbatim.
     defaultMessage:
-      'The Organization is the way {app} organizes mapping. It contains the Monitoramento and Alertas projects.',
+      'Your Organization will have Monitoramento and Alertas, with categories ready to use. You can create it without internet.',
   },
-  placeholder: {
-    id: '$1screens.Onboarding.CreateOrganization.placeholder',
+  continueButton: {
+    id: '$1screens.OrganizationSetup.continueButton',
+    // SPEC B :54.
+    defaultMessage: 'Continue',
+  },
+  nameLabel: {
+    id: '$1screens.OrganizationSetup.nameLabel',
+    // SPEC B :55 (also the :94 table) — the field label.
     defaultMessage: 'Organization name',
   },
-  create: {
-    id: '$1screens.Onboarding.CreateOrganization.create',
-    defaultMessage: 'Create Organization',
+  nameGuidance: {
+    id: '$1screens.OrganizationSetup.nameGuidance',
+    // SPEC B :55 — verbatim.
+    defaultMessage: 'Choose a name for your Organization.',
+  },
+  nameNotIdentity: {
+    id: '$1screens.OrganizationSetup.nameNotIdentity',
+    // SPEC B :55 — verbatim.
+    defaultMessage:
+      'Using the same name as another Organization does not connect the devices. To join an existing Organization, wait for an invitation.',
+  },
+  emptyName: {
+    id: '$1screens.OrganizationSetup.emptyName',
+    // SPEC B :252 — verbatim.
+    defaultMessage: 'Enter the Organization name.',
   },
   creating: {
     id: '$1screens.Onboarding.CreateOrganization.creating',
     defaultMessage: 'Creating Organization…',
-  },
-  tooLong: {
-    id: '$1screens.Onboarding.CreateOrganization.tooLong',
-    defaultMessage: 'Organization name is too long',
   },
   // ⚑ SPEC (A4): there is no canonical string yet for a package failure
   // BEFORE any write — `$1screens.OrganizationSetup.failureBody`
@@ -59,6 +78,14 @@ const m = defineMessages({
     id: '$1screens.OrganizationSetup.pacoteNaoAprovado',
     defaultMessage:
       'Could not prepare the necessary files on this device. Nothing was created.',
+  },
+  // ⚑ Flag #14 (SPEC B :253 vs marker pairing): the bound the guard enforces
+  // is the MINTED MARKER's 60 chars, not the raw name — the canonical
+  // "Use no máximo 60 caracteres." would mislead, so this marker-bound
+  // message is preserved as-is until a marker v2 lands.
+  tooLong: {
+    id: '$1screens.Onboarding.CreateOrganization.tooLong',
+    defaultMessage: 'Organization name is too long',
   },
 });
 
@@ -89,6 +116,9 @@ function toError(error: unknown): Error {
 export const CreateOrganization = ({
   navigation,
 }: NativeStackScreenProps<AppStackParamsList, 'CreateOrganization'>) => {
+  // SPEC B §3.1/D13: the journey is ONE screen with two local stages —
+  // the intro (B :54) and the name form (B :55) — never routes.
+  const [etapa, setEtapa] = React.useState<'introducao' | 'nome'>('introducao');
   const [name, setName] = React.useState('');
   const {formatMessage: t} = useIntl();
   // The root-owned materialization engine (SPEC B §5.4): the screen only
@@ -99,6 +129,7 @@ export const CreateOrganization = ({
   const materializador = useOrganizationMaterializer();
   const organizacaoNoDocumento = estado.organizacoes[0];
   const [erro, setErro] = React.useState<Error | null>(null);
+  const [emptyNameError, setEmptyNameError] = React.useState(false);
   // A synchronous re-entry guard: a state check alone would let a second
   // press slip through before the rerender publishes the loading UI.
   const iniciandoRef = React.useRef(false);
@@ -106,6 +137,26 @@ export const CreateOrganization = ({
 
   const trimmedName = name.trim();
   const tooLong = isNameTooLong(name);
+
+  // SPEC B :54/:55: Back from the name stage returns to the intro and
+  // creates nothing; from the intro, Back pops to the choice (Success).
+  // Only back-type removals are intercepted — the provisioning handover
+  // (replace) and any other action must pass through untouched.
+  React.useEffect(() => {
+    if (etapa !== 'nome') return;
+    const unsubscribe = navigation.addListener('beforeRemove', e => {
+      const type = e.data.action.type;
+      if (type !== 'GO_BACK' && type !== 'POP') return;
+      e.preventDefault();
+      setEtapa('introducao');
+    });
+    return unsubscribe;
+  }, [etapa, navigation]);
+
+  function handleNameChange(value: string) {
+    setName(value);
+    setEmptyNameError(false);
+  }
 
   // SPEC B §3.3 items 2-3 and §5.5:241: a persisted organization outranks
   // the form — preparando/falha_recuperavel belong to the provisioning
@@ -132,12 +183,17 @@ export const CreateOrganization = ({
   }, [erro, organizacaoNoDocumento, navigation]);
 
   function handleCreatePress() {
-    if (
-      iniciandoRef.current ||
-      trimmedName.length === 0 ||
-      tooLong ||
-      organizacaoNoDocumento
-    ) {
+    if (iniciandoRef.current || organizacaoNoDocumento) {
+      return;
+    }
+    if (trimmedName.length === 0) {
+      // SPEC B :252: an empty (or whitespace-only) name is rejected BEFORE
+      // persisting the intent — the message explains; the core is never
+      // called. (B :253's over-long bound keeps the button disabled.)
+      setEmptyNameError(true);
+      return;
+    }
+    if (tooLong) {
       return;
     }
     if (!materializador) {
@@ -173,28 +229,56 @@ export const CreateOrganization = ({
         setIniciando(false);
       });
   }
+  if (etapa === 'introducao') {
+    return (
+      <KeyboardAvoidingView style={{width: '100%', height: '100%'}}>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.container}>
+            <View style={styles.headerArea}>
+              <HeaderText variant="header2" style={styles.title}>
+                {t(m.createOrganization)}
+              </HeaderText>
+              <BodyText style={styles.body}>{t(m.createIntroBody)}</BodyText>
+            </View>
+            <View style={styles.buttonContainer}>
+              <PrimaryButton
+                testID="ORG.create-intro-continue-btn"
+                fullSize
+                text={t(m.continueButton)}
+                onPress={() => setEtapa('nome')}
+              />
+            </View>
+          </View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
+    );
+  }
   return (
     <KeyboardAvoidingView style={{width: '100%', height: '100%'}}>
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <View style={styles.container}>
           <View style={styles.headerArea}>
             <HeaderText variant="header2" style={styles.title}>
-              {t(m.title)}
+              {t(m.createOrganization)}
             </HeaderText>
-            <BodyText style={styles.body}>
-              {t(m.body, {app: 'CoMapeo'})}
-            </BodyText>
+            <BodyText style={styles.body}>{t(m.nameGuidance)}</BodyText>
+            <BodyText style={styles.body}>{t(m.nameNotIdentity)}</BodyText>
             <View style={styles.nameForm}>
               <TextInput
                 testID="ORG.create-name-inp"
                 style={styles.textInput}
                 value={name}
-                onChangeText={setName}
+                onChangeText={handleNameChange}
                 maxLength={MARKER_MAX_LENGTH}
                 placeholderTextColor={LIGHT_GREY}
-                placeholder={t(m.placeholder)}
+                placeholder={t(m.nameLabel)}
                 autoCapitalize="none"
               />
+              {emptyNameError && (
+                <BodyText variant="smallMeta" testID="ORG.create-name-empty">
+                  {t(m.emptyName)}
+                </BodyText>
+              )}
               {tooLong && (
                 <BodyText variant="smallMeta" testID="ORG.create-name-too-long">
                   {t(m.tooLong)}
@@ -215,8 +299,8 @@ export const CreateOrganization = ({
               <PrimaryButton
                 testID="ORG.create-btn"
                 fullSize
-                text={t(m.create)}
-                disabled={trimmedName.length === 0 || tooLong}
+                text={t(m.createOrganization)}
+                disabled={tooLong}
                 onPress={handleCreatePress}
               />
             )}

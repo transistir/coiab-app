@@ -362,17 +362,8 @@
   "$1screens.DataPrivacy.title": {
     "message": "CoMapeo is private by default."
   },
-  "$1screens.DeviceNaming.Success.chooseProject": {
-    "message": "Choose from below to start with an Organization."
-  },
-  "$1screens.DeviceNaming.Success.createOrg": {
-    "message": "Create Organization"
-  },
   "$1screens.DeviceNaming.Success.deviceReady": {
     "message": "{deviceName} is ready!"
-  },
-  "$1screens.DeviceNaming.Success.joinOrg": {
-    "message": "Join an Organization"
   },
   "$1screens.DeviceNaming.description": {
     "message": "Distinct names help collaborators using CoMapeo to recognize you."
@@ -569,32 +560,11 @@
     "message": "Go to the map",
     "description": "Action that opens the map of the current work area from the empty observation list"
   },
-  "$1screens.Onboarding.CreateOrganization.body": {
-    "message": "The Organization is the way {app} organizes mapping. It contains the Monitoramento and Alertas projects."
-  },
-  "$1screens.Onboarding.CreateOrganization.create": {
-    "message": "Create Organization"
-  },
   "$1screens.Onboarding.CreateOrganization.creating": {
     "message": "Creating Organization…"
   },
-  "$1screens.Onboarding.CreateOrganization.placeholder": {
-    "message": "Organization name"
-  },
-  "$1screens.Onboarding.CreateOrganization.title": {
-    "message": "Name your Organization"
-  },
   "$1screens.Onboarding.CreateOrganization.tooLong": {
     "message": "Organization name is too long"
-  },
-  "$1screens.Onboarding.JoinOrganizationIntro.body": {
-    "message": "Ask a coordinator of an existing Organization to invite this device. When the invitation arrives it will appear on this screen."
-  },
-  "$1screens.Onboarding.JoinOrganizationIntro.ok": {
-    "message": "OK"
-  },
-  "$1screens.Onboarding.JoinOrganizationIntro.title": {
-    "message": "Join an Organization"
   },
   "$1screens.OnboardingPrivacyPolicy.shareDiagnostics": {
     "message": "Share Diagnostic Information"
@@ -644,11 +614,26 @@
   "$1screens.OrganizationSetup.areaWaiting": {
     "message": "Waiting"
   },
+  "$1screens.OrganizationSetup.backButton": {
+    "message": "Back"
+  },
+  "$1screens.OrganizationSetup.continueButton": {
+    "message": "Continue"
+  },
+  "$1screens.OrganizationSetup.createIntroBody": {
+    "message": "Your Organization will have Monitoramento and Alertas, with categories ready to use. You can create it without internet."
+  },
+  "$1screens.OrganizationSetup.createOrganization": {
+    "message": "Create Organization"
+  },
   "$1screens.OrganizationSetup.createdBody": {
     "message": "{organizationName} is ready. Monitoring and Alerts are already available."
   },
   "$1screens.OrganizationSetup.createdTitle": {
     "message": "Organization created"
+  },
+  "$1screens.OrganizationSetup.emptyName": {
+    "message": "Enter the Organization name."
   },
   "$1screens.OrganizationSetup.failureBody": {
     "message": "What was already prepared is saved. Try again to finish."
@@ -661,6 +646,21 @@
   },
   "$1screens.OrganizationSetup.monitoringRow": {
     "message": "Monitoring"
+  },
+  "$1screens.OrganizationSetup.nameGuidance": {
+    "message": "Choose a name for your Organization."
+  },
+  "$1screens.OrganizationSetup.nameLabel": {
+    "message": "Organization name"
+  },
+  "$1screens.OrganizationSetup.nameNotIdentity": {
+    "message": "Using the same name as another Organization does not connect the devices. To join an existing Organization, wait for an invitation."
+  },
+  "$1screens.OrganizationSetup.noOrganizationBody": {
+    "message": "Your device is not yet part of an Organization"
+  },
+  "$1screens.OrganizationSetup.noOrganizationGuidance": {
+    "message": "Create an Organization or wait for an invitation to join an existing one."
   },
   "$1screens.OrganizationSetup.openOrganizationButton": {
     "message": "Open organization"
@@ -688,6 +688,15 @@
   "$1screens.OrganizationSetup.unavailableTitle": {
     "message": "Could not open your organization",
     "description": "A settled organization the engine could not open (SPEC B §4.4:120 / SPEC A §6.2:214, “Organização indisponível”)"
+  },
+  "$1screens.OrganizationSetup.waitInviteBody": {
+    "message": "Ask a person responsible for the Organization to invite this device."
+  },
+  "$1screens.OrganizationSetup.waitInviteButton": {
+    "message": "Wait for an invitation"
+  },
+  "$1screens.OrganizationSetup.waitInviteTitle": {
+    "message": "Wait for an invitation"
   },
   "$1screens.PhotoPreviewModal.headerButtonText": {
     "message": "Delete Photo"

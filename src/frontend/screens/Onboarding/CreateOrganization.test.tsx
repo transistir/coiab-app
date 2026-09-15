@@ -1,11 +1,15 @@
 import * as React from 'react';
 import {Text} from 'react-native';
-import {NavigationContainer} from '@react-navigation/native';
+import {
+  NavigationContainer,
+  createNavigationContainerRef,
+} from '@react-navigation/native';
 import {
   createNativeStackNavigator,
   NativeStackScreenProps,
 } from '@react-navigation/native-stack';
 import {
+  act,
   render,
   screen,
   fireEvent,
@@ -31,6 +35,24 @@ import type {
   OrganizacaoLocal,
 } from '../../lib/organization/coiabOrganizations';
 import type {AppStackParamsList} from '../../sharedTypes/navigation';
+
+// pt-BR copied verbatim from SPEC B :54/:55/:252. The copy is asserted
+// through the i18n keys (exact pt-BR text), not the English defaultMessage
+// (SPEC B :100-102). `tooLong` is deliberately absent: the marker-bound
+// message (flag #14) is preserved as-is and asserted by its English
+// defaultMessage below.
+const PT_MESSAGES = {
+  '$1screens.OrganizationSetup.createOrganization': 'Criar organização',
+  '$1screens.OrganizationSetup.createIntroBody':
+    'Sua organização terá Monitoramento e Alertas, com categorias prontas para usar. Você pode criá-la sem internet.',
+  '$1screens.OrganizationSetup.continueButton': 'Continuar',
+  '$1screens.OrganizationSetup.nameLabel': 'Nome da organização',
+  '$1screens.OrganizationSetup.nameGuidance':
+    'Escolha um nome para sua organização.',
+  '$1screens.OrganizationSetup.nameNotIdentity':
+    'Usar o mesmo nome de outra organização não conecta os dispositivos. Para participar de uma organização existente, aguarde um convite.',
+  '$1screens.OrganizationSetup.emptyName': 'Informe o nome da organização.',
+};
 
 jest.mock('../../contexts/OrganizationMaterializerContext', () => ({
   useOrganizationMaterializer: jest.fn(),
@@ -99,6 +121,9 @@ const registrar = async (nome: string) => {
 let store: CoiabOrganizationsStore;
 
 const Stack = createNativeStackNavigator<AppStackParamsList>();
+const navigationRef = createNavigationContainerRef<AppStackParamsList>();
+
+const SuccessStub = () => <Text>SUCCESS-STUB</Text>;
 
 const HomeStub = () => <Text>HOME-REACHED</Text>;
 const ProvisioningStub = () => <Text>PROVISIONING-REACHED</Text>;
@@ -116,11 +141,12 @@ const ErrorStub = ({
 );
 
 async function renderScreen() {
-  return render(
-    <IntlProvider locale="en" messages={{}}>
-      <NavigationContainer>
+  await render(
+    <IntlProvider locale="pt-BR" messages={PT_MESSAGES}>
+      <NavigationContainer ref={navigationRef}>
         <CoiabOrganizationsStoreProvider store={store}>
-          <Stack.Navigator>
+          <Stack.Navigator initialRouteName="Success">
+            <Stack.Screen name="Success" component={SuccessStub} />
             <Stack.Screen
               name="CreateOrganization"
               component={CreateOrganization}
@@ -141,6 +167,19 @@ async function renderScreen() {
       </NavigationContainer>
     </IntlProvider>,
   );
+  // The native-stack navigator mounts asynchronously: wait for the initial
+  // route to settle before dispatching, or the navigate becomes a no-op
+  // ("navigation object hasn't been initialized").
+  await screen.findByText('SUCCESS-STUB');
+  await act(async () => {
+    navigationRef.navigate('CreateOrganization');
+  });
+}
+
+// The SPEC B §3.1 journey: Continuar on the intro leads to the name step.
+async function irParaEtapaNome() {
+  await fireEvent.press(screen.getByTestId('ORG.create-intro-continue-btn'));
+  expect(screen.getByTestId('ORG.create-name-inp')).toBeOnTheScreen();
 }
 
 beforeEach(() => {
@@ -170,23 +209,90 @@ describe('CreateOrganization', () => {
     ).toHaveLength(61);
   });
 
-  test('renders title, name input and create button', async () => {
+  test('the intro step renders the SPEC B :54 copy and leads to the name step', async () => {
     await renderScreen();
 
-    expect(screen.getByText('Name your Organization')).toBeOnTheScreen();
+    expect(screen.getByText('Criar organização')).toBeOnTheScreen();
     expect(
       screen.getByText(
-        'The Organization is the way CoMapeo organizes mapping. It contains the Monitoramento and Alertas projects.',
+        'Sua organização terá Monitoramento e Alertas, com categorias prontas para usar. Você pode criá-la sem internet.',
+      ),
+    ).toBeOnTheScreen();
+    expect(
+      screen.getByTestId('ORG.create-intro-continue-btn'),
+    ).toBeOnTheScreen();
+    expect(screen.queryByTestId('ORG.create-name-inp')).not.toBeOnTheScreen();
+
+    await irParaEtapaNome();
+
+    expect(
+      screen.getByText('Escolha um nome para sua organização.'),
+    ).toBeOnTheScreen();
+    expect(
+      screen.getByText(
+        'Usar o mesmo nome de outra organização não conecta os dispositivos. Para participar de uma organização existente, aguarde um convite.',
       ),
     ).toBeOnTheScreen();
     expect(screen.getByTestId('ORG.create-name-inp')).toBeOnTheScreen();
     expect(screen.getByTestId('ORG.create-btn')).toBeOnTheScreen();
   });
 
-  test('create button is disabled while the name is empty', async () => {
+  test('back from the name step returns to the intro with no effects', async () => {
     await renderScreen();
 
-    expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+    await irParaEtapaNome();
+
+    navigationRef.goBack();
+
+    expect(
+      await screen.findByTestId('ORG.create-intro-continue-btn'),
+    ).toBeOnTheScreen();
+    expect(screen.queryByTestId('ORG.create-name-inp')).not.toBeOnTheScreen();
+    expect(iniciar).not.toHaveBeenCalled();
+    // "sem efeitos": the document is untouched by the round-trip.
+    expect(store.instance.getState().organizacoes).toHaveLength(0);
+  });
+
+  test('the name step labels the field and the submit button per SPEC B :55', async () => {
+    await renderScreen();
+
+    await irParaEtapaNome();
+
+    expect(screen.getByTestId('ORG.create-name-inp')).toHaveProp(
+      'placeholder',
+      'Nome da organização',
+    );
+    expect(screen.getByTestId('ORG.create-btn')).toHaveTextContent(
+      'Criar organização',
+    );
+  });
+
+  test('an empty submit shows the required-name message and never calls the core', async () => {
+    // SPEC B :252: an empty (or whitespace-only) name is rejected BEFORE
+    // persisting the intent — the message explains, nothing is created.
+    await renderScreen();
+
+    await irParaEtapaNome();
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+
+    expect(
+      screen.getByText('Informe o nome da organização.'),
+    ).toBeOnTheScreen();
+    expect(iniciar).not.toHaveBeenCalled();
+
+    // A whitespace-only name is equally rejected (trim).
+    await fireEvent.changeText(
+      screen.getByTestId('ORG.create-name-inp'),
+      '   ',
+    );
+    expect(
+      screen.queryByText('Informe o nome da organização.'),
+    ).not.toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+    expect(
+      screen.getByText('Informe o nome da organização.'),
+    ).toBeOnTheScreen();
+    expect(iniciar).not.toHaveBeenCalled();
   });
 
   test('presses create with the trimmed name and never writes the active project', async () => {
@@ -195,6 +301,7 @@ describe('CreateOrganization', () => {
     // single write, so the form must hand the materializer the trimmed name
     // and never repoint the legacy active id itself.
     await renderScreen();
+    await irParaEtapaNome();
 
     await fireEvent.changeText(
       screen.getByTestId('ORG.create-name-inp'),
@@ -211,20 +318,9 @@ describe('CreateOrganization', () => {
     });
   });
 
-  test('does not start while the name is only whitespace', async () => {
-    await renderScreen();
-
-    await fireEvent.changeText(
-      screen.getByTestId('ORG.create-name-inp'),
-      '   ',
-    );
-    // Button stays disabled, but press guard is also asserted directly.
-    expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
-    expect(iniciar).not.toHaveBeenCalled();
-  });
-
   test('an ASCII name at the exact encoded-marker boundary stays enabled', async () => {
     await renderScreen();
+    await irParaEtapaNome();
 
     // 32 + 28 = 60 — the marker fits exactly.
     await fireEvent.changeText(
@@ -248,6 +344,7 @@ describe('CreateOrganization', () => {
 
   test('an accented name is guarded by its encoded length, not the raw one', async () => {
     await renderScreen();
+    await irParaEtapaNome();
 
     // 'Órganização' is 11 raw chars but encodes to 26 (each accented char
     // becomes %XX%XX): 32 + 26 = 58, inside the bound. Pinned so the
@@ -281,6 +378,7 @@ describe('CreateOrganization', () => {
 
   test('an emoji name is guarded by its encoded length', async () => {
     await renderScreen();
+    await irParaEtapaNome();
 
     // Each 🌴 encodes to 12 chars (%F0%9F%8C%B4, 4 bytes × 3): two fit the
     // 28-char encoded-name bound, three do not — both far below the raw
@@ -301,6 +399,7 @@ describe('CreateOrganization', () => {
 
   test('the character counter reads the encoded length against the guard bound', async () => {
     await renderScreen();
+    await irParaEtapaNome();
 
     // ASCII only: encoded and raw lengths agree, and the denominator is the
     // encoded-name bound (28), not the marker length (60).
@@ -332,6 +431,7 @@ describe('CreateOrganization', () => {
       iniciar: () => new Promise<void>(() => {}),
     });
     await renderScreen();
+    await irParaEtapaNome();
 
     await fireEvent.changeText(
       screen.getByTestId('ORG.create-name-inp'),
@@ -350,6 +450,7 @@ describe('CreateOrganization', () => {
     // confirmation's "Abrir organização" tap may open it.
     mockMaterializador({iniciar: registrar});
     await renderScreen();
+    await irParaEtapaNome();
 
     await fireEvent.changeText(
       screen.getByTestId('ORG.create-name-inp'),
@@ -373,7 +474,7 @@ describe('CreateOrganization', () => {
       },
     });
     await renderScreen();
-
+    await irParaEtapaNome();
     await fireEvent.changeText(
       screen.getByTestId('ORG.create-name-inp'),
       '  Órgão Teste  ',
@@ -407,7 +508,7 @@ describe('CreateOrganization', () => {
       },
     });
     await renderScreen();
-
+    await irParaEtapaNome();
     await fireEvent.changeText(
       screen.getByTestId('ORG.create-name-inp'),
       '  Órgão Teste  ',
@@ -471,7 +572,7 @@ describe('CreateOrganization', () => {
       ativa: {organizacaoId: pronta.id, area: 'monitoramento'},
     } as EstadoOrganizacoes);
     await renderScreen();
-
+    await irParaEtapaNome();
     expect(screen.getByTestId('ORG.create-name-inp')).toBeOnTheScreen();
     expect(screen.queryByText('PROVISIONING-REACHED')).not.toBeOnTheScreen();
     expect(iniciar).not.toHaveBeenCalled();
