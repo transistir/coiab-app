@@ -129,6 +129,29 @@ export function derivarProjectIdAtivo(
 }
 
 /**
+ * The startup gate's document-first read (SPEC B §3.3 items 2-3): the
+ * persisted document decides what the device may open BEFORE the
+ * reconstructed core state is consulted. Any organization still being
+ * prepared — including a recoverable failure, which SPEC B treats as the
+ * same "preparation in progress" case — keeps the whole document in
+ * 'preparando'; a ready organization whose confirmation was never
+ * acknowledged is 'confirmacao'; only when every organization is ready
+ * and acknowledged does the document say 'pronta'; with no organizations
+ * at all it says 'nenhum' and the reconstruction alone rules.
+ */
+export type DocumentoGate = 'nenhum' | 'preparando' | 'confirmacao' | 'pronta';
+
+export function classificarDocumento(
+  estado: EstadoOrganizacoes,
+): DocumentoGate {
+  if (!estado.organizacoes.length) return 'nenhum';
+  if (estado.organizacoes.some(organizacao => organizacao.estado !== 'pronta'))
+    return 'preparando';
+  if (estado.organizacoes.some(organizacao => organizacao.confirmacaoPendente))
+    return 'confirmacao';
+  return 'pronta';
+}
+/**
  * Parses a persisted document, rejecting anything that does not satisfy the
  * §4.2 shape — a corrupt or foreign payload must never be rehydrated as the
  * organizational source of truth.

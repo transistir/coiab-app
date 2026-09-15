@@ -1,7 +1,13 @@
 import * as React from 'react';
 import {Asset} from 'expo-asset';
 import {Text} from 'react-native';
-import {render, screen, waitFor} from '@testing-library/react-native';
+import {
+  act,
+  render,
+  screen,
+  waitFor,
+  fireEvent,
+} from '@testing-library/react-native';
 import type {MapeoManager} from '@comapeo/core';
 import type {ComapeoCoreClientApi} from '@comapeo/ipc';
 
@@ -58,13 +64,21 @@ function MaterializerProbe() {
 /** The engine is mounted once at the root (SPEC A §5.2): everything the
  * activation publishes must be readable from anywhere under `AppProviders`. */
 function ActivationProbe() {
-  const {status, projectId, generation} = useOrganizationActivationContext();
+  const {status, projectId, generation, activate} =
+    useOrganizationActivationContext();
 
   return (
     <>
       <Text testID="activation-status">{status}</Text>
       <Text testID="activation-project">{projectId ?? 'sem-projeto'}</Text>
       <Text testID="activation-generation">{String(generation)}</Text>
+      <Text
+        testID="activation-activate-btn"
+        onPress={() => {
+          void activate('A', {acknowledge: true});
+        }}>
+        ativar
+      </Text>
     </>
   );
 }
@@ -120,9 +134,13 @@ describe('OrganizationActivationContext sob AppProviders', () => {
     for (const fn of onTeardown) await fn();
     MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
   });
-
-  const renderProbe = async () => {
-    const appProviders = createAppProvidersWrapper({mapeoApi: client});
+  const renderProbe = async ({
+    activeProjectId,
+  }: {activeProjectId?: string} = {}) => {
+    const appProviders = createAppProvidersWrapper({
+      mapeoApi: client,
+      activeProjectId,
+    });
     onTeardown.push(appProviders.teardown);
 
     const utils = await render(
@@ -142,7 +160,7 @@ describe('OrganizationActivationContext sob AppProviders', () => {
       await sleep(0);
     });
 
-    return utils;
+    return {utils, activeProjectIdStore: appProviders.activeProjectIdStore};
   };
 
   test('expõe o motor de ativação montado na raiz', async () => {
@@ -191,7 +209,7 @@ describe('OrganizationActivationContext sob AppProviders', () => {
   });
 
   test('re-render da raiz não recria o motor nem inicializa de novo', async () => {
-    const utils = await renderProbe();
+    const {utils} = await renderProbe();
 
     await waitFor(() =>
       expect(screen.getByTestId('activation-status')).toHaveTextContent(
@@ -231,5 +249,73 @@ describe('OrganizationActivationContext sob AppProviders', () => {
     // the asset download happens only inside `prepare` (Phase 3).
     expect(fromModuleSpy).not.toHaveBeenCalled();
     expect(downloadAsyncSpy).not.toHaveBeenCalled();
+  });
+
+  test('toque em Abrir organização projeta o id derivado; sem geração nova não reescreve', async () => {
+    const monitoramentoId = await client.createProject({
+      name: 'Monitoramento',
+    });
+    const alertasId = await client.createProject({name: 'Alertas'});
+    // pronta com a confirmação pendente e NENHUMA seleção: até o toque em
+    // "Abrir organização", nada pode ser ativado nem projetado (SPEC B §3.3
+    // item 3 / §5.3 :207).
+    const documento = persistedDocument(monitoramentoId, alertasId);
+    documento.organizacoes[0]!.confirmacaoPendente = true;
+    documento.ativa = null;
+    MMKVStoreInitializer.setItem(
+      COIAB_ORGANIZATIONS_STORAGE_KEY,
+      JSON.stringify({state: documento, version: 1}),
+    );
+
+    const {activeProjectIdStore} = await renderProbe({
+      activeProjectId: 'legado-antigo',
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('activation-status')).toHaveTextContent(
+        'confirmation',
+      ),
+    );
+    // A confirmação pendente publica nada: o id legado segue o valor
+    // semeado, jamais reescrito por baixo do documento.
+    expect(activeProjectIdStore.instance.getState().projectId).toBe(
+      'legado-antigo',
+    );
+
+    await fireEvent.press(screen.getByTestId('activation-activate-btn'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('activation-status')).toHaveTextContent(
+        'ready',
+      ),
+    );
+    // Depois do activate, o id legado é o projetado pelo motor — o mesmo id
+    // que o contexto derivou do documento.
+    expect(screen.getByTestId('activation-project')).toHaveTextContent(
+      monitoramentoId,
+    );
+    expect(activeProjectIdStore.instance.getState().projectId).toBe(
+      monitoramentoId,
+    );
+
+    // Outro escritor assume o id legado. A republicação de 'ready' com a
+    // MESMA geração (o caminho do interruptor bloqueado que repõe o
+    // snapshot, :296-309) não pode reescrevê-lo de volta.
+    act(() => {
+      activeProjectIdStore.actions.setActiveProjectId('escritor-estranho');
+    });
+    const engine = createOrganizationActivationMock.mock.results[0]!.value;
+    act(() => {
+      engine.instance.setState({status: 'opening'});
+    });
+    act(() => {
+      engine.instance.setState(
+        {status: 'ready', projectId: monitoramentoId, generation: 1},
+        true,
+      );
+    });
+    expect(activeProjectIdStore.instance.getState().projectId).toBe(
+      'escritor-estranho',
+    );
   });
 });

@@ -17,6 +17,11 @@ import {
 } from '../../contexts/ActiveProjectIdStoreContext';
 import {useOrganizations} from '../../hooks/organization/useOrganizations';
 import {
+  classificarDocumento,
+  type DocumentoGate,
+} from '../../lib/organization/coiabOrganizations';
+import {useCoiabOrganizationsState} from '../../contexts/CoiabOrganizationsStoreContext';
+import {
   projectProvenance,
   type LocalProjectRow,
   type ReconstructedOrganization,
@@ -73,12 +78,25 @@ export function getInitialRoute(
    * device must not land on Home operating the other organization.
    */
   activeProjectDegraded: boolean = false,
+  /**
+   * SPEC B §3.3 items 2-3: the persisted organization document is resolved
+   * BEFORE the rebuilt core state. While any organization is still being
+   * prepared, or is ready only because its confirmation was never
+   * acknowledged, nothing may be activated: the device opens on the
+   * provisioning surface and waits for the "Abrir organização" tap, no
+   * matter how healthy the reconstruction looks. Defaults to 'nenhum' so
+   * existing callers keep their signature.
+   */
+  documento: DocumentoGate = 'nenhum',
 ): keyof AppStackParamsList {
   if (authState === 'unauthenticated') {
     return 'AuthScreen';
   }
   if (!deviceName) {
     return 'IntroToCoMapeo';
+  }
+  if (documento === 'preparando' || documento === 'confirmacao') {
+    return 'OrganizationProvisioning';
   }
   if (orgStatus === 'provisioning') {
     return 'OrganizationProvisioning';
@@ -223,6 +241,15 @@ function OrganizationCompletion({
 }) {
   const isOnboarding = state.routes.some(route => route.name === 'Success');
   const hasHome = state.routeNames.includes('Home');
+  // The provisioning surface owns its own completion too (SPEC B §3.3): a
+  // screen the navigator opened directly (a pending document, a degraded
+  // org) must only be dismissed by the same creation handoff that dismisses
+  // the form — the onboarding check alone would reset the stack to Home
+  // the moment an organization reads ready, over the "Abrir organização"
+  // tap.
+  const isProvisioning = state.routes.some(
+    route => route.name === 'OrganizationProvisioning',
+  );
   const isCreating = state.routes.some(
     route => route.name === 'CreateOrganization',
   );
@@ -231,7 +258,8 @@ function OrganizationCompletion({
   const creationComplete =
     completedProjectId !== undefined && completedProjectId === activeProjectId;
   // An existing ready organization must never dismiss a newly opened form.
-  const shouldComplete = isCreating ? creationComplete : isOnboarding;
+  const shouldComplete =
+    isCreating || isProvisioning ? creationComplete : isOnboarding;
   React.useEffect(() => {
     // A screen-local completion (e.g. provisioning) may already have reset
     // the stack. Consume its handoff too, so a later form stays open.
@@ -339,6 +367,10 @@ export const RootStackNavigator = () => {
   // here because the reconstruction drops non-`joined` rows, and F7's
   // per-id provenance needs the marker of a slot the device lost.
   const {data: projects} = useManyProjects();
+  // SPEC B §3.3 items 2-3: the document gates the startup BEFORE the
+  // reconstruction — a pending confirmation or an in-flight preparation
+  // outranks whatever the project rows look like.
+  const documento = classificarDocumento(useCoiabOrganizationsState());
   const orgStatus: OrgGateStatus = organizations.some(
     org => org.state === 'ready',
   )
@@ -369,8 +401,15 @@ export const RootStackNavigator = () => {
   // ids for the flow screens; rewriting the active id to an organization
   // slot here makes those seeded ids unreadable (fields not found -> guard
   // goBack, observation 404). The QA captures must see the seeded project.
+  // While the document is still preparing or awaiting its confirmation,
+  // NOTHING may be activated: running the correction here is what used to
+  // write the first ready organization's 'm' slot under the pending
+  // document and open Home over the "Abrir organização" tap (SPEC B §3.3
+  // items 2-3, regra 9). The correction resumes once the document settles.
   const activeProjectCorrection =
     process.env.EXPO_PUBLIC_STORYBOOK_ENABLED !== 'true' &&
+    documento !== 'preparando' &&
+    documento !== 'confirmacao' &&
     orgStatus === 'ready'
       ? resolveActiveProjectCorrection(organizations, activeProjectId, projects)
       : ({kind: 'none'} as const);
@@ -465,6 +504,7 @@ export const RootStackNavigator = () => {
     activeProjectId,
     orgStatus,
     activeProjectDegraded,
+    documento,
   );
 
   return (

@@ -100,8 +100,75 @@ jest.mock('../../hooks/server/presets', () => ({
   usePresetsQuery: () => ({data: []}),
 }));
 
-process.env.MAPBOX_ACCESS_TOKEN = 'test-token';
+import {MMKVStoreInitializer} from '../../hooks/persistedState/createPersistedState';
+import {COIAB_ORGANIZATIONS_STORAGE_KEY} from '../../contexts/CoiabOrganizationsStoreContext';
+import {type EstadoOrganizacoes} from '../../lib/organization/coiabOrganizations';
 
+/**
+ * The §4.2 document for the pending-confirmation startup (SPEC B §3.3
+ * items 2-3): the materialized organization is `pronta` with its pending
+ * confirmation, `ativa` stays `null` until the "Abrir organização" tap,
+ * and a second record is still `preparando` — so the document, not the
+ * reconstruction, decides what the device may open.
+ */
+function documentoComConfirmacaoPendente(
+  monitoramentoId: string,
+  alertasId: string,
+  organizacaoId: string,
+  segundaOrganizacaoId: string,
+  segundaAreaProjectId: string,
+): EstadoOrganizacoes {
+  return {
+    versao: 1,
+    organizacoes: [
+      {
+        id: organizacaoId,
+        nome: 'Test Org',
+        estado: 'pronta',
+        confirmacaoPendente: true,
+        materializacao: {
+          monitoramento: {
+            etapa: 'verificado',
+            projectId: monitoramentoId,
+            template: {versao: '1', hash: 'monitoramento'},
+            idsAntesDaCriacao: null,
+          },
+          alertas: {
+            etapa: 'verificado',
+            projectId: alertasId,
+            template: {versao: '1', hash: 'alertas'},
+            idsAntesDaCriacao: null,
+          },
+        },
+        areaEmExecucao: null,
+        ultimoErro: null,
+      },
+      {
+        id: segundaOrganizacaoId,
+        nome: 'Outra Org',
+        estado: 'preparando',
+        confirmacaoPendente: false,
+        materializacao: {
+          monitoramento: {
+            etapa: 'criado',
+            projectId: null,
+            template: null,
+            idsAntesDaCriacao: null,
+          },
+          alertas: {
+            etapa: 'verificado',
+            projectId: segundaAreaProjectId,
+            template: {versao: '1', hash: 'alertas'},
+            idsAntesDaCriacao: null,
+          },
+        },
+        areaEmExecucao: null,
+        ultimoErro: null,
+      },
+    ],
+    ativa: null,
+  };
+}
 import {
   setupIntegrationTest,
   setupIntegrationTestWithoutProject,
@@ -128,6 +195,12 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     // The provenance record is durable by design — it must not leak from the
     // test that wrote it into the next device state.
     organizationCreationProvenanceStore.setState({organizationIds: []});
+  });
+
+  afterEach(() => {
+    // The document is durable by design too: a seeded pending confirmation
+    // must not leak from the test that wrote it into the next device state.
+    MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
   });
 
   test('creation with a delayed project refresh stays on Home without offering creation again', async () => {
@@ -457,6 +530,86 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     // NO silent switch: the persisted active id is still the degraded
     // organization's slot, not the ready organization's.
     expect(freshSetup.activeProjectId).toBe(degradedMProjectId);
+  }, 15000);
+
+  test('um documento pronta com confirmação pendente não deixa o navigator abrir Home (SPEC B §3.3 2-3)', async () => {
+    // Os dois marcadores do par m/a existem no core; o documento persistido
+    // descreve a MESMA organização: pronta, confirmação pendente, sem
+    // seleção. O refresh da lista de projetos fica preso num gate até o
+    // release: quando a reconstrução chega, o documento é a única evidência
+    // disponível e NADA pode ser ativado — nem o slot 'm' gravado por baixo
+    // da confirmação pendente.
+    const mProjectId = await freshSetup.client.createProject({
+      name: 'Monitoramento',
+      projectDescription: markerFor(freshSetup.orgId, 'm', freshSetup.orgName),
+    });
+    const aProjectId = await freshSetup.client.createProject({
+      name: 'Alertas',
+      projectDescription: markerFor(freshSetup.orgId, 'a', freshSetup.orgName),
+    });
+    // O id legado: um projeto sem marcador desta mesma instância do core —
+    // o mesmo resíduo que um interruptor/depuração da era pré-organização
+    // deixaria persistido.
+    const standaloneProjectId = await freshSetup.client.createProject({
+      name: 'Standalone',
+    });
+    const segundaOrgId = 'fedcba9876543210';
+    const segundaAreaProjectId = await freshSetup.client.createProject({
+      name: 'Alertas',
+      projectDescription: markerFor(segundaOrgId, 'a', 'Outra Org'),
+    });
+    MMKVStoreInitializer.setItem(
+      COIAB_ORGANIZATIONS_STORAGE_KEY,
+      JSON.stringify({
+        state: documentoComConfirmacaoPendente(
+          mProjectId,
+          aProjectId,
+          freshSetup.orgId,
+          segundaOrgId,
+          segundaAreaProjectId,
+        ),
+        version: 1,
+      }),
+    );
+
+    const listProjects = freshSetup.manager.listProjects.bind(
+      freshSetup.manager,
+    );
+    let releaseRefresh!: () => void;
+    const refreshGate = new Promise<void>(resolve => {
+      releaseRefresh = resolve;
+    });
+    let refreshWaiting = false;
+    const spy = jest
+      .spyOn(freshSetup.manager, 'listProjects')
+      .mockImplementation(async () => {
+        const projects = await listProjects();
+        if (projects.length >= 2) {
+          refreshWaiting = true;
+          await refreshGate;
+        }
+        return projects;
+      });
+    try {
+      await freshSetup.renderNavigationAsync({
+        activeProjectId: standaloneProjectId,
+      });
+      await waitFor(() => expect(refreshWaiting).toBe(true));
+
+      await act(async () => releaseRefresh());
+
+      // O documento roteia o arranque ANTES de qualquer estado
+      // reconstruído: a confirmação pendente é a superfície de abertura.
+      expect(
+        await screen.findByText('Setting up your Organization…'),
+      ).toBeOnTheScreen();
+      // Nenhum escritor projetou o slot por baixo da confirmação pendente:
+      // o id legado segue exatamente o valor semeado.
+      expect(freshSetup.activeProjectId).toBe(standaloneProjectId);
+    } finally {
+      releaseRefresh();
+      spy.mockRestore();
+    }
   }, 15000);
 
   test('leaving the active slot while another organization is ready never repoints the active id at it (F6)', async () => {

@@ -140,15 +140,101 @@ describe('getInitialRoute', () => {
     ).toBe('Home');
   });
 
-  test('the degraded signal never overrides the earlier gates', () => {
+  test('a pending document is outranked by nothing between the device name and Home (SPEC B §3.3 2-3)', () => {
+    // SPEC B §3.3: the document is resolved FIRST. While any organization
+    // is still being prepared, or ready with its pending confirmation,
+    // nothing may be activated — the healthy reconstruction with an old
+    // active id may not hand the user Home; the confirmation tap is what
+    // ends the wait.
     expect(
-      getInitialRoute(unauthenticated, 'device', 'projectId', 'ready', true),
+      getInitialRoute(
+        authenticated,
+        'device',
+        'old-project-id',
+        'ready',
+        false,
+        'preparando',
+      ),
+    ).toBe('OrganizationProvisioning');
+    expect(
+      getInitialRoute(
+        authenticated,
+        'device',
+        'old-project-id',
+        'ready',
+        false,
+        'confirmacao',
+      ),
+    ).toBe('OrganizationProvisioning');
+    // The signal survives the degraded routing too.
+    expect(
+      getInitialRoute(
+        authenticated,
+        'device',
+        'old-project-id',
+        'ready',
+        true,
+        'preparando',
+      ),
+    ).toBe('OrganizationProvisioning');
+  });
+
+  test('the pending document is outranked only by the auth and device-name gates', () => {
+    expect(
+      getInitialRoute(
+        unauthenticated,
+        'device',
+        'old-project-id',
+        'ready',
+        false,
+        'preparando',
+      ),
     ).toBe('AuthScreen');
     expect(
-      getInitialRoute(authenticated, undefined, 'projectId', 'ready', true),
+      getInitialRoute(
+        authenticated,
+        undefined,
+        'old-project-id',
+        'ready',
+        false,
+        'preparando',
+      ),
     ).toBe('IntroToCoMapeo');
+  });
+
+  test('a settled document falls through to the reconstructed-state gates', () => {
     expect(
-      getInitialRoute(authenticated, 'device', 'projectId', 'none', true),
+      getInitialRoute(
+        authenticated,
+        'device',
+        'old-project-id',
+        'ready',
+        false,
+        'pronta',
+      ),
+    ).toBe('Home');
+    // The degraded-active routing still applies on a settled document.
+    expect(
+      getInitialRoute(
+        authenticated,
+        'device',
+        'old-project-id',
+        'ready',
+        true,
+        'pronta',
+      ),
+    ).toBe('OrganizationProvisioning');
+    // An empty document leaves the startup gate untouched: the org fork
+    // is decided by the reconstruction alone.
+    expect(
+      getInitialRoute(
+        authenticated,
+        'device',
+        'old-project-id',
+        'none',
+        false,
+        'nenhum',
+      ),
     ).toBe('Success');
   });
 });

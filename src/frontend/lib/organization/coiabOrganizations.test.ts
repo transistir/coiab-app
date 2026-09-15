@@ -1,6 +1,7 @@
 import {
   EstadoOrganizacoes,
   OrganizacaoLocal,
+  classificarDocumento,
   criarEtapaAreaAusente,
   derivarProjectIdAtivo,
 } from './coiabOrganizations';
@@ -148,3 +149,78 @@ describe('invariantes do documento (CA09/CA10)', () => {
 
 import {parseEstadoOrganizacoes} from './coiabOrganizations';
 import {organizationDocument, readyOrganization} from './fixtures';
+
+describe('classificarDocumento (SPEC B §3.3 critério de navegação)', () => {
+  test('documento sem organizações → nenhum', () => {
+    expect(
+      classificarDocumento({versao: 1, organizacoes: [], ativa: null}),
+    ).toBe('nenhum');
+  });
+
+  test('organização com estado ≠ pronta → preparando', () => {
+    for (const estado of ['preparando', 'falha_recuperavel'] as const) {
+      expect(
+        classificarDocumento({
+          versao: 1,
+          organizacoes: [criarOrganizacaoPronta({estado})],
+          ativa: null,
+        }),
+      ).toBe('preparando');
+    }
+  });
+
+  test('pronta com confirmação pendente → confirmacao', () => {
+    expect(
+      classificarDocumento({
+        versao: 1,
+        organizacoes: [criarOrganizacaoPronta({confirmacaoPendente: true})],
+        ativa: null,
+      }),
+    ).toBe('confirmacao');
+  });
+
+  test('pronta sem pendência → pronta', () => {
+    expect(
+      classificarDocumento({
+        versao: 1,
+        organizacoes: [criarOrganizacaoPronta()],
+        ativa: null,
+      }),
+    ).toBe('pronta');
+  });
+
+  test('preparando vence prontas na mesma lista', () => {
+    expect(
+      classificarDocumento({
+        versao: 1,
+        organizacoes: [
+          criarOrganizacaoPronta(),
+          criarOrganizacaoPronta({id: 'org-2', estado: 'preparando'}),
+        ],
+        ativa: null,
+      }),
+    ).toBe('preparando');
+  });
+
+  test('confirmação pendente vence prontas resolvidas, mas não vence preparando', () => {
+    const mistas = (segunda: OrganizacaoLocal) => ({
+      versao: 1 as const,
+      organizacoes: [criarOrganizacaoPronta(), segunda],
+      ativa: null,
+    });
+    // A pendência ainda é confirmacao enquanto NADA está em preparação.
+    expect(
+      classificarDocumento(
+        mistas(
+          criarOrganizacaoPronta({id: 'org-2', confirmacaoPendente: true}),
+        ),
+      ),
+    ).toBe('confirmacao');
+    // A preparação em curso vem antes de qualquer confirmação.
+    expect(
+      classificarDocumento(
+        mistas(criarOrganizacaoPronta({id: 'org-2', estado: 'preparando'})),
+      ),
+    ).toBe('preparando');
+  });
+});
