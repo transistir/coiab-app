@@ -643,6 +643,14 @@
   "$1screens.OrganizationSetup.waitInviteTitle": {
     "message": "Aguardar convite"
   },
+  "$1screens.Organizations.currentOrganization": {
+    "message": "Atual",
+    "description": "Badge naming the organization this device operates in right now"
+  },
+  "$1screens.Organizations.title": {
+    "message": "Organizações",
+    "description": "Title of the organization selector modal"
+  },
   "$1screens.PhotoPreviewModal.headerButtonText": {
     "message": "Excluir foto"
   },

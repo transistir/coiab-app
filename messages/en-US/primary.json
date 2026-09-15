@@ -702,6 +702,14 @@
   "$1screens.OrganizationSetup.waitInviteTitle": {
     "message": "Wait for an invitation"
   },
+  "$1screens.Organizations.currentOrganization": {
+    "message": "Current",
+    "description": "Badge naming the organization this device operates in right now"
+  },
+  "$1screens.Organizations.title": {
+    "message": "Organizations",
+    "description": "Title of the organization selector modal"
+  },
   "$1screens.PhotoPreviewModal.headerButtonText": {
     "message": "Delete Photo"
   },

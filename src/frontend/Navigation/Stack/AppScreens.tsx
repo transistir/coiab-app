@@ -109,6 +109,7 @@ import {AppUsageSharingSuccess} from '../../screens/AppUsageSharingSuccess.tsx';
 import {ProjectStatistics} from '../../screens/ProjectStatistics/index.tsx';
 import {ProjectStatsTurnedOffBottomSheet} from '../../screens/ProjectStatistics/ProjectStatsTurnedOffBottomSheet.tsx';
 import {EarlyAccessOffBottomSheet} from '../../screens/ComapeoSettings/EarlyAccessOffBottomSheet.tsx';
+import {Organizations} from '../../screens/Organizations';
 import {EarlyAccess} from '../../screens/ComapeoSettings/EarlyAccess.tsx';
 import {
   CollaboratorInfo,
@@ -527,6 +528,11 @@ export const createAppScreens = ({
       <RootStack.Screen
         name="DidNotMoveBottomSheet"
         component={DidNotMoveBottomSheet}
+      />
+      <RootStack.Screen
+        name="Organizations"
+        component={Organizations}
+        options={{headerShown: false}}
       />
       <RootStack.Screen
         name="ConfirmPasscodeSheet"

@@ -192,6 +192,9 @@ export type RootStackParamsList = {
   // Shared with the onboarding screen set (registered in a RootStack.Group
   // outside the onboarding/app conditional) — routable from both.
   OrganizationProvisioning: undefined;
+  // SPEC A §6.1 — the organization selector modal, opened from the drawer's
+  // "Trocar de organização" entry (the entry itself is wired separately).
+  Organizations: undefined;
 };
 
 export type OnboardingParamsList = {
