@@ -57,7 +57,17 @@ describe('Onboarding Screens', () => {
     expect(screen.queryByText('Join')).not.toBeOnTheScreen();
 
     await user.press(joinButton);
-    expect(await screen.findByText('You have joined Test Org')).toBeVisible();
+    // The accept runs real core work (two invite.accept IPC calls, project
+    // sync, listProjects/reconstruction, query invalidations) and must fit
+    // RNTL's default 1000ms findBy timeout — measured 527ms quiet and up to
+    // ~900ms on a churned 2-core/3.8GB box, so any heavier transient makes
+    // the default flake. Give it an explicit budget; the assertion itself
+    // is unchanged.
+    expect(
+      await screen.findByText('You have joined Test Org', undefined, {
+        timeout: 15_000,
+      }),
+    ).toBeVisible();
 
     // Accepting invalidates the project/invite queries; let those refetches
     // settle so teardown doesn't close the IPC channel under an in-flight
