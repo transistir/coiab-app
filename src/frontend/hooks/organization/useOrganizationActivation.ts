@@ -1,7 +1,8 @@
-import {useEffect, useMemo} from 'react';
+import {useContext, useEffect, useMemo, useRef} from 'react';
 import {useClientApi} from '@comapeo/core-react';
 import type {ComapeoProjectClientApi} from '@comapeo/ipc';
 import * as Sentry from '@sentry/react-native';
+import {useQueryClient} from '@tanstack/react-query';
 import {useStore} from 'zustand';
 
 import {
@@ -9,12 +10,16 @@ import {
   type CoiabOrganizationsStore,
 } from '../../contexts/CoiabOrganizationsStoreContext';
 import {useOrganizationMaterializer} from '../../contexts/OrganizationMaterializerContext';
+import {useDraftObservationState} from '../../contexts/DraftObservationContext';
+import {TrackStoreContext} from '../../contexts/TrackStoreContext';
 import {
   createOrganizationActivation,
   type ActivationProject,
   type ActivationState,
   type OrganizationActivation,
 } from '../../lib/organization/activation';
+import {hasPendingOrganizationWork} from '../../lib/organization/pendingWork';
+import {haOperacoesEmAndamento} from '../../lib/organization/operacoesEmAndamento';
 
 type EngineSetState = CoiabOrganizationsStore['instance']['setState'];
 type EngineState = CoiabOrganizationsStore['instance'] extends {
@@ -74,18 +79,36 @@ function toActivationProject(
  * the persisted selection once, and republishes the engine state for UI
  * consumers.
  *
- * The engine is memoized on its two real dependencies — the store instance
- * and the client API — so a re-render never rebuilds it and the startup
- * `initialize()` runs exactly once per engine. A double-invoked mount
- * (StrictMode) joins the in-flight initialization through the engine's own
- * intent lock instead of activating twice.
+ * The engine is memoized on its real dependencies — the store instance, the
+ * client API, the query client and the track store — so a re-render never
+ * rebuilds it and the startup `initialize()` runs exactly once per engine. A
+ * double-invoked mount (StrictMode) joins the in-flight initialization
+ * through the engine's own intent lock instead of activating twice.
  */
 export function useOrganizationActivation(): OrganizationActivationHandle {
   const store = useCoiabOrganizationsStoreContext();
   const clientApi = useClientApi();
+  const queryClient = useQueryClient();
   // `null` outside the root materializer provider: the engine then publishes
   // `preparation-adapter-required` instead of resuming (P3-8 degradation).
   const materializador = useOrganizationMaterializer();
+  // Trilha e rascunho são os trabalhos que o guard observa além dos convites
+  // (Fase 8a); os provedores ficam acima do driver raiz (AppProviders :143/:160).
+  const trackStore = useContext(TrackStoreContext);
+  if (!trackStore) {
+    throw new Error('Must set up the TrackStoreContext first');
+  }
+  // O rascunho é lido por assinatura (zustand) e espelhado em ref: o motor é
+  // construído uma única vez, mas o guard precisa ver o estado do render MAIS
+  // RECENTE no momento de cada `activate`, não o do boot do motor. O espelho
+  // vive num efeito — escrever ref no render é proibido pelo react-hooks/refs,
+  // e todo read do guard acontece após o commit, quando o efeito já rodou.
+  const draftValue = useDraftObservationState(state => state.value);
+  const draftProjectId = useDraftObservationState(state => state.projectId);
+  const draftStateRef = useRef({value: draftValue, projectId: draftProjectId});
+  useEffect(() => {
+    draftStateRef.current = {value: draftValue, projectId: draftProjectId};
+  }, [draftValue, draftProjectId]);
 
   const activation = useMemo(() => {
     // Writes the engine attempts while disarmed are dropped: post-unmount
@@ -132,10 +155,29 @@ export function useOrganizationActivation(): OrganizationActivationHandle {
       getProject: async id =>
         toActivationProject(await clientApi.getProject(id)),
       resumePreparation: materializador?.retomar,
+      // Fase 8a: o guard deixa de ser inerte. Trabalho pendente no app —
+      // rascunho, trilha, mutações em voo e convites — bloqueia TODA mudança
+      // de contexto, inclusive troca de área (SPEC A §5.2:172/§5.3:180).
+      hasPendingWork: () =>
+        hasPendingOrganizationWork({
+          draft: draftStateRef.current,
+          track: trackStore.instance.getState(),
+          mutations: queryClient.isMutating(),
+          invites: haOperacoesEmAndamento(),
+        }),
+      getPendingWorkProjectId: () =>
+        trackStore.instance.getState().projectId ??
+        draftStateRef.current.projectId ??
+        null,
+      cancelPresentation: ids =>
+        queryClient.cancelQueries({
+          predicate: q =>
+            ids.some(id => JSON.stringify(q.queryKey).includes(id)),
+        }),
     });
     engineWriteGates.set(activation, gate);
     return activation;
-  }, [store, clientApi, materializador]);
+  }, [store, clientApi, materializador, queryClient, trackStore]);
 
   const state = useStore(activation.instance);
 

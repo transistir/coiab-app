@@ -22,6 +22,7 @@ import {
   type ReconstructedOrganization,
 } from '../../lib/organization/reconstruct';
 import {SLOTS, type Slot} from '../../lib/organization/marker';
+import {iniciarOperacao} from '../../lib/organization/operacoesEmAndamento';
 
 export type AcceptOrganizationBundleStatus =
   'idle' | 'accepting' | 'success' | 'error';
@@ -112,170 +113,178 @@ export function useAcceptOrganizationBundle() {
       bundle: OrganizationInviteBundle,
     ): Promise<AcceptOrganizationBundleResult | undefined> => {
       if (busyRef.current) return undefined;
-      busyRef.current = true;
-      attemptRef.current += 1;
-      const attempt = attemptRef.current;
-
-      setStatus('accepting');
-      setError(undefined);
-      // PLAN-46 decision 6: the persisted identity pins a recovery accept of
-      // a partial bundle. An identity already stored for this organization
-      // wins untouched — overwriting it would let a DIVERGENT re-invite
-      // (different invitor/role) re-pin the organization to itself — and the
-      // fan-out validates every present invite against it, failing closed on
-      // `identity-mismatch`. Only a first-ever accept mints the identity here.
-      const persistedIdentity =
-        identities[bundle.organizationId] ??
-        ({
-          invitorDeviceId: bundle.invitorDeviceId,
-          roleName: bundle.roleName,
-        } as const);
-      if (identities[bundle.organizationId] === undefined) {
-        setIdentity(bundle.organizationId, persistedIdentity);
-      }
-
-      // P5 O2: compute the outcome WITHOUT publishing any of it — the
-      // screen's vanish-effect must never observe a settled, non-busy state
-      // while the bundle can still disappear under the invalidations below.
-      let outcome: AcceptOrganizationBundleResult;
-      let identityComplete = false;
-      // Hoisted for the catch: the reconciliation reads the same
-      // reconstruction the success ladder uses.
-      let preAcceptOrg: ReconstructedOrganization | undefined;
+      // Operação em voo alimenta o guard de trabalho pendente do motor de
+      // ativação (Fase 8a): contada na entrada, encerrada no finally —
+      // inclusive nos retornos antecipados (token vencido por reset/unmount).
+      const terminar = iniciarOperacao();
       try {
-        // SPEC 8.6: capture the pre-accept local reconstruction — the read
-        // after the accept can lag behind core, and local state known
-        // before the accept must still outrank this accept's own result.
-        preAcceptOrg = reconstructOrganizations(
-          await clientApi.listProjects(),
-        ).find(org => org.organizationId === bundle.organizationId);
+        busyRef.current = true;
+        attemptRef.current += 1;
+        const attempt = attemptRef.current;
 
-        const accepted = await acceptOrganizationBundle(clientApi, bundle, {
-          persistedIdentity,
-        });
+        setStatus('accepting');
+        setError(undefined);
+        // PLAN-46 decision 6: the persisted identity pins a recovery accept of
+        // a partial bundle. An identity already stored for this organization
+        // wins untouched — overwriting it would let a DIVERGENT re-invite
+        // (different invitor/role) re-pin the organization to itself — and the
+        // fan-out validates every present invite against it, failing closed on
+        // `identity-mismatch`. Only a first-ever accept mints the identity here.
+        const persistedIdentity =
+          identities[bundle.organizationId] ??
+          ({
+            invitorDeviceId: bundle.invitorDeviceId,
+            roleName: bundle.roleName,
+          } as const);
+        if (identities[bundle.organizationId] === undefined) {
+          setIdentity(bundle.organizationId, persistedIdentity);
+        }
 
-        // SPEC 8.6: activate the Monitoramento project of the organization,
-        // slot m first, from the freshest source that sees it — the
-        // post-accept reconstruction (so a slot accepted in an earlier
-        // attempt counts), then the pre-accept local one, then this
-        // accept's own result; only then the same ladder over slot a.
-        const freshOrg = reconstructOrganizations(
-          await clientApi.listProjects(),
-        ).find(org => org.organizationId === bundle.organizationId);
-        const activeProjectId =
-          freshOrg?.slots.m ??
-          preAcceptOrg?.slots.m ??
-          accepted.find(({slot}) => slot === 'm')?.projectId ??
-          freshOrg?.slots.a ??
-          preAcceptOrg?.slots.a ??
-          accepted.find(({slot}) => slot === 'a')?.projectId;
+        // P5 O2: compute the outcome WITHOUT publishing any of it — the
+        // screen's vanish-effect must never observe a settled, non-busy state
+        // while the bundle can still disappear under the invalidations below.
+        let outcome: AcceptOrganizationBundleResult;
+        let identityComplete = false;
+        // Hoisted for the catch: the reconciliation reads the same
+        // reconstruction the success ladder uses.
+        let preAcceptOrg: ReconstructedOrganization | undefined;
+        try {
+          // SPEC 8.6: capture the pre-accept local reconstruction — the read
+          // after the accept can lag behind core, and local state known
+          // before the accept must still outrank this accept's own result.
+          preAcceptOrg = reconstructOrganizations(
+            await clientApi.listProjects(),
+          ).find(org => org.organizationId === bundle.organizationId);
 
-        // P5 O4: the persisted identity is only needed while the
-        // organization is incomplete — once every slot is local across the
-        // reads, the recovery case it guards is over.
-        identityComplete = bothSlotsPresent(
-          preAcceptOrg?.slots,
-          accepted,
-          freshOrg?.slots,
-        );
+          const accepted = await acceptOrganizationBundle(clientApi, bundle, {
+            persistedIdentity,
+          });
 
-        outcome = {ok: true, accepted, activeProjectId};
-      } catch (e) {
-        // Bug 46: a rejecting accept is not necessarily a failed accept —
-        // the sync/IPC timeout rejects the call while core completes the
-        // join (reject-but-completed). Re-read the local state and classify:
-        // every slot present across the reads is a completed organization
-        // the rejection must not report as a failure; some progress is a
-        // typed `accept-partial` failure naming the slots still missing
-        // (the original error kept as `cause`); no progress at all leaves
-        // the original error untouched — there is nothing to reconcile.
-        //
-        // Only a failure of the invite.accept call itself is reconciled
-        // (marked by `acceptOrganizationBundle`): the preflight errors it
-        // also throws (identity-mismatch, invalid-local-state, ...) describe
-        // a bundle that must not join however complete the local
-        // organization looks, so they surface untouched instead of being
-        // read into a success that also unpins the recovery identity.
-        if (isAcceptOriginError(e)) {
-          try {
-            const freshOrg = reconstructOrganizations(
-              await clientApi.listProjects(),
-            ).find(org => org.organizationId === bundle.organizationId);
+          // SPEC 8.6: activate the Monitoramento project of the organization,
+          // slot m first, from the freshest source that sees it — the
+          // post-accept reconstruction (so a slot accepted in an earlier
+          // attempt counts), then the pre-accept local one, then this
+          // accept's own result; only then the same ladder over slot a.
+          const freshOrg = reconstructOrganizations(
+            await clientApi.listProjects(),
+          ).find(org => org.organizationId === bundle.organizationId);
+          const activeProjectId =
+            freshOrg?.slots.m ??
+            preAcceptOrg?.slots.m ??
+            accepted.find(({slot}) => slot === 'm')?.projectId ??
+            freshOrg?.slots.a ??
+            preAcceptOrg?.slots.a ??
+            accepted.find(({slot}) => slot === 'a')?.projectId;
 
-            const accepted = SLOTS.flatMap(slot => {
-              const projectId =
-                freshOrg?.slots[slot] ?? preAcceptOrg?.slots[slot];
-              return projectId === undefined ? [] : [{slot, projectId}];
-            });
-            const missingSlots = SLOTS.filter(slot =>
-              accepted.every(entry => entry.slot !== slot),
-            );
+          // P5 O4: the persisted identity is only needed while the
+          // organization is incomplete — once every slot is local across the
+          // reads, the recovery case it guards is over.
+          identityComplete = bothSlotsPresent(
+            preAcceptOrg?.slots,
+            accepted,
+            freshOrg?.slots,
+          );
 
-            if (missingSlots.length === 0) {
-              identityComplete = true;
-              // SPEC 8.6 ladder over the same two reads.
-              outcome = {
-                ok: true,
-                accepted,
-                activeProjectId:
-                  freshOrg?.slots.m ??
-                  preAcceptOrg?.slots.m ??
-                  freshOrg?.slots.a ??
-                  preAcceptOrg?.slots.a,
-              };
-            } else if (accepted.length > 0) {
-              outcome = {
-                ok: false,
-                error: new OrganizationOperationError(
-                  'accept-partial',
-                  `the accept ended before completing: slots ${missingSlots.join(', ')} are still missing (the joined slots may have completed despite the failure)`,
-                  {cause: e, missingSlots},
-                ),
-              };
-            } else {
+          outcome = {ok: true, accepted, activeProjectId};
+        } catch (e) {
+          // Bug 46: a rejecting accept is not necessarily a failed accept —
+          // the sync/IPC timeout rejects the call while core completes the
+          // join (reject-but-completed). Re-read the local state and classify:
+          // every slot present across the reads is a completed organization
+          // the rejection must not report as a failure; some progress is a
+          // typed `accept-partial` failure naming the slots still missing
+          // (the original error kept as `cause`); no progress at all leaves
+          // the original error untouched — there is nothing to reconcile.
+          //
+          // Only a failure of the invite.accept call itself is reconciled
+          // (marked by `acceptOrganizationBundle`): the preflight errors it
+          // also throws (identity-mismatch, invalid-local-state, ...) describe
+          // a bundle that must not join however complete the local
+          // organization looks, so they surface untouched instead of being
+          // read into a success that also unpins the recovery identity.
+          if (isAcceptOriginError(e)) {
+            try {
+              const freshOrg = reconstructOrganizations(
+                await clientApi.listProjects(),
+              ).find(org => org.organizationId === bundle.organizationId);
+
+              const accepted = SLOTS.flatMap(slot => {
+                const projectId =
+                  freshOrg?.slots[slot] ?? preAcceptOrg?.slots[slot];
+                return projectId === undefined ? [] : [{slot, projectId}];
+              });
+              const missingSlots = SLOTS.filter(slot =>
+                accepted.every(entry => entry.slot !== slot),
+              );
+
+              if (missingSlots.length === 0) {
+                identityComplete = true;
+                // SPEC 8.6 ladder over the same two reads.
+                outcome = {
+                  ok: true,
+                  accepted,
+                  activeProjectId:
+                    freshOrg?.slots.m ??
+                    preAcceptOrg?.slots.m ??
+                    freshOrg?.slots.a ??
+                    preAcceptOrg?.slots.a,
+                };
+              } else if (accepted.length > 0) {
+                outcome = {
+                  ok: false,
+                  error: new OrganizationOperationError(
+                    'accept-partial',
+                    `the accept ended before completing: slots ${missingSlots.join(', ')} are still missing (the joined slots may have completed despite the failure)`,
+                    {cause: e, missingSlots},
+                  ),
+                };
+              } else {
+                outcome = {ok: false, error: e};
+              }
+            } catch {
+              // The reconciliation read failed too — the original error is all
+              // we know.
               outcome = {ok: false, error: e};
             }
-          } catch {
-            // The reconciliation read failed too — the original error is all
-            // we know.
+          } else {
             outcome = {ok: false, error: e};
           }
-        } else {
-          outcome = {ok: false, error: e};
         }
-      }
 
-      try {
-        // Direct clientApi calls bypass core-react's own invalidation, so
-        // the project-list and invite-list queries must be invalidated by
-        // hand for mounted consumers to see the joins — regardless of
-        // outcome: a failed attempt may still have joined a slot, and cache
-        // repair is never token-gated; only the React state below is.
-        await queryClient.invalidateQueries({queryKey: projectsQueryKey});
-        await queryClient.invalidateQueries({queryKey: invitesQueryKey});
+        try {
+          // Direct clientApi calls bypass core-react's own invalidation, so
+          // the project-list and invite-list queries must be invalidated by
+          // hand for mounted consumers to see the joins — regardless of
+          // outcome: a failed attempt may still have joined a slot, and cache
+          // repair is never token-gated; only the React state below is.
+          await queryClient.invalidateQueries({queryKey: projectsQueryKey});
+          await queryClient.invalidateQueries({queryKey: invitesQueryKey});
 
-        // P5 O2: publication is LAST and token-gated — status/error land
-        // only once the invalidations have settled, so a rerender observing
-        // a settled state can no longer have the bundle vanish under it.
-        if (attemptRef.current !== attempt) return undefined;
+          // P5 O2: publication is LAST and token-gated — status/error land
+          // only once the invalidations have settled, so a rerender observing
+          // a settled state can no longer have the bundle vanish under it.
+          if (attemptRef.current !== attempt) return undefined;
 
-        if (outcome.ok) {
-          if (outcome.activeProjectId !== undefined) {
-            setActiveProjectId(outcome.activeProjectId);
+          if (outcome.ok) {
+            if (outcome.activeProjectId !== undefined) {
+              setActiveProjectId(outcome.activeProjectId);
+            }
+            if (identityComplete) {
+              clearIdentity(bundle.organizationId);
+            }
+            setStatus('success');
+          } else {
+            setError(outcome.error);
+            setStatus('error');
           }
-          if (identityComplete) {
-            clearIdentity(bundle.organizationId);
+          return outcome;
+        } finally {
+          if (attemptRef.current === attempt) {
+            busyRef.current = false;
           }
-          setStatus('success');
-        } else {
-          setError(outcome.error);
-          setStatus('error');
         }
-        return outcome;
       } finally {
-        if (attemptRef.current === attempt) {
-          busyRef.current = false;
-        }
+        terminar();
       }
     },
     [

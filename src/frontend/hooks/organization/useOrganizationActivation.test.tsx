@@ -31,11 +31,38 @@ import {projectsQueryKey} from '../../lib/organization/queryKeys';
 import {CREATOR_ROLE_ID, MEMBER_ROLE_ID} from '../../sharedTypes';
 import {OrganizationMaterializerProvider} from '../../contexts/OrganizationMaterializerContext';
 import {useOrganizationActivation} from './useOrganizationActivation';
+import {
+  createDraftObservationStore,
+  type DraftObservationStore,
+} from '../../contexts/PersistedStores/DraftObservationStore';
+import {DraftObservationProvider} from '../../contexts/DraftObservationContext';
+import {
+  createTrackStore,
+  TrackStoreProvider,
+  type TrackStore,
+} from '../../contexts/TrackStoreContext';
+import {
+  type LocationState,
+  useLocationContext,
+} from '../../contexts/LocationContext';
+import {PermissionStatus} from 'expo-location';
+import {createStore} from 'zustand';
+import {iniciarOperacao} from '../../lib/organization/operacoesEmAndamento';
 
 // The hook reports degraded boots to Sentry; the SDK itself stays off jest.
 jest.mock('@sentry/react-native', () => ({
   captureException: jest.fn(),
 }));
+
+// The draft provider requires a location store; a fake keeps the test off
+// expo-location while the real draft context wiring runs.
+jest.mock('../../contexts/LocationContext', () => {
+  const actual = jest.requireActual('../../contexts/LocationContext');
+  return {
+    ...actual,
+    useLocationContext: jest.fn(),
+  };
+});
 
 // The hook reads the project API through `useClientApi`; a fake client keeps
 // the test off IPC while still going through the real adapter.
@@ -103,6 +130,9 @@ describe('useOrganizationActivation', () => {
     getDeviceInfo: jest.Mock;
     setDeviceInfo: jest.Mock;
   };
+  let queryClient: QueryClient;
+  let trackStore: TrackStore;
+  let draftStore: DraftObservationStore;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -124,13 +154,41 @@ describe('useOrganizationActivation', () => {
     useClientApiMock.mockReturnValue(
       clientApi as unknown as ComapeoCoreClientApi,
     );
+    queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {gcTime: Infinity},
+        mutations: {gcTime: Infinity},
+      },
+    });
+    trackStore = createTrackStore();
+    draftStore = createDraftObservationStore({persist: false});
+    (useLocationContext as jest.Mock).mockReturnValue(
+      createStore<LocationState>()(() => ({
+        location: undefined,
+        throttledMapLocation: undefined,
+        locationPermission: PermissionStatus.DENIED,
+        providerStatus: {
+          locationServicesEnabled: false,
+          backgroundModeEnabled: false,
+          gpsAvailable: false,
+          networkAvailable: false,
+          passiveAvailable: false,
+        },
+      })),
+    );
   });
 
   function createWrapper(store: CoiabOrganizationsStore, strict: boolean) {
     const Providers = ({children}: {children: ReactNode}) => (
-      <CoiabOrganizationsStoreProvider store={store}>
-        {children}
-      </CoiabOrganizationsStoreProvider>
+      <QueryClientProvider client={queryClient}>
+        <TrackStoreProvider value={trackStore}>
+          <DraftObservationProvider draftObservationStore={draftStore}>
+            <CoiabOrganizationsStoreProvider store={store}>
+              {children}
+            </CoiabOrganizationsStoreProvider>
+          </DraftObservationProvider>
+        </TrackStoreProvider>
+      </QueryClientProvider>
     );
     return ({children}: {children: ReactNode}) =>
       strict ? (
@@ -269,6 +327,59 @@ describe('useOrganizationActivation', () => {
     await hook.unmount();
   });
 
+  // ---- Pending-work guard (Fase 8a) ---------------------------------------
+
+  test('rascunho presente: troca de área recusada com pending-work e ativa inalterado', async () => {
+    const {hook, store} = await renderActivation();
+
+    await waitFor(() => expect(hook.result.current.status).toBe('ready'));
+
+    draftStore.setProjectResolver(() => 'A-a');
+    await act(async () => {
+      draftStore.actions.createDraft();
+    });
+
+    let switched!: boolean;
+    await act(async () => {
+      switched = await hook.result.current.activate('B', {area: 'alertas'});
+    });
+
+    expect(switched).toBe(false);
+    expect(hook.result.current.error).toBe('pending-work');
+    // O guard é global: a troca nem chega a validar o destino — a seleção
+    // persistida continua exatamente onde estava.
+    expect(store.instance.getState().ativa).toEqual({
+      organizacaoId: 'A',
+      area: 'alertas',
+    });
+
+    await hook.unmount();
+  });
+
+  test('convite em voo: a opção chega ao motor e a ativação é recusada com pending-work', async () => {
+    const {hook, store} = await renderActivation();
+
+    await waitFor(() => expect(hook.result.current.status).toBe('ready'));
+
+    // Uma operação em voo (o que `start()` dos hooks de convite registra) —
+    // o guard a lê via `hasPendingWork` no momento da ativação.
+    const encerrarOperacao = iniciarOperacao();
+    let switched!: boolean;
+    await act(async () => {
+      switched = await hook.result.current.activate('B', {area: 'alertas'});
+    });
+    encerrarOperacao();
+
+    expect(switched).toBe(false);
+    expect(hook.result.current.error).toBe('pending-work');
+    expect(store.instance.getState().ativa).toEqual({
+      organizacaoId: 'A',
+      area: 'alertas',
+    });
+
+    await hook.unmount();
+  });
+
   test('unmount durante uma ativação em voo: nenhuma escrita após o unmount', async () => {
     // The assertion reads the durable document itself (in-memory state and
     // the MMKV raw), not engine spies: a motor running past its unmount must
@@ -394,11 +505,15 @@ describe('useOrganizationActivation', () => {
     const invalidateQueries = jest.spyOn(queryClient, 'invalidateQueries');
     const wrapper = ({children}: {children: ReactNode}) => (
       <QueryClientProvider client={queryClient}>
-        <CoiabOrganizationsStoreProvider store={store}>
-          <OrganizationMaterializerProvider templates={templates}>
-            {children}
-          </OrganizationMaterializerProvider>
-        </CoiabOrganizationsStoreProvider>
+        <TrackStoreProvider value={trackStore}>
+          <DraftObservationProvider draftObservationStore={draftStore}>
+            <CoiabOrganizationsStoreProvider store={store}>
+              <OrganizationMaterializerProvider templates={templates}>
+                {children}
+              </OrganizationMaterializerProvider>
+            </CoiabOrganizationsStoreProvider>
+          </DraftObservationProvider>
+        </TrackStoreProvider>
       </QueryClientProvider>
     );
     return {wrapper, invalidateQueries, templates};
