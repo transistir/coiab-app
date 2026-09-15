@@ -728,6 +728,9 @@
   "$1screens.OrganizationSetup.failureTitle": {
     "message": "Could not finish creating the organization."
   },
+  "$1screens.OrganizationSetup.loadingOrganization": {
+    "message": "Loading organization…"
+  },
   "$1screens.OrganizationSetup.monitoringRow": {
     "message": "Monitoring"
   },
