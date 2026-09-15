@@ -327,6 +327,39 @@ describe('useOrganizationActivation', () => {
     await hook.unmount();
   });
 
+  test('revalidate exposto no handle: negação de acesso publica recovery sem geração nova', async () => {
+    const {hook, store} = await renderActivation();
+
+    await waitFor(() => expect(hook.result.current.status).toBe('ready'));
+    expect(hook.result.current.generation).toBe(1);
+
+    // A perda aparece DEPOIS do contexto pronto: revalidate reobserva as duas
+    // áreas e publica a perda pelo próprio motor.
+    projects['A-m'].$getOwnRole.mockResolvedValue({
+      roleId: 'sem-papel',
+      reason: undefined,
+    });
+
+    let revalidated!: boolean;
+    await act(async () => {
+      revalidated = await hook.result.current.revalidate();
+    });
+
+    expect(revalidated).toBe(false);
+    expect(hook.result.current.status).toBe('recovery');
+    expect(hook.result.current.error).toBe('access-unavailable');
+    // Nenhuma geração nova: a revalidação nunca empurra o usuário para
+    // Home/Map — nem no sucesso (nenhuma publicação), nem na falha.
+    expect(hook.result.current.generation).toBe(1);
+    // Regra 8: indisponível nunca apaga `ativa`.
+    expect(store.instance.getState().ativa).toEqual({
+      organizacaoId: 'A',
+      area: 'alertas',
+    });
+
+    await hook.unmount();
+  });
+
   // ---- Pending-work guard (Fase 8a) ---------------------------------------
 
   test('rascunho presente: troca de área recusada com pending-work e ativa inalterado', async () => {

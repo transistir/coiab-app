@@ -21,8 +21,8 @@ import {getOrganizationCreationCompletion} from '../../hooks/organization/useOrg
 import {useCoiabOrganizationsState} from '../../contexts/CoiabOrganizationsStoreContext';
 import {useOrganizationActivationContext} from '../../contexts/OrganizationActivationContext';
 import {useActiveProjectId} from '../../contexts/ActiveProjectIdStoreContext';
-import {groupPendingInvites} from '../../lib/organization/bundle';
 import {useHasOrganizationCreationProvenance} from '../../lib/organization/creationProvenance';
+import {groupPendingInvites} from '../../lib/organization/bundle';
 import {
   AREAS,
   derivarProjectIdAtivo,
@@ -316,11 +316,11 @@ export const OrganizationProvisioning = ({
   const estado = useCoiabOrganizationsState();
   const organizacaoDocument = estado.organizacoes[0];
   const documentGuides = organizacaoDocument !== undefined;
+  const {status: activationStatus} = useOrganizationActivationContext();
   // The document's own operational id (SPEC A §4.2 regra 5): null while the
   // confirmation is pending or the document cannot be parsed.
   const derivado = derivarProjectIdAtivo(estado);
   const activeProjectId = useActiveProjectId();
-
   const organizations = useOrganizations();
   const {start, status} = useCreateOrganization();
   const {
@@ -391,20 +391,28 @@ export const OrganizationProvisioning = ({
     // Skip after an ok discard: the effect below routes to Success, and a
     // Home reset here would flash Home first (post-discard Home flash).
     if (discardSucceeded) return;
+    // SPEC B (5b): with a persisted organization document, the
+    // reconstruction alone must never navigate — Home opens only through a
+    // validated activation whose projected id matches the document's own
+    // derivation. A pending confirmation or an in-flight preparation never
+    // satisfies it; neither does a recovery, where a stale cached
+    // reconstruction still says "ready" — routing on its word would bounce
+    // straight off the navigation gate.
+    if (
+      documentGuides &&
+      (activationStatus !== 'ready' || derivado !== activeProjectId)
+    )
+      return;
     if (!isReady || hasDegradedOrganization) return;
-    // SPEC B (5b): with a persisted organization, the document itself decides
-    // when Home opens — its derived active id must equal the projected one. A
-    // pending confirmation or an in-flight preparation never satisfies it,
-    // even when the reconstruction already calls the organization ready.
-    if (!(!documentGuides || derivado === activeProjectId)) return;
     navigation.reset({index: 0, routes: [{name: 'Home'}]});
   }, [
-    isReady,
-    hasDegradedOrganization,
     discardSucceeded,
     documentGuides,
+    activationStatus,
     derivado,
     activeProjectId,
+    isReady,
+    hasDegradedOrganization,
     navigation,
   ]);
 

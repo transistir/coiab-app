@@ -1,15 +1,60 @@
 import path from 'path';
 import {screen, userEvent, fireEvent} from '@testing-library/react-native';
-import {setupIntegrationTest} from '../../../../tests/integration/helpers/setupIntegrationTest';
+import {
+  setupIntegrationTest,
+  semearDocumentoPronta,
+} from '../../../../tests/integration/helpers/setupIntegrationTest';
+import {MMKVStoreInitializer} from '../../hooks/persistedState/createPersistedState';
 
 const DEFAULT_CONFIG_PATH = path.join(
   __dirname,
   '../../../../tests/assets/comapeo-categories-devtest.comapeocat',
 );
 
+/** The fields the seeding needs from a `setupIntegrationTest()` handle. */
+type OrganizationSeedSetup = {
+  readonly projectId: string;
+  readonly alertasProjectId: string;
+  readonly orgId: string;
+  readonly orgName: string;
+};
+
+/**
+ * Organization-first startup (SPEC 10.1): the persisted document, not the
+ * core's project list, decides the initial route. Registers a beforeEach
+ * that seeds the ready organization document with the CURRENT test
+ * manager's ids, so the device opens Home. Without this seed the suite is
+ * RED by design: the device lands on the Success fork ("test is ready!")
+ * and never mounts Home.
+ *
+ * The hook also clears the persisted work stores ('@MapeoDraftStore',
+ * 'MapeoTrack'): these suites NAVIGATE, so an earlier test can leave a
+ * draft/tracking origin in the mock MMKV (it persists per file, like real
+ * MMKV). That leftover is genuine work in progress from a DEAD manager —
+ * the activation engine's pending-work guard then fails every following
+ * startup onto the recovery surface (proven by the probe: seeding alone
+ * left tests 2+ RED; clearing the draft alongside the seed turned them
+ * GREEN). These suites assert ordinary navigation, not work recovery.
+ */
+function seedOrganizationBeforeEach(
+  integrationSetup: OrganizationSeedSetup,
+): void {
+  beforeEach(() => {
+    MMKVStoreInitializer.removeItem('@MapeoDraftStore');
+    MMKVStoreInitializer.removeItem('MapeoTrack');
+    semearDocumentoPronta(
+      integrationSetup.projectId,
+      integrationSetup.alertasProjectId,
+      integrationSetup.orgId,
+      integrationSetup.orgName,
+    );
+  });
+}
+
 describe('Observation Fields', () => {
   describe('TextArea field', () => {
     const integrationSetup = setupIntegrationTest();
+    seedOrganizationBeforeEach(integrationSetup);
 
     async function navigateToTextField(
       user: ReturnType<typeof userEvent.setup>,
@@ -77,6 +122,7 @@ describe('Observation Fields', () => {
 
   describe('Number Fields', () => {
     const integrationSetup = setupIntegrationTest();
+    seedOrganizationBeforeEach(integrationSetup);
 
     async function navigateToTextField(
       user: ReturnType<typeof userEvent.setup>,
@@ -141,6 +187,7 @@ describe('Observation Fields', () => {
 
   describe('Select one', () => {
     const integrationSetup = setupIntegrationTest();
+    seedOrganizationBeforeEach(integrationSetup);
 
     async function navigateToSelectOne(
       user: ReturnType<typeof userEvent.setup>,
@@ -184,6 +231,7 @@ describe('Observation Fields', () => {
 
   describe('Select Multiple', () => {
     const integrationSetup = setupIntegrationTest();
+    seedOrganizationBeforeEach(integrationSetup);
 
     async function navigateToSelectMultiple(
       user: ReturnType<typeof userEvent.setup>,
@@ -232,6 +280,7 @@ describe('Observation Fields', () => {
 
   describe('navigates in and out of the observation fields', () => {
     const integrationSetup = setupIntegrationTest();
+    seedOrganizationBeforeEach(integrationSetup);
 
     async function navigateToObservationDetails(
       user: ReturnType<typeof userEvent.setup>,

@@ -864,6 +864,16 @@ describe('OrganizationProvisioning', () => {
         }),
       ]);
       mockOrganizations([readyOrganization]);
+      // The screen now consults the activation status (SPEC B 5b): with a
+      // document it resets to Home only when the engine has published
+      // `ready` AND the projected id matches the document's derivation —
+      // which is exactly what this flow produces: the tap acknowledges, the
+      // write derives `proj-m-1`, and the projection lands on the same id.
+      activationMock.__setActivation({
+        status: 'ready',
+        activate,
+        retryPreparation,
+      });
       // The engine's single write (SPEC A §4.2 regra 9) plus the projection
       // the activation provider publishes afterwards.
       activate.mockImplementation(async () => {

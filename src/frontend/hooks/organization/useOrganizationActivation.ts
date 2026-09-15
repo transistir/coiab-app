@@ -29,7 +29,7 @@ type EngineState = CoiabOrganizationsStore['instance'] extends {
   : never;
 /**
  * What the startup driver publishes to its consumers: the engine's observable
- * state plus the three operations the UI may request. The engine itself stays
+ * state plus the operations the UI may request. The engine itself stays
  * private — nothing outside this hook can rebuild or replace it.
  */
 export type OrganizationActivationHandle = Pick<
@@ -37,6 +37,7 @@ export type OrganizationActivationHandle = Pick<
   'status' | 'projectId' | 'generation' | 'error' | 'pendingWorkOrigin'
 > & {
   activate: OrganizationActivation['activate'];
+  revalidate: OrganizationActivation['revalidate'];
   retryPreparation: OrganizationActivation['retryPreparation'];
   recoverPendingWork: OrganizationActivation['recoverPendingWork'];
 };
@@ -213,6 +214,7 @@ export function useOrganizationActivation(): OrganizationActivationHandle {
       error: state.error,
       pendingWorkOrigin: state.pendingWorkOrigin,
       activate: activation.activate,
+      revalidate: activation.revalidate,
       retryPreparation: activation.retryPreparation,
       recoverPendingWork: activation.recoverPendingWork,
     }),
@@ -223,6 +225,7 @@ export function useOrganizationActivation(): OrganizationActivationHandle {
       state.error,
       state.pendingWorkOrigin,
       activation.activate,
+      activation.revalidate,
       activation.retryPreparation,
       activation.recoverPendingWork,
     ],

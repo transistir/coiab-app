@@ -7,8 +7,12 @@ import {IntlProvider} from 'react-intl';
 
 import {LeaveProject} from './LeaveProject';
 import {useLeaveProject, useManyProjects} from '@comapeo/core-react';
-import {useOrganizations} from '../../hooks/organization/useOrganizations';
-import type {ReconstructedOrganization} from '../../lib/organization/reconstruct';
+import {useCoiabOrganizationsState} from '../../contexts/CoiabOrganizationsStoreContext';
+import {useOrganizationActivationContext} from '../../contexts/OrganizationActivationContext';
+import {
+  criarEstadoInicialOrganizacoes,
+  type EstadoOrganizacoes,
+} from '../../lib/organization/coiabOrganizations';
 import type {AppStackParamsList} from '../../sharedTypes/navigation';
 
 jest.mock('@comapeo/core-react', () => ({
@@ -33,19 +37,26 @@ jest.mock('../../contexts/ActiveProjectIdStoreContext', () => ({
   }),
 }));
 
-jest.mock('../../hooks/organization/useOrganizations', () => ({
-  useOrganizations: jest.fn(),
+jest.mock('../../contexts/CoiabOrganizationsStoreContext', () => ({
+  useCoiabOrganizationsState: jest.fn(),
+}));
+
+jest.mock('../../contexts/OrganizationActivationContext', () => ({
+  useOrganizationActivationContext: jest.fn(),
 }));
 
 const mockLeftProjectId = 'project-left';
 const mockSurvivingSlotId = 'project-surviving';
 const mockOtherProjectId = 'project-other';
 
+const useCoiabOrganizationsStateMock = useCoiabOrganizationsState as jest.Mock;
+const useOrganizationActivationContextMock =
+  useOrganizationActivationContext as jest.Mock;
+const mockRevalidate = jest.fn();
 const mockSetActiveProjectId = jest.fn();
 const mockClearActiveProjectId = jest.fn();
 const mockLeaveMutate = jest.fn();
 
-const useOrganizationsMock = useOrganizations as jest.Mock;
 const useManyProjectsMock = useManyProjects as jest.Mock;
 const useLeaveProjectMock = useLeaveProject as jest.Mock;
 
@@ -58,8 +69,39 @@ function mockProjectList(projectIds: string[]) {
   });
 }
 
-function mockOrganizations(organizations: ReconstructedOrganization[]) {
-  useOrganizationsMock.mockReturnValue(organizations);
+/**
+ * The §4.2 document the screen consults for slot membership: a ready
+ * organization whose Monitoramento slot is the project being left.
+ */
+function documentoComSlotPronto(): EstadoOrganizacoes {
+  return {
+    versao: 1,
+    organizacoes: [
+      {
+        id: 'a1b2c3d4e5f60718',
+        nome: 'Org Um',
+        estado: 'pronta',
+        confirmacaoPendente: false,
+        materializacao: {
+          monitoramento: {
+            etapa: 'verificado',
+            projectId: mockLeftProjectId,
+            template: {versao: '1', hash: 'monitoramento'},
+            idsAntesDaCriacao: null,
+          },
+          alertas: {
+            etapa: 'verificado',
+            projectId: mockSurvivingSlotId,
+            template: {versao: '1', hash: 'alertas'},
+            idsAntesDaCriacao: null,
+          },
+        },
+        areaEmExecucao: null,
+        ultimoErro: null,
+      },
+    ],
+    ativa: {organizacaoId: 'a1b2c3d4e5f60718', area: 'monitoramento'},
+  };
 }
 
 const Stack = createNativeStackNavigator<AppStackParamsList>();
@@ -105,7 +147,13 @@ beforeEach(() => {
   jest.clearAllMocks();
   useProjectSettingsMock.mockReturnValue({data: {name: 'Projeto X'}});
   useManyProjectsMock.mockReturnValue({data: []});
-  useOrganizationsMock.mockReturnValue([]);
+  useCoiabOrganizationsStateMock.mockReturnValue(
+    criarEstadoInicialOrganizacoes(),
+  );
+  useOrganizationActivationContextMock.mockReturnValue({
+    revalidate: mockRevalidate,
+  });
+  mockRevalidate.mockResolvedValue(false);
   useLeaveProjectMock.mockReturnValue({
     // The screen's logic lives in the onSuccess handler — run it inline.
     mutate: mockLeaveMutate.mockImplementation((_vars, opts) => {
@@ -118,15 +166,8 @@ beforeEach(() => {
 });
 
 describe('LeaveProject', () => {
-  test('an org project with a surviving slot degrades to the provisioning surface', async () => {
-    mockOrganizations([
-      {
-        state: 'ready',
-        organizationId: 'a1b2c3d4e5f60718',
-        organizationName: 'Org Um',
-        slots: {m: mockLeftProjectId, a: mockSurvivingSlotId},
-      },
-    ]);
+  test('an organization slot hands the routing to the activation engine: no navigation, no legacy id write (A §5.3)', async () => {
+    useCoiabOrganizationsStateMock.mockReturnValue(documentoComSlotPronto());
     await renderScreen();
 
     await userEvent.press(screen.getByText('Yes, Leave'));
@@ -135,32 +176,19 @@ describe('LeaveProject', () => {
       {projectId: mockLeftProjectId},
       expect.anything(),
     );
-    // SPEC 3.10/10.1 (greploop it2): a leave that degrades a ready
-    // organization to `incomplete` must not leave the user operating the
-    // degraded organization from Home — the survivor is activated only
-    // indirectly (reconstruction), never as a Home landing.
+    // The engine revalidates BOTH materialized slots of the organization
+    // the document selects; a loss is published by the engine (`recovery`)
+    // and routed by the navigation gate's continuous rule. This screen must
+    // not race that publication with a reset of its own, and must not write
+    // the legacy active id (the projection rewrites it at the next ready
+    // generation).
+    expect(mockRevalidate).toHaveBeenCalledTimes(1);
     expect(mockSetActiveProjectId).not.toHaveBeenCalled();
-    expect(mockClearActiveProjectId).toHaveBeenCalledTimes(1);
-    expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
-  });
-
-  test('an org project with no surviving slot clears the active id and resets to the org fork', async () => {
-    mockOrganizations([
-      {
-        state: 'incomplete',
-        organizationId: 'a1b2c3d4e5f60718',
-        organizationName: 'Org Um',
-        slots: {m: mockLeftProjectId},
-      },
-    ]);
-    await renderScreen();
-
-    await userEvent.press(screen.getByText('Yes, Leave'));
-
-    expect(mockClearActiveProjectId).toHaveBeenCalledTimes(1);
-    expect(mockSetActiveProjectId).not.toHaveBeenCalled();
-    // SPEC 10.1: the startup gate's organization fork is the landing.
-    expect(await screen.findByText('SUCCESS-REACHED')).toBeOnTheScreen();
+    expect(mockClearActiveProjectId).not.toHaveBeenCalled();
+    // The screen stays mounted: OrganizationProvisioning is registered in
+    // this stack, yet the screen itself never routes there.
+    expect(screen.getByText('Yes, Leave')).toBeOnTheScreen();
+    expect(screen.queryByText('PROVISIONING-REACHED')).not.toBeOnTheScreen();
   });
 
   test('a non-org project switches to any remaining project', async () => {

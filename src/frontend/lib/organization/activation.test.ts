@@ -1095,3 +1095,128 @@ describe('co-revisão: recheque de trabalho pendente e endurecimento da hidrata�
     expect(JSON.stringify(durable)).not.toContain('falha_recuperavel');
   });
 });
+describe('revalidate(): o motor publica a perda de acesso do contexto aberto (Fase 10a-fix-1)', () => {
+  function readySetup() {
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState(organizationDocument(), true);
+    const role = jest.fn(async () => ({roleId: MEMBER_ROLE_ID}));
+    const getProject = jest.fn<Promise<ActivationProject>, [id: string]>(
+      async () => ({$getOwnRole: role}),
+    );
+    const activation = createOrganizationActivation({store, getProject});
+    return {store, role, getProject, activation};
+  }
+
+  test('sucesso não publica nada: mesmo estado, mesma geração, cadastro por identidade', async () => {
+    const {store, getProject, activation} = readySetup();
+    await activation.initialize();
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'ready',
+      projectId: 'A-a',
+      generation: 1,
+    });
+    const before = activation.instance.getState();
+    const documentBefore = store.instance.getState();
+    getProject.mockClear();
+
+    expect(await activation.revalidate()).toBe(true);
+
+    // A checagem cobre as DUAS áreas, na ordem canônica — nunca `listProjects`.
+    expect(getProject.mock.calls.map(call => call[0])).toEqual(['A-m', 'A-a']);
+    // Nenhuma publicação: o estado observável é o MESMO objeto (não houve
+    // setState) e a geração não anda — o usuário não é jogado para Home/Map.
+    expect(activation.instance.getState()).toBe(before);
+    expect(activation.instance.getState().generation).toBe(before.generation);
+    expect(store.instance.getState()).toBe(documentBefore);
+  });
+
+  test('status fora de ready é no-op: nenhuma publicação e nenhuma chamada ao core', async () => {
+    // recovery: a última tentativa já falhou; se revalidate agisse, publicaria.
+    const recoverySetup = readySetup();
+    await recoverySetup.activation.initialize();
+    recoverySetup.getProject.mockImplementation(async () => {
+      throw new Error('Project not found');
+    });
+    await recoverySetup.activation.activate('A', {area: 'monitoramento'});
+    const recovery = recoverySetup.activation.instance.getState();
+    expect(recovery.status).toBe('recovery');
+    // A contagem do boot e da tentativa anterior não interessa: daqui em
+    // diante revalidate não pode fazer NENHUMA chamada ao core.
+    recoverySetup.getProject.mockClear();
+
+    expect(await recoverySetup.activation.revalidate()).toBe(false);
+    expect(recoverySetup.activation.instance.getState()).toBe(recovery);
+    expect(recoverySetup.getProject).not.toHaveBeenCalled();
+
+    // absent: sem organizações, `ativa` nem chega a ser consultada pelo core.
+    const absentSetup = readySetup();
+    absentSetup.store.instance.setState(
+      {...organizationDocument(), organizacoes: []},
+      true,
+    );
+    await absentSetup.activation.initialize();
+    const absent = absentSetup.activation.instance.getState();
+    expect(absent.status).toBe('absent');
+    expect(await absentSetup.activation.revalidate()).toBe(false);
+    expect(absentSetup.activation.instance.getState()).toBe(absent);
+    expect(absentSetup.getProject).not.toHaveBeenCalled();
+  });
+
+  test('negação de acesso publica recovery com access-unavailable e preserva ativa (regra 8)', async () => {
+    const {store, getProject, activation} = readySetup();
+    await activation.initialize();
+    const openContext = activation.captureContext();
+    const documentBefore = store.instance.getState();
+    getProject.mockImplementation(async id => ({
+      $getOwnRole: async () => ({
+        roleId: id === 'A-a' ? 'blocked' : MEMBER_ROLE_ID,
+      }),
+    }));
+
+    expect(await activation.revalidate()).toBe(false);
+
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'recovery',
+      error: 'access-unavailable',
+      // FIX-D: a identidade da origem sobrevive para o cleanup da próxima
+      // ativação; a geração não anda.
+      projectId: 'A-a',
+      generation: 1,
+    });
+    // A perda de acesso deixa o contexto "não atual": o gate roteia por isso.
+    expect(activation.isCurrent(openContext)).toBe(false);
+    // Regra 8 do §4.2: indisponível nunca apaga `ativa` — documento intacto
+    // por identidade.
+    expect(store.instance.getState()).toBe(documentBefore);
+    expect(store.instance.getState().ativa).toEqual({
+      organizacaoId: 'A',
+      area: 'alertas',
+    });
+  });
+
+  test('a checagem cobre as duas áreas: negação só em Monitoramento é fatal mesmo com ativa em Alertas', async () => {
+    // `ativa` é A/alertas e o projectId publicado é A-a: se a checagem
+    // olhasse só a área ativa, uma negação em A-m passaria despercebida e o
+    // contexto seguiria 'ready'.
+    const {getProject, activation} = readySetup();
+    await activation.initialize();
+    // O boot validou as duas áreas; o que interessa aqui é SÓ a chamada de
+    // revalidate.
+    getProject.mockClear();
+    getProject.mockImplementation(async id => ({
+      $getOwnRole: async () => ({
+        roleId: id === 'A-m' ? 'blocked' : MEMBER_ROLE_ID,
+      }),
+    }));
+
+    expect(await activation.revalidate()).toBe(false);
+
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'recovery',
+      error: 'access-unavailable',
+    });
+    // O loop para na primeira negação (Monitoramento precede Alertas): a
+    // área ativa não foi consultada depois dela.
+    expect(getProject.mock.calls.map(call => call[0])).toEqual(['A-m']);
+  });
+});

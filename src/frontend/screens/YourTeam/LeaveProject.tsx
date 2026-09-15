@@ -15,7 +15,9 @@ import {useLeaveProject, useManyProjects} from '@comapeo/core-react';
 import {useActiveProject} from '../../contexts/ActiveProjectContext';
 import {useProjectSettings} from '../../hooks/server/projects';
 import {useActiveProjectIdActions} from '../../contexts/ActiveProjectIdStoreContext';
-import {useOrganizations} from '../../hooks/organization/useOrganizations';
+import {useCoiabOrganizationsState} from '../../contexts/CoiabOrganizationsStoreContext';
+import {useOrganizationActivationContext} from '../../contexts/OrganizationActivationContext';
+import {AREAS} from '../../lib/organization/coiabOrganizations';
 import * as Sentry from '@sentry/react-native';
 import {LoadingIndicator} from '../../sharedComponents/LoadingIndicator';
 import {toError} from '../../utils/errors';
@@ -56,7 +58,8 @@ export const LeaveProject = ({
   const {setActiveProjectId, clearActiveProjectId} =
     useActiveProjectIdActions();
   const {data: projects} = useManyProjects();
-  const organizations = useOrganizations();
+  const activation = useOrganizationActivationContext();
+  const estadoOrganizacoes = useCoiabOrganizationsState();
 
   const isCoordinator = route.params.memberType === 'coordinator';
 
@@ -66,54 +69,34 @@ export const LeaveProject = ({
       {
         onSuccess: () => {
           try {
-            // SPEC 3.8/3.10: leaving never materializes a standalone
-            // (unnamed) project — an org project degrades to `incomplete`
-            // by switching to the surviving slot, or hands off to the
-            // startup gate with no active project at all; a non-org
-            // project switches to any remaining project, else clears.
-            let noProjectRemains = false;
-            let organizationDegraded = false;
-            const leftOrg = organizations.find(
-              org => org.slots.m === projectId || org.slots.a === projectId,
+            // The document, not the reconstruction, says whether the left
+            // project is an organization slot (A §5.3): if it is, this
+            // screen neither navigates nor writes the legacy active id —
+            // the activation engine decides. `revalidate` re-observes BOTH
+            // slots of the organization the document selects; leaving any
+            // one of them fails the check and publishes `recovery` with
+            // `ativa` preserved (A §4.2 regra 8), and the navigation gate's
+            // continuous rule then prunes every route whose screen would
+            // refetch the closed project's stores (SPEC 3.8/3.10) onto the
+            // provisioning surface. A healthy revalidation publishes
+            // nothing: the engine, not this screen, owns the routing.
+            const leftOrgSlot = estadoOrganizacoes.organizacoes.some(org =>
+              AREAS.some(
+                area => org.materializacao[area].projectId === projectId,
+              ),
             );
-            if (leftOrg) {
-              const survivingSlot =
-                leftOrg.slots.m === projectId
-                  ? leftOrg.slots.a
-                  : leftOrg.slots.m;
-              if (survivingSlot) {
-                organizationDegraded = true;
-              } else {
-                noProjectRemains = true;
-              }
-            } else {
-              const remainingProject = projects?.find(
-                proj => proj.projectId !== projectId,
-              );
-              if (remainingProject) {
-                setActiveProjectId(remainingProject.projectId);
-              } else {
-                noProjectRemains = true;
-              }
+            if (leftOrgSlot) {
+              void activation.revalidate();
+              return;
             }
-            // Reset (rather than replace) so that no screen with queries
-            // scoped to the left project stays mounted — refetching them
-            // errors because leaving closes the project's data stores.
-            if (organizationDegraded) {
-              // SPEC 3.10/10.1: the surviving slot leaves the organization
-              // `incomplete`, which Home may not operate — the device belongs
-              // on the provisioning/repair surface, not on Home behind a
-              // confirmation. The reset goes out BEFORE the active id is
-              // cleared, so it is dispatched against the screen set this
-              // stack still has.
-              navigation.dispatch(
-                CommonActions.reset({
-                  index: 0,
-                  routes: [{name: 'OrganizationProvisioning'}],
-                }),
-              );
-              clearActiveProjectId();
-            } else if (noProjectRemains) {
+            // A non-organization project: switch to any remaining project,
+            // else clear and hand the device to the startup gate.
+            const remainingProject = projects?.find(
+              proj => proj.projectId !== projectId,
+            );
+            if (remainingProject) {
+              setActiveProjectId(remainingProject.projectId);
+            } else {
               clearActiveProjectId();
               // SPEC 10.1: with no project left, the startup gate's
               // organization fork is the correct landing — navigate there
@@ -122,20 +105,23 @@ export const LeaveProject = ({
               navigation.dispatch(
                 CommonActions.reset({index: 0, routes: [{name: 'Success'}]}),
               );
-            } else {
-              navigation.dispatch(
-                CommonActions.reset({
-                  index: 1,
-                  routes: [
-                    {name: 'Home'},
-                    {
-                      name: 'LeftProjectConfirmation',
-                      params: {projectName: projectSettings.name ?? ''},
-                    },
-                  ],
-                }),
-              );
+              return;
             }
+            // Reset (rather than replace) so that no screen with queries
+            // scoped to the left project stays mounted — refetching them
+            // errors because leaving closes the project's data stores.
+            navigation.dispatch(
+              CommonActions.reset({
+                index: 1,
+                routes: [
+                  {name: 'Home'},
+                  {
+                    name: 'LeftProjectConfirmation',
+                    params: {projectName: projectSettings.name ?? ''},
+                  },
+                ],
+              }),
+            );
           } catch (err) {
             Sentry.captureException(err);
             navigation.replace('ErrorBottomSheet', {

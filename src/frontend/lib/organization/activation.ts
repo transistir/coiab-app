@@ -155,6 +155,21 @@ export function createOrganizationActivation({
     );
   }
 
+  // SPEC A §5.3:189 — the 2/2 role validation: the device must hold a real
+  // role in BOTH materialized projects, in the canonical area order. The
+  // single definition is shared by the opening attempt and the public
+  // revalidation so neither can diverge on what "access" means.
+  async function validarPapeis(org: OrganizacaoLocal) {
+    for (const area of AREAS) {
+      const project = await getProject(org.materializacao[area].projectId!);
+      const {roleId} = await project.$getOwnRole();
+      if (
+        ![CREATOR_ROLE_ID, COORDINATOR_ROLE_ID, MEMBER_ROLE_ID].includes(roleId)
+      )
+        throw new Error('access-unavailable');
+    }
+  }
+
   async function performActivation(
     id: string,
     options: ActivationOptions,
@@ -206,16 +221,7 @@ export function createOrganizationActivation({
         (org.confirmacaoPendente && !options.acknowledge)
       )
         throw new Error('invalid-organization');
-      for (const area of AREAS) {
-        const project = await getProject(org.materializacao[area].projectId!);
-        const {roleId} = await project.$getOwnRole();
-        if (
-          ![CREATOR_ROLE_ID, COORDINATOR_ROLE_ID, MEMBER_ROLE_ID].includes(
-            roleId,
-          )
-        )
-          throw new Error('access-unavailable');
-      }
+      await validarPapeis(org);
       revalidating = false;
       // A-v4-1: the same global predicate re-checked before the commit — work
       // that appeared during validation still blocks it (§5.2:164).
@@ -305,6 +311,50 @@ export function createOrganizationActivation({
                 ? 'sync-restart-required'
                 : 'unavailable',
         },
+        true,
+      );
+      return false;
+    }
+  }
+
+  // Fase 10a-fix-1 (SPEC A §4.2 regra 8 :114 / §5.3:189): the motor itself
+  // publishes the loss of access. `activate` short-circuits for the same
+  // organization and area without revalidating, and `initialize` runs once
+  // per engine — after a project leaves, the context would stay 'ready'
+  // forever. `revalidate` re-observes BOTH materialized projects of the
+  // organization the document selects:
+  // - success publishes NOTHING and records no generation — a healthy
+  //   context is never bumped, so the user is never thrown to Home/Map by a
+  //   successful check;
+  // - failure clears `origemValidada` and publishes the same recovery
+  //   publication the open-organization failure path uses (FIX-C): status
+  //   'recovery' with 'access-unavailable', preserving `ativa` (regra 8:
+  //   "indisponível" never erases it) and the origin identity (FIX-D).
+  // Any other status is a strict no-op: nothing published, no core call.
+  // Like every other entry point, the operation runs under the shared
+  // intent lock.
+  function revalidate() {
+    return runExclusive('revalidate', () => performRevalidation());
+  }
+
+  async function performRevalidation() {
+    const previous = instance.getState();
+    if (previous.status !== 'ready') return false;
+    const document = store.instance.getState();
+    const {ativa} = document;
+    if (!ativa) return false;
+    try {
+      const org = document.organizacoes.find(
+        item => item.id === ativa.organizacaoId,
+      );
+      if (!org || org.estado !== 'pronta')
+        throw new Error('invalid-organization');
+      await validarPapeis(org);
+      return true;
+    } catch {
+      origemValidada = undefined;
+      instance.setState(
+        {...previous, status: 'recovery', error: 'access-unavailable'},
         true,
       );
       return false;
@@ -482,6 +532,7 @@ export function createOrganizationActivation({
   return {
     instance,
     activate,
+    revalidate,
     initialize,
     retryPreparation,
     recoverPendingWork,
