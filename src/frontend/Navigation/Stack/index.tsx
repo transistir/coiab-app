@@ -370,7 +370,13 @@ export const RootStackNavigator = () => {
   // SPEC B §3.3 items 2-3: the document gates the startup BEFORE the
   // reconstruction — a pending confirmation or an in-flight preparation
   // outranks whatever the project rows look like.
-  const documento = classificarDocumento(useCoiabOrganizationsState());
+  const estadoOrganizacoes = useCoiabOrganizationsState();
+  const documento = classificarDocumento(estadoOrganizacoes);
+  // SPEC A §5.3:168/§4.2: the content history is keyed by the organization
+  // + area selection, so switching either one starts a fresh content root.
+  const contextKey = estadoOrganizacoes.ativa
+    ? `${estadoOrganizacoes.ativa.organizacaoId}:${estadoOrganizacoes.ativa.area}`
+    : 'none';
   const orgStatus: OrgGateStatus = organizations.some(
     org => org.state === 'ready',
   )
@@ -524,7 +530,7 @@ export const RootStackNavigator = () => {
         <>
           {!deviceInfo.name || !activeProjectId
             ? createOnboardingScreens({intl: formatMessage})
-            : createAppScreens({intl: formatMessage})}
+            : createAppScreens({intl: formatMessage, contextKey})}
           {/* Keep fork/creation routes stable through the active-ID handoff.
               Pruning them makes StackRouter fall back to its original initial
               route (Success); it does not recompute the startup gate.
@@ -551,7 +557,7 @@ export const RootStackNavigator = () => {
           </RootStack.Group>
           {/* Shared screen */}
           <RootStack.Group
-            navigationKey={activeProjectId}
+            navigationKey={contextKey}
             screenOptions={{
               presentation: 'transparentModal',
               headerShown: false,

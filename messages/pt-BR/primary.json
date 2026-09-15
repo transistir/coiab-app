@@ -26,17 +26,14 @@
   "$1Navigation.Menu.gatherObservations": {
     "message": "Reúna observações"
   },
-  "$1Navigation.Menu.justYou": {
-    "message": "Apenas você"
-  },
   "$1Navigation.Menu.mappingOnOwn": {
     "message": "Você é um mapeamento próprio."
   },
+  "$1Navigation.Menu.justYou": {
+    "message": "Apenas você"
+  },
   "$1Navigation.Menu.participant": {
     "message": "Participante"
-  },
-  "$1Navigation.Menu.switchProject": {
-    "message": "Trocar Projeto"
   },
   "$1Navigation.Menu.team": {
     "message": "Equipe"
@@ -512,6 +509,18 @@
   "$1screens.ObservationMetadataVerified.navTitle": {
     "message": "Metadados da Observação"
   },
+  "$1screens.ObservationsList.emptyAlertas": {
+    "message": "Ainda não há registros em Alertas",
+    "description": "Title of the empty observation list in the Alerts area of an organization"
+  },
+  "$1screens.ObservationsList.emptyMonitoramento": {
+    "message": "Ainda não há registros em Monitoramento",
+    "description": "Title of the empty observation list in the Monitoring area of an organization"
+  },
+  "$1screens.ObservationsList.goToMap": {
+    "message": "Ir para o mapa",
+    "description": "Action that opens the map of the current work area from the empty observation list"
+  },
   "$1screens.ObservationsList.ObservationsEmptyView.backButton": {
     "message": "Ir para mapa",
     "description": "Back button on observation list screen when no observations are yet recorded"
@@ -857,6 +866,14 @@
   },
   "$1sharedComponents.ErrorBottomSheet.somethingWrong": {
     "message": "Ocorreu um erro"
+  },
+  "$1sharedComponents.OrganizationAreaAccesses.currentArea": {
+    "message": "Atual",
+    "description": "Badge naming the work area the device operates right now"
+  },
+  "$1sharedComponents.OrganizationAreaAccesses.pendingWork": {
+    "message": "Conclua ou descarte o registro antes de trocar de organização",
+    "description": "Blocked area switch (SPEC A §4.4:149 canonical pending-work string)"
   },
   "$1soloProject.startNewProject.title": {
     "message": "Começar um novo projeto"

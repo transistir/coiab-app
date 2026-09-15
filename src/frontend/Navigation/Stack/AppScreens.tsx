@@ -156,11 +156,18 @@ export const TAB_BAR_HEIGHT = 70;
 
 export const createAppScreens = ({
   intl,
+  contextKey,
 }: {
   intl: (title: MessageDescriptor) => string;
+  /** SPEC A §5.3:168 — content history keyed by organization + area; the
+   * whole card group remounts (dropping per-screen state) when it changes. */
+  contextKey: string;
 }) => (
   <>
-    <RootStack.Group screenOptions={{presentation: 'card'}} key="default">
+    <RootStack.Group
+      screenOptions={{presentation: 'card'}}
+      navigationKey={contextKey}
+      key="default">
       <RootStack.Screen
         name="Home"
         options={{headerShown: false}}

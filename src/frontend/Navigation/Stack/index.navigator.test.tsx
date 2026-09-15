@@ -49,6 +49,12 @@ jest.mock('@maplibre/maplibre-react-native', () => {
       setAccessToken: jest.fn(),
       setTelemetryEnabled: jest.fn(),
     },
+    // Named exports: the real Observation screen renders InsetMapView,
+    // which destructures them directly.
+    MapView: Stub,
+    Camera: Stub,
+    MarkerView: Stub,
+    UserLocation: Stub,
     LineJoin,
     LineCap,
   };
@@ -159,7 +165,10 @@ jest.mock('../../lib/organization/pacotesInstalados', () => {
 
 import {MMKVStoreInitializer} from '../../hooks/persistedState/createPersistedState';
 import {COIAB_ORGANIZATIONS_STORAGE_KEY} from '../../contexts/CoiabOrganizationsStoreContext';
-import {type EstadoOrganizacoes} from '../../lib/organization/coiabOrganizations';
+import {
+  derivarProjectIdAtivo,
+  type EstadoOrganizacoes,
+} from '../../lib/organization/coiabOrganizations';
 
 /**
  * The §4.2 document for the pending-confirmation startup (SPEC B §3.3
@@ -857,5 +866,193 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     expect(documentoPersistido().ativa).toBe(null);
     // Nada é recriado: os dois projetos persistidos continuam sendo os mesmos.
     expect(await freshSetup.manager.listProjects()).toHaveLength(2);
+  }, 20000);
+
+  test('troca de área pelo drawer: reset para Home/Map no projeto de Alertas, documento cru em alertas e Back não reapresenta a Observation (SPEC A §6.1/D12, CA16/CA08)', async () => {
+    // Documento semeado: organização PRONTA, confirmação concluída e seleção
+    // Monitoramento, com os dois slots ligados aos projetos reais do core.
+    const mProjectId = orgSetup.projectId;
+    const aProjectId = orgSetup.alertasProjectId;
+    MMKVStoreInitializer.setItem(
+      COIAB_ORGANIZATIONS_STORAGE_KEY,
+      JSON.stringify({
+        state: {
+          versao: 1,
+          organizacoes: [
+            {
+              id: orgSetup.orgId,
+              nome: orgSetup.orgName,
+              estado: 'pronta',
+              confirmacaoPendente: false,
+              materializacao: {
+                monitoramento: {
+                  etapa: 'verificado',
+                  projectId: mProjectId,
+                  template: {versao: '1', hash: 'monitoramento'},
+                  idsAntesDaCriacao: null,
+                },
+                alertas: {
+                  etapa: 'verificado',
+                  projectId: aProjectId,
+                  template: {versao: '1', hash: 'alertas'},
+                  idsAntesDaCriacao: null,
+                },
+              },
+              areaEmExecucao: null,
+              ultimoErro: null,
+            },
+          ],
+          ativa: {organizacaoId: orgSetup.orgId, area: 'monitoramento'},
+        },
+        version: 1,
+      }),
+    );
+
+    await orgSetup.renderNavigation();
+    expect(await screen.findByTestId('MAIN.map-screen')).toBeOnTheScreen();
+
+    // CA16 no navigator real: o drawer mostra o nome da organização e os dois
+    // acessos fixos, com Monitoramento marcado como corrente.
+    await fireEvent.press(await screen.findByTestId('HOME.header-button'));
+    expect(
+      await screen.findByTestId('MENU.area-monitoramento'),
+    ).toBeOnTheScreen();
+    expect(screen.getByTestId('MENU.area-alertas')).toBeOnTheScreen();
+    expect(screen.getByText(orgSetup.orgName)).toBeOnTheScreen();
+    expect(
+      screen.getByTestId('MENU.area-monitoramento').props.accessibilityState,
+    ).toEqual({selected: true});
+    expect(
+      screen.getByTestId('MENU.area-alertas').props.accessibilityState,
+    ).toEqual({selected: false});
+    // Dois gates na leitura de PAPEL do projeto de Alertas no core (AGENTS.md:
+    // navigator real com refresh de query atrasado). O espião é o `$getOwnRole`
+    // da instância REAL do projeto no servidor de IPC: é o que a validação do
+    // motor e a refresh de query do remount chamam de fato (o cache do cliente
+    // de IPC não toca `manager.getProject` de novo).
+    // 1ª leitura pós-montagem = a validação do motor no toque: fica presa
+    // ENQUANTO a rota Observation é semeada na pilha — a troca publica com
+    // ela na pilha;
+    // 2ª leitura pós-montagem = a refresh de query do contexto NOVO (o
+    // remount do grupo e do listener após o reset), que atrasa.
+    const alertasApi = await orgSetup.manager.getProject(aProjectId);
+    const getOwnRoleReal = alertasApi.$getOwnRole.bind(alertasApi);
+    let releaseValidation!: () => void;
+    const validationGate = new Promise<void>(resolve => {
+      releaseValidation = resolve;
+    });
+    let releaseRefresh!: () => void;
+    const refreshGate = new Promise<void>(resolve => {
+      releaseRefresh = resolve;
+    });
+    let refreshWaiting = false;
+    let leiturasAlertas = 0;
+    const spy = jest
+      .spyOn(alertasApi, '$getOwnRole')
+      .mockImplementation(async () => {
+        leiturasAlertas += 1;
+        if (leiturasAlertas === 1) {
+          await validationGate;
+        }
+        if (leiturasAlertas >= 2) {
+          refreshWaiting = true;
+          await refreshGate;
+        }
+        return getOwnRoleReal();
+      });
+    try {
+      // Uma rota Observation na pilha: documento real do projeto de
+      // Monitoramento, para a tela suspender sobre dados reais e não no
+      // limbo de um id inexistente.
+      const projectApi = await orgSetup.client.getProject(mProjectId);
+      const observation = await projectApi.observation.create({
+        schemaName: 'observation' as const,
+        attachments: [],
+        tags: {},
+        lat: 10,
+        lon: 10,
+        metadata: {
+          manualLocation: false,
+          position: {
+            mocked: false,
+            timestamp: new Date().toISOString(),
+            coords: {latitude: 10, longitude: 10},
+          },
+        },
+      });
+
+      // O toque em Alertas inicia a ativação (o motor valida o papel do
+      // destino); a validação está presa no gate, então o reset ainda não
+      // disparou.
+      await fireEvent.press(screen.getByTestId('MENU.area-alertas'));
+      expect(
+        mockNavigation.getRootState().routes.map(route => route.name),
+      ).toEqual(['Home']);
+
+      // O estado de navegação semeado (AGENTS.md): uma Observation entra na
+      // pilha enquanto a troca está EM VOO — o estado que o reset da troca
+      // precisa reconciliar e podar.
+      await act(async () => {
+        mockNavigation.navigate('Observation', {
+          observationId: observation.docId,
+        });
+      });
+      expect(
+        mockNavigation.getRootState().routes.map(route => route.name),
+      ).toEqual(['Home', 'Observation']);
+
+      await act(async () => {
+        releaseValidation();
+      });
+      // O reset atravessa chamadas reais de RPC (limpeza da origem): espera
+      // o roteador terminar a reconciliação.
+      await waitFor(() =>
+        expect(
+          mockNavigation.getRootState().routes.map(route => route.name),
+        ).toEqual(['Home']),
+      );
+      // O refresh de query do destino atrasa (o remount do grupo consultou o
+      // papel do projeto de Alertas de novo e ficou preso no gate): a Home
+      // suspende sobre ele — nada da área antiga reaparece.
+      await waitFor(() => expect(refreshWaiting).toBe(true));
+      expect(
+        mockNavigation.getRootState().routes.map(route => route.name),
+      ).toEqual(['Home']);
+
+      // O documento cru registra a área trocada e dele deriva EXATAMENTE o
+      // projeto de Alertas (SPEC A §4.2 regra 5).
+      const raw = documentoPersistido();
+      expect(raw.ativa).toEqual({
+        organizacaoId: orgSetup.orgId,
+        area: 'alertas',
+      });
+      expect(derivarProjectIdAtivo(raw)).toBe(aProjectId);
+
+      // O refresh atrasado resolve e a tela de mapa abre no contexto novo —
+      // nada ressuscita a rota podada.
+      await act(async () => releaseRefresh());
+      await act(async () => {
+        await getOwnRoleReal();
+      });
+      expect(
+        await screen.findByTestId('MAIN.map-screen', {}, {timeout: 10000}),
+      ).toBeOnTheScreen();
+      expect(
+        mockNavigation.getRootState().routes.map(route => route.name),
+      ).toEqual(['Home']);
+
+      // Back NÃO volta para a Observation (SPEC A §5.2:168).
+      await act(async () => {
+        mockNavigation.goBack();
+      });
+      expect(
+        mockNavigation.getRootState().routes.map(route => route.name),
+      ).toEqual(['Home']);
+      expect(screen.getByTestId('MAIN.map-screen')).toBeOnTheScreen();
+    } finally {
+      releaseValidation();
+      releaseRefresh();
+      spy.mockRestore();
+    }
   }, 20000);
 });

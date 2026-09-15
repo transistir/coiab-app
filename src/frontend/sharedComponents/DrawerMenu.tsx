@@ -18,7 +18,6 @@ import CollaborateIcon from '../images/ProjectParticipant.svg';
 import {BodyText} from '../sharedComponents/Text/BodyText.tsx';
 import {useProjectRoleAndDetails} from '../hooks/useProjectRoleAndDetails.ts';
 import {
-  BLUE_GREY,
   COMAPEO_BLUE,
   LIGHT_ORANGE,
   NEW_DARK_GREY,
@@ -29,12 +28,13 @@ import {MenuLowStorageAlert} from '../sharedComponents/Storage/MenuLowStorageAle
 import {useStorageReadingQuery} from '../hooks/useStorageReadingQuery.ts';
 import {ColorCard} from '../sharedComponents/ColorCard.tsx';
 import {HeaderText} from '../sharedComponents/Text/HeaderText.tsx';
-import {useManyProjects} from '@comapeo/core-react';
-import {buttonStyles, PrimaryButton} from '../sharedComponents/Buttons.tsx';
-import DownArrow from '../images/DownArrow.svg';
-import {isLowStorage, calcUsedPercentage} from '../lib/storage';
-import {displayDescription} from '../lib/organization/marker';
+import {PrimaryButton} from '../sharedComponents/Buttons.tsx';
+import {isLowStorage, calcUsedPercentage} from '../lib/storage.ts';
 import {useEarlyAccessState} from '../contexts/EarlyAccessContext';
+import {useCoiabOrganizationsState} from '../contexts/CoiabOrganizationsStoreContext';
+import {derivarProjectIdAtivo} from '../lib/organization/coiabOrganizations';
+import {OrganizationAreaAccesses} from './OrganizationAreaAccesses.tsx';
+import {displayDescription} from '../lib/organization/marker';
 
 const m = defineMessages({
   appSettings: {
@@ -69,10 +69,6 @@ const m = defineMessages({
     id: '$1Navigation.Menu.justYou',
     defaultMessage: 'Just You',
   },
-  switchProject: {
-    id: '$1Navigation.Menu.switchProject',
-    defaultMessage: 'Switch Project',
-  },
   earlyAccessOn: {
     id: '$1Navigation.Menu.earlyAccessOn',
     defaultMessage: 'Early Access ON',
@@ -97,7 +93,6 @@ const m = defineMessages({
 export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
   const {formatMessage} = useIntl();
   const navigation = useNavigationFromRoot();
-  const {data: allProjects} = useManyProjects();
 
   const {projectId} = useActiveProject();
   const projectDetails = useProjectRoleAndDetails(projectId);
@@ -106,6 +101,12 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
   // SPEC 3.9/15: a marker description displays as the organization name,
   // never the raw technical value.
   const displayableDescription = displayDescription(projectDescription);
+  // The organization card replaces the legacy description only when a
+  // usable organization derives from the document (SPEC A §4.2 rule 5);
+  // solo/free projects keep their legacy line (retirement is Phase 9).
+  const estadoOrganizacoes = useCoiabOrganizationsState();
+  const semOrganizacaoOperavel =
+    derivarProjectIdAtivo(estadoOrganizacoes) === null;
   const {data} = useStorageReadingQuery();
   const {freeBytes, totalBytes} = data;
   const isLow = isLowStorage(freeBytes);
@@ -173,36 +174,16 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
                       : formatMessage(m.participant)}
                 </BodyText>
               </View>
-              {(role === 'solo' || displayableDescription) && (
-                <BodyText style={{color: NEW_DARK_GREY}}>
-                  {role === 'solo'
-                    ? formatMessage(m.mappingOnOwn)
-                    : displayableDescription}
-                </BodyText>
-              )}
-              {allProjects.length > 1 && (
-                // This button deviates from the standard SecondaryButton (the icon is aligned flex-end) and so instead of changing that component, I just copied the styles here, and created a custom button for this use case.
-                <TouchableOpacity
-                  onPress={() => {
-                    navigation.navigate('AllProjects');
-                  }}
-                  style={[
-                    buttonStyles.base,
-                    {
-                      backgroundColor: WHITE,
-                      borderWidth: 1.5,
-                      borderColor: BLUE_GREY,
-                      alignSelf: 'center',
-                      paddingHorizontal: 20,
-                    },
-                  ]}>
-                  <HeaderText
-                    variant="header5"
-                    style={{color: COMAPEO_BLUE, flex: 1, textAlign: 'center'}}>
-                    {formatMessage(m.switchProject)}
-                  </HeaderText>
-                  <DownArrow />
-                </TouchableOpacity>
+              {semOrganizacaoOperavel ? (
+                (role === 'solo' || displayableDescription) && (
+                  <BodyText style={{color: NEW_DARK_GREY}}>
+                    {role === 'solo'
+                      ? formatMessage(m.mappingOnOwn)
+                      : displayableDescription}
+                  </BodyText>
+                )
+              ) : (
+                <OrganizationAreaAccesses closeMenu={closeMenu} />
               )}
             </View>
           </ColorCard>

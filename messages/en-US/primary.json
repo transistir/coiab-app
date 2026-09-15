@@ -41,9 +41,6 @@
   "$1Navigation.Menu.participant": {
     "message": "Participant"
   },
-  "$1Navigation.Menu.switchProject": {
-    "message": "Switch Project"
-  },
   "$1Navigation.Menu.team": {
     "message": "Team"
   },
@@ -620,6 +617,18 @@
     "message": "Add Observations",
     "description": "Title of observation list view when the user has not yet recorded observations"
   },
+  "$1screens.ObservationsList.emptyAlertas": {
+    "message": "No records yet in Alerts",
+    "description": "Title of the empty observation list in the Alerts area of an organization"
+  },
+  "$1screens.ObservationsList.emptyMonitoramento": {
+    "message": "No records yet in Monitoring",
+    "description": "Title of the empty observation list in the Monitoring area of an organization"
+  },
+  "$1screens.ObservationsList.goToMap": {
+    "message": "Go to the map",
+    "description": "Action that opens the map of the current work area from the empty observation list"
+  },
   "$1screens.Onboarding.CreateOrganization.body": {
     "message": "The Organization is the way {app} organizes mapping. It contains the Monitoramento and Alertas projects."
   },
@@ -1110,6 +1119,14 @@
   },
   "$1sharedComponents.ErrorBottomSheet.somethingWrong": {
     "message": "Something Went Wrong"
+  },
+  "$1sharedComponents.OrganizationAreaAccesses.currentArea": {
+    "message": "Current",
+    "description": "Badge naming the work area the device operates right now"
+  },
+  "$1sharedComponents.OrganizationAreaAccesses.pendingWork": {
+    "message": "Finish or discard the record before switching organization",
+    "description": "Blocked area switch (SPEC A §4.4:149 canonical pending-work string)"
   },
   "$1sharedComponents.OrganizationRepairBanner.needsAttention": {
     "message": "An Organization on this device needs attention"

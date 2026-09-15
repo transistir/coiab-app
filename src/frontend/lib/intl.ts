@@ -1,5 +1,3 @@
-/* eslint-disable intl/no-unused-message-descriptors */
-
 // Mapping of language tag to corresponding native and english names
 import LANGUAGES from '../languages.json';
 import {LocaleConfig} from 'react-native-calendars';
