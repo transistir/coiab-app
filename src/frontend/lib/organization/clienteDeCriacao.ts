@@ -1,6 +1,6 @@
 import type {ComapeoCoreClientApi, ComapeoProjectClientApi} from '@comapeo/ipc';
-import type {PresetImportado, ProjetoComPresets} from './pacotes';
-import type {CreationClient, CreationProject} from './materializar';
+import type {ClienteDeEntrada, ProjetoDeEntrada} from './entrada';
+import type {PresetImportado} from './pacotes';
 
 /**
  * Production `CreationClient` over the real IPC client of @comapeo/core.
@@ -10,14 +10,10 @@ import type {CreationClient, CreationProject} from './materializar';
  * the wrong surface. The wrapper is also the one place that converts
  * `file:///…` URIs into the plain path Core's `$importCategories` requires.
  */
-
 // Identity must be stable: the materializer keys its exclusive-operation
 // registry on the client object (materializar.ts `running`), so two
 // `clienteDeCriacao(api)` calls for one api MUST return one object.
-const clientes = new WeakMap<
-  ComapeoCoreClientApi,
-  CreationClient<CreationProject & ProjetoComPresets>
->();
+const clientes = new WeakMap<ComapeoCoreClientApi, ClienteDeEntrada>();
 
 /**
  * Core reads packages by a plain filesystem path (it passes it to
@@ -31,9 +27,7 @@ function caminhoPuro(uri: string): string {
 
 type ProjetoClient = ComapeoProjectClientApi;
 
-function criarProjetoDeCriacao(
-  p: ProjetoClient,
-): CreationProject & ProjetoComPresets {
+function criarProjetoDeCriacao(p: ProjetoClient): ProjetoDeEntrada {
   return {
     $member: {
       getById: (id: string) => p.$member.getById(id),
@@ -55,6 +49,9 @@ function criarProjetoDeCriacao(
     field: {
       getMany: () => p.field.getMany(),
     },
+    // SPEC B §5.5: a joined project exposes Core's own-role read — the
+    // entry confirmation walks it (CREATOR/COORDINATOR/MEMBER).
+    $getOwnRole: () => p.$getOwnRole(),
     // NO `icon` listing member, BY EVIDENCE: core 7.4.0 / ipc 9.0.1 exposes
     // NO public icon DataType on MapeoProject — `icon.getMany()` REJECTS at
     // runtime ("ReferenceError: icon is not defined"; the icon DataType
@@ -83,9 +80,7 @@ function criarProjetoDeCriacao(
   };
 }
 
-export function clienteDeCriacao(
-  api: ComapeoCoreClientApi,
-): CreationClient<CreationProject & ProjetoComPresets> {
+export function clienteDeCriacao(api: ComapeoCoreClientApi): ClienteDeEntrada {
   let cliente = clientes.get(api);
   if (!cliente) {
     cliente = {

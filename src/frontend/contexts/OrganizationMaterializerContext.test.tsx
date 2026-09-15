@@ -5,9 +5,11 @@ import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import type {ComapeoCoreClientApi} from '@comapeo/ipc';
 import type {ReactNode} from 'react';
 
-import {CREATOR_ROLE_ID} from '../sharedTypes';
+import {CREATOR_ROLE_ID, MEMBER_ROLE_ID} from '../sharedTypes';
+import {clienteDeCriacao} from '../lib/organization/clienteDeCriacao';
 import type {EstadoOrganizacoes} from '../lib/organization/coiabOrganizations';
 import {readyOrganization} from '../lib/organization/fixtures';
+import {verificarEntrada} from '../lib/organization/entrada';
 import {
   createMaterializer,
   type CreationProject,
@@ -25,15 +27,14 @@ import {
   useOrganizationMaterializer,
 } from './OrganizationMaterializerContext';
 
+// The real materializer runs; its factory is wrapped so a test can observe
+// how many times `start`/`resume` were actually invoked — `retomar`'s guard
+// must be observable at the materializer boundary, not through side effects.
 // The provider reads the core client through `useClientApi`; a fake client
 // keeps the test off IPC while the real creation adapter runs.
 jest.mock('@comapeo/core-react', () => ({
   useClientApi: jest.fn(),
 }));
-
-// The real materializer runs; its factory is wrapped so a test can observe
-// how many times `start`/`resume` were actually invoked — `retomar`'s guard
-// must be observable at the materializer boundary, not through side effects.
 jest.mock('../lib/organization/materializar', () => {
   const actual = jest.requireActual('../lib/organization/materializar') as {
     createMaterializer: (options: unknown) => {
@@ -54,8 +55,21 @@ jest.mock('../lib/organization/materializar', () => {
   };
 });
 
+// The origin dispatch calls the REAL `verificarEntrada` (wrapped, so the
+// dispatch itself stays observable at the boundary).
+jest.mock('../lib/organization/entrada', () => {
+  const actual = jest.requireActual('../lib/organization/entrada') as {
+    verificarEntrada: (options: unknown) => Promise<void>;
+  };
+  return {
+    ...actual,
+    verificarEntrada: jest.fn(actual.verificarEntrada),
+  };
+});
+
 const useClientApiMock = useClientApi as unknown as jest.Mock;
 const createMaterializerMock = createMaterializer as unknown as jest.Mock;
+const verificarEntradaMock = verificarEntrada as unknown as jest.Mock;
 
 /** Stable project surface per id: settings written by the materializer must
  * read back identical in the final conferência. */
@@ -78,6 +92,9 @@ function fakeCreationProject() {
       Object.assign(settings, next);
     }),
     $getProjectSettings: jest.fn(async () => ({...settings})),
+    // SPEC B §5.5: a joined project exposes the own-role read the entry
+    // confirmation walks.
+    $getOwnRole: jest.fn(async () => ({roleId: MEMBER_ROLE_ID})),
   };
 }
 
@@ -116,9 +133,48 @@ function preparingDocument(): EstadoOrganizacoes {
     ativa: {organizacaoId: ORG_ID, area: 'alertas'},
   };
 }
+/**
+ * Invite-entry journal (SPEC B §5.5): both areas hold an accepted project
+ * id with NO creation snapshot and NO template — the shape that dispatches
+ * to `verificarEntrada` instead of the creation resume.
+ */
+function conviteDocument(): EstadoOrganizacoes {
+  return {
+    versao: 1,
+    organizacoes: [
+      {
+        id: ORG_ID,
+        nome: 'Por convite',
+        estado: 'preparando',
+        confirmacaoPendente: false,
+        materializacao: {
+          monitoramento: {
+            etapa: 'criado',
+            projectId: `${ORG_ID}-m`,
+            template: null,
+            idsAntesDaCriacao: null,
+          },
+          alertas: {
+            etapa: 'criado',
+            projectId: `${ORG_ID}-a`,
+            template: null,
+            idsAntesDaCriacao: null,
+          },
+        },
+        areaEmExecucao: null,
+        ultimoErro: null,
+      },
+    ],
+    ativa: null,
+  };
+}
 
 describe('OrganizationMaterializerContext', () => {
-  let clientApi: {getDeviceInfo: jest.Mock; getProject: jest.Mock};
+  let clientApi: {
+    getDeviceInfo: jest.Mock;
+    getProject: jest.Mock;
+    listProjects?: jest.Mock;
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -221,6 +277,88 @@ describe('OrganizationMaterializerContext', () => {
     expect(
       invalidateQueries.mock.calls.map(call => call[0]?.queryKey),
     ).toContainEqual(projectsQueryKey);
+
+    await act(async () => {
+      await hook.unmount();
+    });
+  });
+
+  test('retomar despacha por origem: convite verifica a entrada e não retoma', async () => {
+    // SPEC B §5.5 dispatch: a journal whose BOTH areas are accepted joins
+    // (no creation snapshot, no template) is an INVITE entry — the resume
+    // must CONFIRM it against the live device, never create again.
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState(conviteDocument(), true);
+    // The entry confirmation reads the join status from the core rows.
+    clientApi.listProjects = jest.fn(async () => [
+      {projectId: `${ORG_ID}-m`, status: 'joined' as const},
+      {projectId: `${ORG_ID}-a`, status: 'joined' as const},
+    ]);
+    const {hook, invalidateQueries, templates} =
+      await renderMaterializador(store);
+
+    await act(async () => {
+      await hook.result.current!.retomar(ORG_ID);
+    });
+
+    const materializer = createMaterializerMock.mock.results[0]!.value;
+    expect(materializer.resume).not.toHaveBeenCalled();
+    expect(verificarEntradaMock).toHaveBeenCalledTimes(1);
+    // The REAL creation adapter is the client: it is the one that offers
+    // `iconeResolvivel`, the icon proof the verification relies on.
+    const options = verificarEntradaMock.mock.calls[0]![0] as {
+      store: CoiabOrganizationsStore;
+      client: unknown;
+      templates: unknown;
+      organizacaoId: string;
+    };
+    expect(options.organizacaoId).toBe(ORG_ID);
+    expect(options.store).toBe(store);
+    expect(options.templates).toBe(templates);
+    expect(options.client).toBe(
+      clienteDeCriacao(clientApi as unknown as ComapeoCoreClientApi),
+    );
+    // The confirmed entry publishes pronta with pending confirmation.
+    expect(store.instance.getState().organizacoes[0]).toMatchObject({
+      estado: 'pronta',
+      confirmacaoPendente: true,
+      materializacao: {
+        monitoramento: {
+          etapa: 'verificado',
+          projectId: `${ORG_ID}-m`,
+          template: {versao: '1', hash: 'monitoramento'},
+        },
+        alertas: {
+          etapa: 'verificado',
+          projectId: `${ORG_ID}-a`,
+          template: {versao: '1', hash: 'alertas'},
+        },
+      },
+    });
+    expect(
+      invalidateQueries.mock.calls.map(call => call[0]?.queryKey),
+    ).toContainEqual(projectsQueryKey);
+
+    await act(async () => {
+      await hook.unmount();
+    });
+  });
+
+  test('retomar despacha por origem: criação retoma e não verifica', async () => {
+    // A creation journal (template journaled) keeps the creation resume —
+    // verification would refuse to confirm an organization this device
+    // created itself.
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState(preparingDocument(), true);
+    const {hook} = await renderMaterializador(store);
+
+    await act(async () => {
+      await hook.result.current!.retomar(ORG_ID);
+    });
+
+    const materializer = createMaterializerMock.mock.results[0]!.value;
+    expect(materializer.resume).toHaveBeenCalledTimes(1);
+    expect(verificarEntradaMock).not.toHaveBeenCalled();
 
     await act(async () => {
       await hook.unmount();

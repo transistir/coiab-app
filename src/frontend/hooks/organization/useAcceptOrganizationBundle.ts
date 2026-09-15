@@ -3,6 +3,8 @@ import {useQueryClient} from '@tanstack/react-query';
 import {useClientApi} from '@comapeo/core-react';
 
 import {useActiveProjectIdActions} from '../../contexts/ActiveProjectIdStoreContext';
+import {useCoiabOrganizationsActions} from '../../contexts/CoiabOrganizationsStoreContext';
+import {useOrganizationActivationContext} from '../../contexts/OrganizationActivationContext';
 import {
   useOrganizationInviteIdentities,
   useOrganizationInviteIdentityActions,
@@ -31,13 +33,17 @@ export type AcceptOrganizationBundleStatus =
  * What `start` settled on: `undefined` when it never ran (a re-entry attempt
  * while one is in flight) or was superseded mid-flight; `ok: false` carries
  * the failure the React state also publishes; `ok: true` carries the accepted
- * slots and the project id that became active (SPEC 8.6 ladder).
+ * slots, the project id that became active (SPEC 8.6 ladder) and — when the
+ * organization was REGISTERED as an invite entry (SPEC B §5.5) — the id of
+ * the registered organization, in which case activation is handed to the
+ * engine (`retryPreparation`) instead of being forced here.
  */
 export type AcceptOrganizationBundleResult =
   | {
       ok: true;
       accepted: Array<{slot: Slot; projectId: string}>;
       activeProjectId: string | undefined;
+      registeredOrganizationId?: string;
     }
   | {ok: false; error: unknown};
 
@@ -63,16 +69,26 @@ function bothSlotsPresent(
 
 /**
  * SPEC 8: "Entrar na organização" — accept an Organization invite bundle
- * (validation and slot skipping are `acceptOrganizationBundle`'s job) and
- * make the Monitoramento project of the organization the active one
- * (SPEC 8.6: slot m wins, from the freshest source that sees it — the
- * post-accept reconstruction, the pre-accept local one, or this accept's
- * own result — before any slot-a fallback).
+ * (validation and slot skipping are `acceptOrganizationBundle`'s job) and,
+ * on a COMPLETE accept (every slot local across the reads), register the
+ * invite entry in the durable document (SPEC B §5.5) with the two accepted
+ * project ids and hand activation to the engine (`retryPreparation` — the
+ * materializer's `retomar` then dispatches by origin). When the entry is
+ * NOT registered (an incomplete accept, or the store refusing — document
+ * not empty, duplicate ids, empty name), the legacy behavior stands: the
+ * Monitoramento project becomes active directly (SPEC 8.6 ladder: slot m
+ * wins from the freshest source that sees it — the post-accept
+ * reconstruction, the pre-accept local one, or this accept's own result —
+ * before any slot-a fallback).
  */
 export function useAcceptOrganizationBundle() {
   const clientApi = useClientApi();
   const queryClient = useQueryClient();
   const {setActiveProjectId} = useActiveProjectIdActions();
+  const {registrarEntradaPorConvite} = useCoiabOrganizationsActions();
+  // The activation engine, mounted once at the root: a registered entry
+  // hands its confirmation to the engine instead of forcing a slot active.
+  const {retryPreparation} = useOrganizationActivationContext();
   const {setIdentity, clearIdentity} = useOrganizationInviteIdentityActions();
   const identities = useOrganizationInviteIdentities();
 
@@ -145,9 +161,12 @@ export function useAcceptOrganizationBundle() {
         // while the bundle can still disappear under the invalidations below.
         let outcome: AcceptOrganizationBundleResult;
         let identityComplete = false;
-        // Hoisted for the catch: the reconciliation reads the same
-        // reconstruction the success ladder uses.
+        // Hoisted for the catch AND the registration: the reconciliation
+        // reads the same reconstruction the success ladder uses, and the
+        // publication-time registration resolves each slot's projectId from
+        // the same sources whichever path produced the outcome.
         let preAcceptOrg: ReconstructedOrganization | undefined;
+        let freshOrg: ReconstructedOrganization | undefined;
         try {
           // SPEC 8.6: capture the pre-accept local reconstruction — the read
           // after the accept can lag behind core, and local state known
@@ -165,7 +184,7 @@ export function useAcceptOrganizationBundle() {
           // post-accept reconstruction (so a slot accepted in an earlier
           // attempt counts), then the pre-accept local one, then this
           // accept's own result; only then the same ladder over slot a.
-          const freshOrg = reconstructOrganizations(
+          freshOrg = reconstructOrganizations(
             await clientApi.listProjects(),
           ).find(org => org.organizationId === bundle.organizationId);
           const activeProjectId =
@@ -204,7 +223,7 @@ export function useAcceptOrganizationBundle() {
           // read into a success that also unpins the recovery identity.
           if (isAcceptOriginError(e)) {
             try {
-              const freshOrg = reconstructOrganizations(
+              freshOrg = reconstructOrganizations(
                 await clientApi.listProjects(),
               ).find(org => org.organizationId === bundle.organizationId);
 
@@ -265,13 +284,50 @@ export function useAcceptOrganizationBundle() {
           // a settled state can no longer have the bundle vanish under it.
           if (attemptRef.current !== attempt) return undefined;
 
+          let registeredOrganizationId: string | undefined;
+          if (outcome.ok && identityComplete) {
+            // SPEC B §5.5: a COMPLETE accept is an entered organization —
+            // register it in the durable document with the two accepted
+            // projectIds (each resolved through the same SPEC 8.6 ladder
+            // that activates), never through a new accept of a single slot.
+            const {accepted} = outcome;
+            const projectIdDe = (slot: Slot): string | undefined =>
+              freshOrg?.slots[slot] ??
+              preAcceptOrg?.slots[slot] ??
+              accepted.find(entry => entry.slot === slot)?.projectId;
+            const monitoramento = projectIdDe('m');
+            const alertas = projectIdDe('a');
+            if (monitoramento !== undefined && alertas !== undefined) {
+              const registrada = registrarEntradaPorConvite({
+                organizacaoId: bundle.organizationId,
+                nome: bundle.organizationName ?? '',
+                projectIds: {monitoramento, alertas},
+              });
+              if (registrada) {
+                registeredOrganizationId = bundle.organizationId;
+                // The engine confirms the entry (retomar dispatches by
+                // origin: `verificarEntrada` for a convite journal) and
+                // publishes the selection — its own state carries any
+                // failure, so this stays fire-and-forget.
+                void retryPreparation(bundle.organizationId);
+              }
+            }
+          }
+
           if (outcome.ok) {
-            if (outcome.activeProjectId !== undefined) {
+            // A registered entry hands activation to the engine above — the
+            // hook must not force a slot itself in that case. A refused or
+            // absent registration keeps the legacy direct activation.
+            if (
+              registeredOrganizationId === undefined &&
+              outcome.activeProjectId !== undefined
+            ) {
               setActiveProjectId(outcome.activeProjectId);
             }
             if (identityComplete) {
               clearIdentity(bundle.organizationId);
             }
+            outcome = {...outcome, registeredOrganizationId};
             setStatus('success');
           } else {
             setError(outcome.error);
@@ -291,6 +347,8 @@ export function useAcceptOrganizationBundle() {
       clientApi,
       queryClient,
       setActiveProjectId,
+      registrarEntradaPorConvite,
+      retryPreparation,
       identities,
       setIdentity,
       clearIdentity,

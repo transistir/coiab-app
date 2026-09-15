@@ -4,6 +4,10 @@ import {useQueryClient} from '@tanstack/react-query';
 
 import {clienteDeCriacao} from '../lib/organization/clienteDeCriacao';
 import {
+  origemDaOrganizacao,
+  verificarEntrada,
+} from '../lib/organization/entrada';
+import {
   createMaterializer,
   type CreationProject,
   type TemplatePackage,
@@ -48,11 +52,11 @@ export function OrganizationMaterializerProvider({
   const store = useCoiabOrganizationsStoreContext();
   const clientApi = useClientApi();
   const queryClient = useQueryClient();
-
   const materializador = useMemo<OrganizationMaterializerHandle>(() => {
+    const fonte = templates ?? criarTemplateSourceInstalado();
     const materializer = createMaterializer({
       client: clienteDeCriacao(clientApi),
-      templates: templates ?? criarTemplateSourceInstalado(),
+      templates: fonte,
       repository: repositorioDoStore(store),
       generateId: generateOrganizationId,
     });
@@ -64,14 +68,31 @@ export function OrganizationMaterializerProvider({
             queryClient.invalidateQueries({queryKey: projectsQueryKey}),
           ),
       retomar: async organizacaoId => {
-        if (store.instance.getState().organizacoes[0]?.id !== organizacaoId) {
+        const organizacao = store.instance.getState().organizacoes[0];
+        if (!organizacao || organizacao.id !== organizacaoId) {
           throw new Error('organization-not-resumable');
         }
-        await materializer
-          .resume()
-          .finally(() =>
+        // SPEC B §5.5 dispatch: a journal whose BOTH areas are accepted
+        // invites (no creation snapshot, no template) is an INVITE entry —
+        // the resume must CONFIRM it (`verificarEntrada`, through the real
+        // creation adapter so the icon proof rides along), never create.
+        // Anything else is a creation journal and keeps resuming.
+        if (origemDaOrganizacao(organizacao) === 'convite') {
+          await verificarEntrada({
+            store,
+            client: clienteDeCriacao(clientApi),
+            templates: fonte,
+            organizacaoId,
+          }).finally(() =>
             queryClient.invalidateQueries({queryKey: projectsQueryKey}),
           );
+        } else {
+          await materializer
+            .resume()
+            .finally(() =>
+              queryClient.invalidateQueries({queryKey: projectsQueryKey}),
+            );
+        }
       },
     };
   }, [store, clientApi, templates, queryClient]);

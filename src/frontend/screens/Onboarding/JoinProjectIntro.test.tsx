@@ -7,6 +7,20 @@ import {randomBytes} from 'node:crypto';
 import {MEMBER_ROLE_ID} from '../../sharedTypes';
 import {connectPeers} from '../../../../tests/integration/helpers/core';
 import {parseMarker} from '../../lib/organization/marker';
+import {MMKVStoreInitializer} from '../../hooks/persistedState/createPersistedState';
+import {COIAB_ORGANIZATIONS_STORAGE_KEY} from '../../contexts/CoiabOrganizationsStoreContext';
+import type {EstadoOrganizacoes} from '../../lib/organization/coiabOrganizations';
+
+/**
+ * The RAW persisted document, exactly as the store writes it: the durable
+ * COIAB document is asserted from the disk-level truth, not from any
+ * subscribed store view (same observation as index.navigator.test.tsx).
+ */
+function documentoPersistido(): EstadoOrganizacoes {
+  const raw = MMKVStoreInitializer.getItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
+  if (typeof raw !== 'string') throw new Error('documento ausente');
+  return JSON.parse(raw).state;
+}
 
 describe('Onboarding Screens', () => {
   const inviteeSetup = setupIntegrationTestWithoutProject();
@@ -102,10 +116,36 @@ describe('Onboarding Screens', () => {
       projects.every(project => (project.name ?? '').trim().length > 0),
     ).toBe(true);
 
-    expect(inviteeSetup.activeProjectId).toBe(monitoramento!.project.projectId);
+    // Fase 6b-i: a complete accept REGISTERS the joined organization
+    // (SPEC B §5.5) and hands activation to the engine — it no longer
+    // forces a project active, so the store keeps what it was seeded with
+    // (nothing here). Activation becomes the "Abrir organização" tap on
+    // the confirmation screen; the accept replaces the waiting screen
+    // with it, and the org-first landing into Home is covered by the
+    // getInitialRoute unit tests (SPEC 10.1/E6).
+    expect(inviteeSetup.activeProjectId).toBeUndefined();
 
-    // The accept replaces the waiting screen with the confirmation; the
-    // org-first landing into Home is covered by the getInitialRoute unit
-    // tests (SPEC 10.1/E6).
+    // The durable document holds the invite entry: both accepted
+    // projectIds journaled as `criado` with NO creation snapshot and NO
+    // local template — the Fase 6a invite origin (this device created
+    // nothing; `pronta` belongs to the engine's verification, not to the
+    // accept).
+    const documento = documentoPersistido();
+    expect(documento.organizacoes).toHaveLength(1);
+    const entrada = documento.organizacoes[0]!;
+    expect(entrada.id).toBe(invitorSetup.orgId);
+    expect(entrada.nome).toBe(invitorSetup.orgName);
+    expect(entrada.materializacao.monitoramento).toStrictEqual({
+      etapa: 'criado',
+      projectId: monitoramento!.project.projectId,
+      template: null,
+      idsAntesDaCriacao: null,
+    });
+    expect(entrada.materializacao.alertas).toStrictEqual({
+      etapa: 'criado',
+      projectId: alertas!.project.projectId,
+      template: null,
+      idsAntesDaCriacao: null,
+    });
   });
 });
