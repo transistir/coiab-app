@@ -26,6 +26,7 @@ import {OrganizationMaterializerProvider} from '../contexts/OrganizationMaterial
 import {
   createEarlyAccessStore,
   EarlyAccessStoreProvider,
+  type EarlyAccessStore,
 } from '../contexts/EarlyAccessContext';
 import {
   createTrackStore,
@@ -37,7 +38,11 @@ import {
   useLocationContext,
 } from '../contexts/LocationContext';
 import {PermissionStatus} from 'expo-location';
-import {organizationDocument} from '../lib/organization/fixtures';
+import {
+  organizationDocument,
+  readyOrganization,
+} from '../lib/organization/fixtures';
+import type {OrganizacaoLocal} from '../lib/organization/coiabOrganizations';
 
 import {DrawerMenu} from './DrawerMenu';
 
@@ -147,14 +152,19 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
 
   /** The real driver, mirroring AppProviders' nesting; the drawers's
    * OrganizationAreaAccesses consumes the shared activation context. */
-  function Providers({store}: {store: CoiabOrganizationsStore}) {
+  function Providers({
+    store,
+    earlyAccessStore,
+  }: {
+    store: CoiabOrganizationsStore;
+    earlyAccessStore: EarlyAccessStore;
+  }) {
     return (
       <QueryClientProvider client={queryClient}>
         <TrackStoreProvider value={trackStore}>
           <DraftObservationProvider draftObservationStore={draftStore}>
             <ActiveProjectIdStoreProvider store={createActiveProjectIdStore()}>
-              <EarlyAccessStoreProvider
-                value={createEarlyAccessStore({persist: false})}>
+              <EarlyAccessStoreProvider value={earlyAccessStore}>
                 <CoiabOrganizationsStoreProvider store={store}>
                   <OrganizationMaterializerProvider>
                     <OrganizationActivationProvider>
@@ -172,12 +182,28 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     );
   }
 
-  async function renderDrawer(operatingOrganization: boolean) {
+  async function renderDrawer(
+    operatingOrganization: boolean,
+    {
+      earlyAccess = false,
+      organizacoes,
+    }: {earlyAccess?: boolean; organizacoes?: OrganizacaoLocal[]} = {},
+  ) {
+    const earlyAccessStore = createEarlyAccessStore({persist: false});
+    if (earlyAccess) earlyAccessStore.actions.setEarlyAccessEnabled(true);
     const store = createCoiabOrganizationsStore();
     if (operatingOrganization) {
-      store.instance.setState(organizationDocument(), true);
+      store.instance.setState(
+        {
+          ...organizationDocument(),
+          ...(organizacoes ? {organizacoes} : {}),
+        },
+        true,
+      );
     }
-    await render(<Providers store={store} />);
+    await render(
+      <Providers store={store} earlyAccessStore={earlyAccessStore} />,
+    );
     return {store};
   }
 
@@ -260,5 +286,60 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
       screen.queryByTestId('MENU.area-monitoramento'),
     ).not.toBeOnTheScreen();
     expect(screen.queryByTestId('MENU.area-alertas')).not.toBeOnTheScreen();
+  });
+
+  test('acesso antecipado desligado, duas organizações: a entrada de troca não existe', async () => {
+    // O documento default já traz duas organizações (A ativa, B); §8:247
+    // exige AS DUAS condições — flag ligado e duas ou mais organizações.
+    await renderDrawer(true);
+
+    await screen.findByTestId('MENU.area-alertas');
+    expect(
+      screen.queryByTestId('MENU.trocar-organizacao'),
+    ).not.toBeOnTheScreen();
+    expect(screen.queryByText('Switch organization')).not.toBeOnTheScreen();
+  });
+
+  test('acesso antecipado ligado, uma única organização: a entrada de troca não existe', async () => {
+    // §8:247 — "Habilitado quando houver duas ou mais; uma única não
+    // precisa de seletor". As áreas continuam; só a troca não existe.
+    await renderDrawer(true, {
+      earlyAccess: true,
+      organizacoes: [readyOrganization('A')],
+    });
+
+    await screen.findByTestId('MENU.area-alertas');
+    expect(
+      screen.queryByTestId('MENU.trocar-organizacao'),
+    ).not.toBeOnTheScreen();
+  });
+
+  test('acesso antecipado ligado, duas organizações: a entrada de troca existe', async () => {
+    await renderDrawer(true, {earlyAccess: true});
+
+    expect(
+      await screen.findByTestId('MENU.trocar-organizacao'),
+    ).toBeOnTheScreen();
+  });
+
+  test('toque na entrada de troca: fecha o menu e abre o seletor Organizations', async () => {
+    await renderDrawer(true, {earlyAccess: true});
+
+    await fireEvent.press(await screen.findByTestId('MENU.trocar-organizacao'));
+
+    expect(closeMenu).toHaveBeenCalledTimes(1);
+    expect(mockNavigation.navigate).toHaveBeenCalledWith('Organizations');
+  });
+
+  test('não-regressão com a entrada de troca: áreas, nome e proibidas ausentes', async () => {
+    // §6.1:197 — "Trocar de projeto" e "Nova colaboração" não voltam com o
+    // seletor; o nome e os dois acessos fixos continuam como estavam.
+    await renderDrawer(true, {earlyAccess: true});
+
+    expect(await screen.findByText('Organização A')).toBeOnTheScreen();
+    expect(screen.getByTestId('MENU.area-monitoramento')).toBeOnTheScreen();
+    expect(screen.getByTestId('MENU.area-alertas')).toBeOnTheScreen();
+    expect(screen.queryByText('Switch Project')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Collaborate')).not.toBeOnTheScreen();
   });
 });

@@ -84,6 +84,13 @@ const m = defineMessages({
     id: '$1Navigation.Menu.coordinatorTools',
     defaultMessage: 'Coordinator Tools',
   },
+  switchOrganization: {
+    id: '$1Navigation.Menu.switchOrganization',
+    defaultMessage: 'Switch organization',
+    // SPEC A §6.1:201 — opens the modal Organizations selector (§7:226).
+    // pt-BR ships the verbatim §6.1 string "Trocar de organização".
+    description: 'Drawer menu entry that opens the organization selector',
+  },
 });
 export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
   const {formatMessage} = useIntl();
@@ -178,7 +185,27 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
                   </BodyText>
                 )
               ) : (
-                <OrganizationAreaAccesses closeMenu={closeMenu} />
+                <>
+                  <OrganizationAreaAccesses closeMenu={closeMenu} />
+                  {/* SPEC A §6.1:201/§8:247 — the selector entry exists
+                      only with early access on AND two or more
+                      organizations; with either false it does not exist
+                      (no hidden or disabled control). */}
+                  {isEarly && estadoOrganizacoes.organizacoes.length >= 2 && (
+                    <TouchableOpacity
+                      testID="MENU.trocar-organizacao"
+                      style={styles.trocarOrganizacaoRow}
+                      onPress={() => {
+                        closeMenu();
+                        navigation.navigate('Organizations');
+                      }}
+                      accessibilityLabel="Open the organization selector.">
+                      <BodyText variant="medium">
+                        {formatMessage(m.switchOrganization)}
+                      </BodyText>
+                    </TouchableOpacity>
+                  )}
+                </>
               )}
             </View>
           </ColorCard>
@@ -305,5 +332,10 @@ const styles = StyleSheet.create({
   },
   earlyAccessTurnOff: {
     color: COMAPEO_BLUE,
+  },
+  trocarOrganizacaoRow: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
 });

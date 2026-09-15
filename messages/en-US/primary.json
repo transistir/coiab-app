@@ -38,6 +38,10 @@
   "$1Navigation.Menu.participant": {
     "message": "Participant"
   },
+  "$1Navigation.Menu.switchOrganization": {
+    "message": "Switch organization",
+    "description": "Drawer menu entry that opens the organization selector"
+  },
   "$1Navigation.Menu.team": {
     "message": "Team"
   },

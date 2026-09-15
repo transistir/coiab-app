@@ -35,6 +35,9 @@
   "$1Navigation.Menu.participant": {
     "message": "Participante"
   },
+  "$1Navigation.Menu.switchOrganization": {
+    "message": "Trocar de organização"
+  },
   "$1Navigation.Menu.team": {
     "message": "Equipe"
   },
