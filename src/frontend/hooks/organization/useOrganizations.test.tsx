@@ -10,7 +10,7 @@ import {
 import {
   ActiveProjectIdStoreProvider,
   createActiveProjectIdStore,
-  useActiveProjectIdActions,
+  useProjetarProjectIdAtivo,
   type ActiveProjectIdStore,
 } from '../../contexts/ActiveProjectIdStoreContext';
 import {markerFor} from '../../lib/organization/marker';
@@ -109,7 +109,7 @@ describe('useOrganizations', () => {
     const hook = await renderHook(
       () => ({
         primary: usePrimaryOrganization(),
-        actions: useActiveProjectIdActions(),
+        projetar: useProjetarProjectIdAtivo(),
       }),
       {wrapper: createWrapper()},
     );
@@ -121,18 +121,14 @@ describe('useOrganizations', () => {
 
     // The store fallback picks projects[0]; point the active project at the
     // second organization's monitoramento slot explicitly.
-    await act(async () =>
-      hook.result.current!.actions.setActiveProjectId(orgTwoMonitoramentoId),
-    );
+    await act(async () => hook.result.current!.projetar(orgTwoMonitoramentoId));
 
     await waitFor(() => {
       expect(hook.result.current?.primary?.organizationId).toBe(ORG_TWO_ID);
     });
 
     // Back to the first organization's monitoramento slot.
-    await act(async () =>
-      hook.result.current!.actions.setActiveProjectId(orgOneMonitoramentoId),
-    );
+    await act(async () => hook.result.current!.projetar(orgOneMonitoramentoId));
 
     await waitFor(() => {
       expect(hook.result.current?.primary?.organizationId).toBe(ORG_ONE_ID);
@@ -165,7 +161,7 @@ describe('useOrganizations', () => {
     const hook = await renderHook(
       () => ({
         primary: usePrimaryOrganization(),
-        actions: useActiveProjectIdActions(),
+        projetar: useProjetarProjectIdAtivo(),
       }),
       {wrapper: createWrapper()},
     );
@@ -175,9 +171,7 @@ describe('useOrganizations', () => {
       expect(hook.result.current).not.toBeNull();
     });
 
-    await act(async () =>
-      hook.result.current!.actions.setActiveProjectId(unaffiliatedId),
-    );
+    await act(async () => hook.result.current!.projetar(unaffiliatedId));
 
     // No ready organization holds this project, so the first ready one
     // (organizations sort by id) is used.
@@ -210,7 +204,7 @@ describe('useOrganizations', () => {
     const hook = await renderHook(
       () => ({
         primary: usePrimaryOrganization(),
-        actions: useActiveProjectIdActions(),
+        projetar: useProjetarProjectIdAtivo(),
       }),
       {wrapper: createWrapper()},
     );
@@ -220,9 +214,7 @@ describe('useOrganizations', () => {
       expect(hook.result.current).not.toBeNull();
     });
 
-    await act(async () =>
-      hook.result.current!.actions.setActiveProjectId(orgTwoAlertasId),
-    );
+    await act(async () => hook.result.current!.projetar(orgTwoAlertasId));
 
     await waitFor(() => {
       expect(hook.result.current?.primary?.organizationId).toBe(ORG_TWO_ID);

@@ -1,7 +1,7 @@
 import * as React from 'react';
 import {createContext, ReactNode, useContext} from 'react';
 
-import {useActiveProjectIdActions} from './ActiveProjectIdStoreContext';
+import {useProjetarProjectIdAtivo} from './ActiveProjectIdStoreContext';
 import {
   useOrganizationActivation,
   type OrganizationActivationHandle,
@@ -30,15 +30,15 @@ export const OrganizationActivationProvider = ({
   // never re-projects the same publication twice — a blocked switch that
   // republishes the validated snapshot keeps the same generation and is
   // dropped here.
-  const {setActiveProjectId} = useActiveProjectIdActions();
+  const projetar = useProjetarProjectIdAtivo();
   const projectedGeneration = React.useRef(Number.NaN);
   const {status, projectId, generation} = activation;
   React.useEffect(() => {
     if (status !== 'ready' || !projectId) return;
     if (projectedGeneration.current === generation) return;
     projectedGeneration.current = generation;
-    setActiveProjectId(projectId);
-  }, [status, projectId, generation, setActiveProjectId]);
+    projetar(projectId);
+  }, [status, projectId, generation, projetar]);
 
   return (
     <OrganizationActivationContext value={activation}>

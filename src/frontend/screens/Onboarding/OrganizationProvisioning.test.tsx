@@ -24,7 +24,7 @@ import {
 jest.mock('../../contexts/ActiveProjectIdStoreContext', () => {
   const holder = {current: undefined as string | undefined};
   return {
-    __setActiveProjectId: (projectId: string | undefined) => {
+    __projetarProjectIdAtivo: (projectId: string | undefined) => {
       holder.current = projectId;
     },
     useActiveProjectId: () => holder.current,
@@ -33,7 +33,7 @@ jest.mock('../../contexts/ActiveProjectIdStoreContext', () => {
 
 const activeProjectIdMock = jest.requireMock(
   '../../contexts/ActiveProjectIdStoreContext',
-) as {__setActiveProjectId(projectId: string | undefined): void};
+) as {__projetarProjectIdAtivo(projectId: string | undefined): void};
 import type {AppStackParamsList} from '../../sharedTypes/navigation';
 
 /**
@@ -158,7 +158,7 @@ beforeEach(() => {
     retryPreparation,
     recoverPendingWork,
   });
-  activeProjectIdMock.__setActiveProjectId(undefined);
+  activeProjectIdMock.__projetarProjectIdAtivo(undefined);
 });
 
 describe('OrganizationProvisioning', () => {

@@ -2,7 +2,7 @@ import {useCallback, useEffect, useRef, useState} from 'react';
 import {useQueryClient} from '@tanstack/react-query';
 import {useClientApi} from '@comapeo/core-react';
 
-import {useActiveProjectIdActions} from '../../contexts/ActiveProjectIdStoreContext';
+import {useProjetarProjectIdAtivo} from '../../contexts/ActiveProjectIdStoreContext';
 import {useCoiabOrganizationsActions} from '../../contexts/CoiabOrganizationsStoreContext';
 import {useOrganizationActivationContext} from '../../contexts/OrganizationActivationContext';
 import {
@@ -84,7 +84,7 @@ function bothSlotsPresent(
 export function useAcceptOrganizationBundle() {
   const clientApi = useClientApi();
   const queryClient = useQueryClient();
-  const {setActiveProjectId} = useActiveProjectIdActions();
+  const projetar = useProjetarProjectIdAtivo();
   const {registrarEntradaPorConvite} = useCoiabOrganizationsActions();
   // The activation engine, mounted once at the root: a registered entry
   // hands its confirmation to the engine instead of forcing a slot active.
@@ -322,7 +322,7 @@ export function useAcceptOrganizationBundle() {
               registeredOrganizationId === undefined &&
               outcome.activeProjectId !== undefined
             ) {
-              setActiveProjectId(outcome.activeProjectId);
+              projetar(outcome.activeProjectId);
             }
             if (identityComplete) {
               clearIdentity(bundle.organizationId);
@@ -346,7 +346,7 @@ export function useAcceptOrganizationBundle() {
     [
       clientApi,
       queryClient,
-      setActiveProjectId,
+      projetar,
       registrarEntradaPorConvite,
       retryPreparation,
       identities,

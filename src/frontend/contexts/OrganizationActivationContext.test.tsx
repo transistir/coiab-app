@@ -302,7 +302,7 @@ describe('OrganizationActivationContext sob AppProviders', () => {
     // MESMA geração (o caminho do interruptor bloqueado que repõe o
     // snapshot, :296-309) não pode reescrevê-lo de volta.
     act(() => {
-      activeProjectIdStore.actions.setActiveProjectId('escritor-estranho');
+      activeProjectIdStore.actions.projetar('escritor-estranho');
     });
     const engine = createOrganizationActivationMock.mock.results[0]!.value;
     act(() => {

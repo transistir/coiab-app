@@ -14,7 +14,7 @@ import MaterialDesignIcons from '@react-native-vector-icons/material-design-icon
 import {useLeaveProject, useManyProjects} from '@comapeo/core-react';
 import {useActiveProject} from '../../contexts/ActiveProjectContext';
 import {useProjectSettings} from '../../hooks/server/projects';
-import {useActiveProjectIdActions} from '../../contexts/ActiveProjectIdStoreContext';
+import {useProjetarProjectIdAtivo} from '../../contexts/ActiveProjectIdStoreContext';
 import {useCoiabOrganizationsState} from '../../contexts/CoiabOrganizationsStoreContext';
 import {useOrganizationActivationContext} from '../../contexts/OrganizationActivationContext';
 import {AREAS} from '../../lib/organization/coiabOrganizations';
@@ -55,8 +55,7 @@ export const LeaveProject = ({
   const {projectId} = useActiveProject();
   const {data: projectSettings} = useProjectSettings();
   const leaveProject = useLeaveProject();
-  const {setActiveProjectId, clearActiveProjectId} =
-    useActiveProjectIdActions();
+  const projetar = useProjetarProjectIdAtivo();
   const {data: projects} = useManyProjects();
   const activation = useOrganizationActivationContext();
   const estadoOrganizacoes = useCoiabOrganizationsState();
@@ -95,9 +94,9 @@ export const LeaveProject = ({
               proj => proj.projectId !== projectId,
             );
             if (remainingProject) {
-              setActiveProjectId(remainingProject.projectId);
+              projetar(remainingProject.projectId);
             } else {
-              clearActiveProjectId();
+              projetar(undefined);
               // SPEC 10.1: with no project left, the startup gate's
               // organization fork is the correct landing — navigate there
               // explicitly so a cleared active id never drops the user on

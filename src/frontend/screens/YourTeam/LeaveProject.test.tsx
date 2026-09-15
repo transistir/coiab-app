@@ -31,10 +31,7 @@ jest.mock('../../contexts/ActiveProjectContext', () => ({
 }));
 
 jest.mock('../../contexts/ActiveProjectIdStoreContext', () => ({
-  useActiveProjectIdActions: () => ({
-    setActiveProjectId: mockSetActiveProjectId,
-    clearActiveProjectId: mockClearActiveProjectId,
-  }),
+  useProjetarProjectIdAtivo: () => mockProjetar,
 }));
 
 jest.mock('../../contexts/CoiabOrganizationsStoreContext', () => ({
@@ -53,8 +50,7 @@ const useCoiabOrganizationsStateMock = useCoiabOrganizationsState as jest.Mock;
 const useOrganizationActivationContextMock =
   useOrganizationActivationContext as jest.Mock;
 const mockRevalidate = jest.fn();
-const mockSetActiveProjectId = jest.fn();
-const mockClearActiveProjectId = jest.fn();
+const mockProjetar = jest.fn();
 const mockLeaveMutate = jest.fn();
 
 const useManyProjectsMock = useManyProjects as jest.Mock;
@@ -183,8 +179,7 @@ describe('LeaveProject', () => {
     // the legacy active id (the projection rewrites it at the next ready
     // generation).
     expect(mockRevalidate).toHaveBeenCalledTimes(1);
-    expect(mockSetActiveProjectId).not.toHaveBeenCalled();
-    expect(mockClearActiveProjectId).not.toHaveBeenCalled();
+    expect(mockProjetar).not.toHaveBeenCalled();
     // The screen stays mounted: OrganizationProvisioning is registered in
     // this stack, yet the screen itself never routes there.
     expect(screen.getByText('Yes, Leave')).toBeOnTheScreen();
@@ -197,8 +192,7 @@ describe('LeaveProject', () => {
 
     await userEvent.press(screen.getByText('Yes, Leave'));
 
-    expect(mockSetActiveProjectId).toHaveBeenCalledWith(mockOtherProjectId);
-    expect(mockClearActiveProjectId).not.toHaveBeenCalled();
+    expect(mockProjetar).toHaveBeenCalledWith(mockOtherProjectId);
   });
 
   test('a non-org project with nothing remaining clears the active id and resets to the org fork', async () => {
@@ -207,8 +201,8 @@ describe('LeaveProject', () => {
 
     await userEvent.press(screen.getByText('Yes, Leave'));
 
-    expect(mockClearActiveProjectId).toHaveBeenCalledTimes(1);
-    expect(mockSetActiveProjectId).not.toHaveBeenCalled();
+    expect(mockProjetar).toHaveBeenCalledWith(undefined);
+    expect(mockProjetar).toHaveBeenCalledTimes(1);
     expect(await screen.findByText('SUCCESS-REACHED')).toBeOnTheScreen();
   });
 });

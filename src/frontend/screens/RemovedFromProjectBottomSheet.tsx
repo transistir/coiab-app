@@ -12,7 +12,7 @@ import {
   useProjectSettings,
 } from '@comapeo/core-react';
 import {useActiveProject} from '../contexts/ActiveProjectContext';
-import {useActiveProjectIdActions} from '../contexts/ActiveProjectIdStoreContext';
+import {useProjetarProjectIdAtivo} from '../contexts/ActiveProjectIdStoreContext';
 import {useOrganizations} from '../hooks/organization/useOrganizations';
 import {LoadingIndicator} from '../sharedComponents/LoadingIndicator';
 import {ColorCard} from '../sharedComponents/ColorCard';
@@ -46,8 +46,7 @@ export const RemovedFromProjectBottomSheet = ({
   } = useProjectSettings({projectId});
   const {data: projects} = useManyProjects();
   const organizations = useOrganizations();
-  const {setActiveProjectId, clearActiveProjectId} =
-    useActiveProjectIdActions();
+  const projetar = useProjetarProjectIdAtivo();
   const leaveProject = useLeaveProject();
 
   return (
@@ -100,7 +99,7 @@ export const RemovedFromProjectBottomSheet = ({
                             ? leftOrg.slots.a
                             : leftOrg.slots.m;
                         if (survivingSlot) {
-                          setActiveProjectId(survivingSlot);
+                          projetar(survivingSlot);
                         } else {
                           noProjectRemains = true;
                         }
@@ -109,13 +108,13 @@ export const RemovedFromProjectBottomSheet = ({
                           proj => proj.projectId !== projectId,
                         );
                         if (remainingProject) {
-                          setActiveProjectId(remainingProject.projectId);
+                          projetar(remainingProject.projectId);
                         } else {
                           noProjectRemains = true;
                         }
                       }
                       if (noProjectRemains) {
-                        clearActiveProjectId();
+                        projetar(undefined);
                         // SPEC 10.1: with no project left, the startup
                         // gate's organization fork is the correct landing —
                         // navigate there explicitly so a cleared active id

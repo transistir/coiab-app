@@ -30,10 +30,7 @@ jest.mock('../contexts/ActiveProjectContext', () => ({
 }));
 
 jest.mock('../contexts/ActiveProjectIdStoreContext', () => ({
-  useActiveProjectIdActions: () => ({
-    setActiveProjectId: mockSetActiveProjectId,
-    clearActiveProjectId: mockClearActiveProjectId,
-  }),
+  useProjetarProjectIdAtivo: () => mockProjetar,
 }));
 
 jest.mock('../hooks/organization/useOrganizations', () => ({
@@ -44,8 +41,7 @@ const mockLeftProjectId = 'project-left';
 const mockSurvivingSlotId = 'project-surviving';
 const mockOtherProjectId = 'project-other';
 
-const mockSetActiveProjectId = jest.fn();
-const mockClearActiveProjectId = jest.fn();
+const mockProjetar = jest.fn();
 const mockLeaveMutate = jest.fn();
 const mockCreateProjectMutate = jest.fn();
 
@@ -139,8 +135,7 @@ describe('RemovedFromProjectBottomSheet', () => {
       expect.anything(),
     );
     expect(mockCreateProjectMutate).not.toHaveBeenCalled();
-    expect(mockSetActiveProjectId).toHaveBeenCalledWith(mockSurvivingSlotId);
-    expect(mockClearActiveProjectId).not.toHaveBeenCalled();
+    expect(mockProjetar).toHaveBeenCalledWith(mockSurvivingSlotId);
   });
 
   test('an org project with no surviving slot clears the active id and resets to the org fork', async () => {
@@ -157,8 +152,8 @@ describe('RemovedFromProjectBottomSheet', () => {
     await userEvent.press(screen.getByText('Close'));
 
     expect(mockCreateProjectMutate).not.toHaveBeenCalled();
-    expect(mockClearActiveProjectId).toHaveBeenCalledTimes(1);
-    expect(mockSetActiveProjectId).not.toHaveBeenCalled();
+    expect(mockProjetar).toHaveBeenCalledWith(undefined);
+    expect(mockProjetar).toHaveBeenCalledTimes(1);
     // SPEC 10.1: the startup gate's organization fork is the landing.
     expect(await screen.findByText('SUCCESS-REACHED')).toBeOnTheScreen();
   });
@@ -170,8 +165,7 @@ describe('RemovedFromProjectBottomSheet', () => {
     await userEvent.press(screen.getByText('Close'));
 
     expect(mockCreateProjectMutate).not.toHaveBeenCalled();
-    expect(mockSetActiveProjectId).toHaveBeenCalledWith(mockOtherProjectId);
-    expect(mockClearActiveProjectId).not.toHaveBeenCalled();
+    expect(mockProjetar).toHaveBeenCalledWith(mockOtherProjectId);
   });
 
   test('a non-org project with nothing remaining clears the active id and resets to the org fork', async () => {
@@ -181,8 +175,8 @@ describe('RemovedFromProjectBottomSheet', () => {
     await userEvent.press(screen.getByText('Close'));
 
     expect(mockCreateProjectMutate).not.toHaveBeenCalled();
-    expect(mockClearActiveProjectId).toHaveBeenCalledTimes(1);
-    expect(mockSetActiveProjectId).not.toHaveBeenCalled();
+    expect(mockProjetar).toHaveBeenCalledWith(undefined);
+    expect(mockProjetar).toHaveBeenCalledTimes(1);
     expect(await screen.findByText('SUCCESS-REACHED')).toBeOnTheScreen();
   });
 });

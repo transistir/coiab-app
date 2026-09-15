@@ -23,7 +23,7 @@ import {
   createCoiabOrganizationsStore,
   type CoiabOrganizationsStore,
 } from '../../contexts/CoiabOrganizationsStoreContext';
-import {useActiveProjectIdActions} from '../../contexts/ActiveProjectIdStoreContext';
+import {useProjetarProjectIdAtivo} from '../../contexts/ActiveProjectIdStoreContext';
 import {markerFor} from '../../lib/organization/marker';
 import {ErroPacote} from '../../lib/organization/pacotes';
 import type {
@@ -39,10 +39,10 @@ jest.mock('../../contexts/OrganizationMaterializerContext', () => ({
 const useMaterializadorMock = useOrganizationMaterializer as jest.Mock;
 
 jest.mock('../../contexts/ActiveProjectIdStoreContext', () => ({
-  useActiveProjectIdActions: jest.fn(),
+  useProjetarProjectIdAtivo: jest.fn(),
 }));
 
-const setActiveProjectId = jest.fn();
+const projetar = jest.fn();
 // The screen chains `.catch/.finally` on the returned promise, so the
 // default mock must resolve like the real `iniciar` does.
 const iniciar = jest.fn(async () => {});
@@ -146,10 +146,7 @@ async function renderScreen() {
 beforeEach(() => {
   jest.clearAllMocks();
   store = createCoiabOrganizationsStore();
-  (useActiveProjectIdActions as jest.Mock).mockReturnValue({
-    setActiveProjectId,
-    clearActiveProjectId: jest.fn(),
-  });
+  (useProjetarProjectIdAtivo as jest.Mock).mockReturnValue(projetar);
   mockMaterializador();
 });
 
@@ -210,7 +207,7 @@ describe('CreateOrganization', () => {
       expect(iniciar).toHaveBeenCalledWith('Órgão Teste');
     });
     await waitFor(() => {
-      expect(setActiveProjectId).not.toHaveBeenCalled();
+      expect(projetar).not.toHaveBeenCalled();
     });
   });
 

@@ -175,7 +175,7 @@ describe('useAcceptOrganizationBundle', () => {
       coiabStore.actions,
       'registrarEntradaPorConvite',
     );
-    const setActiveProjectId = jest.spyOn(store.actions, 'setActiveProjectId');
+    const projetar = jest.spyOn(store.actions, 'projetar');
 
     const hook = await renderHook(
       () => ({
@@ -207,7 +207,7 @@ describe('useAcceptOrganizationBundle', () => {
         alertas: 'project-alertas',
       },
     });
-    expect(setActiveProjectId).not.toHaveBeenCalled();
+    expect(projetar).not.toHaveBeenCalled();
     expect(hook.result.current.activeProjectId).toBeUndefined();
     expect(mockRetryPreparation).toHaveBeenCalledWith(ORG_ID);
     expect(outcome).toMatchObject({
@@ -252,12 +252,12 @@ describe('useAcceptOrganizationBundle', () => {
     // The ActiveProjectIdStoreProvider carries its own boot fallback (the
     // first local project becomes active). Seeding a placeholder keeps the
     // provider out of the way: only the hook's own writes reach the spy.
-    store.actions.setActiveProjectId('pre-existing-device-project');
+    store.actions.projetar('pre-existing-device-project');
     const registrarEntrada = jest.spyOn(
       coiabStore.actions,
       'registrarEntradaPorConvite',
     );
-    const setActiveProjectId = jest.spyOn(store.actions, 'setActiveProjectId');
+    const projetar = jest.spyOn(store.actions, 'projetar');
 
     const hook = await renderHook(
       () => ({
@@ -286,7 +286,7 @@ describe('useAcceptOrganizationBundle', () => {
         alertas: 'project-alertas',
       },
     });
-    expect(setActiveProjectId).not.toHaveBeenCalled();
+    expect(projetar).not.toHaveBeenCalled();
     // The hook left the placeholder untouched instead of forcing its own slot.
     expect(hook.result.current.activeProjectId).toBe(
       'pre-existing-device-project',
@@ -567,12 +567,12 @@ describe('useAcceptOrganizationBundle', () => {
     } as unknown as ComapeoCoreClientApi;
     // Same as above: the provider's boot fallback stays disabled, so the
     // spy observes only the hook's own writes.
-    store.actions.setActiveProjectId('pre-existing-device-project');
+    store.actions.projetar('pre-existing-device-project');
     const registrarEntrada = jest.spyOn(
       coiabStore.actions,
       'registrarEntradaPorConvite',
     );
-    const setActiveProjectId = jest.spyOn(store.actions, 'setActiveProjectId');
+    const projetar = jest.spyOn(store.actions, 'projetar');
 
     const hook = await renderHook(
       () => ({
@@ -601,7 +601,7 @@ describe('useAcceptOrganizationBundle', () => {
         alertas: 'project-alertas',
       },
     });
-    expect(setActiveProjectId).not.toHaveBeenCalled();
+    expect(projetar).not.toHaveBeenCalled();
     // The hook left the placeholder untouched instead of forcing its own slot.
     expect(hook.result.current.activeProjectId).toBe(
       'pre-existing-device-project',
@@ -647,7 +647,7 @@ describe('useAcceptOrganizationBundle', () => {
       coiabStore.actions,
       'registrarEntradaPorConvite',
     );
-    const setActiveProjectId = jest.spyOn(store.actions, 'setActiveProjectId');
+    const projetar = jest.spyOn(store.actions, 'projetar');
 
     const hook = await renderHook(
       () => ({
@@ -675,7 +675,7 @@ describe('useAcceptOrganizationBundle', () => {
         alertas: 'project-alertas',
       },
     });
-    expect(setActiveProjectId).not.toHaveBeenCalled();
+    expect(projetar).not.toHaveBeenCalled();
     expect(hook.result.current.activeProjectId).toBeUndefined();
     expect(mockRetryPreparation).toHaveBeenCalledWith(ORG_ID);
     // Both slots local — the recovery identity is no longer needed.
@@ -882,7 +882,7 @@ describe('useAcceptOrganizationBundle', () => {
       coiabStore.actions,
       'registrarEntradaPorConvite',
     );
-    const setActiveProjectId = jest.spyOn(store.actions, 'setActiveProjectId');
+    const projetar = jest.spyOn(store.actions, 'projetar');
 
     const hook = await renderHook(
       () => ({
@@ -901,7 +901,7 @@ describe('useAcceptOrganizationBundle', () => {
     expect(error).toBeInstanceOf(OrganizationOperationError);
     expect((error as OrganizationOperationError).code).toBe('accept-partial');
     expect(registrarEntrada).not.toHaveBeenCalled();
-    expect(setActiveProjectId).not.toHaveBeenCalled();
+    expect(projetar).not.toHaveBeenCalled();
     expect(mockRetryPreparation).not.toHaveBeenCalled();
     expect(coiabStore.instance.getState().organizacoes).toStrictEqual([]);
 
