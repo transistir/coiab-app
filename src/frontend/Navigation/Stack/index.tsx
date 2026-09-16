@@ -26,6 +26,7 @@ import {Success} from '../../screens/Onboarding/Success';
 import {CreateOrganization} from '../../screens/Onboarding/CreateOrganization';
 import {JoinOrganizationIntro} from '../../screens/Onboarding/JoinOrganizationIntro';
 import {OrganizationProvisioning} from '../../screens/Onboarding/OrganizationProvisioning';
+import {Organizations} from '../../screens/Organizations';
 import {ActiveProjectProvider} from '../../contexts/ActiveProjectContext';
 import {RootStack} from './RootStack';
 import {InviteSuccessfullyAccepted} from '../../screens/Invites/InviteSuccessfullyAccepted';
@@ -136,6 +137,10 @@ const ROTAS_SEM_PROJETO: Record<string, true> = {
   CreateOrganization: true,
   JoinOrganizationIntro: true,
   OrganizationProvisioning: true,
+  // SPEC A §7/:157: recovery must keep the selector reachable — an
+  // organization that cannot reopen cannot trap the user without a way to
+  // choose another one.
+  Organizations: true,
   // The shared modals, which need no project context.
   ErrorBottomSheet: true,
   InviteReceived: true,
@@ -354,6 +359,11 @@ export const RootStackNavigator = () => {
               animation: 'none',
               contentStyle: {backgroundColor: 'transparent'},
             }}>
+            <RootStack.Screen
+              name="Organizations"
+              component={Organizations}
+              options={{headerShown: false}}
+            />
             <RootStack.Screen
               name="ErrorBottomSheet"
               component={ErrorBottomSheet}

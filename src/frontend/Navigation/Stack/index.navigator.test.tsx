@@ -239,6 +239,49 @@ function documentoComConfirmacaoPendente(
   };
 }
 
+function documentoComDuasOrganizacoesProntas(
+  primeira: {
+    id: string;
+    nome: string;
+    monitoramentoId: string;
+    alertasId: string;
+  },
+  segunda: {
+    id: string;
+    nome: string;
+    monitoramentoId: string;
+    alertasId: string;
+  },
+  ativa: EstadoOrganizacoes['ativa'] = null,
+): EstadoOrganizacoes {
+  return {
+    versao: 1,
+    organizacoes: [primeira, segunda].map(organizacao => ({
+      id: organizacao.id,
+      nome: organizacao.nome,
+      estado: 'pronta' as const,
+      confirmacaoPendente: false,
+      materializacao: {
+        monitoramento: {
+          etapa: 'verificado' as const,
+          projectId: organizacao.monitoramentoId,
+          template: {versao: '1', hash: 'monitoramento'},
+          idsAntesDaCriacao: null,
+        },
+        alertas: {
+          etapa: 'verificado' as const,
+          projectId: organizacao.alertasId,
+          template: {versao: '1', hash: 'alertas'},
+          idsAntesDaCriacao: null,
+        },
+      },
+      areaEmExecucao: null,
+      ultimoErro: null,
+    })),
+    ativa,
+  };
+}
+
 /**
  * The RAW persisted document, exactly as the store writes it: `ativa` and
  * the organization list are asserted from the disk-level truth, not from
@@ -287,6 +330,62 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     // render/seed.
     MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
   });
+
+  test('duas organizações prontas sem ativa registram e alcançam o seletor sem projeto (§7)', async () => {
+    const primeiraMonitoramentoId = await freshSetup.client.createProject({
+      name: 'Monitoramento Alfa',
+      projectDescription: markerFor(freshSetup.orgId, 'm', 'Organização Alfa'),
+    });
+    const primeiraAlertasId = await freshSetup.client.createProject({
+      name: 'Alertas Alfa',
+      projectDescription: markerFor(freshSetup.orgId, 'a', 'Organização Alfa'),
+    });
+    const segundaId = 'fedcba9876543210';
+    const segundaMonitoramentoId = await freshSetup.client.createProject({
+      name: 'Monitoramento Beta',
+      projectDescription: markerFor(segundaId, 'm', 'Organização Beta'),
+    });
+    const segundaAlertasId = await freshSetup.client.createProject({
+      name: 'Alertas Beta',
+      projectDescription: markerFor(segundaId, 'a', 'Organização Beta'),
+    });
+    const documento = documentoComDuasOrganizacoesProntas(
+      {
+        id: freshSetup.orgId,
+        nome: 'Organização Alfa',
+        monitoramentoId: primeiraMonitoramentoId,
+        alertasId: primeiraAlertasId,
+      },
+      {
+        id: segundaId,
+        nome: 'Organização Beta',
+        monitoramentoId: segundaMonitoramentoId,
+        alertasId: segundaAlertasId,
+      },
+    );
+    MMKVStoreInitializer.setItem(
+      COIAB_ORGANIZATIONS_STORAGE_KEY,
+      JSON.stringify({state: documento, version: 1}),
+    );
+
+    await freshSetup.renderNavigationAsync();
+    await waitFor(
+      () =>
+        expect(mockNavigation.getRootState().routeNames).toContain(
+          'Organizations',
+        ),
+      {timeout: 15_000},
+    );
+
+    await act(async () => {
+      mockNavigation.navigate('Organizations');
+    });
+    expect(
+      await screen.findByTestId('ORGANIZATIONS.list', {}, {timeout: 15_000}),
+    ).toBeOnTheScreen();
+    expect(screen.getByText('Organização Alfa')).toBeOnTheScreen();
+    expect(screen.getByText('Organização Beta')).toBeOnTheScreen();
+  }, 20_000);
 
   test('a delayed project refresh holds the confirmation up without offering creation again', async () => {
     await freshSetup.renderNavigationAsync();
@@ -446,12 +545,29 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     // A tela guiada pelo documento monta na superfície de recuperação: as
     // duas linhas de área (o glossário canônico §4.4) são o conteúdo dela.
     expect(
-      await screen.findByText('Monitoring', {}, {timeout: 10000}),
+      await screen.findByText('Monitoring', {}, {timeout: 15_000}),
     ).toBeOnTheScreen();
     expect(
       mockNavigation.getRootState().routes.map(route => route.name),
     ).toEqual(['OrganizationProvisioning']);
     expect(screen.queryByTestId('MAIN.map-screen')).not.toBeOnTheScreen();
+    expect(mockNavigation.getRootState().routeNames).toContain('Organizations');
+
+    // §7/:157: recovery cannot prune the one route that lets the user pick
+    // another organization. Exercise the real StackRouter, not a screen mock.
+    await act(async () => {
+      mockNavigation.navigate('Organizations');
+    });
+    await waitFor(
+      () =>
+        expect(
+          mockNavigation.getRootState().routes.map(route => route.name),
+        ).toEqual(['OrganizationProvisioning', 'Organizations']),
+      {timeout: 15_000},
+    );
+    expect(
+      await screen.findByTestId('ORGANIZATIONS.list', {}, {timeout: 15_000}),
+    ).toBeOnTheScreen();
     const raw = documentoPersistido();
     expect(raw.ativa).toEqual({
       organizacaoId: orgSetup.orgId,
@@ -663,6 +779,75 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     // Nada é recriado: os dois projetos persistidos continuam sendo os mesmos.
     expect(await freshSetup.manager.listProjects()).toHaveLength(2);
   }, 20000);
+
+  test('par ativo mantém a entrada do drawer capaz de abrir Organizations', async () => {
+    const segundaId = 'fedcba9876543210';
+    const segundaMonitoramentoId = await orgSetup.client.createProject({
+      name: 'Monitoramento Beta',
+      projectDescription: markerFor(segundaId, 'm', 'Organização Beta'),
+    });
+    const segundaAlertasId = await orgSetup.client.createProject({
+      name: 'Alertas Beta',
+      projectDescription: markerFor(segundaId, 'a', 'Organização Beta'),
+    });
+    const documento = documentoComDuasOrganizacoesProntas(
+      {
+        id: orgSetup.orgId,
+        nome: orgSetup.orgName,
+        monitoramentoId: orgSetup.projectId,
+        alertasId: orgSetup.alertasProjectId,
+      },
+      {
+        id: segundaId,
+        nome: 'Organização Beta',
+        monitoramentoId: segundaMonitoramentoId,
+        alertasId: segundaAlertasId,
+      },
+      {organizacaoId: orgSetup.orgId, area: 'monitoramento'},
+    );
+    MMKVStoreInitializer.setItem(
+      COIAB_ORGANIZATIONS_STORAGE_KEY,
+      JSON.stringify({state: documento, version: 1}),
+    );
+
+    await orgSetup.renderNavigation();
+    expect(
+      await screen.findByTestId('MAIN.map-screen', {}, {timeout: 15_000}),
+    ).toBeOnTheScreen();
+
+    // Enable the existing feature flag through its real registered screen,
+    // then return to Home and exercise the drawer entry itself.
+    await act(async () => {
+      mockNavigation.navigate('EarlyAccess');
+    });
+    await fireEvent.press(
+      await screen.findByTestId('EA.checkbox-off', {}, {timeout: 15_000}),
+    );
+    await act(async () => {
+      mockNavigation.goBack();
+    });
+    await fireEvent.press(
+      await screen.findByTestId('HOME.header-button', {}, {timeout: 15_000}),
+    );
+    await fireEvent.press(
+      await screen.findByTestId(
+        'MENU.trocar-organizacao',
+        {},
+        {timeout: 15_000},
+      ),
+    );
+
+    await waitFor(
+      () =>
+        expect(
+          mockNavigation.getRootState().routes.map(route => route.name),
+        ).toEqual(['Home', 'Organizations']),
+      {timeout: 15_000},
+    );
+    expect(
+      await screen.findByTestId('ORGANIZATIONS.list', {}, {timeout: 15_000}),
+    ).toBeOnTheScreen();
+  }, 20_000);
 
   test('troca de área pelo drawer: reset para Home/Map no projeto de Alertas, documento cru em alertas e Back não reapresenta a Observation (SPEC A §6.1/D12, CA16/CA08)', async () => {
     // Documento semeado: organização PRONTA, confirmação concluída e seleção
