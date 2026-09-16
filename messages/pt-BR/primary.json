@@ -601,6 +601,9 @@
   "$1screens.OrganizationSetup.emptyName": {
     "message": "Informe o nome da organização."
   },
+  "$1screens.OrganizationSetup.loadingOrganization": {
+    "message": "Carregando organização…"
+  },
   "$1screens.OrganizationSetup.monitoringRow": {
     "message": "Monitoramento"
   },
@@ -625,6 +628,12 @@
   "$1screens.OrganizationSetup.openOrganizationButton": {
     "message": "Abrir organização"
   },
+  "$1screens.OrganizationSetup.openingOrganization": {
+    "message": "Abrindo organização…"
+  },
+  "$1screens.OrganizationSetup.pendingWork": {
+    "message": "Conclua ou descarte o registro antes de trocar de organização"
+  },
   "$1screens.OrganizationSetup.preparingSlowNotice": {
     "message": "A preparação está demorando. Se não continuar, feche e abra o aplicativo."
   },
@@ -634,8 +643,14 @@
   "$1screens.OrganizationSetup.preparingTitle": {
     "message": "Preparando sua organização…"
   },
+  "$1screens.OrganizationSetup.retryActivationButton": {
+    "message": "Tentar novamente"
+  },
   "$1screens.OrganizationSetup.retryPreparationButton": {
     "message": "Tentar novamente"
+  },
+  "$1screens.OrganizationSetup.unavailableTitle": {
+    "message": "Não foi possível abrir sua organização"
   },
   "$1screens.OrganizationSetup.waitInviteBody": {
     "message": "Peça a uma pessoa responsável pela organização para convidar este dispositivo."
