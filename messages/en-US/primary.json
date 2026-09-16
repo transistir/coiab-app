@@ -669,6 +669,10 @@
   "$1screens.OrganizationSetup.openOrganizationButton": {
     "message": "Open organization"
   },
+  "$1screens.OrganizationSetup.openingOrganization": {
+    "message": "Opening organization…",
+    "description": "The selector sheet while an activation is in flight (SPEC A §5.2:165, “Abrindo organização…”)"
+  },
   "$1screens.OrganizationSetup.pacoteNaoAprovado": {
     "message": "Could not prepare the necessary files on this device. Nothing was created."
   },

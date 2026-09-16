@@ -1,5 +1,11 @@
 import * as React from 'react';
-import {render, screen, userEvent} from '@testing-library/react-native';
+import {
+  act,
+  render,
+  screen,
+  userEvent,
+  waitFor,
+} from '@testing-library/react-native';
 import {IntlProvider} from 'react-intl';
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 
@@ -21,19 +27,31 @@ import type {AppStackParamsList} from '../sharedTypes/navigation';
  * root builds one; a second engine per screen would re-run initialize on the
  * document). The test stubs the handle the context publishes — the screen's
  * own contract is what `useOrganizationActivation` publishes: `activate(id):
- * Promise<boolean>`.
+ * Promise<boolean>` and the `error` code the engine sets when a switch does
+ * not go through. As with the real provider's context value, publishing a
+ * new handle re-renders the consumer.
  */
 jest.mock('../contexts/OrganizationActivationContext', () => {
+  const {useSyncExternalStore} = jest.requireActual('react');
   const holder = {current: undefined as unknown};
+  const listeners = new Set<() => void>();
+  const subscribe = (listener: () => void) => {
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  };
   return {
     __setActivation: (activation: unknown) => {
       holder.current = activation;
+      for (const listener of listeners) listener();
     },
     useOrganizationActivationContext: () => {
-      if (holder.current === undefined) {
+      const value = useSyncExternalStore(subscribe, () => holder.current);
+      if (value === undefined) {
         throw new Error('OrganizationActivationContext missing');
       }
-      return holder.current;
+      return value;
     },
   };
 });
@@ -68,13 +86,22 @@ const activationMock = jest.requireMock(
 
 /**
  * No navigator: the screen's own navigation contract (goBack on the current
- * row, the Home/Map reset on success) is asserted against the stub, failing
- * loudly if a state change ever reaches for it.
+ * row, the Home/Map reset on success, and no route at all for a blocked or
+ * failed switch, whose explanation is text inside the sheet) is asserted
+ * against these spies. A spy records a call instead of failing, and a throw
+ * inside the switch's `try` would be swallowed by its `catch` anyway — so
+ * every test that taps a row asserts explicitly on each method it must not
+ * reach.
  */
 const navigationGoBack = jest.fn();
 const navigationReset = jest.fn();
+const navigationNavigate = jest.fn();
 const screenProps = {
-  navigation: {goBack: navigationGoBack, reset: navigationReset},
+  navigation: {
+    goBack: navigationGoBack,
+    reset: navigationReset,
+    navigate: navigationNavigate,
+  },
 } as unknown as NativeStackScreenProps<AppStackParamsList, 'Organizations'>;
 
 let store: CoiabOrganizationsStore;
@@ -226,6 +253,7 @@ describe('Organizations (SPEC A §6.1, consult Phase 13)', () => {
     expect(navigationGoBack).toHaveBeenCalledTimes(1);
     expect(activate).not.toHaveBeenCalled();
     expect(navigationReset).not.toHaveBeenCalled();
+    expect(navigationNavigate).not.toHaveBeenCalled();
   });
 
   test('toque na ativável chama activate com o id certo e, no sucesso, reseta para Home/Map', async () => {
@@ -241,6 +269,7 @@ describe('Organizations (SPEC A §6.1, consult Phase 13)', () => {
     expect(activate).toHaveBeenCalledTimes(1);
     expect(activate).toHaveBeenCalledWith('id-a');
     expect(navigationGoBack).not.toHaveBeenCalled();
+    expect(navigationNavigate).not.toHaveBeenCalled();
     expect(navigationReset).toHaveBeenCalledTimes(1);
     expect(navigationReset.mock.calls[0]![0]).toEqual({
       index: 0,
@@ -263,6 +292,7 @@ describe('Organizations (SPEC A §6.1, consult Phase 13)', () => {
     expect(activate).toHaveBeenCalledWith('id-a');
     expect(navigationReset).not.toHaveBeenCalled();
     expect(navigationGoBack).not.toHaveBeenCalled();
+    expect(navigationNavigate).not.toHaveBeenCalled();
   });
 
   test('toque em linha não ativável (preparando, falha, confirmação) não chama activate', async () => {
@@ -288,6 +318,7 @@ describe('Organizations (SPEC A §6.1, consult Phase 13)', () => {
     expect(activate).not.toHaveBeenCalled();
     expect(navigationReset).not.toHaveBeenCalled();
     expect(navigationGoBack).not.toHaveBeenCalled();
+    expect(navigationNavigate).not.toHaveBeenCalled();
   });
 
   test('§6.1: o seletor não lista os projetos internos das organizações', async () => {
@@ -321,5 +352,168 @@ describe('Organizations (SPEC A §6.1, consult Phase 13)', () => {
     // None of the retired creation entries the journeys used to carry.
     expect(screen.queryByText('Create organization')).not.toBeOnTheScreen();
     expect(screen.queryByText('New Collaboration')).not.toBeOnTheScreen();
+  });
+});
+
+/** SPEC A §4.4:148 — “Não foi possível abrir sua organização”. */
+const INDISPONIVEL = 'Could not open your organization';
+/** SPEC A §4.4:149 — “Conclua ou descarte o registro antes de trocar de organização”. */
+const TRABALHO_PENDENTE =
+  'Finish or discard the record before switching organization';
+
+describe('Organizations (SPEC A §5.2:165/§6.2:215 — feedback da troca)', () => {
+  test('§5.2:165: ativação pendente mostra "Opening organization…" sozinha, sem as linhas e sem tocar a seleção', async () => {
+    const user = userEvent.setup();
+    // The attempt never settles on its own: the sheet is observed MID-flight.
+    let resolver!: (ok: boolean) => void;
+    activate.mockReturnValue(
+      new Promise<boolean>(resolve => {
+        resolver = resolve;
+      }),
+    );
+    seedDocument([organizacao('id-b', 'Rio'), organizacao('id-a', 'Mata')], {
+      organizacaoId: 'id-b',
+      area: 'alertas',
+    });
+    await renderScreen();
+
+    await user.press(screen.getByTestId('ORGANIZATIONS.row-id-a'));
+
+    // The canonical opening state (SPEC A §5.2:165, "Abrindo organização…")
+    // stands ALONE — no mixed content from the organizations the list shows.
+    expect(screen.getByText('Opening organization…')).toBeOnTheScreen();
+    expect(screen.queryByTestId('ORGANIZATIONS.list')).not.toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('ORGANIZATIONS.row-id-a'),
+    ).not.toBeOnTheScreen();
+    // "sem alterar a seleção persistida": A stays selected in the document.
+    expect(store.instance.getState().ativa).toEqual({
+      organizacaoId: 'id-b',
+      area: 'alertas',
+    });
+    // Nothing navigated anywhere while the attempt is in flight.
+    expect(activate).toHaveBeenCalledTimes(1);
+    expect(navigationReset).not.toHaveBeenCalled();
+    expect(navigationNavigate).not.toHaveBeenCalled();
+    expect(navigationGoBack).not.toHaveBeenCalled();
+
+    // Settling the attempt still lands the PROVEN success destination: the
+    // opening state never wedges the Home/Map reset (§5.2:168).
+    await act(async () => {
+      resolver(true);
+    });
+    await waitFor(() => expect(navigationReset).toHaveBeenCalledTimes(1));
+    expect(navigationReset.mock.calls[0]![0]).toEqual({
+      index: 0,
+      routes: [{name: 'Home', params: {screen: 'Map'}}],
+    });
+    expect(navigationNavigate).not.toHaveBeenCalled();
+    expect(navigationGoBack).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ['pending-work', TRABALHO_PENDENTE, INDISPONIVEL],
+    ['unavailable', INDISPONIVEL, TRABALHO_PENDENTE],
+    ['access-unavailable', INDISPONIVEL, TRABALHO_PENDENTE],
+    // No canonical string exists for these two (SPEC A §5.2:167, §5.2:163):
+    // the generic unavailable copy, never an invented sentence.
+    ['sync-restart-required', INDISPONIVEL, TRABALHO_PENDENTE],
+    ['operation-in-progress', INDISPONIVEL, TRABALHO_PENDENTE],
+  ] as const)(
+    '§6.2:215: activate false com error %s explica, visível no próprio seletor: "%s"',
+    async (codigo, explicacao, outraExplicacao) => {
+      const user = userEvent.setup();
+      // As the engine does, the code is published on the handle before the
+      // `false` answer settles — and only then: at tap time the handle
+      // carries no error, so a code read in the tap's closure would be stale.
+      activate.mockImplementation(async () => {
+        activationMock.__setActivation({activate, error: codigo});
+        return false;
+      });
+      seedDocument([organizacao('id-b', 'Rio'), organizacao('id-a', 'Mata')], {
+        organizacaoId: 'id-b',
+        area: 'alertas',
+      });
+      await renderScreen();
+      expect(screen.queryByText(explicacao)).not.toBeOnTheScreen();
+
+      await user.press(screen.getByTestId('ORGANIZATIONS.row-id-a'));
+
+      // The rendered text, inside the selector itself: nothing to expand, no
+      // route, no sheet stacked on top — and only this code's explanation.
+      expect(await screen.findByText(explicacao)).toBeVisible();
+      expect(screen.queryByText(outraExplicacao)).not.toBeOnTheScreen();
+      expect(screen.getByTestId('ORGANIZATIONS.list')).toBeOnTheScreen();
+      expect(activate).toHaveBeenCalledWith('id-a');
+      expect(navigationNavigate).not.toHaveBeenCalled();
+      expect(navigationReset).not.toHaveBeenCalled();
+      expect(navigationGoBack).not.toHaveBeenCalled();
+      // The previous organization and area stay selected.
+      expect(store.instance.getState().ativa).toEqual({
+        organizacaoId: 'id-b',
+        area: 'alertas',
+      });
+    },
+  );
+
+  test('§6.2:215: rejeição de activate é tratada — explicação genérica visível no seletor, nenhuma promise rejeitada solta', async () => {
+    const user = userEvent.setup();
+    // A code an EARLIER attempt left on the handle: it neither shows when the
+    // sheet opens nor explains a rejection, which publishes no code at all.
+    activationMock.__setActivation({activate, error: 'pending-work'});
+    activate.mockRejectedValue(new Error('boom'));
+    seedDocument([organizacao('id-b', 'Rio'), organizacao('id-a', 'Mata')], {
+      organizacaoId: 'id-b',
+      area: 'alertas',
+    });
+    await renderScreen();
+    expect(screen.queryByText(TRABALHO_PENDENTE)).not.toBeOnTheScreen();
+    expect(screen.queryByText(INDISPONIVEL)).not.toBeOnTheScreen();
+
+    await user.press(screen.getByTestId('ORGANIZATIONS.row-id-a'));
+
+    // A rejection must never escape as an unhandled promise: it takes the
+    // same §6.2:215 road as a `false` answer — canonical copy in the sheet,
+    // previous organization and area kept.
+    expect(await screen.findByText(INDISPONIVEL)).toBeVisible();
+    expect(screen.queryByText(TRABALHO_PENDENTE)).not.toBeOnTheScreen();
+    expect(screen.getByTestId('ORGANIZATIONS.list')).toBeOnTheScreen();
+    expect(navigationNavigate).not.toHaveBeenCalled();
+    expect(navigationReset).not.toHaveBeenCalled();
+    expect(navigationGoBack).not.toHaveBeenCalled();
+    expect(store.instance.getState().ativa).toEqual({
+      organizacaoId: 'id-b',
+      area: 'alertas',
+    });
+  });
+
+  test('§6.2:215: depois de uma troca que falhou, tocar de novo é nova tentativa e a explicação passa a ser a da nova resposta', async () => {
+    const user = userEvent.setup();
+    const codigos = ['pending-work', 'unavailable'];
+    activate.mockImplementation(async () => {
+      activationMock.__setActivation({activate, error: codigos.shift()});
+      return false;
+    });
+    seedDocument([organizacao('id-b', 'Rio'), organizacao('id-a', 'Mata')], {
+      organizacaoId: 'id-b',
+      area: 'alertas',
+    });
+    await renderScreen();
+
+    await user.press(screen.getByTestId('ORGANIZATIONS.row-id-a'));
+    expect(await screen.findByText(TRABALHO_PENDENTE)).toBeVisible();
+
+    await user.press(screen.getByTestId('ORGANIZATIONS.row-id-a'));
+
+    expect(await screen.findByText(INDISPONIVEL)).toBeVisible();
+    expect(screen.queryByText(TRABALHO_PENDENTE)).not.toBeOnTheScreen();
+    expect(activate).toHaveBeenCalledTimes(2);
+    expect(navigationNavigate).not.toHaveBeenCalled();
+    expect(navigationReset).not.toHaveBeenCalled();
+    expect(navigationGoBack).not.toHaveBeenCalled();
+    expect(store.instance.getState().ativa).toEqual({
+      organizacaoId: 'id-b',
+      area: 'alertas',
+    });
   });
 });
