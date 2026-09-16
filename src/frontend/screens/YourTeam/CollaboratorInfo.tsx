@@ -118,6 +118,7 @@ export const CollaboratorInfo: NativeNavigationComponent<
         </BodyText>
       </View>
       {canShowActionButton &&
+        !route.params.isOwnDevice &&
         (ownRoleIsCoordinator ? (
           <SecondaryDestructiveButton
             text={formatMessage(m.removeDevice)}
