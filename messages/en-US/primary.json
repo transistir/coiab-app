@@ -697,6 +697,10 @@
   "$1screens.OrganizationSetup.retryPreparationButton": {
     "message": "Try again"
   },
+  "$1screens.OrganizationSetup.syncRestartRequired": {
+    "message": "Sync needs to be started again.",
+    "description": "A failed switch after the sync commands were already stopped (SPEC A §5.2:167, “A sincronização precisa ser iniciada novamente.”)"
+  },
   "$1screens.OrganizationSetup.unavailableTitle": {
     "message": "Could not open your organization",
     "description": "A settled organization the engine could not open (SPEC B §4.4:120 / SPEC A §6.2:214, “Organização indisponível”)"

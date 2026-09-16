@@ -360,6 +360,10 @@ const INDISPONIVEL = 'Could not open your organization';
 /** SPEC A §4.4:149 — “Conclua ou descarte o registro antes de trocar de organização”. */
 const TRABALHO_PENDENTE =
   'Finish or discard the record before switching organization';
+/** SPEC A §5.2:167 — “A sincronização precisa ser iniciada novamente.” */
+const REINICIAR_SINCRONIZACAO = 'Sync needs to be started again.';
+/** Every explanation the sheet can give for a switch that did not go through. */
+const EXPLICACOES = [INDISPONIVEL, TRABALHO_PENDENTE, REINICIAR_SINCRONIZACAO];
 
 describe('Organizations (SPEC A §5.2:165/§6.2:215 — feedback da troca)', () => {
   test('§5.2:165: ativação pendente mostra "Opening organization…" sozinha, sem as linhas e sem tocar a seleção', async () => {
@@ -412,16 +416,18 @@ describe('Organizations (SPEC A §5.2:165/§6.2:215 — feedback da troca)', () 
   });
 
   test.each([
-    ['pending-work', TRABALHO_PENDENTE, INDISPONIVEL],
-    ['unavailable', INDISPONIVEL, TRABALHO_PENDENTE],
-    ['access-unavailable', INDISPONIVEL, TRABALHO_PENDENTE],
-    // No canonical string exists for these two (SPEC A §5.2:167, §5.2:163):
-    // the generic unavailable copy, never an invented sentence.
-    ['sync-restart-required', INDISPONIVEL, TRABALHO_PENDENTE],
-    ['operation-in-progress', INDISPONIVEL, TRABALHO_PENDENTE],
+    ['pending-work', TRABALHO_PENDENTE],
+    ['unavailable', INDISPONIVEL],
+    ['access-unavailable', INDISPONIVEL],
+    // The sync commands were already stopped (SPEC A §5.2:167): the SPEC's
+    // own sentence, not the generic unavailable copy.
+    ['sync-restart-required', REINICIAR_SINCRONIZACAO],
+    // No canonical string exists for a concurrent activation (SPEC A
+    // §5.2:163): the generic unavailable copy, never an invented sentence.
+    ['operation-in-progress', INDISPONIVEL],
   ] as const)(
     '§6.2:215: activate false com error %s explica, visível no próprio seletor: "%s"',
-    async (codigo, explicacao, outraExplicacao) => {
+    async (codigo, explicacao) => {
       const user = userEvent.setup();
       // As the engine does, the code is published on the handle before the
       // `false` answer settles — and only then: at tap time the handle
@@ -442,7 +448,9 @@ describe('Organizations (SPEC A §5.2:165/§6.2:215 — feedback da troca)', () 
       // The rendered text, inside the selector itself: nothing to expand, no
       // route, no sheet stacked on top — and only this code's explanation.
       expect(await screen.findByText(explicacao)).toBeVisible();
-      expect(screen.queryByText(outraExplicacao)).not.toBeOnTheScreen();
+      for (const outra of EXPLICACOES.filter(texto => texto !== explicacao)) {
+        expect(screen.queryByText(outra)).not.toBeOnTheScreen();
+      }
       expect(screen.getByTestId('ORGANIZATIONS.list')).toBeOnTheScreen();
       expect(activate).toHaveBeenCalledWith('id-a');
       expect(navigationNavigate).not.toHaveBeenCalled();

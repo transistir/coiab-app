@@ -649,6 +649,9 @@
   "$1screens.OrganizationSetup.retryPreparationButton": {
     "message": "Tentar novamente"
   },
+  "$1screens.OrganizationSetup.syncRestartRequired": {
+    "message": "A sincronização precisa ser iniciada novamente."
+  },
   "$1screens.OrganizationSetup.unavailableTitle": {
     "message": "Não foi possível abrir sua organização"
   },

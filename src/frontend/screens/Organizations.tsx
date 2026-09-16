@@ -58,9 +58,9 @@ const m = defineMessages({
   },
   // SPEC A §6.2:215 ("Troca bloqueada/falhou") asks for a specific
   // explanation and CA15 (§9:279) for exactly the §4.4 texts, so the selector
-  // writes no copy of its own: both descriptors below are the SAME id,
-  // defaultMessage and description OrganizationProvisioning ships (identical
-  // duplicates are what the extraction gate requires).
+  // writes no copy of its own for them: the next two descriptors are the SAME
+  // id, defaultMessage and description OrganizationProvisioning ships
+  // (identical duplicates are what the extraction gate requires).
   //
   // §4.4:148 / SPEC B §4.1:120 — “Não foi possível abrir sua organização”.
   unavailableTitle: {
@@ -77,6 +77,16 @@ const m = defineMessages({
       'Finish or discard the record before switching organization',
     description:
       'Blocked boot with work in progress (SPEC A §4.4:149 canonical pending-work string, CA15)',
+  },
+  // §5.2:167 (step 5) — a failed switch whose sync commands were already
+  // stopped must say that sync needs to be started again. The SPEC quotes no
+  // UI string for it and OrganizationProvisioning has no equivalent, so this
+  // id is the selector's own and its text is the SPEC's sentence itself.
+  syncRestartRequired: {
+    id: '$1screens.OrganizationSetup.syncRestartRequired',
+    defaultMessage: 'Sync needs to be started again.',
+    description:
+      'A failed switch after the sync commands were already stopped (SPEC A §5.2:167, “A sincronização precisa ser iniciada novamente.”)',
   },
 });
 
@@ -98,7 +108,8 @@ function identificadorDeEstado(
 /**
  * The specific explanation (SPEC A §6.2:215) for the `error` code the
  * activation engine publishes when a switch does not go through — canonical
- * §4.4 copy only (CA15).
+ * §4.4 copy (CA15), or §5.2:167's own sentence once the sync commands were
+ * stopped; never an invented string.
  */
 function explicacaoDaTroca(erro: string | undefined): MessageDescriptor {
   switch (erro) {
@@ -107,11 +118,12 @@ function explicacaoDaTroca(erro: string | undefined): MessageDescriptor {
     case 'unavailable':
     case 'access-unavailable':
       return m.unavailableTitle;
+    case 'sync-restart-required':
+      return m.syncRestartRequired;
     default:
-      // 'sync-restart-required' and 'operation-in-progress' have no canonical
-      // string — §5.2:167 describes the sync notice without quoting a text,
-      // §5.2:163 quotes none for a concurrent activation — and a rejection
-      // publishes no code at all: the §4.4:148 copy, never an invented one.
+      // 'operation-in-progress' has no canonical string — §5.2:163 quotes
+      // none for a concurrent activation — and a rejection publishes no code
+      // at all: the §4.4:148 copy, never an invented one.
       return m.unavailableTitle;
   }
 }
