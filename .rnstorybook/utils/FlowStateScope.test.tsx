@@ -89,13 +89,20 @@ import {MMKVStoreInitializer} from '../../src/frontend/hooks/persistedState/crea
 import {COIAB_ORGANIZATIONS_STORAGE_KEY} from '../../src/frontend/contexts/CoiabOrganizationsStoreContext';
 import {parseMarker} from '../../src/frontend/lib/organization/marker';
 import {sleep} from '../../src/frontend/lib/sleep';
-import {OrganizationSelector} from '../../src/frontend/flows/OrgLayer.stories';
+import {
+  HomeWithOrganization,
+  OrganizationSelector,
+  ReviewOrganizationInvite,
+} from '../../src/frontend/flows/OrgLayer.stories';
 import OrgLayerDrawerMeta, {
   SwitchOrganizationEntry,
 } from '../../src/frontend/flows/OrgLayerDrawer.stories';
 import {withFlowState} from '../decorators/withFlowState';
 import {withNavigation} from '../decorators/withNavigation';
-import {withRealNavigator} from '../decorators/withRealNavigator';
+import {
+  resetToSeededRouteOrThrow,
+  withRealNavigator,
+} from '../decorators/withRealNavigator';
 import {FLOW_STATES} from './flowState';
 
 type StoryContext = Parameters<typeof withRealNavigator>[1];
@@ -112,6 +119,26 @@ function OrganizationSelectorStory() {
     storyContext(
       'flows-orglayer--organization-selector',
       OrganizationSelector.parameters,
+    ),
+  );
+}
+
+function HomeWithOrganizationStory() {
+  return withRealNavigator(
+    (() => null) as unknown as StoryFn,
+    storyContext(
+      'flows-orglayer--home-with-organization',
+      HomeWithOrganization.parameters,
+    ),
+  );
+}
+
+function ReviewOrganizationInviteStory() {
+  return withRealNavigator(
+    (() => null) as unknown as StoryFn,
+    storyContext(
+      'flows-orglayer--review-organization-invite',
+      ReviewOrganizationInvite.parameters,
     ),
   );
 }
@@ -134,6 +161,28 @@ function drawerStory(parameters: unknown) {
 
 const ROW_A = 'ORGANIZATIONS.row-aaaaaaaaaaaaaaaa';
 const ROW_B = 'ORGANIZATIONS.row-bbbbbbbbbbbbbbbb';
+
+describe('seeded navigation repair', () => {
+  test('fails loudly when reset leaves the navigator on the wrong route', () => {
+    const navigation = {
+      reset: jest.fn(),
+      getCurrentRoute: jest.fn(() => ({key: 'success', name: 'Success'})),
+    } as unknown as Parameters<typeof resetToSeededRouteOrThrow>[0];
+    const seededState = {routes: [{name: 'Home'}], index: 0};
+
+    expect(() =>
+      resetToSeededRouteOrThrow(
+        navigation,
+        seededState,
+        'Home',
+        'flows-orglayer--home-with-organization',
+      ),
+    ).toThrow(
+      'STORYBOOK: state repair failed for story: flows-orglayer--home-with-organization; expected route Home, observed Success',
+    );
+    expect(navigation?.reset).toHaveBeenCalledWith(seededState);
+  });
+});
 
 describe('organization stories (FlowStateScope)', () => {
   let client: ComapeoCoreClientApi;
@@ -166,6 +215,39 @@ describe('organization stories (FlowStateScope)', () => {
       await sleep(0);
     });
   }
+
+  test('HomeWithOrganization shows Home instead of the organization fork', async () => {
+    await renderStory(HomeWithOrganizationStory);
+
+    expect(
+      await screen.findByTestId('MAIN.map-screen', {}, {timeout: 30_000}),
+    ).toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('ONBOARDING.create-org-btn'),
+    ).not.toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('ONBOARDING.join-org-btn'),
+    ).not.toBeOnTheScreen();
+    expect(
+      JSON.parse(
+        MMKVStoreInitializer.getItem(COIAB_ORGANIZATIONS_STORAGE_KEY) as string,
+      ).state.ativa,
+    ).toEqual({
+      organizacaoId: '0123456789abcdef',
+      area: 'monitoramento',
+    });
+  }, 60_000);
+
+  test('ReviewOrganizationInvite shows the invitation review surface', async () => {
+    await renderStory(ReviewOrganizationInviteStory);
+
+    expect(
+      await screen.findByText('You are inviting:', {}, {timeout: 30_000}),
+    ).toBeOnTheScreen();
+    expect(screen.getByText('Field Device')).toBeOnTheScreen();
+    expect(screen.getByTestId('ORG.send-invite-btn')).toBeOnTheScreen();
+    expect(screen.queryByText('No Organization found')).not.toBeOnTheScreen();
+  }, 60_000);
 
   test('the selector row: the story opens both organizations, the active one listed first', async () => {
     await renderStory(OrganizationSelectorStory);

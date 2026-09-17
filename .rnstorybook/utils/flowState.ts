@@ -19,14 +19,21 @@ import {
   useProjetarProjectIdAtivo,
 } from '../../src/frontend/contexts/ActiveProjectIdStoreContext';
 import {
+  useCoiabOrganizationsState,
+  useCoiabOrganizationsStoreContext,
+} from '../../src/frontend/contexts/CoiabOrganizationsStoreContext';
+import {useOrganizationActivationContext} from '../../src/frontend/contexts/OrganizationActivationContext';
+import {
   useDraftObservationActions,
   useDraftObservationState,
 } from '../../src/frontend/contexts/DraftObservationContext';
 import {expoToCoreDeviceType} from '../../src/frontend/lib/deviceTypeMap';
 import {
+  criarEstadoInicialOrganizacoes,
   derivarProjectIdAtivo,
   type EstadoOrganizacoes,
 } from '../../src/frontend/lib/organization/coiabOrganizations';
+import {repositorioDoStore} from '../../src/frontend/lib/organization/repositorio';
 import {
   useSeedObservations,
   useSeedOrganization,
@@ -47,12 +54,18 @@ export type FlowStateSpec = {
   deviceName?: string | null;
   project?: 'none' | {name: string; observations?: number};
   /**
-   * Seed a two-slot Organization (markers in projectDescription, active
-   * project = Monitoramento). Alternative to `project` — presets that use it
-   * set `project: 'none'`. `slots: 'monitoramento'` seeds a one-slot
-   * (incomplete) Organization for the provisioning state.
+   * Seed one Organization. The normal two-slot form writes its valid COIAB
+   * document through the running app's persisted store, then waits for the
+   * production activation engine to open Monitoramento. `slots:
+   * 'monitoramento'` intentionally remains the marker-only, incomplete state
+   * used by the provisioning story. Alternative to `project` — presets that
+   * use it set `project: 'none'`.
    */
-  organization?: {name: string; slots?: 'both' | 'monitoramento'};
+  organization?: {
+    name: string;
+    slots?: 'both' | 'monitoramento';
+    observations?: number;
+  };
   /**
    * Seed ready organizations in the COIAB document (SPEC A §4.2) — the
    * registry the startup gate, the drawer and the Organizations selector
@@ -101,6 +114,7 @@ export type ResolvedFlowState = {
  */
 const ORGANIZATION_A = {id: 'aaaaaaaaaaaaaaaa', name: 'Test Organization A'};
 const ORGANIZATION_B = {id: 'bbbbbbbbbbbbbbbb', name: 'Test Organization B'};
+const PERSISTED_ORGANIZATION_ID = '0123456789abcdef';
 
 export const FLOW_STATES = {
   freshInstall: {
@@ -121,13 +135,15 @@ export const FLOW_STATES = {
   onboardedWithData: {
     auth: 'authenticated',
     deviceName: 'Test Device',
-    project: {name: 'Storybook Project', observations: 5},
+    project: 'none',
+    organization: {name: 'Test Organization', observations: 5},
   },
   namedWithOrganization: {
     auth: 'authenticated',
     deviceName: 'Test Device',
     project: 'none',
     organization: {name: 'Test Organization'},
+    draftObservation: 'none',
   },
   orgProvisioning: {
     auth: 'authenticated',
@@ -179,6 +195,7 @@ function buildKey(spec?: FlowStateSpec) {
       ? {
           name: spec.organization.name,
           slots: spec.organization.slots ?? 'both',
+          observations: spec.organization.observations ?? 0,
         }
       : null,
     ...(spec.organizations ? {organizations: spec.organizations} : {}),
@@ -197,6 +214,13 @@ function hasOnlyExpectedTags(
     tagKeys.length === expectedKeys.length &&
     expectedKeys.every(key => tags[key] === expectedTags[key])
   );
+}
+
+function sameOrganizationDocument(
+  current: EstadoOrganizacoes,
+  expected: EstadoOrganizacoes,
+) {
+  return JSON.stringify(current) === JSON.stringify(expected);
 }
 
 /**
@@ -226,22 +250,48 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
 
   const activeProjectId = useActiveProjectId();
   const projetar = useProjetarProjectIdAtivo();
+  const coiabOrganizationsStore = useCoiabOrganizationsStoreContext();
+  const persistedOrganizationState = useCoiabOrganizationsState();
+  const organizationRepository = React.useMemo(
+    () => repositorioDoStore(coiabOrganizationsStore),
+    [coiabOrganizationsStore],
+  );
+  const {
+    activate: activateOrganization,
+    revalidate: revalidateOrganization,
+    status: organizationActivationStatus,
+    projectId: activatedOrganizationProjectId,
+  } = useOrganizationActivationContext();
 
   const projectName =
     typeof spec?.project === 'object' ? spec.project.name : '';
   const {ensure: ensureProject} = useSeedProject(projectName);
 
   const orgSpec = spec?.organization;
+  const persistedOrganizationSeed = React.useMemo<
+    SeedOrganizations | undefined
+  >(
+    () =>
+      orgSpec && (orgSpec.slots ?? 'both') === 'both'
+        ? {
+            list: [{id: PERSISTED_ORGANIZATION_ID, name: orgSpec.name}],
+            activeId: PERSISTED_ORGANIZATION_ID,
+          }
+        : undefined,
+    [orgSpec],
+  );
   const {ensure: ensureOrganization} = useSeedOrganization(
     orgSpec?.name ?? '',
     orgSpec?.slots ?? 'both',
   );
   const {ensure: ensureOrganizationDocument} = useSeedOrganizationDocument(
-    spec?.organizations,
+    spec?.organizations ?? persistedOrganizationSeed,
   );
 
   const observationsCount =
-    typeof spec?.project === 'object' ? (spec.project.observations ?? 0) : 0;
+    typeof spec?.project === 'object'
+      ? (spec.project.observations ?? 0)
+      : (spec?.organization?.observations ?? 0);
   const {ensure: ensureObservations} = useSeedObservations(observationsCount);
 
   const requirePresetFields =
@@ -283,6 +333,11 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
     // stale cache snapshot (PRD Risk 8).
     // Bind to a const: TS narrowing does not carry into this async closure.
     const spec_ = spec;
+    const persistedDocument: EstadoOrganizacoes = {
+      versao: persistedOrganizationState.versao,
+      organizacoes: persistedOrganizationState.organizacoes,
+      ativa: persistedOrganizationState.ativa,
+    };
 
     async function apply() {
       // Each of these axes projects its own active project: combined, they
@@ -325,6 +380,35 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
         return;
       }
 
+      // A stale draft is pending work and the production activation engine
+      // correctly refuses to change context while it exists. Presets that
+      // explicitly request no draft must settle that axis before opening the
+      // seeded organization, not after activation.
+      if (spec_.draftObservation === 'none' && draftState.value !== null) {
+        setReady(null);
+        clearDraft();
+        return;
+      }
+
+      const seedsPersistedOrganization =
+        spec_.organization !== undefined &&
+        (spec_.organization.slots ?? 'both') === 'both';
+      if (
+        !seedsPersistedOrganization &&
+        !sameOrganizationDocument(
+          persistedDocument,
+          criarEstadoInicialOrganizacoes(),
+        )
+      ) {
+        // Presets stay deterministic across story switches and cold runs. A
+        // preset which does not request a complete persisted organization
+        // clears the prior story's document through production's guarded
+        // organization repository.
+        setReady(null);
+        organizationRepository.write(criarEstadoInicialOrganizacoes());
+        return;
+      }
+
       // With an organization spec present, the org axis owns the active
       // project id (it sets Monitoramento below) — the project:'none' clear
       // must not fight it, or the two axes would clear/set in an endless
@@ -360,14 +444,70 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
 
       if (spec_.organization) {
         setReady(null);
-        const monitoramentoId = await ensureOrganization();
-        if (cancelled) return;
+        if ((spec_.organization.slots ?? 'both') === 'monitoramento') {
+          const monitoramentoId = await ensureOrganization();
+          if (cancelled) return;
 
-        if (monitoramentoId !== activeProjectId) {
-          projetar(monitoramentoId);
-          return;
+          if (monitoramentoId !== activeProjectId) {
+            projetar(monitoramentoId);
+            return;
+          }
+          projectId = monitoramentoId;
+        } else {
+          const document = await ensureOrganizationDocument();
+          if (cancelled) return;
+          if (!sameOrganizationDocument(persistedDocument, document)) {
+            organizationRepository.write(document);
+            return;
+          }
+
+          // The harness does not project this id. The production activation
+          // engine is initialized only once, before this async seed finishes,
+          // so request opening through its public API. It validates both
+          // project roles and publishes Monitoramento exactly as a real open.
+          const monitoramentoId = derivarProjectIdAtivo(document)!;
+          if (
+            organizationActivationStatus === 'ready' &&
+            activatedOrganizationProjectId === monitoramentoId
+          ) {
+            if (monitoramentoId !== activeProjectId) {
+              // A prior no-organization story can clear the persisted
+              // document and legacy projection without remounting the root
+              // engine. Revalidate the restored document through that engine,
+              // then restore the same public projection its provider owns.
+              const revalidated = await revalidateOrganization();
+              if (cancelled) return;
+              if (!revalidated) {
+                throw new Error(
+                  'Storybook could not revalidate persisted organization',
+                );
+              }
+              projetar(monitoramentoId);
+              return;
+            }
+          } else {
+            if (
+              organizationActivationStatus === 'loading' ||
+              organizationActivationStatus === 'opening'
+            ) {
+              return;
+            }
+            const activated = await activateOrganization(
+              PERSISTED_ORGANIZATION_ID,
+              {area: 'monitoramento'},
+            );
+            if (cancelled) return;
+            if (!activated) {
+              throw new Error(
+                `Storybook could not activate persisted organization; status: ${organizationActivationStatus}`,
+              );
+            }
+            return;
+          }
+          projectId = monitoramentoId;
+          observationIds = await ensureObservations(projectId);
+          if (cancelled) return;
         }
-        projectId = monitoramentoId;
       }
 
       if (spec_.organizations) {
@@ -473,7 +613,9 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
       cancelled = true;
     };
   }, [
+    activateOrganization,
     activeProjectId,
+    activatedOrganizationProjectId,
     projetar,
     clearDraft,
     createDraft,
@@ -485,6 +627,10 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
     ensureProject,
     isReadyForCurrentSpec,
     passcode,
+    persistedOrganizationState,
+    organizationRepository,
+    revalidateOrganization,
+    organizationActivationStatus,
     resolvePointPreset,
     setDeviceInfo,
     setPasscode,

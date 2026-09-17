@@ -190,9 +190,10 @@ export function buildOrganizationDocument(
  * The projects are named and marked the way the materializer names and marks
  * them, so the core rows and the document agree. Idempotent: an existing
  * project is found by its marker (organization id + slot), never by name —
- * every organization has a "Monitoramento". The document is only returned,
- * never written: the decorators provide it to the story alone (see
- * `FlowStateScope`).
+ * every organization has a "Monitoramento". The document is returned to the
+ * caller: the plural `organizations` axis provides it story-scoped through
+ * `FlowStateScope`, while the complete singular `organization` axis writes it
+ * through the app's persisted organization repository.
  */
 export function useSeedOrganizationDocument(
   organizations: SeedOrganizations | undefined,

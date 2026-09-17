@@ -192,11 +192,15 @@ export const withRealNavigator: Decorator = (Story, context) => {
       console.warn(
         `STORYBOOK: state repair for story: ${context.id}; route ${route.name} -> ${seededTopRoute}`,
       );
-      navigationRef.current?.reset(seededInitialState);
       setActiveRoute({
         storyId: context.id,
         readyKey,
-        routeName: seededTopRoute,
+        routeName: resetToSeededRouteOrThrow(
+          navigationRef.current,
+          seededInitialState,
+          seededTopRoute,
+          context.id,
+        ),
       });
       return;
     }
@@ -268,3 +272,30 @@ export const withRealNavigator: Decorator = (Story, context) => {
     </View>
   );
 };
+
+type SeededResetNavigation = Pick<
+  NavigationContainerRef<AppStackParamsList>,
+  'getCurrentRoute' | 'reset'
+> | null;
+
+/**
+ * Return the route published after a seeded reset.
+ *
+ * Kept separate from the decorator so a reset which the navigator refuses can
+ * be covered without replacing React Navigation in the real-screen tests.
+ */
+export function resetToSeededRouteOrThrow(
+  navigation: SeededResetNavigation,
+  seededState: InitialState,
+  expectedRoute: string,
+  storyId: string,
+): string {
+  navigation?.reset(seededState);
+  const observedRoute = navigation?.getCurrentRoute()?.name;
+  if (observedRoute !== expectedRoute) {
+    throw new Error(
+      `STORYBOOK: state repair failed for story: ${storyId}; expected route ${expectedRoute}, observed ${observedRoute ?? 'unavailable'}`,
+    );
+  }
+  return observedRoute;
+}
