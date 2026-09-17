@@ -17,14 +17,14 @@ describe('origem do trabalho nos stores do app (CA09)', () => {
       activeProjectIdStore,
     });
 
-    activeProjectIdStore.actions.setActiveProjectId('A-m');
+    activeProjectIdStore.actions.projetar('A-m');
     draftObservationStore.actions.createDraft();
     expect(draftObservationStore.instance.getState().projectId).toBe('A-m');
     trackStore.actions.setTracking(true);
     expect(trackStore.instance.getState().projectId).toBe('A-m');
 
     // Troca de organização: o projeto ativo agora diverge da origem persistida.
-    activeProjectIdStore.actions.setActiveProjectId('B-m');
+    activeProjectIdStore.actions.projetar('B-m');
     expect(() => draftObservationStore.actions.assertOrigin('B-m')).toThrow(
       'work-origin-mismatch',
     );

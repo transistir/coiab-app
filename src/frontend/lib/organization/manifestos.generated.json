@@ -2,14 +2,14 @@
   "//": "AUTO-GENERATED por scripts/gerar-manifestos-pacotes.mjs (`npm run build:manifestos-pacotes`) — não editar manualmente.",
   "monitoramento": {
     "ref": {
-      "versao": "1.0.0",
-      "hash": "3f869378216be88a12b5fbdb9405d5ea7c3f12b405b9e34122b1e1afb1912d5b"
+      "versao": "0.0.0-interino",
+      "hash": "7e2fe57f5912fc8b22c0f5aecaebdd5160543a52a9d31083da805fb10fa491e4"
     },
     "conteudo": {
       "fileVersion": "1.0",
       "metadata": {
         "name": "Monitoramento COIAB",
-        "version": "1.0.0"
+        "version": "0.0.0-interino"
       },
       "categorias": [
         {
@@ -61,14 +61,14 @@
   },
   "alertas": {
     "ref": {
-      "versao": "1.0.0",
-      "hash": "af7398b61af67a75c1613cf74541b2152528b35c588073d6b0fda9b827122a30"
+      "versao": "0.0.0-interino",
+      "hash": "e5f3bcd0a5c6cfc8b3dfc799f0b7e061de3952ddf8941568a486a54d05e5fc4f"
     },
     "conteudo": {
       "fileVersion": "1.0",
       "metadata": {
         "name": "Alertas COIAB",
-        "version": "1.0.0"
+        "version": "0.0.0-interino"
       },
       "categorias": [
         {

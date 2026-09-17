@@ -58,15 +58,29 @@ registrado como default assumido.)
   mesma versão do app nos dois dispositivos, ver
   `src/frontend/screens/YourTeam/SelectInviteDevice.tsx`), os dois na mesma
   rede Wi-Fi, e o segundo dispositivo com o onboarding CONCLUÍDO e parado na
-  tela `JoinProjectIntro` (botão "Participe de um projeto" na tela de sucesso
-  do onboarding, `src/frontend/screens/Onboarding/Success.tsx`) ANTES do
-  passo 10: a aceitação do convite só segue o caminho seguro de onboarding
-  quando `JoinProjectIntro` está no estado de navegação
-  (`src/frontend/screens/Invites/InviteReceived.tsx:101-124` — com o
-  convidado parado em outra tela, o app reseta a navegação sobre a rota
-  `Home` do app já instalado — a folha de aceite concluído aparece sobre a
-  Home, e o convite já foi aceito antes da checagem de navegação); um dispositivo parado só até a nomeação
-  concluída ainda está na tela de sucesso, não em `JoinProjectIntro`.
+  tela de espera `JoinOrganizationIntro` (botão "Join an Organization" na
+  tela de sucesso do onboarding —
+  `src/frontend/screens/Onboarding/Success.tsx:92-94` navega para ela; o
+  catálogo pt-BR ainda não traduz esse botão: mantém só o id antigo,
+  "Participe de um projeto") ANTES do passo 10: é a única tela do
+  onboarding sobre a qual a folha de revisão do convite de organização abre
+  quando o convite chega (`src/frontend/sharedComponents/PendingInvitesListener.tsx:86-98`
+  — a tela de sucesso está na lista que suspende o listener,
+  `src/frontend/constants.ts:47`, checagem em
+  `PendingInvitesListener.tsx:35-37`), e um dispositivo parado só até a
+  nomeação concluída ainda está na tela de sucesso, não em
+  `JoinOrganizationIntro`. O aceite de um pacote completo registra a
+  entrada da organização
+  (`src/frontend/hooks/organization/useAcceptOrganizationBundle.ts:287-315`)
+  e leva o convidado ao provisionamento a partir de qualquer tela
+  (`src/frontend/screens/Invites/OrganizationInviteReceived.tsx:179-185`):
+  lá as duas áreas são preparadas e a `Home` abre quando a organização está
+  pronta (`src/frontend/screens/Onboarding/OrganizationProvisioning.tsx:390-400`).
+  Fora desse caminho — registro que não acontece —, o aceite troca a tela
+  de espera pela folha de confirmação `InviteSuccessfullyAccepted`
+  (`src/frontend/screens/Invites/OrganizationInviteReceived.tsx:201-213`;
+  com o convidado parado em outra tela, reseta a navegação sobre a rota
+  `Home` do app já instalado, :215-222).
   Além disso, um dispositivo zerado **aparece** na lista de convites como
   entrada sem nome legível (`SelectInviteDevice.tsx` renderiza
   `name || ''`; a lista filtra apenas membros existentes, não dispositivos
@@ -92,7 +106,7 @@ demo continua.
 | 7 | Criar observação em Monitoramento | Categoria (ex. "Fiscalização rotineira") + foto + GPS salvos e visíveis |
 | 8 | Criar observação em Alertas | Categoria (ex. "Incêndio / fumaça") salva e visível |
 | 9 | Isolamento entre projetos | Cada observação aparece só no seu projeto; nada vaza entre Monitoramento e Alertas |
-| 10 | Convidar um segundo dispositivo; aceitar o convite (convidado já na tela `JoinProjectIntro` — pré-requisito acima) | Convidado entra na organização e vê os dois projetos (#27) |
+| 10 | Convidar um segundo dispositivo; aceitar o convite (convidado já na tela de espera `JoinOrganizationIntro` — pré-requisito acima) | Convidado entra na organização e vê os dois projetos (#27) |
 | 11 | *(desejável)* Configurar Remote Archive no nível da organização | Uma única URL aplica aos dois projetos (#36/#37) |
 | 12 | *(desejável)* Sincronização com o archive + indicador de conexão/reconexão | Sem regressão da sincronização existente (#38/#39) |
 

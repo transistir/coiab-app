@@ -251,7 +251,10 @@ if (!gateHolder.__fieldsGate) {
 import {act, render, screen} from '@testing-library/react-native';
 import {DeviceEventEmitter, View} from 'react-native';
 
-import {setupIntegrationTest} from '../../../../tests/integration/helpers/setupIntegrationTest';
+import {
+  setupIntegrationTest,
+  semearDocumentoPronta,
+} from '../../../../tests/integration/helpers/setupIntegrationTest';
 import {createAppProvidersWrapper} from '../../../../tests/integration/helpers/react';
 import {withRealNavigator} from '../../../../.rnstorybook/decorators/withRealNavigator';
 
@@ -313,6 +316,12 @@ describe('RootStackNavigator seeded deep stack (story 18)', () => {
       }
     };
 
+    semearDocumentoPronta(
+      orgSetup.projectId,
+      orgSetup.alertasProjectId,
+      orgSetup.orgId,
+      orgSetup.orgName,
+    );
     await orgSetup.renderNavigation();
 
     // Let every post-mount query refresh tick land (device info, org list,
@@ -373,6 +382,12 @@ describe('hardware-back guard vs NavigationContainer subscription order', () => 
 
   async function renderSeededStackAndPressBack() {
     guardHolder.__hwBackGuard = {consumed: []};
+    semearDocumentoPronta(
+      orgSetup.projectId,
+      orgSetup.alertasProjectId,
+      orgSetup.orgId,
+      orgSetup.orgName,
+    );
     mockSeededInitialState = seededDeepStackInitialState();
     mockOnRootStateChange = undefined;
 
@@ -436,7 +451,12 @@ describe('hardware-back guard vs NavigationContainer subscription order', () => 
   // MOUNT-TIME order test below is what catches a revert.
   test('regression: the real decorator renders the guard AFTER the container — a back press leaves the seeded stack intact', async () => {
     const consoleSpy = spyOnStorybookConsole();
-
+    semearDocumentoPronta(
+      orgSetup.projectId,
+      orgSetup.alertasProjectId,
+      orgSetup.orgId,
+      orgSetup.orgName,
+    );
     const appProviders = createAppProvidersWrapper({
       mapeoApi: orgSetup.client,
       activeProjectId: orgSetup.projectId,
@@ -464,7 +484,6 @@ describe('hardware-back guard vs NavigationContainer subscription order', () => 
         {},
         {timeout: 10000},
       );
-
       // Let post-mount query refreshes land before baselining the log, so a
       // late reconciliation tick cannot be mistaken for a back-press state
       // change.
@@ -538,7 +557,12 @@ describe('hardware-back guard vs NavigationContainer subscription order', () => 
     const consoleSpy = spyOnStorybookConsole();
     const events: BackHandlerEvent[] = [];
     backHandlerHolder.__hwBackEvents = events;
-
+    semearDocumentoPronta(
+      orgSetup.projectId,
+      orgSetup.alertasProjectId,
+      orgSetup.orgId,
+      orgSetup.orgName,
+    );
     const appProviders = createAppProvidersWrapper({
       mapeoApi: orgSetup.client,
       activeProjectId: orgSetup.projectId,

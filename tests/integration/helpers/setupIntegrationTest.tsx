@@ -1,12 +1,15 @@
 import {render} from '@testing-library/react-native';
 import type {MapeoManager} from '@comapeo/core';
 import type {ComapeoCoreClientApi} from '@comapeo/ipc';
-import {createManager, setUpIPC} from './core';
+import {createManager, setUpIPC, useRealFetch} from './core';
 import {createAppProvidersWrapper} from './react';
 import type {ActiveProjectIdStore} from '../../../src/frontend/contexts/ActiveProjectIdStoreContext';
 import {MockedAppNavigator} from './navigation';
 import {sleep} from '../../../src/frontend/lib/sleep';
 import {markerFor} from '../../../src/frontend/lib/organization/marker';
+import {MMKVStoreInitializer} from '../../../src/frontend/hooks/persistedState/createPersistedState';
+import {COIAB_ORGANIZATIONS_STORAGE_KEY} from '../../../src/frontend/contexts/CoiabOrganizationsStoreContext';
+import type {EstadoOrganizacoes} from '../../../src/frontend/lib/organization/coiabOrganizations';
 import React from 'react';
 
 // The P3 onboarding gate (SPEC 10.1) requires an Organization before Home, so
@@ -25,6 +28,10 @@ export function setupIntegrationTest() {
   beforeEach(async () => {
     onTeardown = [];
 
+    // jest-expo replaces `fetch` with a non-working stub; the icon
+    // verification resolves the real HTTP route (`$icons.getIconUrl` +
+    // `fetch().ok`), so the suite needs undici's real fetch.
+    onTeardown.push(useRealFetch());
     const managerSetup = await createManager({
       name: 'test',
       deviceType: 'mobile',
@@ -113,6 +120,9 @@ export function setupIntegrationTestWithoutProject() {
   beforeEach(async () => {
     onTeardown = [];
 
+    // Same reason as in `setupIntegrationTest`: real fetch for the icon
+    // verification HTTP route.
+    onTeardown.push(useRealFetch());
     const managerSetup = await createManager({
       name: 'test',
       deviceType: 'mobile',
@@ -179,4 +189,57 @@ export function setupIntegrationTestWithoutProject() {
       return activeProjectIdStore?.instance.getState().projectId;
     },
   };
+}
+
+/**
+ * Seeds the RAW persisted COIAB document (SPEC A §4.2) for a fully open
+ * organization: both areas verified, the confirmation acknowledged and
+ * Monitoramento selected. The ids must be the REAL core project ids of the
+ * test's CURRENT manager, so the engine's cold-start restoration validates
+ * against the same rows — call it after the setup's beforeEach boot and
+ * before rendering the navigator.
+ *
+ * Shared by the suites that mount the real navigator and expect Home:
+ * under the organization-first startup (SPEC 10.1) the persisted document,
+ * not the core's project list, decides the initial route — without this
+ * seed such a device lands on the Success fork ("test is ready!").
+ */
+export function semearDocumentoPronta(
+  monitoramentoId: string,
+  alertasId: string,
+  organizacaoId: string,
+  nome: string,
+): void {
+  const documento: EstadoOrganizacoes = {
+    versao: 1,
+    organizacoes: [
+      {
+        id: organizacaoId,
+        nome,
+        estado: 'pronta',
+        confirmacaoPendente: false,
+        materializacao: {
+          monitoramento: {
+            etapa: 'verificado',
+            projectId: monitoramentoId,
+            template: {versao: '1', hash: 'monitoramento'},
+            idsAntesDaCriacao: null,
+          },
+          alertas: {
+            etapa: 'verificado',
+            projectId: alertasId,
+            template: {versao: '1', hash: 'alertas'},
+            idsAntesDaCriacao: null,
+          },
+        },
+        areaEmExecucao: null,
+        ultimoErro: null,
+      },
+    ],
+    ativa: {organizacaoId, area: 'monitoramento'},
+  };
+  MMKVStoreInitializer.setItem(
+    COIAB_ORGANIZATIONS_STORAGE_KEY,
+    JSON.stringify({state: documento, version: 1}),
+  );
 }

@@ -12,6 +12,11 @@ import {
   type ActiveProjectIdStore,
 } from '../../contexts/ActiveProjectIdStoreContext';
 import {
+  CoiabOrganizationsStoreProvider,
+  createCoiabOrganizationsStore,
+  type CoiabOrganizationsStore,
+} from '../../contexts/CoiabOrganizationsStoreContext';
+import {
   createOrganizationInviteIdentityStore,
   OrganizationInviteIdentityStoreProvider,
   type OrganizationInviteIdentityStore,
@@ -26,7 +31,20 @@ import {
   invitesQueryKey,
   projectsQueryKey,
 } from '../../lib/organization/queryKeys';
-import {useAcceptOrganizationBundle} from './useAcceptOrganizationBundle';
+import {
+  useAcceptOrganizationBundle,
+  type AcceptOrganizationBundleResult,
+} from './useAcceptOrganizationBundle';
+
+// The activation engine is mounted once at the root; the accept hook only
+// hands a registered entry to `retryPreparation`. A stubbed handle observes
+// that hand-off without building a second engine in the test.
+const mockRetryPreparation = jest.fn();
+jest.mock('../../contexts/OrganizationActivationContext', () => ({
+  useOrganizationActivationContext: () => ({
+    retryPreparation: (...args: [string]) => mockRetryPreparation(...args),
+  }),
+}));
 
 const ORG_ID = 'a1b2c3d4e5f60718';
 const ORG_NAME = 'Org Um';
@@ -89,20 +107,27 @@ function createFakeClient(projects: FakeProject[] = []) {
 describe('useAcceptOrganizationBundle', () => {
   let store: ActiveProjectIdStore;
   let identityStore: OrganizationInviteIdentityStore;
+  let coiabStore: CoiabOrganizationsStore;
 
   beforeEach(() => {
     store = createActiveProjectIdStore();
     identityStore = createOrganizationInviteIdentityStore();
+    // Non-persisted and always fresh: `registrarEntradaPorConvite` refuses
+    // any document that already holds an organization (SPEC A :127).
+    coiabStore = createCoiabOrganizationsStore();
+    mockRetryPreparation.mockClear();
   });
 
   function createWrapper(clientApi: ComapeoCoreClientApi) {
     return ({children}: {children: ReactNode}) => (
       <MapeoApiWrapper mapeoApi={clientApi}>
-        <ActiveProjectIdStoreProvider store={store}>
-          <OrganizationInviteIdentityStoreProvider store={identityStore}>
-            {children}
-          </OrganizationInviteIdentityStoreProvider>
-        </ActiveProjectIdStoreProvider>
+        <CoiabOrganizationsStoreProvider store={coiabStore}>
+          <ActiveProjectIdStoreProvider store={store}>
+            <OrganizationInviteIdentityStoreProvider store={identityStore}>
+              {children}
+            </OrganizationInviteIdentityStoreProvider>
+          </ActiveProjectIdStoreProvider>
+        </CoiabOrganizationsStoreProvider>
       </MapeoApiWrapper>
     );
   }
@@ -127,11 +152,13 @@ describe('useAcceptOrganizationBundle', () => {
             getMapServerBaseUrl={getMapServerBaseUrl}
             fetch={mockFetch}
             queryClient={queryClient}>
-            <ActiveProjectIdStoreProvider store={store}>
-              <OrganizationInviteIdentityStoreProvider store={identityStore}>
-                {children}
-              </OrganizationInviteIdentityStoreProvider>
-            </ActiveProjectIdStoreProvider>
+            <CoiabOrganizationsStoreProvider store={coiabStore}>
+              <ActiveProjectIdStoreProvider store={store}>
+                <OrganizationInviteIdentityStoreProvider store={identityStore}>
+                  {children}
+                </OrganizationInviteIdentityStoreProvider>
+              </ActiveProjectIdStoreProvider>
+            </CoiabOrganizationsStoreProvider>
           </ComapeoCoreProvider>
         </QueryClientProvider>
       ),
@@ -139,11 +166,16 @@ describe('useAcceptOrganizationBundle', () => {
     };
   }
 
-  test('accepts both slots and sets the monitoramento project active', async () => {
+  test('a complete accept registers the entry by invite and does not force the active project', async () => {
     const {clientApi, accept} = createFakeClient();
     accept
       .mockResolvedValueOnce('project-monitoramento')
       .mockResolvedValueOnce('project-alertas');
+    const registrarEntrada = jest.spyOn(
+      coiabStore.actions,
+      'registrarEntradaPorConvite',
+    );
+    const projetar = jest.spyOn(store.actions, 'projetar');
 
     const hook = await renderHook(
       () => ({
@@ -153,8 +185,9 @@ describe('useAcceptOrganizationBundle', () => {
       {wrapper: createWrapper(clientApi)},
     );
 
+    let outcome: AcceptOrganizationBundleResult | undefined;
     await act(async () => {
-      await hook.result.current.acceptBundle.start(makeBundle());
+      outcome = await hook.result.current.acceptBundle.start(makeBundle());
     });
 
     expect(hook.result.current.acceptBundle.status).toBe('success');
@@ -162,12 +195,50 @@ describe('useAcceptOrganizationBundle', () => {
     expect(accept).toHaveBeenCalledTimes(2);
     expect(accept).toHaveBeenCalledWith({inviteId: 'invite-m'});
     expect(accept).toHaveBeenCalledWith({inviteId: 'invite-a'});
-    expect(hook.result.current.activeProjectId).toBe('project-monitoramento');
+    // SPEC B §5.5: both areas joined by invite — the durable document gets
+    // the registered entry, and the ENGINE (retryPreparation) owns what
+    // becomes active; the hook must not force a slot itself.
+    expect(registrarEntrada).toHaveBeenCalledTimes(1);
+    expect(registrarEntrada).toHaveBeenCalledWith({
+      organizacaoId: ORG_ID,
+      nome: ORG_NAME,
+      projectIds: {
+        monitoramento: 'project-monitoramento',
+        alertas: 'project-alertas',
+      },
+    });
+    expect(projetar).not.toHaveBeenCalled();
+    expect(hook.result.current.activeProjectId).toBeUndefined();
+    expect(mockRetryPreparation).toHaveBeenCalledWith(ORG_ID);
+    expect(outcome).toMatchObject({
+      ok: true,
+      registeredOrganizationId: ORG_ID,
+    });
+    expect(coiabStore.instance.getState().organizacoes).toHaveLength(1);
+    expect(coiabStore.instance.getState().organizacoes[0]).toMatchObject({
+      id: ORG_ID,
+      estado: 'preparando',
+      confirmacaoPendente: false,
+      materializacao: {
+        monitoramento: {
+          etapa: 'criado',
+          projectId: 'project-monitoramento',
+          template: null,
+          idsAntesDaCriacao: null,
+        },
+        alertas: {
+          etapa: 'criado',
+          projectId: 'project-alertas',
+          template: null,
+          idsAntesDaCriacao: null,
+        },
+      },
+    });
 
     hook.unmount();
   });
 
-  test('activates the pre-accepted local monitoramento project even when only slot a is accepted', async () => {
+  test('registers the entry from the pre-accepted local slot even when only slot a is accepted', async () => {
     // Slot m is already local; this accept only joins slot a (SPEC 8.2),
     // and the fresh read after the accept is stale — it still shows only
     // the pre-accept local project.
@@ -178,6 +249,15 @@ describe('useAcceptOrganizationBundle', () => {
       },
     ]);
     accept.mockResolvedValueOnce('project-alertas');
+    // The ActiveProjectIdStoreProvider carries its own boot fallback (the
+    // first local project becomes active). Seeding a placeholder keeps the
+    // provider out of the way: only the hook's own writes reach the spy.
+    store.actions.projetar('pre-existing-device-project');
+    const registrarEntrada = jest.spyOn(
+      coiabStore.actions,
+      'registrarEntradaPorConvite',
+    );
+    const projetar = jest.spyOn(store.actions, 'projetar');
 
     const hook = await renderHook(
       () => ({
@@ -194,10 +274,24 @@ describe('useAcceptOrganizationBundle', () => {
     expect(hook.result.current.acceptBundle.status).toBe('success');
     expect(accept).toHaveBeenCalledTimes(1);
     expect(accept).toHaveBeenCalledWith({inviteId: 'invite-a'});
-    // SPEC 8.6: the local slot-m project outranks this accept's slot-a
-    // result — the entry point lands on Monitoramento even though only the
-    // Alertas invite was part of THIS accept.
-    expect(hook.result.current.activeProjectId).toBe('project-monitoramento');
+    // SPEC 8.6: the pre-accept local slot-m project completes the
+    // organization, so the entry registers with BOTH project ids and the
+    // engine takes over activation — the hook must not force a slot itself.
+    expect(registrarEntrada).toHaveBeenCalledTimes(1);
+    expect(registrarEntrada).toHaveBeenCalledWith({
+      organizacaoId: ORG_ID,
+      nome: ORG_NAME,
+      projectIds: {
+        monitoramento: 'project-monitoramento',
+        alertas: 'project-alertas',
+      },
+    });
+    expect(projetar).not.toHaveBeenCalled();
+    // The hook left the placeholder untouched instead of forcing its own slot.
+    expect(hook.result.current.activeProjectId).toBe(
+      'pre-existing-device-project',
+    );
+    expect(mockRetryPreparation).toHaveBeenCalledWith(ORG_ID);
 
     hook.unmount();
   });
@@ -440,7 +534,7 @@ describe('useAcceptOrganizationBundle', () => {
     hook.unmount();
   });
 
-  test('activates the monitoramento project of the completed organization, not just of this accept', async () => {
+  test('registers the entry with the completed organization ids, not just this accept', async () => {
     // Slot m was accepted in an EARLIER attempt and is already local, so
     // this accept only joins slot a (SPEC 8.2).
     const localProjects: FakeProject[] = [
@@ -471,6 +565,14 @@ describe('useAcceptOrganizationBundle', () => {
       invite: {accept, addListener: jest.fn(), removeListener: jest.fn()},
       on: jest.fn(),
     } as unknown as ComapeoCoreClientApi;
+    // Same as above: the provider's boot fallback stays disabled, so the
+    // spy observes only the hook's own writes.
+    store.actions.projetar('pre-existing-device-project');
+    const registrarEntrada = jest.spyOn(
+      coiabStore.actions,
+      'registrarEntradaPorConvite',
+    );
+    const projetar = jest.spyOn(store.actions, 'projetar');
 
     const hook = await renderHook(
       () => ({
@@ -487,14 +589,29 @@ describe('useAcceptOrganizationBundle', () => {
     expect(hook.result.current.acceptBundle.status).toBe('success');
     expect(accept).toHaveBeenCalledTimes(1);
     expect(accept).toHaveBeenCalledWith({inviteId: 'invite-a'});
-    // SPEC 8.6: the completed organization's Monitoramento project is the
-    // active one, even though only slot a was part of THIS accept result.
-    expect(hook.result.current.activeProjectId).toBe('project-monitoramento');
+    // SPEC 8.6 ladder: the completed organization's Monitoramento project
+    // (already local) supplies the registration's monitoramento id, even
+    // though only slot a was part of THIS accept result.
+    expect(registrarEntrada).toHaveBeenCalledTimes(1);
+    expect(registrarEntrada).toHaveBeenCalledWith({
+      organizacaoId: ORG_ID,
+      nome: ORG_NAME,
+      projectIds: {
+        monitoramento: 'project-monitoramento',
+        alertas: 'project-alertas',
+      },
+    });
+    expect(projetar).not.toHaveBeenCalled();
+    // The hook left the placeholder untouched instead of forcing its own slot.
+    expect(hook.result.current.activeProjectId).toBe(
+      'pre-existing-device-project',
+    );
+    expect(mockRetryPreparation).toHaveBeenCalledWith(ORG_ID);
 
     hook.unmount();
   });
 
-  test('an accept that rejects after core completed the join still succeeds', async () => {
+  test('a rejected accept that core completed still registers the entry', async () => {
     // Reject-but-completed (Bug 46): slot m's accept times out on the reply
     // while core finished the join. The accept loop recovers that slot from
     // the local read and goes on to slot a, so the org is complete and the
@@ -526,6 +643,11 @@ describe('useAcceptOrganizationBundle', () => {
       invite: {accept, addListener: jest.fn(), removeListener: jest.fn()},
       on: jest.fn(),
     } as unknown as ComapeoCoreClientApi;
+    const registrarEntrada = jest.spyOn(
+      coiabStore.actions,
+      'registrarEntradaPorConvite',
+    );
+    const projetar = jest.spyOn(store.actions, 'projetar');
 
     const hook = await renderHook(
       () => ({
@@ -542,8 +664,20 @@ describe('useAcceptOrganizationBundle', () => {
     expect(hook.result.current.acceptBundle.status).toBe('success');
     expect(hook.result.current.acceptBundle.error).toBeUndefined();
     expect(accept).toHaveBeenCalledTimes(2);
-    // SPEC 8.6: the org's Monitoramento slot is the active project.
-    expect(hook.result.current.activeProjectId).toBe('project-monitoramento');
+    // The reconciled success registers the entry from the local reads and
+    // hands activation to the engine — it must not force a slot itself.
+    expect(registrarEntrada).toHaveBeenCalledTimes(1);
+    expect(registrarEntrada).toHaveBeenCalledWith({
+      organizacaoId: ORG_ID,
+      nome: ORG_NAME,
+      projectIds: {
+        monitoramento: 'project-monitoramento',
+        alertas: 'project-alertas',
+      },
+    });
+    expect(projetar).not.toHaveBeenCalled();
+    expect(hook.result.current.activeProjectId).toBeUndefined();
+    expect(mockRetryPreparation).toHaveBeenCalledWith(ORG_ID);
     // Both slots local — the recovery identity is no longer needed.
     expect(identityStore.instance.getState()).toStrictEqual({});
 
@@ -713,6 +847,63 @@ describe('useAcceptOrganizationBundle', () => {
     expect(identityStore.instance.getState()).toStrictEqual({
       [ORG_ID]: {invitorDeviceId: 'invitor-1', roleName: 'Coordinator'},
     });
+
+    hook.unmount();
+  });
+
+  test('an accept-partial writes nothing: an invite is not an entry', async () => {
+    // One accepted slot is not an entered organization — a partial accept
+    // must not register anything in the durable document, must not hand
+    // activation to the engine and must not force a slot itself.
+    const localProjects: FakeProject[] = [];
+    const accept = jest.fn(async ({inviteId}: {inviteId: string}) => {
+      if (inviteId === 'invite-m') {
+        localProjects.push({
+          projectId: 'project-monitoramento',
+          projectDescription: markerFor(ORG_ID, 'm', ORG_NAME),
+        });
+        throw new Error('SYNC_TIMEOUT');
+      }
+      throw new Error('NETWORK_GONE'); // slot a fails without joining
+    });
+    const clientApi = {
+      listProjects: async () =>
+        localProjects.map(project => ({
+          ...project,
+          name: 'fake',
+          createdAt: '',
+          updatedAt: '',
+          status: 'joined' as const,
+        })),
+      invite: {accept, addListener: jest.fn(), removeListener: jest.fn()},
+      on: jest.fn(),
+    } as unknown as ComapeoCoreClientApi;
+    const registrarEntrada = jest.spyOn(
+      coiabStore.actions,
+      'registrarEntradaPorConvite',
+    );
+    const projetar = jest.spyOn(store.actions, 'projetar');
+
+    const hook = await renderHook(
+      () => ({
+        acceptBundle: useAcceptOrganizationBundle(),
+        activeProjectId: useActiveProjectId(),
+      }),
+      {wrapper: createWrapper(clientApi)},
+    );
+
+    await act(async () => {
+      await hook.result.current.acceptBundle.start(makeBundle());
+    });
+
+    expect(hook.result.current.acceptBundle.status).toBe('error');
+    const error = hook.result.current.acceptBundle.error;
+    expect(error).toBeInstanceOf(OrganizationOperationError);
+    expect((error as OrganizationOperationError).code).toBe('accept-partial');
+    expect(registrarEntrada).not.toHaveBeenCalled();
+    expect(projetar).not.toHaveBeenCalled();
+    expect(mockRetryPreparation).not.toHaveBeenCalled();
+    expect(coiabStore.instance.getState().organizacoes).toStrictEqual([]);
 
     hook.unmount();
   });

@@ -101,6 +101,7 @@ const AcceptedStub = ({
 const ErrorStub = ({route}: {route: {params: {error: Error}}}) => (
   <Text>ERROR-{route.params.error.message}</Text>
 );
+const ProvisioningStub = () => <Text>PROVISIONING-REACHED</Text>;
 
 async function renderScreen({
   organizationId = ORG_ID,
@@ -126,6 +127,10 @@ async function renderScreen({
           />
           <Stack.Screen name="TrackRecordingActive" component={TrackStub} />
           <Stack.Screen name="ErrorBottomSheet" component={ErrorStub} />
+          <Stack.Screen
+            name="OrganizationProvisioning"
+            component={ProvisioningStub}
+          />
         </Stack.Navigator>
       </NavigationContainer>
     </IntlProvider>,
@@ -308,6 +313,31 @@ describe('OrganizationInviteReceived', () => {
     await user.press(screen.getByTestId('ORG.invite-join-btn'));
 
     expect(await screen.findByText('JOINED-Org Um')).toBeOnTheScreen();
+  });
+
+  test('a registered accept routes to OrganizationProvisioning, not the joined confirmation', async () => {
+    // 6b-i: a complete accept REGISTERS the organization
+    // (registeredOrganizationId) and activates no project — the
+    // provisioning surface owns the `pronta` publication and the pending
+    // confirmation, so this screen must reset there instead of following
+    // the project-id ladder.
+    mockInvites([makeInvite('m'), makeInvite('a')]);
+    start.mockResolvedValue({
+      ok: true,
+      accepted: [
+        {slot: 'm', projectId: 'project-m'},
+        {slot: 'a', projectId: 'project-a'},
+      ],
+      activeProjectId: undefined,
+      registeredOrganizationId: ORG_ID,
+    });
+    const user = userEvent.setup();
+    await renderScreen();
+
+    await user.press(screen.getByTestId('ORG.invite-join-btn'));
+
+    expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
+    expect(screen.queryByText('JOINED-Org Um')).not.toBeOnTheScreen();
   });
 
   test('a failed accept surfaces the error sheet instead of the confirmation', async () => {
