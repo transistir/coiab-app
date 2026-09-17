@@ -15,6 +15,7 @@ import {
   type ResolvedFlowState,
 } from '../utils/flowState';
 import {FlowStatePlaceholder} from '../utils/FlowStatePlaceholder';
+import {FlowStateScope} from '../utils/FlowStateScope';
 
 type FlowInitialState =
   InitialState | ((resolved: ResolvedFlowState) => InitialState);
@@ -236,27 +237,33 @@ export const withRealNavigator: Decorator = (Story, context) => {
   return (
     <View style={{flex: 1}} testID={storyReadyTestId}>
       <View style={{flex: 1}} testID={routeReadyTestId}>
-        <NavigationContainer
+        <FlowStateScope
           key={`${context.id}:${ready.key}`}
-          ref={navigationRef}
-          initialState={initialState}
-          onReady={announceActiveRoute}
-          onStateChange={state => {
-            console.log(
-              `STORYBOOK: nav state change for story: ${context.id}; index: ${state?.index}; routes: ${JSON.stringify(state?.routes.map(r => r.name))}`,
-            );
-            announceActiveRoute();
-          }}>
-          <RootStackNavigator />
-        </NavigationContainer>
-        {/* Sibling AFTER the container (see the guard's doc comment): child
-            effects run before parent effects, so a guard inside the
-            container would subscribe before it and LIFO dispatch would let
-            the container pop the seeded stack first. */}
-        <ConsumeHardwareBackPress
-          enabled={consumeHardwareBackPress}
-          onConsumed={handleHardwareBackConsumed}
-        />
+          resolved={ready}
+          fallback={<FlowStatePlaceholder spec={flow?.state} />}>
+          <NavigationContainer
+            key={`${context.id}:${ready.key}`}
+            ref={navigationRef}
+            initialState={initialState}
+            onReady={announceActiveRoute}
+            onStateChange={state => {
+              console.log(
+                `STORYBOOK: nav state change for story: ${context.id}; index: ${state?.index}; routes: ${JSON.stringify(state?.routes.map(r => r.name))}`,
+              );
+              announceActiveRoute();
+            }}>
+            <RootStackNavigator />
+          </NavigationContainer>
+          {/* Sibling AFTER the container, inside the same scope so a scope
+              holding on its fallback mounts both together (see the guard's
+              doc comment): child effects run before parent effects, so a
+              guard inside the container would subscribe before it and LIFO
+              dispatch would let the container pop the seeded stack first. */}
+          <ConsumeHardwareBackPress
+            enabled={consumeHardwareBackPress}
+            onConsumed={handleHardwareBackConsumed}
+          />
+        </FlowStateScope>
       </View>
     </View>
   );

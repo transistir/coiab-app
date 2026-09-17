@@ -41,3 +41,5 @@ exchange	exchange-screen--devices-found-everything	testID:EXCHANGE.devices-avail
 exchange	exchange-screen--syncing	testID:EXCHANGE.devices-available-header	2	06 Syncing
 exchange	exchange-screen--wifi-disconnected	testID:no-wifi-icon	2	07 Wifi Disconnected
 exchange	exchange-nowifidisplay--no-wifi	testID:EXCHANGE.no-wifi-display	2	08 No Wifi Display
+org-layer	flows-orglayer--organization-selector	testID:ORGANIZATIONS.list	10	05 Organization Selector
+org-layer	flows-orglayerdrawer--switch-organization-entry	testID:MENU.trocar-organizacao	2	06 Drawer Switch Organization Entry

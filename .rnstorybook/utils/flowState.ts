@@ -24,10 +24,16 @@ import {
 } from '../../src/frontend/contexts/DraftObservationContext';
 import {expoToCoreDeviceType} from '../../src/frontend/lib/deviceTypeMap';
 import {
+  derivarProjectIdAtivo,
+  type EstadoOrganizacoes,
+} from '../../src/frontend/lib/organization/coiabOrganizations';
+import {
   useSeedObservations,
   useSeedOrganization,
+  useSeedOrganizationDocument,
   useSeedPointPreset,
   useSeedProject,
+  type SeedOrganizations,
 } from './seedData';
 
 export type DraftObservationSpec =
@@ -47,6 +53,22 @@ export type FlowStateSpec = {
    * (incomplete) Organization for the provisioning state.
    */
   organization?: {name: string; slots?: 'both' | 'monitoramento'};
+  /**
+   * Seed ready organizations in the COIAB document (SPEC A §4.2) — the
+   * registry the startup gate, the drawer and the Organizations selector
+   * read; the startup gate ignores marker-only projects like the ones
+   * `organization` seeds. Each organization's two area projects are created
+   * in the backend and the active one's Monitoramento becomes the active
+   * project; the document itself is provided to the story alone (see
+   * `FlowStateScope`). Alternative to `project` and `organization` — presets
+   * that use it set `project: 'none'`.
+   */
+  organizations?: SeedOrganizations;
+  /**
+   * Early access on or off for the story alone (see `FlowStateScope`); unset
+   * leaves the app's persisted flag in charge.
+   */
+  earlyAccess?: boolean;
   draftObservation?: DraftObservationSpec;
 };
 
@@ -62,7 +84,23 @@ export type ResolvedFlowState = {
    * preset-selected draft was requested.
    */
   presetFieldIds?: readonly string[];
+  /**
+   * The COIAB document seeded for `organizations`, for the decorators to
+   * provide story-scoped. Undefined without that axis.
+   */
+  organizationDocument?: EstadoOrganizacoes;
+  /** `earlyAccess` as requested, for the decorators to provide story-scoped. */
+  earlyAccess?: boolean;
 };
+
+/**
+ * Fixed ids (16 lowercase hex, like every organization id) keep the seed
+ * idempotent across capture runs. B is the active one and sorts after A by
+ * name, so the selector only lists B first if it really leads with the active
+ * organization (SPEC A §6.1).
+ */
+const ORGANIZATION_A = {id: 'aaaaaaaaaaaaaaaa', name: 'Test Organization A'};
+const ORGANIZATION_B = {id: 'bbbbbbbbbbbbbbbb', name: 'Test Organization B'};
 
 export const FLOW_STATES = {
   freshInstall: {
@@ -97,6 +135,23 @@ export const FLOW_STATES = {
     project: 'none',
     organization: {name: 'Test Organization', slots: 'monitoramento'},
   },
+  /**
+   * Two ready organizations with early access on: the only state in which
+   * the drawer offers the organization selector.
+   */
+  twoOrganizationsEarlyAccess: {
+    auth: 'authenticated',
+    deviceName: 'Test Device',
+    project: 'none',
+    organizations: {
+      list: [ORGANIZATION_A, ORGANIZATION_B],
+      activeId: ORGANIZATION_B.id,
+    },
+    earlyAccess: true,
+    // A leftover draft is pending work, which keeps the story's activation
+    // engine from opening the organization.
+    draftObservation: 'none',
+  },
 } satisfies Record<string, FlowStateSpec>;
 
 // 5 digits, not the reserved obscure code — see PasscodeInputSchema in
@@ -126,6 +181,8 @@ function buildKey(spec?: FlowStateSpec) {
           slots: spec.organization.slots ?? 'both',
         }
       : null,
+    ...(spec.organizations ? {organizations: spec.organizations} : {}),
+    ...(spec.earlyAccess === undefined ? {} : {earlyAccess: spec.earlyAccess}),
     draftObservation: spec.draftObservation ?? null,
   });
 }
@@ -179,6 +236,9 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
     orgSpec?.name ?? '',
     orgSpec?.slots ?? 'both',
   );
+  const {ensure: ensureOrganizationDocument} = useSeedOrganizationDocument(
+    spec?.organizations,
+  );
 
   const observationsCount =
     typeof spec?.project === 'object' ? (spec.project.observations ?? 0) : 0;
@@ -225,6 +285,17 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
     const spec_ = spec;
 
     async function apply() {
+      // Each of these axes projects its own active project: combined, they
+      // would overwrite one another on every pass and never converge.
+      if (
+        spec_.organizations &&
+        (spec_.organization || typeof spec_.project === 'object')
+      ) {
+        throw new Error(
+          'Storybook flow `organizations` cannot be combined with `organization` or a seeded `project`',
+        );
+      }
+
       if (spec_.auth === 'authenticated' && passcode !== null) {
         setReady(null);
         await setPasscode(null);
@@ -258,7 +329,12 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
       // project id (it sets Monitoramento below) — the project:'none' clear
       // must not fight it, or the two axes would clear/set in an endless
       // alternation and the state would never converge.
-      if (spec_.project === 'none' && activeProjectId && !spec_.organization) {
+      if (
+        spec_.project === 'none' &&
+        activeProjectId &&
+        !spec_.organization &&
+        !spec_.organizations
+      ) {
         setReady(null);
         projetar(undefined);
         return;
@@ -266,6 +342,7 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
 
       let projectId = activeProjectId ?? undefined;
       let observationIds: readonly string[] = [];
+      let organizationDocument: EstadoOrganizacoes | undefined;
 
       if (typeof spec_.project === 'object') {
         setReady(null);
@@ -291,6 +368,20 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
           return;
         }
         projectId = monitoramentoId;
+      }
+
+      if (spec_.organizations) {
+        setReady(null);
+        organizationDocument = await ensureOrganizationDocument();
+        if (cancelled) return;
+
+        // The seed only returns documents that derive an active project.
+        const activeId = derivarProjectIdAtivo(organizationDocument)!;
+        if (activeId !== activeProjectId) {
+          projetar(activeId);
+          return;
+        }
+        projectId = activeId;
       }
 
       const draftSpec = spec_.draftObservation;
@@ -371,6 +462,8 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
         projectId,
         observationIds,
         presetFieldIds,
+        organizationDocument,
+        earlyAccess: spec_.earlyAccess,
       });
     }
 
@@ -388,6 +481,7 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
     draftState,
     ensureObservations,
     ensureOrganization,
+    ensureOrganizationDocument,
     ensureProject,
     isReadyForCurrentSpec,
     passcode,

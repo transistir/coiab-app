@@ -56,6 +56,23 @@ The `lockedApp`/`auth: 'unauthenticated'` preset is currently limited: changing
 the passcode does not update `AuthContext`'s already-mounted auth state. Use a
 fresh app boot when a flow must visibly start at `AuthScreen`.
 
+## Story-scoped app stores
+
+Most `FlowStateSpec` axes are applied to the running backend or session and
+outlive the story. Two belong to persisted app stores and are never written
+there: `organizations` (the COIAB organization document that the startup gate,
+the drawer and the Organizations selector read) and `earlyAccess`. Both
+decorators provide them through `FlowStateScope` as fresh, non-persisted stores
+around the story that sets them, so a seeded document or flag cannot leak into
+later stories or the next app boot. `organizations` still creates each
+organization's two area projects in the backend and makes the active
+organization's Monitoramento the active project.
+
+The organization scope mounts its own activation engine, which opens the seeded
+selection the way a cold start does; the story stays on `FlowStatePlaceholder`
+until it has. A leftover draft counts as pending work and blocks that opening,
+which is why `twoOrganizationsEarlyAccess` clears it.
+
 ## withFlowState (non-route flow stories)
 
 `withFlowState` is the flow-state half of `withRealNavigator`, without the
