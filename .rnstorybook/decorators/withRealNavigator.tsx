@@ -4,6 +4,7 @@ import {BackHandler, View} from 'react-native';
 import {
   NavigationContainer,
   type InitialState,
+  type NavigationAction,
   type NavigationContainerRef,
 } from '@react-navigation/native';
 
@@ -32,6 +33,35 @@ type ActiveRoute = {
   readyKey: string;
   routeName: string;
 };
+
+/** The shape a seeded `InitialState` and the navigator's own state share. */
+type RouteTree = {
+  index?: number;
+  routes: ReadonlyArray<{name: string; state?: RouteTree}>;
+};
+
+function focusedRoute(state: RouteTree | undefined) {
+  return state?.routes[state.index ?? state.routes.length - 1];
+}
+
+/**
+ * Whether the navigator has left the route path the story seeded, compared
+ * one navigator level at a time and only as deep as the seed goes. A level the
+ * seed leaves to its navigator's initial route (row 11's bare `Home`) or a
+ * nested navigator that has not mounted yet is not a divergence: comparing the
+ * leaf route against the seed's top route instead mistakes Home's own tabs for
+ * a pop.
+ */
+function leftSeededPath(
+  actual: RouteTree | undefined,
+  seeded: RouteTree | undefined,
+): boolean {
+  if (!actual || !seeded) return false;
+  const actualRoute = focusedRoute(actual);
+  const seededRoute = focusedRoute(seeded);
+  if (actualRoute?.name !== seededRoute?.name) return true;
+  return leftSeededPath(actualRoute?.state, seededRoute?.state);
+}
 
 function assertFactoryUsesSeededObservationIds(
   initialState: InitialState,
@@ -156,6 +186,7 @@ export const withRealNavigator: Decorator = (Story, context) => {
   const navigationRef =
     React.useRef<NavigationContainerRef<AppStackParamsList>>(null);
   const [activeRoute, setActiveRoute] = React.useState<ActiveRoute>();
+  const [repairFailure, setRepairFailure] = React.useState<Error>();
   // Expected state from the story's seeded initialState. Some post-mount
   // reconciliation (query refreshes re-running the flow-state effect,
   // navigator screen-set changes) can pop the seeded deep stack with no user
@@ -171,11 +202,12 @@ export const withRealNavigator: Decorator = (Story, context) => {
     }
     return flow?.initialState;
   }, [flow?.initialState, ready]);
-  const seededTopRoute = seededInitialState?.routes.at(-1)?.name;
+  const seededTopRoute = focusedRoute(seededInitialState)?.name;
   const repairCountRef = React.useRef(0);
   const announceActiveRoute = React.useCallback(() => {
-    const route = navigationRef.current?.getCurrentRoute();
-    if (!route || !readyKey) {
+    const navigation = navigationRef.current;
+    const route = navigation?.getCurrentRoute();
+    if (!navigation || !route || !readyKey) {
       console.error(
         `STORYBOOK: Flow readiness failed for story: ${context.id}; active route unavailable`,
       );
@@ -183,25 +215,23 @@ export const withRealNavigator: Decorator = (Story, context) => {
     }
 
     if (
-      seededTopRoute !== undefined &&
       seededInitialState !== undefined &&
-      route.name !== seededTopRoute &&
-      repairCountRef.current < 1
+      repairCountRef.current < 1 &&
+      leftSeededPath(navigation.getRootState(), seededInitialState)
     ) {
       repairCountRef.current += 1;
       console.warn(
         `STORYBOOK: state repair for story: ${context.id}; route ${route.name} -> ${seededTopRoute}`,
       );
-      setActiveRoute({
-        storyId: context.id,
-        readyKey,
-        routeName: resetToSeededRouteOrThrow(
-          navigationRef.current,
-          seededInitialState,
-          seededTopRoute,
-          context.id,
-        ),
-      });
+      // Publish nothing until the navigator reports where the reset landed.
+      // It lands on the next render, not during this call: React Navigation
+      // stores a partial state uninitialized and keeps answering
+      // getCurrentRoute() from the last render, so a route read here is still
+      // the popped one. An accepted reset re-enters through onStateChange,
+      // which publishes the route it really reached; a refused one changes no
+      // state and reaches onUnhandledAction instead.
+      setActiveRoute(undefined);
+      navigation.reset(seededInitialState);
       return;
     }
 
@@ -218,6 +248,30 @@ export const withRealNavigator: Decorator = (Story, context) => {
       `STORYBOOK: Flow ready for story: ${context.id}; route: ${route.name}; projectId: ${ready?.projectId ?? 'none'}; observationIds: ${JSON.stringify(ready?.observationIds ?? [])}`,
     );
   }, [context.id, readyKey, seededInitialState, seededTopRoute]);
+  const handleUnhandledAction = React.useCallback(
+    (action: Readonly<NavigationAction>) => {
+      if (action.type === 'RESET' && action.payload === seededInitialState) {
+        setRepairFailure(
+          new Error(
+            `STORYBOOK: state repair failed for story: ${context.id}; the navigator refused the seeded state (expected route ${seededTopRoute})`,
+          ),
+        );
+        return;
+      }
+      // Passing this handler replaces React Navigation's development-only
+      // report of an unhandled action; keep that report for every other one.
+      if (__DEV__) {
+        console.error(
+          `The action '${action.type}'${action.payload ? ` with payload ${JSON.stringify(action.payload)}` : ''} was not handled by any navigator.`,
+        );
+      }
+    },
+    [context.id, seededInitialState, seededTopRoute],
+  );
+
+  // The seeded route is unreachable: fail the story where it shows (the
+  // nearest error boundary) instead of leaving it without a readiness marker.
+  if (repairFailure) throw repairFailure;
 
   if (!ready) return <FlowStatePlaceholder spec={flow?.state} />;
 
@@ -255,7 +309,8 @@ export const withRealNavigator: Decorator = (Story, context) => {
                 `STORYBOOK: nav state change for story: ${context.id}; index: ${state?.index}; routes: ${JSON.stringify(state?.routes.map(r => r.name))}`,
               );
               announceActiveRoute();
-            }}>
+            }}
+            onUnhandledAction={handleUnhandledAction}>
             <RootStackNavigator />
           </NavigationContainer>
           {/* Sibling AFTER the container, inside the same scope so a scope
@@ -272,30 +327,3 @@ export const withRealNavigator: Decorator = (Story, context) => {
     </View>
   );
 };
-
-type SeededResetNavigation = Pick<
-  NavigationContainerRef<AppStackParamsList>,
-  'getCurrentRoute' | 'reset'
-> | null;
-
-/**
- * Return the route published after a seeded reset.
- *
- * Kept separate from the decorator so a reset which the navigator refuses can
- * be covered without replacing React Navigation in the real-screen tests.
- */
-export function resetToSeededRouteOrThrow(
-  navigation: SeededResetNavigation,
-  seededState: InitialState,
-  expectedRoute: string,
-  storyId: string,
-): string {
-  navigation?.reset(seededState);
-  const observedRoute = navigation?.getCurrentRoute()?.name;
-  if (observedRoute !== expectedRoute) {
-    throw new Error(
-      `STORYBOOK: state repair failed for story: ${storyId}; expected route ${expectedRoute}, observed ${observedRoute ?? 'unavailable'}`,
-    );
-  }
-  return observedRoute;
-}
