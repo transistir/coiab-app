@@ -5,13 +5,22 @@
  *
  * The running app holds both as persisted singletons (`AppProviders` builds
  * the document store, `App.tsx` the early-access store, each with
- * `persist: true`), and every story shares that one running app. A seed
- * written into them would outlive the story — into every later story and
- * the next app boot — and a document with an open organization even changes
- * which screen set `RootStackNavigator` registers. So each axis is provided
- * as a fresh, non-persisted instance of the same store, around the story
- * that asks for it and nothing else. With neither axis set, `FlowStateScope`
- * renders its children untouched.
+ * `persist: true`), and every story shares that one running app. These two
+ * axes are provided as a fresh, non-persisted instance of the same store,
+ * around the story that asks for it and nothing else, so what they seed
+ * cannot reach a later story or the next app boot — and a document with an
+ * open organization even changes which screen set `RootStackNavigator`
+ * registers. With neither axis set, `FlowStateScope` renders its children
+ * untouched.
+ *
+ * Scoping is not the harness's only way of seeding a document, and the
+ * persisted store is not off limits: the `organization` axis deliberately
+ * writes it (`flowState.ts`), because the app's own root activation engine
+ * reads that store and no other. What keeps that seed from outliving its
+ * story is the cleanup in `flowState.ts` — a story whose spec seeds no
+ * persisted organization writes the initial document back before it
+ * resolves. That cleanup returns the document but not the root engine; see
+ * `flowStateCleanup.test.tsx` for the order contract that follows.
  *
  * The organization scope mirrors the organization half of `AppProviders`
  * (document → materializer → activation engine), so the navigator, the drawer

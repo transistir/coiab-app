@@ -1,0 +1,163 @@
+import * as React from 'react';
+import {render, waitFor} from '@testing-library/react-native';
+
+import {createAppProvidersWrapper} from '../../tests/integration/helpers/react';
+import {
+  semearDocumentoPronta,
+  setupIntegrationTest,
+} from '../../tests/integration/helpers/setupIntegrationTest';
+import {useCoiabOrganizationsState} from '../../src/frontend/contexts/CoiabOrganizationsStoreContext';
+import {useOrganizationActivationContext} from '../../src/frontend/contexts/OrganizationActivationContext';
+import {
+  FLOW_STATES,
+  useFlowState,
+  type FlowStateSpec,
+  type ResolvedFlowState,
+} from './flowState';
+
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+/**
+ * The order dependency between capture rows, pinned.
+ *
+ * A capture run is one app process switching stories, so `useFlowState`'s
+ * cleanup is the only thing standing between two rows. That cleanup is
+ * deliberately HALF a cleanup: a spec that does not seed a persisted
+ * organization writes the initial document back through the production
+ * repository (`flowState.ts`), but the root activation engine —
+ * `OrganizationActivationProvider`, built once above Storybook and
+ * `initialize()`d once (`hooks/organization/useOrganizationActivation.ts`) —
+ * keeps the organization it opened, with its `projectId` and `generation`.
+ *
+ * It stays half a cleanup on purpose, and the harness depends on the residue:
+ * `flowState.ts` restores a document a previous row cleared by REVALIDATING
+ * through that still-open engine, which publishes no new generation. Closing
+ * the engine instead would send that path through a fresh `activate()`, and
+ * `activate()` is refused whenever pending work exists
+ * (`lib/organization/activation.ts`, the pending-work guard) — every
+ * CreateObservation row that seeds a draft would start throwing. There is
+ * also no way to close it from here: `revalidate()` is a strict no-op once
+ * `ativa` is null, and `initialize()` is deliberately not on
+ * `OrganizationActivationHandle`.
+ *
+ * So the contract is order, not isolation: a row that needs an open
+ * organization must be preceded by a row that opened one. This test is what
+ * makes that explicit — it fails if the engine ever starts being reset
+ * between stories, so whoever changes it has to revisit the draft rows and
+ * the manifest order with it.
+ */
+
+type Probe = {
+  ready: ResolvedFlowState | null;
+  status: string;
+  projectId?: string;
+  generation: number;
+  organizationCount: number;
+  ativa: unknown;
+};
+
+let probe: Probe | undefined;
+
+function FlowStateProbe({spec}: {spec: FlowStateSpec}) {
+  const ready = useFlowState(spec);
+  const {status, projectId, generation} = useOrganizationActivationContext();
+  const document = useCoiabOrganizationsState();
+  probe = {
+    ready,
+    status,
+    projectId,
+    generation,
+    organizationCount: document.organizacoes.length,
+    ativa: document.ativa,
+  };
+  return null;
+}
+
+function currentProbe(): Probe {
+  if (!probe) throw new Error('the flow-state probe never rendered');
+  return probe;
+}
+
+describe('flow-state cleanup between stories', () => {
+  const orgSetup = setupIntegrationTest();
+
+  beforeEach(() => {
+    probe = undefined;
+  });
+
+  test('the cleanup returns the document to its initial state and leaves the root engine holding the organization', async () => {
+    semearDocumentoPronta(
+      orgSetup.projectId,
+      orgSetup.alertasProjectId,
+      orgSetup.orgId,
+      orgSetup.orgName,
+    );
+    const appProviders = createAppProvidersWrapper({
+      mapeoApi: orgSetup.client,
+      activeProjectId: orgSetup.projectId,
+    });
+    // Row 10's spec: the first manifest row that seeds the persisted
+    // organization.
+    const view = await render(
+      <FlowStateProbe spec={FLOW_STATES.namedWithOrganization} />,
+      {wrapper: appProviders.wrapper},
+    );
+
+    try {
+      await waitFor(() => expect(currentProbe().ready).not.toBeNull(), {
+        timeout: 30_000,
+      });
+      const opened = currentProbe();
+      const organizationKey = opened.ready!.key;
+      expect(opened.status).toBe('ready');
+      expect(opened.projectId).toBe(orgSetup.projectId);
+      expect(opened.organizationCount).toBe(1);
+      // A real opening, so "the generation never moved" below is a claim
+      // about an engine that actually activated something.
+      expect(opened.generation).toBeGreaterThan(0);
+
+      // The next story's spec names no organization, so the cleanup runs.
+      await view.rerender(<FlowStateProbe spec={FLOW_STATES.namedNoProject} />);
+      await waitFor(
+        () => {
+          const current = currentProbe();
+          expect(current.ready).not.toBeNull();
+          expect(current.ready!.key).not.toBe(organizationKey);
+        },
+        {timeout: 30_000},
+      );
+
+      const cleaned = currentProbe();
+      // The document is back to `criarEstadoInicialOrganizacoes()`...
+      expect(cleaned.organizationCount).toBe(0);
+      expect(cleaned.ativa).toBeNull();
+      // ...and the root engine is not: it still holds the opened
+      // organization, at the generation it published when it opened it.
+      expect(cleaned.status).toBe('ready');
+      expect(cleaned.projectId).toBe(opened.projectId);
+      expect(cleaned.generation).toBe(opened.generation);
+
+      // Which is what lets the organization rows recover: the restored
+      // document is revalidated through the engine that never closed, and a
+      // revalidation publishes no new generation. An engine reset between
+      // stories would make this a fresh activation instead, and every
+      // generation assertion here would move.
+      await view.rerender(
+        <FlowStateProbe spec={FLOW_STATES.namedWithOrganization} />,
+      );
+      await waitFor(
+        () => expect(currentProbe().ready?.key).toBe(organizationKey),
+        {timeout: 30_000},
+      );
+
+      const reopened = currentProbe();
+      expect(reopened.status).toBe('ready');
+      expect(reopened.projectId).toBe(orgSetup.projectId);
+      expect(reopened.organizationCount).toBe(1);
+      expect(reopened.generation).toBe(opened.generation);
+    } finally {
+      await view.unmount();
+      await appProviders.teardown();
+    }
+  }, 120_000);
+});

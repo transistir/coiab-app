@@ -1,5 +1,6 @@
 import type {
   NavigationContainerRef,
+  NavigationProp,
   InitialState,
 } from '@react-navigation/native';
 import type {AppStackParamsList} from '../../sharedTypes/navigation';
@@ -234,10 +235,22 @@ jest.mock('../../hooks/server/fields', () => ({
 // throws a promise) that loop without a Suspense boundary in the jest harness —
 // an OOM artifact of the test env, not of production (CI pops with no crash).
 // The real-screen pop evidence lives in CI captures; the fix is the
-// withRealNavigator state-repair guard.
-jest.mock('../../screens/ObservationFields', () => ({
-  ObservationFields: () => null,
-}));
+// withRealNavigator state-repair guard. The stub hands its navigation object
+// to `__observationFieldsNavigation` (globalThis, for the same hoisting reason
+// as the gates below) so a test can pop the seeded top route for real.
+jest.mock('../../screens/ObservationFields', () => {
+  const React = require('react');
+  return {
+    ObservationFields: ({navigation}: {navigation: unknown}) => {
+      React.useEffect(() => {
+        (
+          globalThis as {__observationFieldsNavigation?: unknown}
+        ).__observationFieldsNavigation = navigation;
+      }, [navigation]);
+      return null;
+    },
+  };
+});
 
 process.env.MAPBOX_ACCESS_TOKEN = 'test-token';
 
@@ -277,6 +290,21 @@ function spyOnStorybookConsole() {
       log.mockRestore();
       warn.mockRestore();
     },
+  };
+}
+
+function seededDeepStackInitialState(): InitialState {
+  return {
+    routes: [
+      {
+        name: 'Home',
+        state: {routes: [{name: 'Map'}], index: 0},
+      },
+      {name: 'ObservationCategoryChooser'},
+      {name: 'ObservationCreate'},
+      {name: 'ObservationFields', params: {fieldIds: ['field-1']}},
+    ],
+    index: 3,
   };
 }
 
@@ -364,21 +392,6 @@ describe('hardware-back guard vs NavigationContainer subscription order', () => 
   afterEach(() => {
     guardHolder.__hwBackGuard = undefined;
   });
-
-  function seededDeepStackInitialState(): InitialState {
-    return {
-      routes: [
-        {
-          name: 'Home',
-          state: {routes: [{name: 'Map'}], index: 0},
-        },
-        {name: 'ObservationCategoryChooser'},
-        {name: 'ObservationCreate'},
-        {name: 'ObservationFields', params: {fieldIds: ['field-1']}},
-      ],
-      index: 3,
-    };
-  }
 
   async function renderSeededStackAndPressBack() {
     guardHolder.__hwBackGuard = {consumed: []};
@@ -637,6 +650,93 @@ describe('hardware-back guard vs NavigationContainer subscription order', () => 
       expect(screen.queryByTestId(routeMarker('ObservationCreate'))).toBeNull();
     } finally {
       backHandlerHolder.__hwBackEvents = undefined;
+      consoleSpy.restore();
+      await act(async () => {
+        view.unmount();
+      });
+      await appProviders.teardown();
+    }
+  }, 30000);
+});
+
+/**
+ * The pop the decorator's state repair exists for, on the real
+ * RootStackNavigator: the seeded top route leaves the stack after readiness
+ * with no hardware back for the guard to consume. The repair resets the
+ * navigator to the seeded state and the marker follows the route the
+ * navigator reports once that reset has landed.
+ */
+describe('real decorator repairs a popped seeded deep stack', () => {
+  const orgSetup = setupIntegrationTest();
+
+  test('regression: a post-mount pop of ObservationFields is reset to the seeded stack without failing the story', async () => {
+    const consoleSpy = spyOnStorybookConsole();
+    const fieldsHolder = globalThis as {
+      __observationFieldsNavigation?: NavigationProp<AppStackParamsList>;
+    };
+    semearDocumentoPronta(
+      orgSetup.projectId,
+      orgSetup.alertasProjectId,
+      orgSetup.orgId,
+      orgSetup.orgName,
+    );
+    const appProviders = createAppProvidersWrapper({
+      mapeoApi: orgSetup.client,
+      activeProjectId: orgSetup.projectId,
+    });
+    const story = () => <View />;
+    const storyId = 'seeded-deep-stack-repair';
+    const context = {
+      id: storyId,
+      parameters: {flow: {initialState: seededDeepStackInitialState()}},
+    } as unknown as Parameters<typeof withRealNavigator>[1];
+    const DecoratorHost = () => withRealNavigator(story, context);
+    const view = await render(<DecoratorHost />, {
+      wrapper: appProviders.wrapper,
+    });
+    const routeMarker = (route: string) =>
+      `STORYBOOK.flow-ready.${storyId}.${route}`;
+
+    try {
+      await screen.findByTestId(
+        routeMarker('ObservationFields'),
+        {},
+        {timeout: 10000},
+      );
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      });
+      expect(consoleSpy.including('state repair')).toEqual([]);
+
+      await act(async () => {
+        fieldsHolder.__observationFieldsNavigation!.goBack();
+      });
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      });
+
+      expect(consoleSpy.including('state repair')).toEqual([
+        `STORYBOOK: state repair for story: ${storyId}; route ObservationCreate -> ObservationFields`,
+      ]);
+      // The navigator is back on the seeded stack (the stub remounted with it
+      // and handed over its new navigation object)...
+      const repairedState =
+        fieldsHolder.__observationFieldsNavigation!.getState();
+      expect(repairedState.routes.map(route => route.name)).toEqual([
+        'Home',
+        'ObservationCategoryChooser',
+        'ObservationCreate',
+        'ObservationFields',
+      ]);
+      expect(repairedState.index).toBe(3);
+      // ...and readiness names the route it reports.
+      expect(consoleSpy.including('Flow ready for story').at(-1)).toContain(
+        'route: ObservationFields;',
+      );
+      expect(screen.getByTestId(routeMarker('ObservationFields'))).toBeTruthy();
+      expect(screen.queryByTestId(routeMarker('ObservationCreate'))).toBeNull();
+    } finally {
+      fieldsHolder.__observationFieldsNavigation = undefined;
       consoleSpy.restore();
       await act(async () => {
         view.unmount();

@@ -99,10 +99,7 @@ import OrgLayerDrawerMeta, {
 } from '../../src/frontend/flows/OrgLayerDrawer.stories';
 import {withFlowState} from '../decorators/withFlowState';
 import {withNavigation} from '../decorators/withNavigation';
-import {
-  resetToSeededRouteOrThrow,
-  withRealNavigator,
-} from '../decorators/withRealNavigator';
+import {withRealNavigator} from '../decorators/withRealNavigator';
 import {FLOW_STATES} from './flowState';
 
 type StoryContext = Parameters<typeof withRealNavigator>[1];
@@ -161,28 +158,6 @@ function drawerStory(parameters: unknown) {
 
 const ROW_A = 'ORGANIZATIONS.row-aaaaaaaaaaaaaaaa';
 const ROW_B = 'ORGANIZATIONS.row-bbbbbbbbbbbbbbbb';
-
-describe('seeded navigation repair', () => {
-  test('fails loudly when reset leaves the navigator on the wrong route', () => {
-    const navigation = {
-      reset: jest.fn(),
-      getCurrentRoute: jest.fn(() => ({key: 'success', name: 'Success'})),
-    } as unknown as Parameters<typeof resetToSeededRouteOrThrow>[0];
-    const seededState = {routes: [{name: 'Home'}], index: 0};
-
-    expect(() =>
-      resetToSeededRouteOrThrow(
-        navigation,
-        seededState,
-        'Home',
-        'flows-orglayer--home-with-organization',
-      ),
-    ).toThrow(
-      'STORYBOOK: state repair failed for story: flows-orglayer--home-with-organization; expected route Home, observed Success',
-    );
-    expect(navigation?.reset).toHaveBeenCalledWith(seededState);
-  });
-});
 
 describe('organization stories (FlowStateScope)', () => {
   let client: ComapeoCoreClientApi;

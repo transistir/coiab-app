@@ -73,8 +73,10 @@ export type FlowStateSpec = {
    * `organization` seeds. Each organization's two area projects are created
    * in the backend and the active one's Monitoramento becomes the active
    * project; the document itself is provided to the story alone (see
-   * `FlowStateScope`). Alternative to `project` and `organization` — presets
-   * that use it set `project: 'none'`.
+   * `FlowStateScope`), and because this axis seeds no PERSISTED organization
+   * the cleanup below still returns the app's own document to its initial
+   * state first. Alternative to `project` and `organization` — presets that
+   * use it set `project: 'none'`.
    */
   organizations?: SeedOrganizations;
   /**
@@ -404,6 +406,15 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
         // preset which does not request a complete persisted organization
         // clears the prior story's document through production's guarded
         // organization repository.
+        //
+        // The DOCUMENT only: the root activation engine above Storybook is
+        // built and initialized once, so it keeps the organization it opened,
+        // with its projectId and generation. That residue is what the
+        // restoration path below revalidates through, and closing the engine
+        // here would turn that revalidation into a fresh activation the
+        // pending-work guard refuses whenever a draft survives. Rows
+        // therefore depend on their order — `flowStateCleanup.test.tsx` pins
+        // both halves of this.
         setReady(null);
         organizationRepository.write(criarEstadoInicialOrganizacoes());
         return;
@@ -526,20 +537,18 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
 
       const draftSpec = spec_.draftObservation;
       let presetFieldIds: readonly string[] | undefined;
-      if (draftSpec) {
-        if (!projectId && draftSpec !== 'none') {
+      // `draftObservation: 'none'` is already settled above, before the
+      // organization axis opens: a surviving draft is cleared there and the
+      // pass restarts, so reaching here with it means there is no draft left
+      // to clear.
+      if (draftSpec && draftSpec !== 'none') {
+        if (!projectId) {
           throw new Error(
             'Storybook flow draft setup requires an active seeded project',
           );
         }
 
-        if (draftSpec === 'none') {
-          if (draftState.value !== null) {
-            setReady(null);
-            clearDraft();
-            return;
-          }
-        } else if (draftSpec.state === 'empty') {
+        if (draftSpec.state === 'empty') {
           const isCompatibleEmptyDraft =
             draftState.value !== null &&
             draftState.id === null &&
@@ -558,7 +567,7 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
             return;
           }
         } else {
-          const preset = await resolvePointPreset(projectId!);
+          const preset = await resolvePointPreset(projectId);
           if (cancelled) return;
           presetFieldIds = preset.fieldRefs.map(fieldRef => fieldRef.docId);
 
