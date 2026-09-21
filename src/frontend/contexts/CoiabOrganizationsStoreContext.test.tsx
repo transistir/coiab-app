@@ -417,8 +417,8 @@ describe('CoiabOrganizationsStore.publicarPronta (SPEC A §4.2 regras 2, 3 e 9)'
 describe('CoiabOrganizationsStore.registrarEntradaPorConvite (SPEC A §4.2 regra 9, :127)', () => {
   beforeEach(() => {
     // MMKV is shared across tests: a leftover document (e.g. an earlier
-    // hydration round-trip) would legally refuse the registration (SPEC A
-    // :127 — the document must be empty).
+    // hydration round-trip) would collide with the registration's ids and
+    // legally refuse it.
     MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
   });
 
@@ -467,21 +467,43 @@ describe('CoiabOrganizationsStore.registrarEntradaPorConvite (SPEC A §4.2 regra
     expect(store.instance.getState().ativa).toBe(antes.ativa);
   });
 
-  test('recusa a segunda organização (SPEC A :127) e deixa o documento intocado', () => {
+  test('recusa convite cujo projeto já pertence a outra organização (regra 2) e deixa o documento intocado', () => {
     const store = createCoiabOrganizationsStore();
     store.instance.setState(
-      {versao: 1, organizacoes: [criarOrganizacaoPreparando()], ativa: null},
+      {versao: 1, organizacoes: [readyOrganization('A')], ativa: null},
       true,
     );
     const antes = store.instance.getState();
     const publish = jest.fn();
     store.instance.subscribe(publish);
 
-    const ok = store.actions.registrarEntradaPorConvite(entradaValida);
+    // 'A-m' já é o projeto de monitoramento da organização 'A' (id
+    // diferente do convite): colisão — recusa sem escrever nada.
+    const ok = store.actions.registrarEntradaPorConvite({
+      ...entradaValida,
+      projectIds: {monitoramento: 'A-m', alertas: 'a-convite-1'},
+    });
 
     expect(ok).toBe(false);
     expect(store.instance.getState()).toBe(antes);
     expect(publish).not.toHaveBeenCalled();
+  });
+
+  test('colisão de projeto também é recusada na área alertas, sem escrita', () => {
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState(
+      {versao: 1, organizacoes: [readyOrganization('A')], ativa: null},
+      true,
+    );
+    const antes = store.instance.getState();
+
+    const ok = store.actions.registrarEntradaPorConvite({
+      ...entradaValida,
+      projectIds: {monitoramento: 'm-convite-1', alertas: 'A-a'},
+    });
+
+    expect(ok).toBe(false);
+    expect(store.instance.getState()).toBe(antes);
   });
 
   test('recusa ids de projeto iguais', () => {
@@ -591,6 +613,86 @@ describe('CoiabOrganizationsStore.registrarEntradaPorConvite (SPEC A §4.2 regra
       ],
       ativa: null,
       hidratacaoFalhou: false,
+    });
+  });
+
+  test('convite aceito em documento com organizações existentes é anexado, preservando cada entrada e o slot ativa', () => {
+    const store = createCoiabOrganizationsStore();
+    const orgA = {...readyOrganization('A'), confirmacaoPendente: true};
+    store.instance.setState(
+      {
+        versao: 1,
+        organizacoes: [orgA],
+        ativa: {organizacaoId: 'A', area: 'alertas'},
+      },
+      true,
+    );
+    const antes = store.instance.getState();
+
+    const ok = store.actions.registrarEntradaPorConvite(entradaValida);
+
+    expect(ok).toBe(true);
+    const depois = store.instance.getState();
+    const [aDepois, bDepois] = depois.organizacoes;
+    expect(depois.organizacoes).toHaveLength(2);
+    // A está intacta: mesmo objeto, nenhum campo reescrito pelo convite.
+    expect(aDepois).toBe(antes.organizacoes[0]);
+    // O convite NÃO altera quem está ativa: só a ativação explícita muda.
+    expect(depois.ativa).toBe(antes.ativa);
+    expect(bDepois?.id).toBe(entradaValida.organizacaoId);
+    expect(bDepois?.estado).toBe('preparando');
+  });
+
+  test('re-entrega do mesmo convite substitui a entrada in-place e preserva as outras', () => {
+    const store = createCoiabOrganizationsStore();
+    const orgB = readyOrganization('B');
+    store.instance.setState(
+      {
+        versao: 1,
+        organizacoes: [
+          criarOrganizacaoPreparando({
+            id: entradaValida.organizacaoId,
+            nome: 'Entrega antiga',
+          }),
+          orgB,
+        ],
+        ativa: {organizacaoId: 'B', area: 'monitoramento'},
+      },
+      true,
+    );
+
+    const ok = store.actions.registrarEntradaPorConvite(entradaValida);
+
+    expect(ok).toBe(true);
+    const depois = store.instance.getState();
+    expect(depois.organizacoes).toHaveLength(2);
+    expect(depois.organizacoes[0]).toStrictEqual({
+      id: entradaValida.organizacaoId,
+      nome: 'Por convite',
+      estado: 'preparando',
+      confirmacaoPendente: false,
+      materializacao: {
+        monitoramento: {
+          etapa: 'criado',
+          projectId: 'm-convite-1',
+          template: null,
+          idsAntesDaCriacao: null,
+        },
+        alertas: {
+          etapa: 'criado',
+          projectId: 'a-convite-1',
+          template: null,
+          idsAntesDaCriacao: null,
+        },
+      },
+      areaEmExecucao: null,
+      ultimoErro: null,
+    });
+    // B é preservada por referência: upsert não reescreve as outras.
+    expect(depois.organizacoes[1]).toBe(orgB);
+    expect(depois.ativa).toStrictEqual({
+      organizacaoId: 'B',
+      area: 'monitoramento',
     });
   });
 });
