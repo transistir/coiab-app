@@ -609,6 +609,62 @@ describe('materialização da organização', () => {
     // settled — the joined/rejected outcome is observable then.
     await expect(second).rejects.toThrow('operation-in-progress');
   });
+  test('M-3: a foreign start while the document is ready+acknowledged and an operation is inside prepare rejects with operation-in-progress', async () => {
+    const h = harness();
+    h.repository.write({
+      versao: 1,
+      organizacoes: [organizacaoProntaReconhecida()],
+      ativa: null,
+    });
+    let releasePreparation!: () => void;
+    let preparationEntered!: () => void;
+    const prepared = new Promise<void>(resolve => {
+      releasePreparation = resolve;
+    });
+    const entered = new Promise<void>(resolve => {
+      preparationEntered = resolve;
+    });
+    h.templates.prepare.mockImplementation(async () => {
+      preparationEntered();
+      await prepared;
+      return {
+        monitoramento: {ref: {versao: '1', hash: 'm'}, filePath: '/local/m'},
+        alertas: {ref: {versao: '1', hash: 'a'}, filePath: '/local/a'},
+      };
+    });
+    const started = h.service.start('Segunda');
+    await entered;
+    // A genuinely different client object — NOT a spread of the wrapper
+    // that owns the in-flight operation — starts a third intent.
+    const otherClient = {
+      listProjects: jest.fn(async () => []),
+      createProject: jest.fn(async () => 'never-created'),
+      getDeviceInfo: jest.fn(async () => ({
+        deviceId: 'device',
+        name: 'Meu aparelho',
+        deviceType: 'mobile' as const,
+      })),
+      setDeviceInfo: jest.fn(async () => {}),
+      getProject: jest.fn(),
+    };
+    const other = createMaterializer({
+      client: otherClient,
+      templates: h.templates,
+      repository: h.repository,
+      generateId: () => '2222222222222222',
+    });
+    const third = other.start('Terceira');
+    // Still held inside prepare with NOTHING persisted: the foreign intent
+    // must have created nothing and awaited nothing.
+    expect(h.client.createProject).not.toHaveBeenCalled();
+    releasePreparation();
+    await started;
+    // The rejected intent is judged only after the original operation has
+    // settled — the joined/rejected outcome is observable then.
+    await expect(third).rejects.toThrow('operation-in-progress');
+    expect(h.client.createProject).toHaveBeenCalledTimes(2);
+    expect(otherClient.createProject).not.toHaveBeenCalled();
+  });
   test.each([
     '',
     '   ',

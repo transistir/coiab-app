@@ -8,6 +8,7 @@ import {
   type OrganizacaoLocal,
   type TemplateRef,
 } from './documento';
+import {classificarDocumento} from './coiabOrganizations';
 
 export type OrganizationRepository = {
   read(): EstadoOrganizacoes;
@@ -142,9 +143,14 @@ export function createMaterializer<
    * still in progress, or a publication awaiting confirmation, must be
    * resumed/confirmed first — never shadowed by a second creation.
    */
-  const condicaoDeRecusaDeCriacao = (org: OrganizacaoLocal) =>
-    org.estado !== 'pronta' || org.confirmacaoPendente;
+  const condicaoDeRecusaDeCriacao = () =>
+    ['preparando', 'confirmacao'].includes(
+      classificarDocumento(repository.read()),
+    );
 
+  /** The persisted journal entry this operation reads and alters. */
+  const currentFor = (op: Operacao) =>
+    repository.read().organizacoes.find(o => o.id === op.organizacaoId)!;
   /**
    * An operation is alive ONLY while it is the latest one registered for this
    * repository AND the persisted journal still belongs to its organization —
@@ -153,8 +159,6 @@ export function createMaterializer<
    * array index: a multi-organization document resumes the organization the
    * operation belongs to (comportamento 5).
    */
-  const currentFor = (op: Operacao) =>
-    repository.read().organizacoes.find(o => o.id === op.organizacaoId)!;
   function operacaoViva(op: Operacao): boolean {
     return (
       operacoes.get(repository) === op &&
@@ -243,7 +247,6 @@ export function createMaterializer<
     try {
       for (const area of AREAS) {
         assertViva(op);
-
         const entry = currentFor(op).materializacao[area];
         let projectId = entry.projectId;
         if (entry.etapa === 'verificado') {
@@ -378,8 +381,7 @@ export function createMaterializer<
   }
 
   async function start(name: string, op: Operacao) {
-    if (repository.read().organizacoes.some(condicaoDeRecusaDeCriacao))
-      throw new Error('creation-in-progress');
+    if (condicaoDeRecusaDeCriacao()) throw new Error('creation-in-progress');
     const error = organizationNameError(name);
     if (error) throw new Error(error);
     // The document id IS the marker's organization id (SPEC B §4.1), so the
@@ -393,8 +395,7 @@ export function createMaterializer<
     if (operacoes.get(repository) !== op) return;
     // The document may have changed while the packages were prepared: the
     // same §5.5 condition is re-verified before persisting the intent.
-    if (repository.read().organizacoes.some(condicaoDeRecusaDeCriacao))
-      throw new Error('creation-in-progress');
+    if (condicaoDeRecusaDeCriacao()) throw new Error('creation-in-progress');
     const emptyArea = (area: Area) => ({
       etapa: 'ausente' as const,
       projectId: null,
@@ -457,16 +458,17 @@ export function createMaterializer<
   function exclusive(work: (op: Operacao) => Promise<void>) {
     const existing = running.get(client) ?? runningRepositories.get(repository);
     if (existing) {
-      // Same client wrapper family: shared. A foreign client joins ONLY
-      // when the journal already carries organizations — it waits for the
-      // owner's operation to settle without racing a second intent
-      // (operation identity). On an EMPTY journal a foreign start is a
-      // fresh intent during flight: it must never join and resolve
-      // silently as the other organization (M-2).
-      if (
-        running.get(client) === existing ||
-        repository.read().organizacoes.length > 0
-      ) {
+      // Discriminating rule for a join against an in-flight operation:
+      // (1) the SAME client instance always shares its wrapper's own
+      // operation (double submit, remount); (2) any other client joins
+      // only while the document holds an organization that is not ready
+      // or awaits confirmation — it waits for the owner to settle that
+      // journal without racing a second intent (operation identity, M-1);
+      // (3) every other case — the document fully ready+acknowledged
+      // while the owner is still inside prepare, nothing persisted — is a
+      // NEW intent in flight: it must reject instead of joining and
+      // resolving as success (M-2, M-3).
+      if (running.get(client) === existing || condicaoDeRecusaDeCriacao()) {
         return existing;
       }
       return Promise.reject(new Error('operation-in-progress'));
