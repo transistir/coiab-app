@@ -267,6 +267,40 @@ describe('withRealNavigator seeded-state repair (real navigation)', () => {
     ).toBeOnTheScreen();
   });
 
+  test('(c) Home tabs mounting after readiness reach the seeded tab, not the first one', async () => {
+    // Row 19's seed: `Home` with its tabs seeded onto the SECOND tab. If a
+    // late mount went through the tab navigator's own initial route first,
+    // the leaf would be `Map` where the seed says `ObservationsList` and the
+    // repair would fire on a story that is merely still mounting.
+    mockRegisteredScreens = ['Home', 'Success'];
+    mockHomeTabsMountLate = true;
+    const storyId = 'late-tabs-nested-seed';
+    await renderStory(storyId, {
+      routes: [
+        {name: 'Home', state: {routes: [{name: 'ObservationsList'}], index: 0}},
+      ],
+      index: 0,
+    });
+    await settle();
+    await settle();
+
+    expect(caught).toEqual([]);
+    expect(logged(warn, 'state repair')).toEqual([]);
+    // Readiness came first on Home, then on the seeded tab — never on `Map`.
+    expect(logged(log, 'Flow ready for story')[0]).toContain('route: Home;');
+    expect(logged(log, 'Flow ready for story').at(-1)).toContain(
+      'route: ObservationsList;',
+    );
+    expect(
+      logged(log, 'Flow ready for story').filter(message =>
+        message.includes('route: Map;'),
+      ),
+    ).toEqual([]);
+    expect(
+      await screen.findByTestId(routeMarker(storyId, 'ObservationsList')),
+    ).toBeOnTheScreen();
+  });
+
   test('(c) Home tabs mounting after readiness change the leaf route without triggering a repair', async () => {
     mockRegisteredScreens = ['Home', 'Success'];
     mockHomeTabsMountLate = true;
@@ -285,8 +319,6 @@ describe('withRealNavigator seeded-state repair (real navigation)', () => {
     expect(
       await screen.findByTestId(routeMarker(storyId, 'Map')),
     ).toBeOnTheScreen();
-    expect(logged(log, 'Flow ready for story').at(-1)).toContain(
-      'route: Map;',
-    );
+    expect(logged(log, 'Flow ready for story').at(-1)).toContain('route: Map;');
   });
 });

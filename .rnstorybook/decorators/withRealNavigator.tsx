@@ -6,6 +6,8 @@ import {
   type InitialState,
   type NavigationAction,
   type NavigationContainerRef,
+  type NavigationState,
+  type PartialState,
 } from '@react-navigation/native';
 
 import {RootStackNavigator} from '../../src/frontend/Navigation/Stack';
@@ -37,7 +39,7 @@ type ActiveRoute = {
 /** The shape a seeded `InitialState` and the navigator's own state share. */
 type RouteTree = {
   index?: number;
-  routes: ReadonlyArray<{name: string; state?: RouteTree}>;
+  routes: ReadonlyArray<{name: string; key?: string; state?: RouteTree}>;
 };
 
 function focusedRoute(state: RouteTree | undefined) {
@@ -61,6 +63,46 @@ function leftSeededPath(
   const seededRoute = focusedRoute(seeded);
   if (actualRoute?.name !== seededRoute?.name) return true;
   return leftSeededPath(actualRoute?.state, seededRoute?.state);
+}
+
+/**
+ * The seeded state as a reset payload, carrying over the key of every route
+ * the navigator already holds under the same name in the same position — one
+ * navigator level at a time, as far as the seed goes.
+ *
+ * A keyless payload does not update those routes, it replaces them: React
+ * Navigation keys every route it rehydrates, so routes the repair means to
+ * keep are unmounted and remounted. When one of them hosts a nested navigator
+ * — `Home` and its tabs, on every deep-stack story — that navigator's unmount
+ * writes its parent's routes back from a read taken before the reset, and the
+ * seeded state the reset had just stored is overwritten by the popped one.
+ * React Navigation still reports the action as handled, so the repair looks
+ * accepted, reaches no `onUnhandledAction`, and changes nothing (measured on
+ * `@react-navigation/core` 7.21.2: preserving `Home`'s key alone is the
+ * difference between the reset landing and being reverted). Carrying the keys
+ * over leaves those routes — and their navigators — mounted, and only the
+ * route the pop removed is created.
+ */
+function withCurrentRouteKeys(
+  seeded: InitialState,
+  current: RouteTree | undefined,
+): PartialState<NavigationState> {
+  return {
+    ...seeded,
+    routes: seeded.routes.map((route, index) => {
+      const currentRoute = current?.routes[index];
+      if (currentRoute?.name !== route.name) return route;
+      return {
+        ...route,
+        key: currentRoute.key,
+        // The seed owns every level it declares; a nested state it leaves out
+        // stays out, so the nested navigator falls back to its initial route.
+        state: route.state
+          ? withCurrentRouteKeys(route.state, currentRoute.state)
+          : undefined,
+      };
+    }),
+  };
 }
 
 function assertFactoryUsesSeededObservationIds(
@@ -204,6 +246,12 @@ export const withRealNavigator: Decorator = (Story, context) => {
   }, [flow?.initialState, ready]);
   const seededTopRoute = focusedRoute(seededInitialState)?.name;
   const repairCountRef = React.useRef(0);
+  // The exact payload the repair dispatched, so a refusal can be told apart
+  // from any other unhandled action. Identity, not shape: the payload carries
+  // the current route keys, so it is not the seeded object itself.
+  const repairPayloadRef = React.useRef<
+    PartialState<NavigationState> | undefined
+  >(undefined);
   const announceActiveRoute = React.useCallback(() => {
     const navigation = navigationRef.current;
     const route = navigation?.getCurrentRoute();
@@ -230,8 +278,13 @@ export const withRealNavigator: Decorator = (Story, context) => {
       // the popped one. An accepted reset re-enters through onStateChange,
       // which publishes the route it really reached; a refused one changes no
       // state and reaches onUnhandledAction instead.
+      const payload = withCurrentRouteKeys(
+        seededInitialState,
+        navigation.getRootState(),
+      );
+      repairPayloadRef.current = payload;
       setActiveRoute(undefined);
-      navigation.reset(seededInitialState);
+      navigation.reset(payload);
       return;
     }
 
@@ -250,7 +303,10 @@ export const withRealNavigator: Decorator = (Story, context) => {
   }, [context.id, readyKey, seededInitialState, seededTopRoute]);
   const handleUnhandledAction = React.useCallback(
     (action: Readonly<NavigationAction>) => {
-      if (action.type === 'RESET' && action.payload === seededInitialState) {
+      if (
+        action.type === 'RESET' &&
+        action.payload === repairPayloadRef.current
+      ) {
         setRepairFailure(
           new Error(
             `STORYBOOK: state repair failed for story: ${context.id}; the navigator refused the seeded state (expected route ${seededTopRoute})`,
@@ -266,7 +322,7 @@ export const withRealNavigator: Decorator = (Story, context) => {
         );
       }
     },
-    [context.id, seededInitialState, seededTopRoute],
+    [context.id, seededTopRoute],
   );
 
   // The seeded route is unreachable: fail the story where it shows (the
