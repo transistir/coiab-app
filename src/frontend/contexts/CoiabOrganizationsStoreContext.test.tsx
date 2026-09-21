@@ -695,6 +695,113 @@ describe('CoiabOrganizationsStore.registrarEntradaPorConvite (SPEC A §4.2 regra
       area: 'monitoramento',
     });
   });
+  test('re-entrega de convite para organização já pronta é recusada sem escrita (não rebaixa)', () => {
+    // "qualquer confirmacaoPendente": both an acknowledged and a still
+    // pending ready organization refuse the re-delivery — the journal of a
+    // `pronta` entry already holds the true projectIds, so accepting the
+    // same bundle again could only downgrade the entry in place.
+    for (const confirmacaoPendente of [false, true]) {
+      const store = createCoiabOrganizationsStore();
+      const base = readyOrganization(entradaValida.organizacaoId);
+      const pronta: OrganizacaoLocal = {
+        ...base,
+        confirmacaoPendente,
+        materializacao: {
+          monitoramento: {
+            ...base.materializacao.monitoramento,
+            projectId: entradaValida.projectIds.monitoramento,
+          },
+          alertas: {
+            ...base.materializacao.alertas,
+            projectId: entradaValida.projectIds.alertas,
+          },
+        },
+      };
+      store.instance.setState(
+        {versao: 1, organizacoes: [pronta], ativa: null},
+        true,
+      );
+      const antes = store.instance.getState();
+      const publish = jest.fn();
+      store.instance.subscribe(publish);
+
+      const ok = store.actions.registrarEntradaPorConvite(entradaValida);
+
+      expect(ok).toBe(false);
+      // Zero write: same document object — nothing was downgraded.
+      expect(store.instance.getState()).toBe(antes);
+      expect(publish).not.toHaveBeenCalled();
+    }
+  });
+  test('re-entrega de convite para organização em falha_recuperavel substitui a entrada in-place (via de re-preparo)', () => {
+    const store = createCoiabOrganizationsStore();
+    const orgB = readyOrganization('B');
+    store.instance.setState(
+      {
+        versao: 1,
+        organizacoes: [
+          criarOrganizacaoPreparando({
+            id: entradaValida.organizacaoId,
+            nome: 'Entrega com falha',
+            estado: 'falha_recuperavel',
+            materializacao: {
+              monitoramento: {
+                etapa: 'criado',
+                projectId: entradaValida.projectIds.monitoramento,
+                template: null,
+                idsAntesDaCriacao: null,
+              },
+              alertas: criarEtapaAreaAusente(),
+            },
+            ultimoErro: {
+              codigo: 'core-create-failed',
+              area: 'alertas',
+              ocorridoEm: '2026-09-21T00:00:00.000Z',
+            },
+          }),
+          orgB,
+        ],
+        ativa: {organizacaoId: 'B', area: 'monitoramento'},
+      },
+      true,
+    );
+
+    const ok = store.actions.registrarEntradaPorConvite(entradaValida);
+
+    expect(ok).toBe(true);
+    const depois = store.instance.getState();
+    expect(depois.organizacoes).toHaveLength(2);
+    // O replace in-place reseta a entrada falhada para um `preparando`
+    // limpo — a via de re-preparo, idempotente para um bundle idêntico.
+    expect(depois.organizacoes[0]).toStrictEqual({
+      id: entradaValida.organizacaoId,
+      nome: 'Por convite',
+      estado: 'preparando',
+      confirmacaoPendente: false,
+      materializacao: {
+        monitoramento: {
+          etapa: 'criado',
+          projectId: 'm-convite-1',
+          template: null,
+          idsAntesDaCriacao: null,
+        },
+        alertas: {
+          etapa: 'criado',
+          projectId: 'a-convite-1',
+          template: null,
+          idsAntesDaCriacao: null,
+        },
+      },
+      areaEmExecucao: null,
+      ultimoErro: null,
+    });
+    // B é preservada por referência: o replace não reescreve as outras.
+    expect(depois.organizacoes[1]).toBe(orgB);
+    expect(depois.ativa).toStrictEqual({
+      organizacaoId: 'B',
+      area: 'monitoramento',
+    });
+  });
 });
 
 describe('confirmação atômica e falha de persistência (CA02/CA09/CA14)', () => {

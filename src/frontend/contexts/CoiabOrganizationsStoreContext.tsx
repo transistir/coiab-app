@@ -199,15 +199,20 @@ export function createCoiabOrganizationsStore({persist} = {persist: false}) {
      * rule 9) in ONE write. Decision #25 keeps the MVP open to multiple
      * organizations per device: the accepted entry is appended to the
      * document, or replaces its own entry in place when the same
-     * organization id is re-delivered — every other entry survives, and the
-     * `ativa` slot never changes here (only an explicit activation moves
-     * it). Refusals return `false` with NO write — a half-registered entry
+     * organization id is re-delivered and that entry is still `preparando`
+     * or `falha_recuperavel` (the re-preparation path, idempotent for an
+     * identical bundle) — every other entry survives, and the `ativa` slot
+     * never changes here (only an explicit activation moves it).
+     * Refusals return `false` with NO write — a half-registered entry
      * is never published: the organization id must match the marker
      * pattern, ids must be pairwise distinct within the bundle (the
      * organization id must differ from both project ids and the two project
      * ids must differ — otherwise the §4.2 parser would reject the document
      * on the next open), and a projectId already associated with a
-     * DIFFERENT local organization is a collision (§4.2 rule 2). The
+     * DIFFERENT local organization is a collision (§4.2 rule 2), and an
+     * organization that already reached `pronta` refuses any re-delivery —
+     * its journal already holds the true projectIds, so accepting again
+     * could only downgrade the entry. The
      * journal carries the accepted projectIds as `criado` with
      * `template: null` and no creation snapshot — this device created
      * nothing; `verificarEntrada` (SPEC B §5.5) confirms the join, role and
@@ -240,6 +245,16 @@ export function createCoiabOrganizationsStore({persist} = {persist: false}) {
           return false;
         }
       }
+      // A re-delivery for an organization that already reached `pronta` is
+      // refused with NO write: its journal already holds the true
+      // projectIds — accepting again would only downgrade the entry
+      // (estado back to `preparando`, pinned templates reset to `criado`,
+      // pending confirmation reset). `preparando` and `falha_recuperavel`
+      // keep the in-place replace as the re-preparation path.
+      const existente = state.organizacoes.find(
+        item => item.id === p.organizacaoId,
+      );
+      if (existente?.estado === 'pronta') return false;
       const novaEntrada: OrganizacaoLocal = {
         id: p.organizacaoId,
         nome,

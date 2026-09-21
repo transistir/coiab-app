@@ -74,8 +74,9 @@ function bothSlotsPresent(
  * invite entry in the durable document (SPEC B §5.5) with the two accepted
  * project ids and hand activation to the engine (`retryPreparation` — the
  * materializer's `retomar` then dispatches by origin). When the entry is
- * NOT registered (an incomplete accept, or the store refusing — document
- * not empty, duplicate ids, empty name), the legacy behavior stands: the
+ * NOT registered (an incomplete accept, or the store refusing — a projectId
+ * already associated with another local organization, duplicate ids, empty
+ * name), the legacy behavior stands: the
  * Monitoramento project becomes active directly (SPEC 8.6 ladder: slot m
  * wins from the freshest source that sees it — the post-accept
  * reconstruction, the pre-accept local one, or this accept's own result —
