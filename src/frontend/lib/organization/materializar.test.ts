@@ -8,6 +8,8 @@ import {
   documentoInicial,
   type Area,
   type EstadoOrganizacoes,
+  type EtapaArea,
+  type OrganizacaoLocal,
   type TemplateRef,
 } from './documento';
 import {createMaterializer} from './materializar';
@@ -160,6 +162,125 @@ function documentoAmbosVerificados(): EstadoOrganizacoes {
       },
     ],
     ativa: null,
+  };
+}
+
+/**
+ * Multi-org harness: the same Core surface as `harness()`, WITHOUT the
+ * index-0 journal assertions — with N organizations the operation is scoped
+ * by id, so the multi-org tests assert on the events, the settings map and
+ * the document itself.
+ */
+function harnessMulti() {
+  let document = documentoInicial();
+  const events: string[] = [];
+  const projects: string[] = [];
+  const imported = new Set<string>();
+  const settings = new Map<
+    string,
+    {name?: string; sendStats?: boolean; projectDescription?: string}
+  >();
+  const client = {
+    listProjects: jest.fn(async () => projects.map(projectId => ({projectId}))),
+    createProject: jest.fn(
+      async ({
+        name,
+        projectDescription,
+      }: {
+        name: string;
+        configPath: string;
+        projectDescription: string;
+      }) => {
+        const id = `id-${projects.length}`;
+        projects.push(id);
+        // Core seeds the settings at creation (mapeo-manager.js:499).
+        settings.set(id, {name, sendStats: false, projectDescription});
+        events.push(`create:${name}`);
+        return id;
+      },
+    ),
+    getDeviceInfo: jest.fn(async () => ({
+      deviceId: 'device',
+      name: 'Meu aparelho',
+      deviceType: 'mobile' as const,
+    })),
+    setDeviceInfo: jest.fn(async () => {}),
+    getProject: jest.fn(async (id: string) => ({
+      $importCategories: jest.fn(async ({filePath}: {filePath: string}) => {
+        events.push(`import:${filePath}`);
+        imported.add(id);
+      }),
+      $setProjectSettings: jest.fn(
+        async (next: {
+          name: string;
+          sendStats: boolean;
+          projectDescription: string;
+        }) => {
+          settings.set(id, {...settings.get(id), ...next});
+          events.push(`settings:${JSON.stringify(next)}`);
+        },
+      ),
+      $getProjectSettings: jest.fn(async () => ({...settings.get(id)})),
+      $member: {getById: jest.fn(async () => MEMBER_INICIALIZADO)},
+    })),
+  };
+  const templates = {
+    prepare: jest.fn(async () => ({
+      monitoramento: {ref: {versao: '1', hash: 'm'}, filePath: '/local/m'},
+      alertas: {ref: {versao: '1', hash: 'a'}, filePath: '/local/a'},
+    })),
+    verify: jest.fn(async (_p: unknown, _t: unknown, id: string) =>
+      imported.has(id),
+    ),
+  };
+  const repository = {
+    read: () => document,
+    write: jest.fn((next: EstadoOrganizacoes) => {
+      document = next;
+    }),
+  };
+  return {
+    client,
+    templates,
+    repository,
+    events,
+    projects,
+    settings,
+    imported,
+    get document() {
+      return document;
+    },
+    service: createMaterializer({
+      client,
+      templates,
+      repository,
+      generateId: () => ORG_ID,
+    }),
+  };
+}
+
+/** §4.2-valid ready + acknowledged organization (both areas verified). */
+function organizacaoProntaReconhecida(
+  overrides: Partial<OrganizacaoLocal> = {},
+): OrganizacaoLocal {
+  const area = (projectId: string, hash: string): EtapaArea => ({
+    etapa: 'verificado',
+    projectId,
+    template: {versao: '1', hash},
+    idsAntesDaCriacao: null,
+  });
+  return {
+    id: ORG_ID,
+    nome: 'Primeira',
+    estado: 'pronta',
+    confirmacaoPendente: false,
+    materializacao: {
+      monitoramento: area(`${ORG_ID}-m`, 'm'),
+      alertas: area(`${ORG_ID}-a`, 'a'),
+    },
+    areaEmExecucao: null,
+    ultimoErro: null,
+    ...overrides,
   };
 }
 
@@ -381,7 +502,11 @@ describe('materialização da organização', () => {
     ]);
     expect(h.client.createProject).toHaveBeenCalledTimes(2);
     expect(h.document.organizacoes[0]?.nome).toBe('Original');
-    await other.start('Overwrite');
+    // A fresh publication awaits confirmation (confirmacaoPendente): the
+    // layer refuses a further start with a typed error, not a silent return.
+    await expect(other.start('Overwrite')).rejects.toThrow(
+      'creation-in-progress',
+    );
     expect(h.client.createProject).toHaveBeenCalledTimes(2);
     expect(h.document.organizacoes[0]?.nome).toBe('Original');
   });
@@ -446,6 +571,43 @@ describe('materialização da organização', () => {
         entry => entry.projectId,
       ),
     ).toEqual(h.projects);
+  });
+
+  test('M-2: a start from a different client while an operation is in flight rejects with operation-in-progress', async () => {
+    const h = harness();
+    let releasePreparation!: () => void;
+    let preparationEntered!: () => void;
+    const prepared = new Promise<void>(resolve => {
+      releasePreparation = resolve;
+    });
+    const entered = new Promise<void>(resolve => {
+      preparationEntered = resolve;
+    });
+    h.templates.prepare.mockImplementation(async () => {
+      preparationEntered();
+      await prepared;
+      return {
+        monitoramento: {ref: {versao: '1', hash: 'm'}, filePath: '/local/m'},
+        alertas: {ref: {versao: '1', hash: 'a'}, filePath: '/local/a'},
+      };
+    });
+    const started = h.service.start('Primeira');
+    await entered;
+    const other = createMaterializer({
+      client: {...h.client},
+      templates: h.templates,
+      repository: h.repository,
+      generateId: () => '2222222222222222',
+    });
+    const second = other.start('Segunda');
+    // Still blocked inside prepare: the second intent must have created
+    // nothing and awaited nothing.
+    expect(h.client.createProject).not.toHaveBeenCalled();
+    releasePreparation();
+    await started;
+    // The rejected intent is judged only after the original operation has
+    // settled — the joined/rejected outcome is observable then.
+    await expect(second).rejects.toThrow('operation-in-progress');
   });
   test.each([
     '',
@@ -918,6 +1080,114 @@ describe('materialização da organização', () => {
       id: '6666666666666666',
       estado: 'pronta',
       confirmacaoPendente: true,
+    });
+  });
+  test('multi-org: start com A pronta reconhecida cria B e preserva A', async () => {
+    const h = harnessMulti();
+    const primeira = organizacaoProntaReconhecida();
+    h.repository.write({versao: 1, organizacoes: [primeira], ativa: null});
+    h.repository.write.mockClear();
+    const segunda = createMaterializer({
+      client: h.client,
+      templates: h.templates,
+      repository: h.repository,
+      generateId: () => '2222222222222222',
+    });
+
+    await segunda.start('Segunda');
+
+    // B's intent is upserted BEHIND A and materializes in the SAME
+    // operation: A stays EXACTLY as it was (same entry object, same index)
+    // and the array is never replaced wholesale.
+    expect(h.document.organizacoes).toHaveLength(2);
+    expect(h.document.organizacoes[0]).toBe(primeira);
+    expect(h.document.organizacoes[1]).toMatchObject({
+      id: '2222222222222222',
+      nome: 'Segunda',
+      estado: 'pronta',
+      confirmacaoPendente: true,
+      materializacao: {
+        monitoramento: {etapa: 'verificado', projectId: 'id-0'},
+        alertas: {etapa: 'verificado', projectId: 'id-1'},
+      },
+    });
+  });
+
+  test('multi-org: start com A preparando recusa com erro tipado', async () => {
+    const h = harnessMulti();
+    h.repository.write(documentoAmbosVerificados());
+    h.repository.write.mockClear();
+
+    await expect(h.service.start('Segunda')).rejects.toThrow(
+      'creation-in-progress',
+    );
+
+    // The refusal happens BEFORE any prepare, write or Core call.
+    expect(h.templates.prepare).not.toHaveBeenCalled();
+    expect(h.repository.write).not.toHaveBeenCalled();
+    expect(h.client.createProject).not.toHaveBeenCalled();
+  });
+
+  test('multi-org: resume retoma B (preparando) e preserva A (pronta reconhecida)', async () => {
+    const h = harnessMulti();
+    const primeira = organizacaoProntaReconhecida();
+    const area = (projectId: string, hash: string): EtapaArea => ({
+      etapa: 'verificado',
+      projectId,
+      template: {versao: '1', hash},
+      idsAntesDaCriacao: null,
+    });
+    const segunda = organizacaoProntaReconhecida({
+      id: '2222222222222222',
+      nome: 'Segunda',
+      estado: 'preparando',
+      materializacao: {
+        monitoramento: area('2222222222222222-m', 'm'),
+        alertas: area('2222222222222222-a', 'a'),
+      },
+    });
+    h.repository.write({
+      versao: 1,
+      organizacoes: [primeira, segunda],
+      ativa: null,
+    });
+    h.repository.write.mockClear();
+    // B's projects pre-exist in Core: the repair pass and the conferência
+    // read back the canonical settings and member initialization.
+    h.imported.add('2222222222222222-m');
+    h.imported.add('2222222222222222-a');
+    const base = h.client.getProject.getMockImplementation()!;
+    h.client.getProject.mockImplementation(async (id: string) => {
+      const project = await base(id);
+      return {
+        ...project,
+        $getProjectSettings: jest.fn(async () => ({
+          name: id.endsWith('-m') ? 'Monitoramento' : 'Alertas',
+          sendStats: false,
+          projectDescription: markerFor(
+            '2222222222222222',
+            id.endsWith('-m') ? 'm' : 'a',
+            'Segunda',
+          ),
+        })),
+      };
+    });
+
+    await h.service.resume();
+
+    // B resumed: its areas advance to verified projects; A stays EXACTLY as
+    // it was — the same entry object, never rewritten by B's operation.
+    expect(h.document.organizacoes).toHaveLength(2);
+    expect(h.document.organizacoes[0]).toBe(primeira);
+    expect(h.document.organizacoes[1]).toMatchObject({
+      id: '2222222222222222',
+      nome: 'Segunda',
+      estado: 'pronta',
+      confirmacaoPendente: true,
+      materializacao: {
+        monitoramento: {etapa: 'verificado', projectId: '2222222222222222-m'},
+        alertas: {etapa: 'verificado', projectId: '2222222222222222-a'},
+      },
     });
   });
 });
