@@ -52,6 +52,8 @@ const PT_MESSAGES = {
   '$1screens.OrganizationSetup.nameNotIdentity':
     'Usar o mesmo nome de outra organização não conecta os dispositivos. Para participar de uma organização existente, aguarde um convite.',
   '$1screens.OrganizationSetup.emptyName': 'Informe o nome da organização.',
+  '$1screens.Onboarding.CreateOrganization.creationInProgress':
+    'Já existe uma criação de organização em andamento.',
 };
 
 jest.mock('../../contexts/OrganizationMaterializerContext', () => ({
@@ -110,6 +112,31 @@ function documentoComOrganizacao(nome: string): EstadoOrganizacoes {
       },
     ],
     ativa: null,
+  };
+}
+/**
+ * A settled first organization: ready, acknowledged, both areas verified —
+ * the §4.2 shape CA12's form-opening scenario operates on.
+ */
+function organizacaoPronta(nome: string): OrganizacaoLocal {
+  return {
+    ...documentoComOrganizacao(nome).organizacoes[0]!,
+    estado: 'pronta',
+    confirmacaoPendente: false,
+    materializacao: {
+      monitoramento: {
+        etapa: 'verificado',
+        projectId: 'p-m',
+        template: {versao: '1', hash: 'm'},
+        idsAntesDaCriacao: null,
+      },
+      alertas: {
+        etapa: 'verificado',
+        projectId: 'p-a',
+        template: {versao: '1', hash: 'a'},
+        idsAntesDaCriacao: null,
+      },
+    },
   };
 }
 
@@ -547,25 +574,7 @@ describe('CreateOrganization', () => {
     // resolves), opening the creation form from Home is an explicit act —
     // it must not be bounced to a confirmation the user already consumed,
     // and `iniciar` would refuse a second registration anyway.
-    const pronta: OrganizacaoLocal = {
-      ...documentoComOrganizacao('Órgão Ativa').organizacoes[0]!,
-      estado: 'pronta',
-      confirmacaoPendente: false,
-      materializacao: {
-        monitoramento: {
-          etapa: 'verificado',
-          projectId: 'p-m',
-          template: {versao: '1', hash: 'm'},
-          idsAntesDaCriacao: null,
-        },
-        alertas: {
-          etapa: 'verificado',
-          projectId: 'p-a',
-          template: {versao: '1', hash: 'a'},
-          idsAntesDaCriacao: null,
-        },
-      },
-    };
+    const pronta = organizacaoPronta('Órgão Ativa');
     store.instance.setState({
       versao: 1,
       organizacoes: [pronta],
@@ -576,5 +585,114 @@ describe('CreateOrganization', () => {
     expect(screen.getByTestId('ORG.create-name-inp')).toBeOnTheScreen();
     expect(screen.queryByText('PROVISIONING-REACHED')).not.toBeOnTheScreen();
     expect(iniciar).not.toHaveBeenCalled();
+  });
+
+  test('a settled document re-opened without an active selection still routes to OrganizationProvisioning', async () => {
+    // Redirect preserved (Fase 4): "opened the create screen with an
+    // already-settled document" — A is pronta and acknowledged, but the
+    // device is not operating it (no resolvable active selection), so the
+    // confirmation/selection surface owns the document, not the form.
+    store.instance.setState({
+      versao: 1,
+      organizacoes: [organizacaoPronta('Órgão Ativa')],
+      ativa: null,
+    } as EstadoOrganizacoes);
+    await renderScreen();
+
+    expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
+    expect(screen.queryByTestId('ORG.create-name-inp')).not.toBeOnTheScreen();
+    expect(iniciar).not.toHaveBeenCalled();
+  });
+
+  test('a settled document does not short-circuit the second creation', async () => {
+    // Fase 4: with A `pronta`, acknowledged and operating (the rule-5
+    // projection resolves) and NOTHING in flight, B's press must reach the
+    // materializer — the gate is no longer "any organization exists"
+    // (`organizacoes[0]`), it is the materializer's own typed refusal.
+    store.instance.setState({
+      versao: 1,
+      organizacoes: [organizacaoPronta('Órgão Ativa')],
+      ativa: {organizacaoId: '0123456789abcdef', area: 'monitoramento'},
+    } as EstadoOrganizacoes);
+    await renderScreen();
+    await irParaEtapaNome();
+    await fireEvent.changeText(
+      screen.getByTestId('ORG.create-name-inp'),
+      '  Órgão Segunda  ',
+    );
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+
+    await waitFor(() => {
+      expect(iniciar).toHaveBeenCalledWith('Órgão Segunda');
+    });
+    // The form stays: no handover was warranted by a settled document.
+    expect(screen.queryByText('PROVISIONING-REACHED')).not.toBeOnTheScreen();
+  });
+
+  test('a settled document still surfaces a genuine rejection in the sheet', async () => {
+    // The race swallow keyed on `organizacoes[0]` silenced B's real failures
+    // (template refusal, write refusal) whenever a settled organization was
+    // present — a rejection with nothing in flight is an error sheet, never
+    // silence.
+    mockMaterializador({
+      iniciar: async () => {
+        throw new Error('boom');
+      },
+    });
+    store.instance.setState({
+      versao: 1,
+      organizacoes: [organizacaoPronta('Órgão Ativa')],
+      ativa: {organizacaoId: '0123456789abcdef', area: 'monitoramento'},
+    } as EstadoOrganizacoes);
+    await renderScreen();
+    await irParaEtapaNome();
+    await fireEvent.changeText(
+      screen.getByTestId('ORG.create-name-inp'),
+      'Órgão Segunda',
+    );
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+
+    expect(await screen.findByText('ERROR: boom')).toBeOnTheScreen();
+  });
+
+  test('a start while another creation is in flight is surfaced as blocked, not swallowed', async () => {
+    // SPEC B §5.5 guard now lives in the materializer layer: a start while
+    // another creation is in flight (B `preparando` in the document) throws
+    // the typed `creation-in-progress`. The screen must signal that state
+    // to the user — never crash, never silence.
+    // The layer's typed refusal (SPEC B §5.5 guard, materializar.ts:384):
+    // a start while another creation is in flight throws it.
+    iniciar.mockImplementation(async () => {
+      throw new Error('creation-in-progress');
+    });
+    store.instance.setState({
+      versao: 1,
+      organizacoes: [
+        organizacaoPronta('Órgão Ativa'),
+        // A distinct id: the §4.2 parser rejects duplicate ids, and the
+        // in-flight creation registered its own (SPEC B §4.1).
+        {
+          ...documentoComOrganizacao('Órgão Em Voo').organizacoes[0]!,
+          id: 'fedcba9876543210',
+        },
+      ],
+      ativa: {organizacaoId: '0123456789abcdef', area: 'monitoramento'},
+    } as EstadoOrganizacoes);
+    await renderScreen();
+    await irParaEtapaNome();
+    await fireEvent.changeText(
+      screen.getByTestId('ORG.create-name-inp'),
+      'Órgão Segunda',
+    );
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+
+    await waitFor(() => {
+      expect(iniciar).toHaveBeenCalledWith('Órgão Segunda');
+    });
+    expect(await screen.findByTestId('ORG.create-blocked')).toBeOnTheScreen();
+    // The form stays usable and the press never crashed it.
+    expect(
+      screen.getByTestId('ORG.create-btn', {includeHiddenElements: true}),
+    ).toBeOnTheScreen();
   });
 });

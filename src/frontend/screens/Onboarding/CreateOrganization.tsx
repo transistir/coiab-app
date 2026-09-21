@@ -20,7 +20,11 @@ import {
   useCoiabOrganizationsState,
   useCoiabOrganizationsStoreContext,
 } from '../../contexts/CoiabOrganizationsStoreContext';
-import {derivarProjectIdAtivo} from '../../lib/organization/coiabOrganizations';
+import {
+  classificarDocumento,
+  derivarProjectIdAtivo,
+  organizacaoEmPreparo,
+} from '../../lib/organization/coiabOrganizations';
 import {markerFor} from '../../lib/organization/marker';
 import {ErroPacote} from '../../lib/organization/pacotes';
 import {AppStackParamsList} from '../../sharedTypes/navigation';
@@ -69,6 +73,13 @@ const m = defineMessages({
   creating: {
     id: '$1screens.Onboarding.CreateOrganization.creating',
     defaultMessage: 'Creating Organization…',
+  },
+  // ⚑ SPEC (A4): there is no canonical copy for the materializer's typed
+  // refusal (SPEC B §5.5 guard) — this minimal factual descriptor fills
+  // the gap. COPY PENDING A SPEC DECISION.
+  creationInProgress: {
+    id: '$1screens.Onboarding.CreateOrganization.creationInProgress',
+    defaultMessage: 'An Organization creation is already in progress.',
   },
   // ⚑ SPEC (A4): there is no canonical string yet for a package failure
   // BEFORE any write — `$1screens.OrganizationSetup.failureBody`
@@ -127,13 +138,32 @@ export const CreateOrganization = ({
   const {instance} = useCoiabOrganizationsStoreContext();
   const estado = useCoiabOrganizationsState();
   const materializador = useOrganizationMaterializer();
-  const organizacaoNoDocumento = estado.organizacoes[0];
+  // SPEC B §3.3 items 2-3 and §5.5: a document with a creation in flight
+  // (or a pending confirmation) outranks the form — the provisioning
+  // surface owns its recovery and its confirmation — and a settled
+  // document NOT being operated (no resolvable active selection) is the
+  // same handover: starting over it is never authorized. The ONE state
+  // that leaves an explicitly opened form alone is the settled,
+  // operating one (pronta, acknowledged, selection resolvable): there the
+  // device already operates the organization, and a second creation is
+  // the materializer's own guarded call.
+  React.useEffect(() => {
+    if (
+      estado.organizacoes.length > 0 &&
+      derivarProjectIdAtivo(estado) === null
+    ) {
+      navigation.replace('OrganizationProvisioning');
+    }
+  }, [estado, navigation]);
   const [erro, setErro] = React.useState<Error | null>(null);
   const [emptyNameError, setEmptyNameError] = React.useState(false);
   // A synchronous re-entry guard: a state check alone would let a second
   // press slip through before the rerender publishes the loading UI.
   const iniciandoRef = React.useRef(false);
   const [iniciando, setIniciando] = React.useState(false);
+  // The layer's typed refusal (SPEC B §5.5) surfaces as a blocked state:
+  // the form stays, explains, and re-arms — never crash, never silence.
+  const [bloqueado, setBloqueado] = React.useState(false);
 
   const trimmedName = name.trim();
   const tooLong = isNameTooLong(name);
@@ -158,32 +188,18 @@ export const CreateOrganization = ({
     setEmptyNameError(false);
   }
 
-  // SPEC B §3.3 items 2-3 and §5.5:241: a persisted organization outranks
-  // the form — preparando/falha_recuperavel belong to the provisioning
-  // surface's recovery, and a pending confirmation to its "Abrir
-  // organização" tap — so starting a second operation over one is never
-  // authorized. The ONE state that leaves an explicitly opened form alone
-  // is the settled one (pronta, acknowledged, selection resolvable): there
-  // the device already operates the organization, and the materializer
-  // itself refuses a second registration.
-  React.useEffect(() => {
-    if (organizacaoNoDocumento && derivarProjectIdAtivo(estado) === null) {
-      navigation.replace('OrganizationProvisioning');
-    }
-  }, [organizacaoNoDocumento, estado, navigation]);
-
   // A rejection means NOTHING was persisted (the materializer routes every
   // mid-materialization failure into the document as `falha_recuperavel`
   // instead of throwing): the form stays with its draft and explains the
   // error. A document that appeared during the attempt is the provisioning
   // surface's business, not an error sheet.
   React.useEffect(() => {
-    if (!erro || organizacaoNoDocumento) return;
+    if (!erro || organizacaoEmPreparo(estado)) return;
     navigation.navigate('ErrorBottomSheet', {error: erro});
-  }, [erro, organizacaoNoDocumento, navigation]);
+  }, [erro, estado, navigation]);
 
   function handleCreatePress() {
-    if (iniciandoRef.current || organizacaoNoDocumento) {
+    if (iniciandoRef.current) {
       return;
     }
     if (trimmedName.length === 0) {
@@ -206,9 +222,25 @@ export const CreateOrganization = ({
     materializador
       .iniciar(trimmedName)
       .catch((error: unknown) => {
-        // The CURRENT document decides: a rejection that raced against a
-        // persisted intent is the provisioning surface's business.
-        if (instance.getState().organizacoes[0]) return;
+        // The layer's OWN refusal (SPEC B §5.5, now in the materializer
+        // layer): the start was refused while another creation is in
+        // flight — signal the blocked state; the document is the
+        // provisioning surface's business, not an error sheet.
+        if (
+          error instanceof Error &&
+          error.message === 'creation-in-progress'
+        ) {
+          setBloqueado(true);
+          return;
+        }
+        // A rejection that raced against a creation in flight (or a
+        // pending confirmation) is the provisioning surface's business —
+        // the §4.2 classification, not "any entry exists", is what makes
+        // a document un-creatable-over.
+        const documento = classificarDocumento(instance.getState());
+        if (documento === 'preparando' || documento === 'confirmacao') {
+          return;
+        }
         const falha = toError(error);
         if (falha instanceof ErroPacote) {
           // Decisão A/A4: ErrorBottomSheet surfaces `error.code` in its
@@ -290,6 +322,11 @@ export const CreateOrganization = ({
             </View>
           </View>
           <View style={styles.buttonContainer}>
+            {bloqueado && (
+              <BodyText variant="smallMeta" testID="ORG.create-blocked">
+                {t(m.creationInProgress)}
+              </BodyText>
+            )}
             {iniciando ? (
               <>
                 <LoadingIndicator size="large" style={{flex: 0}} />
