@@ -24,9 +24,10 @@ import {useCoiabOrganizationsStoreContext} from './CoiabOrganizationsStoreContex
  * root next to the activation driver: `iniciar` registers a new organization
  * (never used to resume) and `retomar` continues the persisted `preparando`
  * journal — the resume adapter `useOrganizationActivation` injects into the
- * activation engine. `retomar` refuses any id other than the first (and only)
- * organization of the document, so a stale caller can never resume a journal
- * that no longer belongs to it.
+ * activation engine. `retomar` locates the organization by id ANYWHERE in
+ * the document — a settled `pronta` first entry never shadows a later
+ * `preparando` one — and refuses any id absent from it, so a stale caller
+ * can never resume a journal that no longer belongs to it.
  */
 export type OrganizationMaterializerHandle = {
   iniciar(nome: string): Promise<void>;
@@ -68,8 +69,10 @@ export function OrganizationMaterializerProvider({
             queryClient.invalidateQueries({queryKey: projectsQueryKey}),
           ),
       retomar: async organizacaoId => {
-        const organizacao = store.instance.getState().organizacoes[0];
-        if (!organizacao || organizacao.id !== organizacaoId) {
+        const organizacao = store.instance
+          .getState()
+          .organizacoes.find(o => o.id === organizacaoId);
+        if (!organizacao) {
           throw new Error('organization-not-resumable');
         }
         // SPEC B §5.5 dispatch: a journal whose BOTH areas are accepted

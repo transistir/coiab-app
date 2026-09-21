@@ -16,6 +16,7 @@ import {
   derivarProjectIdAtivo,
   type EstadoOrganizacoes,
   type EtapaArea,
+  organizacaoEmPreparo,
   type OrganizacaoLocal,
 } from '../../lib/organization/coiabOrganizations';
 import {DARK_GREY, RED} from '../../lib/styles';
@@ -317,9 +318,11 @@ function DocumentDrivenProvisioning({
  * Fail-closed screen for an Organization that is not an open, acknowledged
  * organization yet (SPEC 10.1 / SPEC B §3.3-§4.4).
  *
- * The persisted organization document (`estado.organizacoes[0]`) is the only
- * content authority: `preparando` shows the two area rows with no buttons;
- * `falha_recuperavel` offers Tentar novamente through the activation engine;
+ * The content authority is the organization in preparation — §4.2's
+ * `organizacaoEmPreparo` read — falling back to the first organization
+ * when every one is settled: `preparando` shows the two area rows with
+ * no buttons; `falha_recuperavel` offers Tentar novamente through the
+ * activation engine;
  * `pronta` with a pending confirmation offers Abrir organização and waits;
  * and a settled document the engine failed to open (`recovery` |
  * `unavailable`) says so and reactivates through the engine — blocked work
@@ -331,7 +334,12 @@ export const OrganizationProvisioning = ({
   navigation,
 }: NativeStackScreenProps<AppStackParamsList, 'OrganizationProvisioning'>) => {
   const estado = useCoiabOrganizationsState();
-  const organizacaoDocument = estado.organizacoes[0];
+  // The content authority (SPEC B §4.4): the organization still in
+  // preparation anywhere in the document, falling back to the first entry
+  // when all are `pronta` — the recovery/`unavailable` contract below keeps
+  // its authority when a ready organization cannot be opened.
+  const organizacaoDocument =
+    organizacaoEmPreparo(estado) ?? estado.organizacoes[0];
   const {status: activationStatus} = useOrganizationActivationContext();
   // The document's own operational id (SPEC A §4.2 regra 5): null while the
   // confirmation is pending or the document cannot be parsed.

@@ -345,6 +345,43 @@ describe('OrganizationProvisioning', () => {
     });
   });
 
+  // Multi-organization document (comportamento 5): A settled, ready and
+  // acknowledged FIRST, B still `preparando` behind it. The content
+  // authority is the organization in preparation — the rows are B's own
+  // journal, never the settled first entry's.
+  describe('multi-organization document', () => {
+    test("renders the preparing organization's area rows, not the settled first one's", async () => {
+      seedDocument([
+        organizacao({
+          estado: 'pronta',
+          confirmacaoPendente: false,
+          materializacao: PAR_PRONTA,
+        }),
+        organizacao({
+          id: 'org-2',
+          nome: 'Segunda',
+          estado: 'preparando',
+          materializacao: {
+            monitoramento: etapa({etapa: 'criado', projectId: 'proj-m-2'}),
+            alertas: etapa({etapa: 'ausente'}),
+          },
+        }),
+      ]);
+      await renderScreen();
+
+      expect(
+        screen.getByText('Preparing your organization…'),
+      ).toBeOnTheScreen();
+      // B's rows: one preparing, one waiting.
+      expect(screen.getByText('Monitoring')).toBeOnTheScreen();
+      expect(screen.getByText('Preparing')).toBeOnTheScreen();
+      expect(screen.getByText('Alerts')).toBeOnTheScreen();
+      expect(screen.getByText('Waiting')).toBeOnTheScreen();
+      // Never A's settled "Ready" rows.
+      expect(screen.queryAllByText('Ready')).toHaveLength(0);
+    });
+  });
+
   // Fail-closed open states (SPEC B §4.4 table row "Organização indisponível"):
   // the document is settled ('pronta', acknowledged) but the activation engine
   // refused to open it — the screen must say so and offer Tentar novamente

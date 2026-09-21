@@ -169,6 +169,29 @@ function conviteDocument(): EstadoOrganizacoes {
   };
 }
 
+/**
+ * Multi-organization document (comportamento 5): A settled, ready and
+ * acknowledged (confirmacaoPendente false) FIRST, B still `preparando`
+ * behind it. The resume must target B by id — the first slot no longer
+ * owns the only journal.
+ */
+const ORG_ID_B = 'fedcba9876543210';
+
+function twoOrganizationsDocument(): EstadoOrganizacoes {
+  return {
+    versao: 1,
+    organizacoes: [
+      readyOrganization(ORG_ID),
+      {
+        ...readyOrganization(ORG_ID_B),
+        estado: 'preparando',
+        confirmacaoPendente: false,
+      },
+    ],
+    ativa: {organizacaoId: ORG_ID, area: 'alertas'},
+  };
+}
+
 describe('OrganizationMaterializerContext', () => {
   let clientApi: {
     getDeviceInfo: jest.Mock;
@@ -256,6 +279,56 @@ describe('OrganizationMaterializerContext', () => {
 
     const resume = createMaterializerMock.mock.results[0]!.value.resume;
     expect(resume).not.toHaveBeenCalled();
+  });
+
+  test('retomar localiza pelo id no documento inteiro: pronta A não esconde preparando B', async () => {
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState(twoOrganizationsDocument(), true);
+    const {hook} = await renderMaterializador(store);
+
+    await act(async () => {
+      await hook.result.current!.retomar(ORG_ID_B);
+    });
+
+    // B's creation journal resumed; the dispatch stayed a creation resume
+    // (B carries templates) and A's settled journal was left untouched.
+    const materializer = createMaterializerMock.mock.results[0]!.value;
+    expect(materializer.resume).toHaveBeenCalledTimes(1);
+    expect(verificarEntradaMock).not.toHaveBeenCalled();
+    const [primeira, segunda] = store.instance.getState().organizacoes;
+    expect(primeira).toMatchObject({
+      id: ORG_ID,
+      estado: 'pronta',
+      confirmacaoPendente: false,
+    });
+    expect(segunda).toMatchObject({
+      id: ORG_ID_B,
+      estado: 'pronta',
+      confirmacaoPendente: true,
+    });
+
+    await act(async () => {
+      await hook.unmount();
+    });
+  });
+
+  test('retomar continua recusando um id que não existe no documento', async () => {
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState(twoOrganizationsDocument(), true);
+    const {hook} = await renderMaterializador(store);
+
+    await act(async () => {
+      await expect(
+        hook.result.current!.retomar('organizacao-inexistente'),
+      ).rejects.toThrow('organization-not-resumable');
+    });
+
+    const resume = createMaterializerMock.mock.results[0]!.value.resume;
+    expect(resume).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await hook.unmount();
+    });
   });
 
   test('retomar retoma a organização persistida e invalida a consulta de projetos', async () => {
