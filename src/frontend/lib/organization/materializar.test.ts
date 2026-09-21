@@ -610,10 +610,21 @@ describe('materialização da organização', () => {
     await expect(second).rejects.toThrow('operation-in-progress');
   });
   test('M-3: a foreign start while the document is ready+acknowledged and an operation is inside prepare rejects with operation-in-progress', async () => {
-    const h = harness();
+    // The multi-org harness: its client has NO index-0 journal asserts, so a
+    // seeded org with a distinct id is never confused with the in-flight
+    // operation's own entry (review finding: the single-org harness's
+    // createProject assert reads organizacoes[0] and would fail the owner's
+    // materialization under a genuine two-org document).
+    const h = harnessMulti();
     h.repository.write({
       versao: 1,
-      organizacoes: [organizacaoProntaReconhecida()],
+      organizacoes: [
+        // A distinct id from the in-flight start's ORG_ID: the pinned
+        // rejection is judged BEFORE any persistence, but a distinct id
+        // guarantees this test exercises a genuine two-org document if the
+        // guard ever leaked (review finding, non-blocking).
+        organizacaoProntaReconhecida({id: '9999999999999999'}),
+      ],
       ativa: null,
     });
     let releasePreparation!: () => void;
