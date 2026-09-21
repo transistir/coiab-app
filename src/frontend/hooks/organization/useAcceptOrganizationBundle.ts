@@ -2,8 +2,10 @@ import {useCallback, useEffect, useRef, useState} from 'react';
 import {useQueryClient} from '@tanstack/react-query';
 import {useClientApi} from '@comapeo/core-react';
 
-import {useProjetarProjectIdAtivo} from '../../contexts/ActiveProjectIdStoreContext';
-import {useCoiabOrganizationsActions} from '../../contexts/CoiabOrganizationsStoreContext';
+import {
+  useCoiabOrganizationsActions,
+  useCoiabOrganizationsStoreContext,
+} from '../../contexts/CoiabOrganizationsStoreContext';
 import {useOrganizationActivationContext} from '../../contexts/OrganizationActivationContext';
 import {
   useOrganizationInviteIdentities,
@@ -73,20 +75,26 @@ function bothSlotsPresent(
  * on a COMPLETE accept (every slot local across the reads), register the
  * invite entry in the durable document (SPEC B §5.5) with the two accepted
  * project ids and hand activation to the engine (`retryPreparation` — the
- * materializer's `retomar` then dispatches by origin). When the entry is
- * NOT registered (an incomplete accept, or the store refusing — a projectId
- * already associated with another local organization, duplicate ids, empty
- * name), the legacy behavior stands: the
- * Monitoramento project becomes active directly (SPEC 8.6 ladder: slot m
- * wins from the freshest source that sees it — the post-accept
- * reconstruction, the pre-accept local one, or this accept's own result —
- * before any slot-a fallback).
+ * materializer's `retomar` then dispatches by origin). The hand-off decides
+ * on the durable document: the bundle's organization is located BY ID in it
+ * (never by index) — the entry the registration just wrote. A COMPLETE
+ * accept whose organization ends up ABSENT from the document (the store
+ * refusing — a projectId already associated with another local organization,
+ * an empty name — or the entry discarded between steps) is an impossible
+ * state for the invite flow: it publishes the typed
+ * `invite-registration-missing` error with NO write — the hook never forces
+ * a project active itself (there is no `projetar` fallback; the refused
+ * legacy direct activation is gone). A refusal with the entry still present
+ * keeps the outcome a success with no retoma hand-off (the organization is
+ * already durably entered).
  */
 export function useAcceptOrganizationBundle() {
   const clientApi = useClientApi();
   const queryClient = useQueryClient();
-  const projetar = useProjetarProjectIdAtivo();
   const {registrarEntradaPorConvite} = useCoiabOrganizationsActions();
+  // The durable organization document: the retoma hand-off locates the
+  // bundle's organization BY ID in it — never by index.
+  const {instance: documento} = useCoiabOrganizationsStoreContext();
   // The activation engine, mounted once at the root: a registered entry
   // hands its confirmation to the engine instead of forcing a slot active.
   const {retryPreparation} = useOrganizationActivationContext();
@@ -304,27 +312,47 @@ export function useAcceptOrganizationBundle() {
                 nome: bundle.organizationName ?? '',
                 projectIds: {monitoramento, alertas},
               });
-              if (registrada) {
+              // The retoma hand-off decides on the durable document: the
+              // bundle's organization is located BY ID — never by index —
+              // right where the registration just wrote (or found) its
+              // entry. Nothing else decides "retomada vs. primeiro aceite".
+              const entrada = documento
+                .getState()
+                .organizacoes.find(org => org.id === bundle.organizationId);
+              if (entrada && registrada) {
                 registeredOrganizationId = bundle.organizationId;
                 // The engine confirms the entry (retomar dispatches by
                 // origin: `verificarEntrada` for a convite journal) and
                 // publishes the selection — its own state carries any
                 // failure, so this stays fire-and-forget.
                 void retryPreparation(bundle.organizationId);
+              } else if (!entrada) {
+                // Proibido projetar: a bundle whose organization has NO
+                // corresponding entry in the document at retoma time (the
+                // store refusing — a projectId already associated with
+                // another local organization, an empty name — or the entry
+                // discarded between steps) is an impossible state for the
+                // invite flow: typed error, and NO write — the hook never
+                // forces a project active itself.
+                outcome = {
+                  ok: false,
+                  error: new OrganizationOperationError(
+                    'invite-registration-missing',
+                    `the accepted organization ${bundle.organizationId} has no entry in the durable document: the registration was refused or the entry was discarded`,
+                    {organizationId: bundle.organizationId},
+                  ),
+                };
               }
+              // A refusal with the entry still present: the organization is
+              // already durably entered — no retoma hand-off is needed.
             }
           }
 
           if (outcome.ok) {
             // A registered entry hands activation to the engine above — the
-            // hook must not force a slot itself in that case. A refused or
-            // absent registration keeps the legacy direct activation.
-            if (
-              registeredOrganizationId === undefined &&
-              outcome.activeProjectId !== undefined
-            ) {
-              projetar(outcome.activeProjectId);
-            }
+            // hook never forces a slot itself: there is no `projetar`
+            // fallback in the invite flow (a missing registration is the
+            // typed `invite-registration-missing` error above).
             if (identityComplete) {
               clearIdentity(bundle.organizationId);
             }
@@ -347,7 +375,7 @@ export function useAcceptOrganizationBundle() {
     [
       clientApi,
       queryClient,
-      projetar,
+      documento,
       registrarEntradaPorConvite,
       retryPreparation,
       identities,

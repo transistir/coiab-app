@@ -55,7 +55,8 @@ export type OrganizationErrorCode =
   | 'bundle-inconsistent'
   | 'accept-partial'
   | 'incomplete-org-blocks-create'
-  | 'organization-not-incomplete';
+  | 'organization-not-incomplete'
+  | 'invite-registration-missing';
 
 export class OrganizationOperationError extends Error {
   readonly code: OrganizationErrorCode;
