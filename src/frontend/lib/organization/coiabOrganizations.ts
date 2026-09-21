@@ -153,6 +153,21 @@ export function classificarDocumento(
 }
 
 /**
+ * §4.2 selector for the organization still being prepared: the FIRST
+ * organization that is not `pronta` or that has a pending confirmation
+ * (`confirmacaoPendente`), or `undefined` when the document holds none.
+ * Array order is authoritative — never re-sorted, never heuristic; the
+ * Organizations UI reads this instead of `organizacoes[0]`.
+ */
+export function organizacaoEmPreparo(
+  estado: EstadoOrganizacoes,
+): OrganizacaoLocal | undefined {
+  return estado.organizacoes.find(
+    o => o.estado !== 'pronta' || o.confirmacaoPendente,
+  );
+}
+
+/**
  * §6.1 presentation read for the Organizations selector (CA05): the active
  * organization comes first, and only it is marked `atual`; every other
  * organization follows by name (`localeCompare`), with the id as tie-break.

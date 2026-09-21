@@ -5,6 +5,7 @@ import {
   criarEtapaAreaAusente,
   derivarProjectIdAtivo,
   ordenarOrganizacoes,
+  organizacaoEmPreparo,
 } from './coiabOrganizations';
 
 function criarOrganizacaoPronta(
@@ -359,5 +360,73 @@ describe('ordenarOrganizacoes (SPEC A §6.1 CA05)', () => {
     const copia = structuredClone(estado);
     expect(() => ordenarOrganizacoes(congelar(estado))).not.toThrow();
     expect(estado).toStrictEqual(copia);
+  });
+});
+
+describe('organizacaoEmPreparo (seletor puro da organização em preparo)', () => {
+  test('documento vazio devolve undefined', () => {
+    expect(
+      organizacaoEmPreparo({versao: 1, organizacoes: [], ativa: null}),
+    ).toBeUndefined();
+  });
+
+  test('uma organização pronta e reconhecida devolve undefined', () => {
+    expect(
+      organizacaoEmPreparo({
+        versao: 1,
+        organizacoes: [criarOrganizacaoPronta()],
+        ativa: null,
+      }),
+    ).toBeUndefined();
+  });
+
+  test('pronta+reconhecida seguida de preparando devolve a preparando', () => {
+    const preparando = criarOrganizacaoPronta({
+      id: 'org-2',
+      estado: 'preparando',
+    });
+    expect(
+      organizacaoEmPreparo({
+        versao: 1,
+        organizacoes: [criarOrganizacaoPronta(), preparando],
+        ativa: null,
+      }),
+    ).toBe(preparando);
+  });
+
+  test('pronta com confirmação pendente devolve a de confirmação pendente', () => {
+    const comPendencia = criarOrganizacaoPronta({
+      id: 'org-2',
+      confirmacaoPendente: true,
+    });
+    expect(
+      organizacaoEmPreparo({
+        versao: 1,
+        organizacoes: [criarOrganizacaoPronta(), comPendencia],
+        ativa: null,
+      }),
+    ).toBe(comPendencia);
+  });
+
+  test('duas candidatas: devolve a primeira na ordem do array, sem reordenar', () => {
+    const preparando = criarOrganizacaoPronta({
+      id: 'org-2',
+      estado: 'preparando',
+    });
+    const pendente = criarOrganizacaoPronta({
+      id: 'org-3',
+      confirmacaoPendente: true,
+    });
+    const estado: EstadoOrganizacoes = {
+      versao: 1,
+      organizacoes: [criarOrganizacaoPronta(), preparando, pendente],
+      ativa: null,
+    };
+    expect(organizacaoEmPreparo(estado)).toBe(preparando);
+    expect(estado.organizacoes.map(o => o.id)).toEqual([
+      'org-1',
+      'org-2',
+      'org-3',
+    ]);
   });
 });
