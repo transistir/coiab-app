@@ -147,6 +147,10 @@ const ROTAS_SEM_PROJETO: Record<string, true> = {
   OrganizationInviteReceived: true,
   InviteSuccessfullyAccepted: true,
   InviteCanceled: true,
+  // Review fronteira P2-3: the removal explanation reads the removed slot
+  // from its route params, and it must survive the recovery its own
+  // detection triggers.
+  RemovedFromProjectBottomSheet: true,
 };
 
 export function GenerationTransitionGate({

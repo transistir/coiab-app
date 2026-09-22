@@ -10,7 +10,6 @@ import {
   useOwnRoleInProject,
   useProjectSettings,
 } from '@comapeo/core-react';
-import {useActiveProject} from '../contexts/ActiveProjectContext';
 import {LoadingIndicator} from '../sharedComponents/LoadingIndicator';
 import {ColorCard} from '../sharedComponents/ColorCard';
 import {DEFAULT_PROJECT_COLOR} from '../constants';
@@ -31,9 +30,13 @@ const m = defineMessages({
 
 export const RemovedFromProjectBottomSheet = ({
   navigation,
+  route,
 }: NativeRootNavigationProps<'RemovedFromProjectBottomSheet'>) => {
   const {formatMessage} = useIntl();
-  const {projectId} = useActiveProject();
+  // Review fronteira P2-3: the removed slot comes from the route — it may be
+  // the area that is NOT selected, and the sheet outlives the organization
+  // context the engine's recovery takes away.
+  const {projectId} = route.params;
   const {
     data: {reason},
   } = useOwnRoleInProject({projectId});

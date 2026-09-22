@@ -19,10 +19,6 @@ jest.mock('@comapeo/core-react', () => ({
   useLeaveProject: jest.fn(),
 }));
 
-jest.mock('../contexts/ActiveProjectContext', () => ({
-  useActiveProject: () => ({projectId: mockLeftProjectId, projectApi: {}}),
-}));
-
 const mockLeftProjectId = 'project-left';
 
 const mockLeaveMutate = jest.fn();
@@ -61,6 +57,7 @@ async function renderScreen() {
           <Stack.Screen
             name="RemovedFromProjectBottomSheet"
             component={RemovedFromProjectBottomSheet}
+            initialParams={{projectId: mockLeftProjectId}}
             options={{headerShown: false}}
           />
         </Stack.Navigator>

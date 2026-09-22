@@ -152,7 +152,9 @@ export type RootStackParamsList = {
   OrganizationInviteReceived: {organizationId: string; inviteId: string};
   InviteSuccessfullyAccepted: {projectName: string; projectId: string};
   InviteCanceled: {projectName: string};
-  RemovedFromProjectBottomSheet: undefined;
+  // The removed slot travels with the route: the sheet stays on screen while
+  // the organization context is lost, so it never reads the active project.
+  RemovedFromProjectBottomSheet: {projectId: string};
   ObservationMetadata: {observationId: string};
   ErrorBottomSheet: {error: Error};
   BackgroundMapErrorBottomSheet: {title: string; description: string};
