@@ -1,7 +1,6 @@
 import * as React from 'react';
 import {BackHandler, StyleSheet, View} from 'react-native';
 import {defineMessages, useIntl} from 'react-intl';
-import {usePreventRemove} from '@react-navigation/native';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 
 import {HeaderText} from '../../sharedComponents/Text/HeaderText';
@@ -382,39 +381,55 @@ export const OrganizationProvisioning = ({
       setAvisoDemora(false);
     };
   }, [preparando]);
-  // SPEC B §3.2:64/:68 (Fase 5): while the document holds an organization
-  // that is not settled and acknowledged — preparation in flight, a
-  // recoverable failure, or a pending confirmation — Back cannot remove this
-  // screen: leaving with the operation alive loses the context of what is
-  // happening. `usePreventRemove` holds the screen at the navigator level
-  // (header back, gesture, and the GO_BACK dispatch react-navigation routes
-  // through `beforeRemove`), and the Android hardware press is consumed
-  // before the native stack can pop it. The same §4.2 predicate gates both
-  // layers, and it is BLOCKER B1's twin: a settled document — the only state
-  // where this screen's own Home reset fires — leaves freely.
-  const emPreparoAtivo = emPreparo !== undefined;
+  // SPEC B §3.2:64/:68 (Fase 5, fix round 2): the hold is the SPEC's own
+  // narrow one. §3.2 authorizes the block ONLY "durante uma chamada de
+  // criação/importação" — the document expresses that as an organization
+  // exactly in `preparando` — and only for the user's exits: "bloquear a
+  // saída pelo cabeçalho, gesto e botão Voltar do Android". A recoverable
+  // failure is NOT a call in flight ("Após uma falha, manter a tela de
+  // recuperação e permitir sair do app pelo sistema") and neither is a
+  // pending confirmation ("Antes de confirmar, voltar é permitido"), so
+  // Back passes in both — the OrganizationRepairBanner's entry (a failure
+  // behind a ready organization) must never trap the user on this screen.
+  // The WIDE §4.2 predicate is BLOCKER B1's own Home-reset gate below (a
+  // settled-but-unacknowledged B must not let Home take over); the hold is
+  // NOT its twin — framing it so was Fase 5's design error.
+  // Programmatic removals are not user exits, so they pass untouched:
+  // `usePreventRemove` cannot serve this hold because it preventDefaults
+  // EVERY removal (core's own beforeRemove listener) and a prevented RESET
+  // is consumed-and-dropped — GenerationTransitionGate advances its
+  // generation before dispatching and never retries, and its recovery/
+  // `unavailable` prune has no backstop. §5.5's recovery table makes the
+  // system's routing mandatory. The header back and the JS-side gesture
+  // both dispatch GO_BACK/POP, so the listener covers every exit §3.2
+  // names; the Android hardware press is consumed first below.
+  const preparandoAtiva = estado.organizacoes.some(
+    organizacao => organizacao.estado === 'preparando',
+  );
   const [avisoBack, setAvisoBack] = React.useState(false);
   // The state keeps the EVENT (a refused attempt); the notice itself is
-  // derived: it is visible only while the work is alive, so it clears on
-  // the very commit the hold ends — no clearing effect, no stale render.
-  usePreventRemove(emPreparoAtivo, ({data}) => {
-    // A USER back attempt is refused with an explanation; a programmatic
-    // removal (this screen's own Home reset, an external reset) is held
-    // silently — the notice would invent an attempt the user never made.
-    const type = data.action.type;
-    if (type !== 'GO_BACK' && type !== 'POP') return;
-    setAvisoBack(true);
-  });
+  // derived: it is visible only while the call is in flight, so it clears
+  // on the very commit the hold ends — no clearing effect, no stale render.
   React.useEffect(() => {
-    if (!emPreparoAtivo) return;
+    if (!preparandoAtiva) return;
+    const unsubscribe = navigation.addListener('beforeRemove', e => {
+      const type = e.data.action.type;
+      // A USER back attempt is refused with an explanation; a programmatic
+      // removal (the generation gate's reset, the system's §5.5
+      // reconciliation routing) is mandatory and never prevented here.
+      if (type !== 'GO_BACK' && type !== 'POP') return;
+      e.preventDefault();
+      setAvisoBack(true);
+    });
     const hardware = BackHandler.addEventListener(
       'hardwareBackPress',
       () => true,
     );
     return () => {
+      unsubscribe();
       hardware.remove();
     };
-  }, [emPreparoAtivo]);
+  }, [preparandoAtiva, navigation]);
   // SPEC B (5b): with a persisted organization document, the reconstruction
   // alone must never navigate — Home opens only through a validated
   // activation whose projected id matches the document's own derivation. The
@@ -454,7 +469,7 @@ export const OrganizationProvisioning = ({
       organizacao={organizacaoDocument}
       ativa={estado.ativa}
       avisoDemora={avisoDemora}
-      avisoBack={avisoBack && emPreparoAtivo}
+      avisoBack={avisoBack && preparandoAtiva}
     />
   );
 };

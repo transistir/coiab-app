@@ -168,24 +168,29 @@ export const CreateOrganization = ({
   // the form stays, explains, and re-arms — never crash, never silence.
   const [bloqueado, setBloqueado] = React.useState(false);
 
-  // SPEC B §3.2:64/:68 (Fase 5): while a start is in flight — or the blocked
-  // banner is up — Back cannot remove this screen: leaving would orphan the
-  // re-arm contract (BLOCKER 1) with the operation alive. The installed
-  // @react-navigation/core (7.21.2) takes a callback, not a `{message}`; the
-  // §5.5 copy is what the screen is ALREADY showing while the hold is up
-  // (the creating text, `m.creating`; the banner, `m.creationInProgress`) —
-  // the prevent is additive to that UI. The prevented removal is DROPPED,
-  // never re-dispatched: the handover replace is the ONE removal that must
-  // land while `iniciando` was set, and the derived gate below (`!iniciando
-  // && !bloqueado`) dispatches it from the effect AFTER this hold's
-  // registration effect, in a commit where the hold has already released.
-  // Re-dispatching a prevented removal off the beforeRemove emission (the
-  // `VISITED_ROUTE_KEYS` skip) committed it while the provider's
-  // registration still held the route, and
+  // SPEC B §3.2:64/:68 (Fase 5, fix round 2): while a start is in flight,
+  // Back cannot remove this screen — the one state §3.2 names ("durante
+  // uma chamada de criação/importação"). The installed
+  // @react-navigation/core (7.21.2) takes a callback, not a `{message}`.
+  // The screen explains the hold in BOTH of its stages: the name form
+  // renders the loading state (`m.creating`), and the §3.1 listener below
+  // has already turned a first back into the intro hop — where the SAME
+  // `m.creating` copy renders while the flight is alive, so a dropped
+  // second back is never silent. The typed refusal (SPEC B §5.5) is NOT a
+  // live operation of this screen: a refused start never resolves, so it
+  // does not extend the hold — §3.2's authorization stays narrow, and Back
+  // keeps working after a refusal.
+  // The prevented removal is DROPPED, never re-dispatched: the handover
+  // replace is the ONE removal that must land while `iniciando` was set,
+  // and the derived gate below dispatches it from the effect AFTER this
+  // hold's registration effect, in a commit where the hold has already
+  // released. Re-dispatching a prevented removal off the beforeRemove
+  // emission (the `VISITED_ROUTE_KEYS` skip) committed it while the
+  // provider's registration still held the route, and
   // PreventRemoveProvider refuses to register a hold for a route the
   // navigation state no longer contains — the mount throw this screen
   // crashed on.
-  usePreventRemove(iniciando || bloqueado, () => {
+  usePreventRemove(iniciando, () => {
     // Held: the removal stays dropped. A back at the name stage was already
     // turned into the screen's own intro hop by the §3.1 listener below.
   });
@@ -200,13 +205,18 @@ export const CreateOrganization = ({
   // (an interaction event, never an effect).
   const documentoAssentadoSemSelecao =
     estado.organizacoes.length > 0 && derivarProjectIdAtivo(estado) === null;
-  // Blocked is consumed by the handover (the banner's claim transfers to
-  // the provisioning surface — the SAME in-flight operation, §3.3 item 2),
-  // so the gate reads through it rather than clearing it here.
+
+  // `bloqueado` does NOT gate the handover. A typed refusal means THIS
+  // screen's start never resolved — the refusal is thrown before the
+  // `.then`, so `startResolvido` stays false and the gate is naturally
+  // false after a refusal. `bloqueado` itself is a terminal banner state
+  // (cleared only by a fresh press), so reading it here would pin Back and
+  // the handover shut until the user re-attempts; when the document later
+  // settles without a resolvable selection — the other flight registering
+  // its organization — the provisioning surface owns it (§3.3 item 2) and
+  // the replace must land regardless of the stale banner.
   const deveTrocar =
-    (documentoAssentadoSemSelecao || startResolvido) &&
-    !iniciando &&
-    !bloqueado;
+    (documentoAssentadoSemSelecao || startResolvido) && !iniciando;
 
   // The deferred handover dispatch (estado → effect → replace): it runs
   // AFTER `usePreventRemove`'s registration effect in the same commit, so
@@ -350,6 +360,15 @@ export const CreateOrganization = ({
                 {t(m.createOrganization)}
               </HeaderText>
               <BodyText style={styles.body}>{t(m.createIntroBody)}</BodyText>
+              {/* B5-2 (fix round 2): a first back lands here (the §3.1
+                  hop) while the start is still in flight — the creating
+                  copy is what the user sees when a second back is dropped
+                  by the hold above; without it the drop is silent. */}
+              {iniciando && (
+                <BodyText variant="smallMeta" testID="ORG.create-creating">
+                  {t(m.creating)}
+                </BodyText>
+              )}
             </View>
             <View style={styles.buttonContainer}>
               <PrimaryButton

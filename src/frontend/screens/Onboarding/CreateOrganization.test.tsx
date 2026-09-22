@@ -863,7 +863,11 @@ describe('CreateOrganization', () => {
       expect(screen.queryByText('SUCCESS-STUB')).not.toBeOnTheScreen();
     });
 
-    test('a back dispatch while the blocked banner is up never removes the screen', async () => {
+    test('a refused start releases the back hold', async () => {
+      // B5-3 (fix round 2): the typed refusal (§5.5) means THIS screen's
+      // start never happened — no call of its own is in flight, so §3.2's
+      // narrow authorization does not extend to it. Back must work: the
+      // §3.1 hop brings the intro, and the next back pops to Success.
       iniciar.mockImplementation(async () => {
         throw new OrganizationOperationError(
           'creation-in-progress',
@@ -884,8 +888,7 @@ describe('CreateOrganization', () => {
       await fireEvent.press(screen.getByTestId('ORG.create-btn'));
       expect(await screen.findByTestId('ORG.create-blocked')).toBeOnTheScreen();
 
-      // The etapa-back brings the intro forward; the banner state (and its
-      // §5.5 hold) survives it.
+      // The etapa-back is the screen's own §3.1 rule: intro, no pop.
       await act(async () => {
         navigationRef.goBack();
       });
@@ -894,13 +897,113 @@ describe('CreateOrganization', () => {
       ).toBeOnTheScreen();
       expect(screen.queryByText('SUCCESS-STUB')).not.toBeOnTheScreen();
 
+      // The refusal is not a live operation: the pop goes through.
       await act(async () => {
         navigationRef.goBack();
       });
-      expect(
-        screen.getByTestId('ORG.create-intro-continue-btn'),
-      ).toBeOnTheScreen();
-      expect(screen.queryByText('SUCCESS-STUB')).not.toBeOnTheScreen();
+      expect(screen.getByText('SUCCESS-STUB')).toBeOnTheScreen();
+    });
+
+    test('a refusal does not block the handover when the document settles without a selection', async () => {
+      // B5-3 (fix round 2): `bloqueado` is a terminal banner state, not a
+      // gate on the handover. A refused start never resolves (the typed
+      // refusal never reaches the `.then`), so `startResolvido` stays
+      // false; when the OTHER flight registers its organization
+      // (`preparando`, no resolvable selection — §3.3 item 2), the
+      // provisioning surface owns the document and the replace must land
+      // even though the stale banner state is still up.
+      iniciar.mockRejectedValueOnce(
+        new OrganizationOperationError(
+          'creation-in-progress',
+          'another organization creation is in progress',
+        ),
+      );
+      store.instance.setState({
+        versao: 1,
+        organizacoes: [organizacaoPronta('Órgão Ativa')],
+        ativa: {organizacaoId: '0123456789abcdef', area: 'monitoramento'},
+      } as EstadoOrganizacoes);
+      await renderScreen();
+      await irParaEtapaNome();
+      await fireEvent.changeText(
+        screen.getByTestId('ORG.create-name-inp'),
+        'Órgão Segunda',
+      );
+      await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+      expect(await screen.findByTestId('ORG.create-blocked')).toBeOnTheScreen();
+
+      // The other flight registers its organization.
+      await act(async () => {
+        store.instance.setState(documentoComOrganizacao('Órgão Em Voo'));
+      });
+      expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
+    });
+
+    test('back during flight explains itself at the intro and the handover lands exactly once', async () => {
+      // Reviewer pin (fix round 2): the §3.1 hop (first back) and the
+      // handover were never tested together. The first back turns the name
+      // form into the intro — where the creating copy explains the hold
+      // (B5-2) — the second back is dropped while the flight is alive, and
+      // the resolved start lands on the provisioning surface EXACTLY once.
+      let releaseStart: () => void = () => {};
+      mockMaterializador({
+        iniciar: (nome: string) =>
+          new Promise<void>(resolve => {
+            releaseStart = () => {
+              void registrar(nome).then(() => resolve());
+            };
+          }),
+      });
+      await renderScreen();
+      await irParaEtapaNome();
+
+      const landings: Array<string> = [];
+      const unsubscribe = navigationRef.addListener('state', e => {
+        const {state} = e.data;
+        if (!state) return;
+        const last = state.routes[state.routes.length - 1];
+        if (last) landings.push(last.name);
+      });
+      try {
+        await fireEvent.changeText(
+          screen.getByTestId('ORG.create-name-inp'),
+          'Órgão Teste',
+        );
+        await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+        // The start is in flight (the loading UI replaced the button).
+        expect(screen.queryByTestId('ORG.create-btn')).not.toBeOnTheScreen();
+
+        // The etapa-back brings the intro forward…
+        await act(async () => {
+          navigationRef.goBack();
+        });
+        expect(
+          screen.getByTestId('ORG.create-intro-continue-btn'),
+        ).toBeOnTheScreen();
+        // …and the creating copy explains the still-alive flight (B5-2).
+        expect(screen.getByTestId('ORG.create-creating')).toBeOnTheScreen();
+
+        // A second back from the intro is held with the start alive.
+        await act(async () => {
+          navigationRef.goBack();
+        });
+        expect(
+          screen.getByTestId('ORG.create-intro-continue-btn'),
+        ).toBeOnTheScreen();
+        expect(screen.queryByText('SUCCESS-STUB')).not.toBeOnTheScreen();
+
+        // The start resolves: the document settles, the hold releases and
+        // the handover replace lands — exactly one navigation event.
+        await act(async () => {
+          releaseStart();
+        });
+        expect(
+          await screen.findByText('PROVISIONING-REACHED'),
+        ).toBeOnTheScreen();
+        expect(landings).toEqual(['OrganizationProvisioning']);
+      } finally {
+        unsubscribe();
+      }
     });
 
     test('idle back from the intro still leaves the screen', async () => {
