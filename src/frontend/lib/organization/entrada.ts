@@ -133,3 +133,42 @@ export async function verificarEntrada({
     throw new Error('publicar-pronta-recusado');
   }
 }
+
+export const PRAZO_JOIN_MS = 60_000;
+export const INTERVALO_JOIN_MS = 500;
+
+/**
+ * Core resolves `invite.accept` while the accepted rows can still read
+ * `joining`, so an entry confirmed right after the accept would record a
+ * `falha_recuperavel` for an organization that is merely still syncing.
+ * Only `'join-pending'` is waited out — re-checked every `INTERVALO_JOIN_MS`
+ * up to `PRAZO_JOIN_MS`, after which it surfaces like any other failure (the
+ * provisioning surface offers the retry). Every other refusal surfaces at
+ * once. The packages are prepared ONCE for the whole wait (`prepare` opens
+ * and hashes both packages); only the cheap row check is repeated.
+ */
+export async function confirmarEntrada(
+  deps: Parameters<typeof verificarEntrada>[0],
+): Promise<void> {
+  const {templates} = deps;
+  let pacotes: ReturnType<typeof templates.prepare> | undefined;
+  const templatesPreparadosUmaVez: typeof templates = {
+    prepare: () => (pacotes ??= templates.prepare()),
+    verify: (project, pacote, projectId) =>
+      templates.verify(project, pacote, projectId),
+  };
+  const inicio = Date.now();
+  for (;;) {
+    try {
+      return await verificarEntrada({
+        ...deps,
+        templates: templatesPreparadosUmaVez,
+      });
+    } catch (error) {
+      const pendente =
+        error instanceof Error && error.message === 'join-pending';
+      if (!pendente || Date.now() - inicio >= PRAZO_JOIN_MS) throw error;
+    }
+    await new Promise(resolve => setTimeout(resolve, INTERVALO_JOIN_MS));
+  }
+}

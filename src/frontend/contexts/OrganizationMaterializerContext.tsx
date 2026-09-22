@@ -4,8 +4,8 @@ import {useQueryClient} from '@tanstack/react-query';
 
 import {clienteDeCriacao} from '../lib/organization/clienteDeCriacao';
 import {
+  confirmarEntrada,
   origemDaOrganizacao,
-  verificarEntrada,
 } from '../lib/organization/entrada';
 import {
   createMaterializer,
@@ -81,7 +81,7 @@ export function OrganizationMaterializerProvider({
         // creation adapter so the icon proof rides along), never create.
         // Anything else is a creation journal and keeps resuming.
         if (origemDaOrganizacao(organizacao) === 'convite') {
-          await verificarEntrada({
+          await confirmarEntrada({
             store,
             client: clienteDeCriacao(clientApi),
             templates: fonte,

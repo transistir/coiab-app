@@ -173,9 +173,23 @@ export const OrganizationInviteReceived = ({
     // landing: reset (not goBack) so the stale invite context cannot return
     // to this sheet. (The old project-id ladder navigated to the joined
     // confirmation with a projectId nothing activates — it is gone.)
+    // The reset is dispatched inline, right after the awaited accept (the
+    // BottomSheetWrapper lets RESET through without its exit-animation
+    // delay). It carries the navigator's full state (`stale: false`) plus a
+    // fresh route key, never a partial `{index, routes}`: a partial reset is
+    // stored un-rehydrated, and when the removed Home route's nested
+    // navigator unmounts, its cleanup reads the root state through the
+    // render-time fallback and writes the old [Home, this sheet] stack back
+    // over the reset.
     navigation.reset({
+      ...navigation.getState(),
       index: 0,
-      routes: [{name: 'OrganizationProvisioning'}],
+      routes: [
+        {
+          key: `OrganizationProvisioning-${Date.now().toString(36)}`,
+          name: 'OrganizationProvisioning',
+        },
+      ],
     });
   }
 

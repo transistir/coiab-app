@@ -80,9 +80,18 @@ export const RemovedFromProjectBottomSheet = ({
                   {projectId},
                   {
                     onSuccess: () => {
+                      // Full-state reset (see OrganizationInviteReceived):
+                      // a partial `{index, routes}` is overwritten by the
+                      // removed Home route's nested-navigator cleanup.
                       navigation.reset({
+                        ...navigation.getState(),
                         index: 0,
-                        routes: [{name: 'OrganizationProvisioning'}],
+                        routes: [
+                          {
+                            key: `OrganizationProvisioning-${Date.now().toString(36)}`,
+                            name: 'OrganizationProvisioning',
+                          },
+                        ],
                       });
                     },
                   },

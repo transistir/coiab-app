@@ -10,7 +10,7 @@ import {usePreventAndroidBackButton} from '../hooks/usePreventAndroidBackButton'
  *
  * @description A wrapper component that should be used for bottom sheets. It will handle the animation and prevent the back button from closing the bottom sheet.
  *
- * When pushing a bottom sheet ontop of another bottom sheet use `navigation.replace`, to close the original bottom sheet first.
+ * When pushing a bottom sheet ontop of another bottom sheet use `navigation.replace`, to close the original bottom sheet first. A `replace` (like a `reset`) removes the sheet immediately, without the exit animation.
  */
 export const BottomSheetWrapper = ({
   children,
@@ -47,9 +47,17 @@ const AnimateBottomSheetContainer = ({
 
   const [displayContent, setDisplayContent] = React.useState(true);
 
-  // This effect is used to prevent the bottom sheet from being removed before the animation is complete
+  // This effect is used to prevent the bottom sheet from being removed before
+  // the animation is complete. RESET and REPLACE are the exception and pass
+  // through untouched (every other removing action is still delayed):
+  // preventing and re-dispatching them races unmount and can swallow the
+  // navigation entirely (e.g. the post-accept reset that leaves an invite
+  // sheet). They skip the exit animation.
   React.useEffect(() => {
     const unsubscribe = navigation.addListener('beforeRemove', e => {
+      const actionType = e.data.action.type;
+      if (actionType === 'RESET' || actionType === 'REPLACE') return;
+
       e.preventDefault();
       setDisplayContent(false);
       setTimeout(() => {

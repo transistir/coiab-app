@@ -97,11 +97,17 @@ export const InviteReceived = ({
           }
 
           // otherwise reset the navigation so that the stale project is no longer showing.
+          // Full-state reset with fresh keys (see OrganizationInviteReceived):
+          // a partial `{index, routes}` is overwritten by the removed Home
+          // route's nested-navigator cleanup.
+          const sufixo = Date.now().toString(36);
           navigation.reset({
+            ...navigation.getState(),
             index: 1,
             routes: [
-              {name: 'Home'},
+              {key: `Home-${sufixo}`, name: 'Home'},
               {
+                key: `InviteSuccessfullyAccepted-${sufixo}`,
                 name: 'InviteSuccessfullyAccepted',
                 params: {projectName: invite.projectName, projectId},
               },
