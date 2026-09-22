@@ -418,14 +418,14 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       });
     try {
       await fireEvent.press(screen.getByTestId('ORG.create-btn'));
-      // The form is already gone: as soon as the document registered the
-      // organization the screen replaced itself with the provisioning
-      // surface (the promise keeps running at the root).
-      await waitFor(() =>
-        expect(
-          mockNavigation.getRootState().routes.map(route => route.name),
-        ).toEqual(['Success', 'OrganizationProvisioning']),
-      );
+      // While the flight is alive the §3.2 hold keeps the screen up: the
+      // handover replace is deferred to a commit where the hold has
+      // released (Fase 5's release contract, pinned at screen level in
+      // CreateOrganization.test.tsx 'the handover replace lands once when
+      // the creation hold releases in the same commit'). The gated read
+      // below keeps the flight alive past the `pronta` publication, so the
+      // form/loading state is still up here — the replaced route asserts
+      // AFTER the release.
       // The gate only trips on the first 2-project read: the materializer
       // has already published `pronta` and invalidated the queries.
       // I/O-bound wait (real project creation, package imports, the
@@ -436,6 +436,14 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       });
       expect(await listProjects()).toHaveLength(2);
       await act(async () => releaseRefresh());
+      // The flight ends, the hold releases, and the deferred handover
+      // replace lands: the provisioning surface owns the published
+      // confirmation.
+      await waitFor(() =>
+        expect(
+          mockNavigation.getRootState().routes.map(route => route.name),
+        ).toEqual(['Success', 'OrganizationProvisioning']),
+      );
       // While the refresh was gated the document had already published the
       // confirmation; nothing bounced to Home and nothing offers creation.
       expect(await screen.findByText('Organization created')).toBeOnTheScreen();

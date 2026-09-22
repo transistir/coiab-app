@@ -4,8 +4,10 @@ import {useManyInvites} from '@comapeo/core-react';
 import {parseInviteUrl} from '../../lib/deepLinkConfig';
 import {useNavigationFromRoot} from '../../hooks/useNavigationWithTypes';
 import {isInviteScreen, isEditingScreen} from '../../lib/screenNameChecks';
+import {classificarDocumento} from '../../lib/organization/coiabOrganizations';
 import {parseMarker} from '../../lib/organization/marker';
 import {resolveDeepLinkInviteTarget} from '../../lib/organization/deepLinkTarget';
+import {useCoiabOrganizationsState} from '../../contexts/CoiabOrganizationsStoreContext';
 
 export const DeepLinkListener = ({
   currentRouteName,
@@ -17,9 +19,16 @@ export const DeepLinkListener = ({
   const pendingInviteId = url ? parseInviteUrl(url) : null;
   // Suspends like the other invite consumers (PendingInvitesListener).
   const {data: invites} = useManyInvites();
+  // SPEC B §5.5 (spec-criar-organizacao.md :227): while a creation is alive
+  // the provisioning surface owns the flow — same twin gate as the
+  // PendingInvitesListener. A deep-linked invite stays pending and routes
+  // again once the document leaves 'preparando' ('confirmacao', 'pronta'
+  // and 'nenhum' all route). The listener never rejects or alters it.
+  const documento = classificarDocumento(useCoiabOrganizationsState());
 
   React.useEffect(() => {
     if (!pendingInviteId || !currentRouteName) return;
+    if (documento === 'preparando') return;
     if (isInviteScreen(currentRouteName)) return;
     if (isEditingScreen(currentRouteName)) return;
     // An invite id the list does not (yet) know resolves to nothing: routing
@@ -39,7 +48,7 @@ export const DeepLinkListener = ({
       organizationId: marker.organizationId,
       inviteId: pendingInviteId,
     });
-  }, [pendingInviteId, currentRouteName, navigation, invites]);
+  }, [documento, pendingInviteId, currentRouteName, navigation, invites]);
 
   return null;
 };
