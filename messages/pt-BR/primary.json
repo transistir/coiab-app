@@ -20,6 +20,12 @@
   "$1Navigation.Menu.coordinatorTools": {
     "message": "Ferramentas do coordenador"
   },
+  "$1Navigation.Menu.earlyAccessOn": {
+    "message": "Acesso Antecipado ATIVADO"
+  },
+  "$1Navigation.Menu.earlyAccessTurnOff": {
+    "message": "Desativar"
+  },
   "$1Navigation.Menu.exchange": {
     "message": "Trocar"
   },
@@ -117,6 +123,15 @@
   },
   "$1Screens.Settings.AppSettings.aboutCoMapeo": {
     "message": "Sobre CoMapeo"
+  },
+  "$1Screens.Settings.AppSettings.earlyAccess": {
+    "message": "Acesso Antecipado"
+  },
+  "$1Screens.Settings.AppSettings.earlyAccessOff": {
+    "message": "Acesso Antecipado DESATIVADO"
+  },
+  "$1Screens.Settings.AppSettings.earlyAccessOn": {
+    "message": "Acesso Antecipado ATIVADO"
   },
   "$1Screens.Settings.AppSettings.title": {
     "message": "Configurações do CoMapeo"
@@ -529,6 +544,9 @@
     "message": "Adicionar observações",
     "description": "Title of observation list view when the user has not yet recorded observations"
   },
+  "$1screens.Onboarding.CreateOrganization.creationInProgress": {
+    "message": "A criação de uma organização já está em andamento."
+  },
   "$1screens.Onboarding.MapOnYourOwnIntro.addAudio": {
     "message": "Adicione gravações de áudio."
   },
@@ -573,6 +591,9 @@
   },
   "$1screens.OrganizationSetup.areaWaiting": {
     "message": "Aguardando"
+  },
+  "$1screens.OrganizationSetup.backBlocked": {
+    "message": "Não é possível sair desta tela enquanto uma operação de organização está em andamento."
   },
   "$1screens.OrganizationSetup.backButton": {
     "message": "Voltar"
