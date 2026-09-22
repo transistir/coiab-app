@@ -126,3 +126,54 @@ export const OrganizationSelector: Story = {
     },
   },
 };
+
+/** Where the drawer's "Create organization" entry leaves the stack. */
+const createSecondOrganizationState: InitialState = {
+  routes: [{name: 'Home'}, {name: 'CreateOrganization'}],
+  index: 1,
+};
+
+/**
+ * Where creating leaves the stack: CreateOrganization replaces itself with
+ * OrganizationProvisioning once the new organization is in preparation.
+ */
+const secondOrganizationProvisioningState: InitialState = {
+  routes: [{name: 'Home'}, {name: 'OrganizationProvisioning'}],
+  index: 1,
+};
+
+/**
+ * CreateOrganization over one ready organization renders its form: an
+ * operating organization no longer diverts creation.
+ */
+export const CreateSecondOrganization: Story = {
+  name: '06 Create Second Organization',
+  parameters: {
+    flow: {
+      state: FLOW_STATES.oneOrganizationEarlyAccess,
+      initialState: createSecondOrganizationState,
+    },
+  },
+};
+
+/**
+ * OrganizationProvisioning for the second organization, not the open one.
+ *
+ * Seeded as A ready and active with B `preparando` on Alertas, rather than
+ * both ready with B's confirmation pending: the startup gate opens A as it
+ * would on a real device mid-creation (the engine does not resume a
+ * non-active organization in preparation), and the seed never writes a
+ * pending confirmation. The `preparando` panel shows area rows, not the
+ * name, so B is told apart by its rows — Monitoramento done, Alertas in
+ * progress. Falling back to A, the first organization, would show a ready
+ * organization and no rows at all.
+ */
+export const SecondOrganizationProvisioning: Story = {
+  name: '07 Second Organization Provisioning',
+  parameters: {
+    flow: {
+      state: FLOW_STATES.secondOrganizationPreparing,
+      initialState: secondOrganizationProvisioningState,
+    },
+  },
+};

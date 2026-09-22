@@ -164,6 +164,34 @@ export const FLOW_STATES = {
     // engine from opening the organization.
     draftObservation: 'none',
   },
+  /**
+   * One ready organization with early access on: the drawer offers creating
+   * another, and CreateOrganization renders its form over it.
+   */
+  oneOrganizationEarlyAccess: {
+    auth: 'authenticated',
+    deviceName: 'Test Device',
+    project: 'none',
+    organizations: {list: [ORGANIZATION_A], activeId: ORGANIZATION_A.id},
+    earlyAccess: true,
+    draftObservation: 'none',
+  },
+  /**
+   * The document right after creating a second organization: A ready and
+   * still open, B mid-materialization on Alertas. B is the only organization
+   * in preparation, so it is the one OrganizationProvisioning shows.
+   */
+  secondOrganizationPreparing: {
+    auth: 'authenticated',
+    deviceName: 'Test Device',
+    project: 'none',
+    organizations: {
+      list: [ORGANIZATION_A, {...ORGANIZATION_B, preparing: 'alertas'}],
+      activeId: ORGANIZATION_A.id,
+    },
+    earlyAccess: true,
+    draftObservation: 'none',
+  },
 } satisfies Record<string, FlowStateSpec>;
 
 // 5 digits, not the reserved obscure code — see PasscodeInputSchema in
