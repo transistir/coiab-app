@@ -112,14 +112,27 @@ describe('DeepLinkListener', () => {
   test('routes again once the operation settles (pronta)', async () => {
     // The gate must be a suspension, not a kill switch: a pending invite
     // whose delivery was held during preparation flows as soon as the
-    // document leaves it — the effect reruns on the document change.
-    useCoiabOrganizationsStateMock.mockReturnValue(PRONTA_DOCUMENT);
+    // document leaves it. The document is rendered LIVE in 'preparando'
+    // first — a latch bug (routing permanently disabled by any render in
+    // preparation) would never navigate after the rerender — and the
+    // 'pronta' rerender must route in that very commit.
+    useCoiabOrganizationsStateMock.mockReturnValue(PREPARANDO_DOCUMENT);
     useLinkingURLMock.mockReturnValue('ekanadyby://invite/invite-plain');
     useManyInvitesMock.mockReturnValue({
       data: [{inviteId: 'invite-plain', state: 'pending'}],
     });
 
-    render(<DeepLinkListener currentRouteName="Home" />);
+    const {rerender} = await render(
+      <DeepLinkListener currentRouteName="Home" />,
+    );
+
+    await waitFor(() => {
+      expect(useManyInvitesMock).toHaveBeenCalled();
+    });
+    expect(mockNavigation.navigate).not.toHaveBeenCalled();
+
+    useCoiabOrganizationsStateMock.mockReturnValue(PRONTA_DOCUMENT);
+    await rerender(<DeepLinkListener currentRouteName="Home" />);
 
     await waitFor(() => {
       expect(mockNavigation.navigate).toHaveBeenCalledWith('InviteReceived', {

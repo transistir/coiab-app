@@ -435,6 +435,23 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
         timeout: 15_000,
       });
       expect(await listProjects()).toHaveLength(2);
+      // In-flight window (pre-merge review): while the refresh is gated
+      // the §3.2 hold still owns the screen. Pinned HERE, inside the
+      // window: the creation/loading surface stays up, nothing bounced
+      // to Home, and no create button is re-offered — a window
+      // regression that self-corrected on release would otherwise pass
+      // silently, because every assertion below runs after the release.
+      // (The underlying fork keeps its own ONBOARDING buttons mounted
+      // aria-hidden underneath, so "not re-offered" is asserted on the
+      // create form's own button and on the route stack, not on the
+      // fork's copy.)
+      expect(screen.getByTestId('ORG.create-name-inp')).toBeOnTheScreen();
+      expect(screen.getByText('Creating Organization…')).toBeOnTheScreen();
+      expect(screen.queryByTestId('ORG.create-btn')).not.toBeOnTheScreen();
+      expect(screen.queryByTestId('MAIN.map-screen')).not.toBeOnTheScreen();
+      expect(
+        mockNavigation.getRootState().routes.map(route => route.name),
+      ).not.toContain('Home');
       await act(async () => releaseRefresh());
       // The flight ends, the hold releases, and the deferred handover
       // replace lands: the provisioning surface owns the published
