@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import {defineMessages, useIntl} from 'react-intl';
+import {usePreventRemove} from '@react-navigation/native';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 
 import {HeaderText} from '../../sharedComponents/Text/HeaderText';
@@ -147,14 +148,16 @@ export const CreateOrganization = ({
   // operating one (pronta, acknowledged, selection resolvable): there the
   // device already operates the organization, and a second creation is
   // the materializer's own guarded call.
-  React.useEffect(() => {
-    if (
-      estado.organizacoes.length > 0 &&
-      derivarProjectIdAtivo(estado) === null
-    ) {
-      navigation.replace('OrganizationProvisioning');
-    }
-  }, [estado, navigation]);
+  // The handover is the ONE replace that must land while a hold was set
+  // (SPEC B §3.2). Dispatching it under the hold makes beforeRemove prevent
+  // it — and re-dispatching the prevented action commits it while the
+  // provider's route-key registration still holds this route:
+  // PreventRemoveProvider refuses to register a hold for a route the
+  // navigation state no longer contains (the mount crash this screen had).
+  // So the replace is DERIVED (`deveTrocar` below): the effect AFTER
+  // `usePreventRemove` dispatches it in a commit where the hold's
+  // registration effect has already released it.
+  const [startResolvido, setStartResolvido] = React.useState(false);
   const [erro, setErro] = React.useState<Error | null>(null);
   const [emptyNameError, setEmptyNameError] = React.useState(false);
   // A synchronous re-entry guard: a state check alone would let a second
@@ -164,6 +167,56 @@ export const CreateOrganization = ({
   // The layer's typed refusal (SPEC B §5.5) surfaces as a blocked state:
   // the form stays, explains, and re-arms — never crash, never silence.
   const [bloqueado, setBloqueado] = React.useState(false);
+
+  // SPEC B §3.2:64/:68 (Fase 5): while a start is in flight — or the blocked
+  // banner is up — Back cannot remove this screen: leaving would orphan the
+  // re-arm contract (BLOCKER 1) with the operation alive. The installed
+  // @react-navigation/core (7.21.2) takes a callback, not a `{message}`; the
+  // §5.5 copy is what the screen is ALREADY showing while the hold is up
+  // (the creating text, `m.creating`; the banner, `m.creationInProgress`) —
+  // the prevent is additive to that UI. The prevented removal is DROPPED,
+  // never re-dispatched: the handover replace is the ONE removal that must
+  // land while `iniciando` was set, and the derived gate below (`!iniciando
+  // && !bloqueado`) dispatches it from the effect AFTER this hold's
+  // registration effect, in a commit where the hold has already released.
+  // Re-dispatching a prevented removal off the beforeRemove emission (the
+  // `VISITED_ROUTE_KEYS` skip) committed it while the provider's
+  // registration still held the route, and
+  // PreventRemoveProvider refuses to register a hold for a route the
+  // navigation state no longer contains — the mount throw this screen
+  // crashed on.
+  usePreventRemove(iniciando || bloqueado, () => {
+    // Held: the removal stays dropped. A back at the name stage was already
+    // turned into the screen's own intro hop by the §3.1 listener below.
+  });
+
+  // The handover is DERIVED, not armed (the lint-clean form of the same
+  // deferred dispatch): a settled document that no selection resolves is
+  // the provisioning surface's business, and a start that RESOLVED while
+  // the document still resolves a selection is the screen's own job —
+  // both replace as soon as the flight ends and the hold is down. Both
+  // inputs are render-pure: the document read is external-store state,
+  // and `startResolvido` is only ever set from the start's own `.then`
+  // (an interaction event, never an effect).
+  const documentoAssentadoSemSelecao =
+    estado.organizacoes.length > 0 && derivarProjectIdAtivo(estado) === null;
+  // Blocked is consumed by the handover (the banner's claim transfers to
+  // the provisioning surface — the SAME in-flight operation, §3.3 item 2),
+  // so the gate reads through it rather than clearing it here.
+  const deveTrocar =
+    (documentoAssentadoSemSelecao || startResolvido) &&
+    !iniciando &&
+    !bloqueado;
+
+  // The deferred handover dispatch (estado → effect → replace): it runs
+  // AFTER `usePreventRemove`'s registration effect in the same commit, so
+  // by the time the replace dispatches, the provider has released the hold
+  // and beforeRemove passes it untouched. No setState in the body: the
+  // predicate is derived above, and navigation is the external system.
+  React.useEffect(() => {
+    if (!deveTrocar) return;
+    navigation.replace('OrganizationProvisioning');
+  }, [deveTrocar, navigation]);
 
   const trimmedName = name.trim();
   const tooLong = isNameTooLong(name);
@@ -203,7 +256,7 @@ export const CreateOrganization = ({
   }, [erro, estado, navigation]);
 
   function handleCreatePress() {
-    if (iniciandoRef.current) {
+    if (iniciandoRef.current || deveTrocar) {
       return;
     }
     if (trimmedName.length === 0) {
@@ -236,15 +289,14 @@ export const CreateOrganization = ({
         // provisioning surface owns it (it renders `preparando`/
         // confirmation by id — Fase 3). When the document still resolves
         // an active selection (the second creation over a settled A), the
-        // redirect effect above stays silent — `derivarProjectIdAtivo`
-        // never turns null — so the handover is the screen's own job,
-        // reading the LIVE document: for a first creation the effect has
-        // already replaced this screen (no selection ⇒ null ⇒ no spurious
-        // second replace). `.then` before `.catch`: a refusal must never
-        // navigate.
-        if (derivarProjectIdAtivo(instance.getState()) !== null) {
-          navigation.replace('OrganizationProvisioning');
-        }
+        // derived predicate above stays false — `derivarProjectIdAtivo`
+        // never turns null — so the handover is the screen's own job:
+        // `startResolvido` flips the `deveTrocar` gate and the effect
+        // BELOW dispatches the replace once the flight ends. For a first
+        // creation the predicate has already replaced this screen (no
+        // selection ⇒ null ⇒ no spurious second replace). `.then` before
+        // `.catch`: a refusal must never navigate.
+        setStartResolvido(true);
       })
       .catch((error: unknown) => {
         // The layer's OWN refusal (SPEC B §5.5, now in the materializer

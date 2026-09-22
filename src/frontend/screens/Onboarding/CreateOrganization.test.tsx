@@ -143,6 +143,10 @@ function organizacaoPronta(nome: string): OrganizacaoLocal {
 
 /** The materializer's observable side effect: the document gains the org. */
 const registrar = async (nome: string) => {
+  // One tick after the start, like the real materializer: the document
+  // settles while the creation hold is already registered, and the
+  // handover replace commits after it.
+  await Promise.resolve();
   store.instance.setState(documentoComOrganizacao(nome));
 };
 
@@ -492,6 +496,83 @@ describe('CreateOrganization', () => {
     expect(screen.queryByText('HOME-REACHED')).not.toBeOnTheScreen();
   });
 
+  test('a first creation whose resolved document has no resolvable selection replaces EXACTLY once', async () => {
+    // The redirect effect owns this handover (the persisted B has no
+    // selection, so `derivarProjectIdAtivo` is null) and the `.then()`'s
+    // live-document read must stay silent — a second replace would push the
+    // provisioning surface twice over the same operation.
+    mockMaterializador({iniciar: registrar});
+    await renderScreen();
+    await irParaEtapaNome();
+
+    // Count navigation outcomes at the container: every dispatch emits one
+    // `state` event, so a landing on the provisioning surface is one event
+    // whose focused route is `OrganizationProvisioning` — and a spurious
+    // second replace is a second one.
+    const landings: Array<string> = [];
+    const unsubscribe = navigationRef.addListener('state', e => {
+      const {state} = e.data;
+      if (!state) return;
+      const last = state.routes[state.routes.length - 1];
+      if (last) landings.push(last.name);
+    });
+    try {
+      await fireEvent.changeText(
+        screen.getByTestId('ORG.create-name-inp'),
+        'Órgão Teste',
+      );
+      await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+
+      expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
+      expect(landings).toEqual(['OrganizationProvisioning']);
+      expect(screen.queryByTestId('ORG.create-name-inp')).not.toBeOnTheScreen();
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  // REGRESSION PIN (Fase 5): the handover replace used to fire while the
+  // creation hold (`usePreventRemove`) was registered and be re-dispatched
+  // off the beforeRemove emission; the deferred commit removed the route
+  // while the provider's registration still held it, and
+  // PreventRemoveProvider crashed on the mount — "Couldn't find a route
+  // with the key CreateOrganization-…". The handover now releases the hold
+  // and dispatches from the handover effect, never re-dispatching a
+  // prevented removal. The registrar below is SYNCHRONOUS — the document
+  // settles inside the press's own commit, so the hold registers and the
+  // replace races in ONE flush: the tightest form of the exact window that
+  // crashed.
+  test('the handover replace lands once when the creation hold releases in the same commit', async () => {
+    const registrarSincrono = async (nome: string) => {
+      store.instance.setState(documentoComOrganizacao(nome));
+    };
+    mockMaterializador({iniciar: registrarSincrono});
+    await renderScreen();
+    await irParaEtapaNome();
+
+    const landings: Array<string> = [];
+    const unsubscribe = navigationRef.addListener('state', e => {
+      const {state} = e.data;
+      if (!state) return;
+      const last = state.routes[state.routes.length - 1];
+      if (last) landings.push(last.name);
+    });
+    try {
+      await fireEvent.changeText(
+        screen.getByTestId('ORG.create-name-inp'),
+        'Órgão Teste',
+      );
+      await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+
+      expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
+      expect(landings).toEqual(['OrganizationProvisioning']);
+      // A replace, not a push: the form is gone with its draft handed over.
+      expect(screen.queryByTestId('ORG.create-name-inp')).not.toBeOnTheScreen();
+    } finally {
+      unsubscribe();
+    }
+  });
+
   test('a rejection with no document entry opens the error sheet and keeps the name', async () => {
     // The materializer rejects before anything is persisted (a template
     // package failure, an MMKV write refusal): nothing was created, so the
@@ -743,5 +824,91 @@ describe('CreateOrganization', () => {
     // falsified "creation in progress" message did not survive into it.
     expect(screen.queryByTestId('ORG.create-btn')).not.toBeOnTheScreen();
     expect(screen.queryByTestId('ORG.create-blocked')).not.toBeOnTheScreen();
+  });
+
+  // SPEC B §3.2:64/:68 (Fase 5): while a start is in flight — or the blocked
+  // banner is up — Back cannot remove this screen. The etapa-back (nome →
+  // intro, §3.1) is the screen's own rule and stays; the LEAK is the back
+  // from the intro, where nothing was listening: the pop removed the screen
+  // with the operation (or the banner's re-arm contract) alive.
+  describe('back lock during a live operation', () => {
+    test('a back dispatch while a start is in flight never removes the screen', async () => {
+      mockMaterializador({iniciar: () => new Promise<void>(() => {})});
+      await renderScreen();
+      await irParaEtapaNome();
+      await fireEvent.changeText(
+        screen.getByTestId('ORG.create-name-inp'),
+        'Órgão Teste',
+      );
+      await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+      // The start is in flight (the loading UI replaced the button).
+      expect(screen.queryByTestId('ORG.create-btn')).not.toBeOnTheScreen();
+
+      // The etapa-back is the screen's own §3.1 rule: intro, no pop.
+      await act(async () => {
+        navigationRef.goBack();
+      });
+      expect(
+        screen.getByTestId('ORG.create-intro-continue-btn'),
+      ).toBeOnTheScreen();
+      expect(screen.queryByText('SUCCESS-STUB')).not.toBeOnTheScreen();
+
+      // From the intro, back WOULD pop the screen with the start alive.
+      await act(async () => {
+        navigationRef.goBack();
+      });
+      expect(
+        screen.getByTestId('ORG.create-intro-continue-btn'),
+      ).toBeOnTheScreen();
+      expect(screen.queryByText('SUCCESS-STUB')).not.toBeOnTheScreen();
+    });
+
+    test('a back dispatch while the blocked banner is up never removes the screen', async () => {
+      iniciar.mockImplementation(async () => {
+        throw new OrganizationOperationError(
+          'creation-in-progress',
+          'another organization creation is in progress',
+        );
+      });
+      store.instance.setState({
+        versao: 1,
+        organizacoes: [organizacaoPronta('Órgão Ativa')],
+        ativa: {organizacaoId: '0123456789abcdef', area: 'monitoramento'},
+      } as EstadoOrganizacoes);
+      await renderScreen();
+      await irParaEtapaNome();
+      await fireEvent.changeText(
+        screen.getByTestId('ORG.create-name-inp'),
+        'Órgão Segunda',
+      );
+      await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+      expect(await screen.findByTestId('ORG.create-blocked')).toBeOnTheScreen();
+
+      // The etapa-back brings the intro forward; the banner state (and its
+      // §5.5 hold) survives it.
+      await act(async () => {
+        navigationRef.goBack();
+      });
+      expect(
+        screen.getByTestId('ORG.create-intro-continue-btn'),
+      ).toBeOnTheScreen();
+      expect(screen.queryByText('SUCCESS-STUB')).not.toBeOnTheScreen();
+
+      await act(async () => {
+        navigationRef.goBack();
+      });
+      expect(
+        screen.getByTestId('ORG.create-intro-continue-btn'),
+      ).toBeOnTheScreen();
+      expect(screen.queryByText('SUCCESS-STUB')).not.toBeOnTheScreen();
+    });
+
+    test('idle back from the intro still leaves the screen', async () => {
+      await renderScreen();
+      await act(async () => {
+        navigationRef.goBack();
+      });
+      expect(screen.getByText('SUCCESS-STUB')).toBeOnTheScreen();
+    });
   });
 });
