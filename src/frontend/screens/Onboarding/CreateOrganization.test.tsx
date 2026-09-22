@@ -1014,4 +1014,36 @@ describe('CreateOrganization', () => {
       expect(screen.getByText('SUCCESS-STUB')).toBeOnTheScreen();
     });
   });
+
+  // B5-4 on this screen (fix round 3): the generation gate's RESET is the
+  // system's own routing (SPEC B §5.5's recovery table) — a prevented reset
+  // is consumed-and-dropped because the gate advances its generation before
+  // dispatching and never retries. Pinned at the navigator level with the
+  // REAL PreventRemoveProvider: a RESET dispatch that removes the held
+  // screen must LAND — the same pin shape Provisioning carries in its own
+  // file.
+  describe('navigator-level reset passes the hold (GenerationTransitionGate)', () => {
+    test('a system reset removes the held screen and lands on its destination', async () => {
+      mockMaterializador({iniciar: () => new Promise<void>(() => {})});
+      await renderScreen();
+      await irParaEtapaNome();
+      await fireEvent.changeText(
+        screen.getByTestId('ORG.create-name-inp'),
+        'Órgão Teste',
+      );
+      await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+      // The hold is live: the loading UI replaced the button.
+      expect(screen.queryByTestId('ORG.create-btn')).not.toBeOnTheScreen();
+
+      await act(async () => {
+        navigationRef.reset({index: 0, routes: [{name: 'Home'}]});
+      });
+
+      expect(screen.getByText('HOME-REACHED')).toBeOnTheScreen();
+      expect(screen.queryByText('SUCCESS-STUB')).not.toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('ORG.create-intro-continue-btn'),
+      ).not.toBeOnTheScreen();
+    });
+  });
 });

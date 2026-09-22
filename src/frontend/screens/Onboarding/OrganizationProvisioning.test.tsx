@@ -643,8 +643,11 @@ describe('OrganizationProvisioning', () => {
     /**
      * Dispatches a synthetic beforeRemove event at the screen's active
      * listener. No listener registered means the screen intercepts nothing:
-     * the returned spy can then only be "not called", which is what the
-     * passing-through pins assert.
+     * the returned spy can then only be "not called" — so the
+     * `not.toHaveBeenCalled()` passing-through pins are valid, but they
+     * would also pass vacuously against a listener that registered and
+     * ignored the event; the navigator-level RESET pin below is what
+     * proves a dispatch actually lands.
      */
     function preventBeforeRemove(actionType: string) {
       const live = navigationSubscriptions.filter(

@@ -1,5 +1,6 @@
 import * as React from 'react';
 import {
+  BackHandler,
   Keyboard,
   KeyboardAvoidingView,
   StyleSheet,
@@ -8,7 +9,6 @@ import {
   View,
 } from 'react-native';
 import {defineMessages, useIntl} from 'react-intl';
-import {usePreventRemove} from '@react-navigation/native';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 
 import {HeaderText} from '../../sharedComponents/Text/HeaderText';
@@ -149,14 +149,15 @@ export const CreateOrganization = ({
   // device already operates the organization, and a second creation is
   // the materializer's own guarded call.
   // The handover is the ONE replace that must land while a hold was set
-  // (SPEC B §3.2). Dispatching it under the hold makes beforeRemove prevent
-  // it — and re-dispatching the prevented action commits it while the
-  // provider's route-key registration still holds this route:
+  // (SPEC B §3.2). It is DERIVED (`deveTrocar` below): it fires only in a
+  // commit where the flight has ended (`!iniciando`), so the hold's
+  // listener below is already unsubscribed when the replace dispatches and
+  // beforeRemove passes it untouched. Dispatching it under the hold and
+  // re-dispatching a prevented action off the beforeRemove emission (the
+  // `VISITED_ROUTE_KEYS` skip) committed it while the provider's
+  // route-key registration still held this route:
   // PreventRemoveProvider refuses to register a hold for a route the
   // navigation state no longer contains (the mount crash this screen had).
-  // So the replace is DERIVED (`deveTrocar` below): the effect AFTER
-  // `usePreventRemove` dispatches it in a commit where the hold's
-  // registration effect has already released it.
   const [startResolvido, setStartResolvido] = React.useState(false);
   const [erro, setErro] = React.useState<Error | null>(null);
   const [emptyNameError, setEmptyNameError] = React.useState(false);
@@ -168,32 +169,48 @@ export const CreateOrganization = ({
   // the form stays, explains, and re-arms — never crash, never silence.
   const [bloqueado, setBloqueado] = React.useState(false);
 
-  // SPEC B §3.2:64/:68 (Fase 5, fix round 2): while a start is in flight,
+  // SPEC B §3.2:64/:68 (Fase 5, fix round 3): while a start is in flight,
   // Back cannot remove this screen — the one state §3.2 names ("durante
-  // uma chamada de criação/importação"). The installed
-  // @react-navigation/core (7.21.2) takes a callback, not a `{message}`.
-  // The screen explains the hold in BOTH of its stages: the name form
-  // renders the loading state (`m.creating`), and the §3.1 listener below
-  // has already turned a first back into the intro hop — where the SAME
-  // `m.creating` copy renders while the flight is alive, so a dropped
-  // second back is never silent. The typed refusal (SPEC B §5.5) is NOT a
-  // live operation of this screen: a refused start never resolves, so it
-  // does not extend the hold — §3.2's authorization stays narrow, and Back
-  // keeps working after a refusal.
-  // The prevented removal is DROPPED, never re-dispatched: the handover
-  // replace is the ONE removal that must land while `iniciando` was set,
-  // and the derived gate below dispatches it from the effect AFTER this
-  // hold's registration effect, in a commit where the hold has already
-  // released. Re-dispatching a prevented removal off the beforeRemove
-  // emission (the `VISITED_ROUTE_KEYS` skip) committed it while the
-  // provider's registration still held the route, and
-  // PreventRemoveProvider refuses to register a hold for a route the
-  // navigation state no longer contains — the mount throw this screen
-  // crashed on.
-  usePreventRemove(iniciando, () => {
-    // Held: the removal stays dropped. A back at the name stage was already
-    // turned into the screen's own intro hop by the §3.1 listener below.
-  });
+  // uma chamada de criação/importação"). The screen explains the hold in
+  // BOTH of its stages: the name form renders the loading state
+  // (`m.creating`), and the §3.1 listener below has already turned a first
+  // back into the intro hop — where the SAME `m.creating` copy renders
+  // while the flight is alive, so a dropped second back is never silent.
+  // The typed refusal (SPEC B §5.5) is NOT a live operation of this
+  // screen: a refused start never resolves, so it does not extend the
+  // hold — §3.2's authorization stays narrow, and Back keeps working
+  // after a refusal (`iniciando` alone is the predicate — never
+  // `|| bloqueado`, B5-3).
+  // Programmatic removals are not user exits, so they pass untouched:
+  // `usePreventRemove` cannot serve this hold because it preventDefaults
+  // EVERY removal (core's own beforeRemove listener) and a prevented RESET
+  // is consumed-and-dropped — GenerationTransitionGate advances its
+  // generation before dispatching and never retries. Same defect B5-4
+  // fixed in OrganizationProvisioning: §5.5's recovery table makes the
+  // system's routing mandatory. The header back and the JS-side gesture
+  // both dispatch GO_BACK/POP, so the listener covers every exit §3.2
+  // names; the Android hardware press is consumed first below.
+  React.useEffect(() => {
+    if (!iniciando) return;
+    const unsubscribe = navigation.addListener('beforeRemove', e => {
+      const type = e.data.action.type;
+      // A USER back attempt is held (the removal stays dropped: a back at
+      // the name stage was already turned into the screen's own intro hop
+      // by the §3.1 listener below); a programmatic removal (the
+      // generation gate's reset, the system's §5.5 reconciliation
+      // routing) is mandatory and never prevented here.
+      if (type !== 'GO_BACK' && type !== 'POP') return;
+      e.preventDefault();
+    });
+    const hardware = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => true,
+    );
+    return () => {
+      unsubscribe();
+      hardware.remove();
+    };
+  }, [iniciando, navigation]);
 
   // The handover is DERIVED, not armed (the lint-clean form of the same
   // deferred dispatch): a settled document that no selection resolves is
@@ -218,11 +235,11 @@ export const CreateOrganization = ({
   const deveTrocar =
     (documentoAssentadoSemSelecao || startResolvido) && !iniciando;
 
-  // The deferred handover dispatch (estado → effect → replace): it runs
-  // AFTER `usePreventRemove`'s registration effect in the same commit, so
-  // by the time the replace dispatches, the provider has released the hold
-  // and beforeRemove passes it untouched. No setState in the body: the
-  // predicate is derived above, and navigation is the external system.
+  // The deferred handover dispatch (estado → effect → replace): it fires
+  // only when `deveTrocar` is true — by then `iniciando` is false, the
+  // hold's listener is unsubscribed, and beforeRemove passes the replace
+  // untouched. No setState in the body: the predicate is derived above,
+  // and navigation is the external system.
   React.useEffect(() => {
     if (!deveTrocar) return;
     navigation.replace('OrganizationProvisioning');
