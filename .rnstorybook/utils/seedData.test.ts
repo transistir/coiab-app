@@ -3,11 +3,13 @@ import {
   matchSeedIndex,
   selectPointPreset,
   selectSeedPosition,
+  seededAreas,
   selectSeedPresets,
 } from './seedData';
 import {
   classificarDocumento,
   derivarProjectIdAtivo,
+  organizacaoEmPreparo,
   ordenarOrganizacoes,
   parseEstadoOrganizacoes,
 } from '../../src/frontend/lib/organization/coiabOrganizations';
@@ -267,5 +269,104 @@ describe('buildOrganizationDocument', () => {
         ]),
       ),
     ).toThrow(/not a valid COIAB document/);
+  });
+
+  describe('with one organization still being prepared', () => {
+    const preparingSeed = {
+      list: [organizationA, {...organizationB, preparing: 'alertas' as const}],
+      activeId: organizationA.id,
+    };
+
+    it('keeps the ready one open and the other mid-materialization on its area in execution', () => {
+      const document = buildOrganizationDocument(preparingSeed, projectIds);
+
+      expect(parseEstadoOrganizacoes(document)).not.toBeNull();
+      expect(classificarDocumento(document)).toBe('preparando');
+      expect(derivarProjectIdAtivo(document)).toBe('project-a-m');
+      expect(organizacaoEmPreparo(document)).toEqual({
+        id: organizationB.id,
+        nome: 'Test Organization B',
+        estado: 'preparando',
+        confirmacaoPendente: false,
+        materializacao: {
+          monitoramento: {
+            etapa: 'verificado',
+            projectId: 'project-b-m',
+            template: {versao: '1', hash: 'monitoramento'},
+            idsAntesDaCriacao: null,
+          },
+          alertas: {
+            etapa: 'importando',
+            projectId: 'project-b-a',
+            template: {versao: '1', hash: 'alertas'},
+            idsAntesDaCriacao: null,
+          },
+        },
+        areaEmExecucao: 'alertas',
+        ultimoErro: null,
+      });
+    });
+
+    it('leaves the areas after the one in execution absent, without a project', () => {
+      const document = buildOrganizationDocument(
+        {
+          list: [
+            organizationA,
+            {...organizationB, preparing: 'monitoramento' as const},
+          ],
+          activeId: organizationA.id,
+        },
+        new Map([
+          ...projectIds,
+          [organizationB.id, {monitoramento: 'project-b-m'}],
+        ]),
+      );
+
+      const preparing = organizacaoEmPreparo(document)!;
+      expect(preparing.areaEmExecucao).toBe('monitoramento');
+      expect(preparing.materializacao.monitoramento.etapa).toBe('importando');
+      expect(preparing.materializacao.alertas).toEqual({
+        etapa: 'ausente',
+        projectId: null,
+        template: null,
+        idsAntesDaCriacao: null,
+      });
+      expect(parseEstadoOrganizacoes(document)).not.toBeNull();
+    });
+
+    it('links projects only for the areas the materializer reached', () => {
+      expect(seededAreas(organizationA)).toEqual(['monitoramento', 'alertas']);
+      expect(seededAreas({...organizationB, preparing: 'alertas'})).toEqual([
+        'monitoramento',
+        'alertas',
+      ]);
+      expect(
+        seededAreas({...organizationB, preparing: 'monitoramento'}),
+      ).toEqual(['monitoramento']);
+    });
+
+    it('refuses to make the organization being prepared the active one', () => {
+      expect(() =>
+        buildOrganizationDocument(
+          {...preparingSeed, activeId: organizationB.id},
+          projectIds,
+        ),
+      ).toThrow(/not a valid COIAB document/);
+    });
+
+    it('refuses more than one organization being prepared', () => {
+      expect(() =>
+        buildOrganizationDocument(
+          {
+            list: [
+              {...organizationA, preparing: 'alertas' as const},
+              {...organizationB, preparing: 'alertas' as const},
+            ],
+            activeId: organizationA.id,
+          },
+          projectIds,
+        ),
+      ).toThrow(/at most one organization being prepared/);
+    });
   });
 });

@@ -159,6 +159,23 @@ function drawerStory(parameters: unknown) {
 const ROW_A = 'ORGANIZATIONS.row-aaaaaaaaaaaaaaaa';
 const ROW_B = 'ORGANIZATIONS.row-bbbbbbbbbbbbbbbb';
 
+/** The two-organization seed, as the app's persisted store holds it. */
+function expectPersistedOrganizations() {
+  const persisted = JSON.parse(
+    MMKVStoreInitializer.getItem(COIAB_ORGANIZATIONS_STORAGE_KEY) as string,
+  ).state;
+  expect(
+    persisted.organizacoes.map(
+      (organization: {id: string; estado: string}) =>
+        `${organization.id}:${organization.estado}`,
+    ),
+  ).toEqual(['aaaaaaaaaaaaaaaa:pronta', 'bbbbbbbbbbbbbbbb:pronta']);
+  expect(persisted.ativa).toEqual({
+    organizacaoId: 'bbbbbbbbbbbbbbbb',
+    area: 'monitoramento',
+  });
+}
+
 describe('organization stories (FlowStateScope)', () => {
   let client: ComapeoCoreClientApi;
   let onTeardown: Array<() => unknown> = [];
@@ -262,11 +279,10 @@ describe('organization stories (FlowStateScope)', () => {
       within(screen.getByTestId(ROW_A)).queryByText('Current'),
     ).not.toBeOnTheScreen();
 
-    // The document reached the story without touching the app's persisted
-    // one; the backend holds both organizations' two area projects.
-    expect(
-      MMKVStoreInitializer.getItem(COIAB_ORGANIZATIONS_STORAGE_KEY),
-    ).toBeFalsy();
+    // The document reached the story through the app's persisted store, the
+    // one production hydrates; the backend holds both organizations' two area
+    // projects.
+    expectPersistedOrganizations();
     expect(
       (await client.listProjects())
         .map(project => parseMarker(project.projectDescription ?? ''))
@@ -294,9 +310,7 @@ describe('organization stories (FlowStateScope)', () => {
       screen.getByTestId(`STORYBOOK.flow-ready.${DRAWER_STORY_ID}`),
     ).toBeOnTheScreen();
     expect(screen.getByText('Test Organization B')).toBeOnTheScreen();
-    expect(
-      MMKVStoreInitializer.getItem(COIAB_ORGANIZATIONS_STORAGE_KEY),
-    ).toBeFalsy();
+    expectPersistedOrganizations();
   }, 60_000);
 
   test('without the earlyAccess axis the app flag stays in charge and the entry does not exist', async () => {

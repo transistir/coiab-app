@@ -160,4 +160,47 @@ describe('flow-state cleanup between stories', () => {
       await appProviders.teardown();
     }
   }, 120_000);
+
+  test('the plural axis seeds the persisted document, and the next story without one still cleans it', async () => {
+    const appProviders = createAppProvidersWrapper({
+      mapeoApi: orgSetup.client,
+    });
+    const view = await render(
+      <FlowStateProbe spec={FLOW_STATES.twoOrganizationsEarlyAccess} />,
+      {wrapper: appProviders.wrapper},
+    );
+
+    try {
+      await waitFor(() => expect(currentProbe().ready).not.toBeNull(), {
+        timeout: 30_000,
+      });
+      const opened = currentProbe();
+      const organizationsKey = opened.ready!.key;
+      // Written to the app's own store and opened by its root engine.
+      expect(opened.organizationCount).toBe(2);
+      expect(opened.ativa).toEqual({
+        organizacaoId: 'bbbbbbbbbbbbbbbb',
+        area: 'monitoramento',
+      });
+      expect(opened.status).toBe('ready');
+      expect(opened.projectId).toBe(opened.ready!.projectId);
+
+      await view.rerender(<FlowStateProbe spec={FLOW_STATES.namedNoProject} />);
+      await waitFor(
+        () => {
+          const current = currentProbe();
+          expect(current.ready).not.toBeNull();
+          expect(current.ready!.key).not.toBe(organizationsKey);
+        },
+        {timeout: 30_000},
+      );
+
+      const cleaned = currentProbe();
+      expect(cleaned.organizationCount).toBe(0);
+      expect(cleaned.ativa).toBeNull();
+    } finally {
+      await view.unmount();
+      await appProviders.teardown();
+    }
+  }, 120_000);
 });
