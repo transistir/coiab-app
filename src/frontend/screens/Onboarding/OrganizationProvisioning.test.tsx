@@ -55,6 +55,8 @@ import type {AppStackParamsList} from '../../sharedTypes/navigation';
  * state change ever reaches for it.
  */
 const navigationReset = jest.fn();
+/** The explicit way back to the operating organization (review P1). */
+const navigationPopTo = jest.fn();
 /**
  * Registrations are recorded WITH their unsubscribe: the helper below must
  * dispatch only at a LIVE listener — a stale (already-unsubscribed) closure
@@ -81,9 +83,10 @@ const navigationAddListener: jest.Mock = jest.fn(
 );
 const navigationMock = {
   reset: navigationReset,
+  popTo: navigationPopTo,
   addListener: navigationAddListener,
   // The context provider's value type (NavigationProp) requires the full
-  // helper surface; the stub's contract is the two calls the screen makes.
+  // helper surface; the stub's contract is the calls the screen makes.
 } as unknown as NavigationProp<ParamListBase>;
 const screenProps = {
   navigation: navigationMock,
@@ -241,10 +244,13 @@ beforeEach(() => {
   activate.mockResolvedValue(true);
   retryPreparation.mockResolvedValue(true);
   recoverPendingWork.mockResolvedValue(false);
+  // A document in `preparando` is, by default, a call in flight in this
+  // session; the interrupted case (nothing alive) is set per test.
   activationMock.__setActivation({
     activate,
     retryPreparation,
     recoverPendingWork,
+    preparacaoViva: true,
   });
   activeProjectIdMock.__projetarProjectIdAtivo(undefined);
   backHandlerMock.__live.length = 0;
@@ -905,6 +911,107 @@ describe('OrganizationProvisioning', () => {
       ).toBeOnTheScreen();
       // …so the validated pair (ready + matching ids) must not bounce Home.
       expect(navigationReset).not.toHaveBeenCalled();
+    });
+  });
+
+  // Review fronteira P1: a `preparando` document with NO materialization
+  // alive in this session was interrupted (the process died mid-preparation).
+  // The surface is never a buttonless spinner: it offers the resume, lets
+  // Back through, and — with another organization operating — the way back.
+  describe('interrupted preparation (review fronteira P1)', () => {
+    const operandoAComBPreparando = () => {
+      seedDocument(
+        [
+          organizacao({
+            estado: 'pronta',
+            confirmacaoPendente: false,
+            materializacao: PAR_PRONTA,
+          }),
+          organizacao({id: 'org-2', nome: 'Segunda', estado: 'preparando'}),
+        ],
+        {organizacaoId: 'org-1', area: 'monitoramento'},
+      );
+      activeProjectIdMock.__projetarProjectIdAtivo('proj-m-1');
+    };
+
+    test('without a live call the surface offers the resume and does not hold Back', async () => {
+      seedDocument([organizacao({estado: 'preparando'})]);
+      activationMock.__setActivation({
+        activate,
+        retryPreparation,
+        recoverPendingWork,
+        preparacaoViva: false,
+      });
+      const user = userEvent.setup();
+      await renderScreen();
+
+      expect(
+        screen.getByText('Preparing your organization…'),
+      ).toBeOnTheScreen();
+      expect(
+        screen.queryByLabelText('Preparing your organization'),
+      ).not.toBeOnTheScreen();
+      expect(backHandlerMock.default.addEventListener).not.toHaveBeenCalled();
+      expect(
+        navigationSubscriptions.filter(
+          subscription =>
+            subscription.event === 'beforeRemove' && subscription.active,
+        ),
+      ).toHaveLength(0);
+      // No other organization operates: there is nowhere to go back to.
+      expect(
+        screen.queryByTestId('ORG.provisioning-back-to-active-btn'),
+      ).not.toBeOnTheScreen();
+
+      await user.press(
+        screen.getByTestId('ORG.provisioning-retry-preparation-btn'),
+      );
+      expect(retryPreparation).toHaveBeenCalledTimes(1);
+      expect(retryPreparation).toHaveBeenCalledWith('org-1');
+    });
+
+    test('with A operating, Back returns to A without touching B', async () => {
+      operandoAComBPreparando();
+      activationMock.__setActivation({
+        status: 'ready',
+        activate,
+        retryPreparation,
+        recoverPendingWork,
+        preparacaoViva: false,
+      });
+      const user = userEvent.setup();
+      await renderScreen();
+
+      await user.press(
+        screen.getByTestId('ORG.provisioning-back-to-active-btn'),
+      );
+      expect(navigationPopTo).toHaveBeenCalledWith('Home', {screen: 'Map'});
+      expect(navigationReset).not.toHaveBeenCalled();
+      expect(retryPreparation).not.toHaveBeenCalled();
+      expect(activate).not.toHaveBeenCalled();
+    });
+
+    test('while the call is alive there is no exit and no resume', async () => {
+      operandoAComBPreparando();
+      activationMock.__setActivation({
+        status: 'ready',
+        activate,
+        retryPreparation,
+        recoverPendingWork,
+        preparacaoViva: true,
+      });
+      await renderScreen();
+
+      expect(
+        screen.getByLabelText('Preparing your organization'),
+      ).toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('ORG.provisioning-back-to-active-btn'),
+      ).not.toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('ORG.provisioning-retry-preparation-btn'),
+      ).not.toBeOnTheScreen();
+      expect(backHandlerMock.__live).toHaveLength(1);
     });
   });
 

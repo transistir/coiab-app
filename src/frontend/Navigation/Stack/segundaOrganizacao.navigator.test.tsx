@@ -175,6 +175,7 @@ import {
   type EstadoOrganizacoes,
   type OrganizacaoLocal,
 } from '../../lib/organization/coiabOrganizations';
+import {manifestosEmbarcados} from '../../lib/organization/pacotes';
 import {
   setupIntegrationTest,
   semearDocumentoPronta,
@@ -220,7 +221,12 @@ function documentoComSegunda(
   ): OrganizacaoLocal['materializacao']['monitoramento'] => ({
     etapa: projectId ? 'verificado' : 'ausente',
     projectId: projectId ?? null,
-    template: projectId ? {versao: '1', hash: area} : null,
+    // An absent area carries the package ref the materializer registered it
+    // with — a resume re-verifies against it and the §4.2 parser refuses a
+    // `verificado` checkpoint without one.
+    template: projectId
+      ? {versao: '1', hash: area}
+      : manifestosEmbarcados[area].ref,
     idsAntesDaCriacao: null,
   });
   const organizacaoA: OrganizacaoLocal = {
@@ -442,9 +448,11 @@ describe('segunda organização (navigator real)', () => {
     expect(await orgSetup.client.listProjects()).toHaveLength(4);
   }, 60_000);
 
-  test('com B preparando, entrar em CreateOrganization substitui por OrganizationProvisioning (guarda :257)', async () => {
-    // A settled A keeps operating; B rides in the document as `preparando`
-    // (both areas absent — the materializer's fresh registration shape).
+  test('cold start com A ativa e B preparando retoma B sem derrubar A, e a superfície de B tem saída (P1)', async () => {
+    // The process died while B was being created: A is settled and
+    // operating, B rides in the document as `preparando` (both areas absent
+    // — the materializer's fresh registration shape) and no operation is
+    // alive for it any more.
     const documento = documentoComSegunda(
       orgSetup.projectId,
       orgSetup.alertasProjectId,
@@ -462,30 +470,43 @@ describe('segunda organização (navigator real)', () => {
       JSON.stringify({state: documento, version: 1}),
     );
     await orgSetup.renderNavigation();
-    // The cold start routes the DOCUMENT, not the reconstruction (SPEC B
-    // §3.3): with B `preparando` the gate opens the provisioning surface,
-    // which renders B's fresh journal — never A's settled rows.
-    expect(
-      await screen.findByText('Preparing your organization…', undefined, {
-        timeout: 15_000,
-      }),
-    ).toBeOnTheScreen();
-    expect(screen.getAllByText('Waiting')).toHaveLength(2);
-    expect(screen.queryAllByText('Ready')).toHaveLength(0);
 
-    // The :257 guard: entering the creation route with B `preparando`
-    // (the §4 table's "pendente leva à recuperação") replaces the route —
-    // the explicitly opened form never gets to render over a live
-    // operation.
+    // The boot resumes B even though A is the selection: B's journal is
+    // materialized for real up to its pending confirmation, and A keeps the
+    // active slot the whole time.
+    await waitFor(
+      () => {
+        const segunda = documentoPersistido().organizacoes.find(
+          org => org.id === SEGUNDA_ID,
+        );
+        expect(segunda?.estado).toBe('pronta');
+        expect(segunda?.confirmacaoPendente).toBe(true);
+      },
+      {timeout: 30_000},
+    );
+    expect(documentoPersistido().ativa).toEqual({
+      organizacaoId: orgSetup.orgId,
+      area: 'monitoramento',
+    });
+    // A's session was never taken down by B's preparation: the engine
+    // stayed open on A, so Home operates A.
+    expect(
+      await screen.findByTestId('MAIN.map-screen', {}, {timeout: 15_000}),
+    ).toBeOnTheScreen();
+    expect(
+      await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
+    ).toHaveTextContent(orgSetup.orgName);
+    // B's pending confirmation is announced on A's Home.
+    expect(screen.getByTestId('HOME.org-repair-btn')).toBeOnTheScreen();
+
+    // The :257 guard still hands the creation route over to B's surface,
+    // which now shows B's confirmation — never a buttonless spinner.
     await act(async () => {
       mockNavigation.navigate('CreateOrganization');
     });
     await waitFor(
       () => {
         const state = mockNavigation.getRootState();
-        // The replace lands on the provisioning surface and the form is
-        // gone with its entry (the §5.5 recovery-table routing is a
-        // REPLACE — the settled-not-operating handover's contract).
         expect(state.routes[state.index]?.name).toBe(
           'OrganizationProvisioning',
         );
@@ -496,31 +517,43 @@ describe('segunda organização (navigator real)', () => {
       {timeout: 15_000},
     );
     expect(
-      await screen.findByText('Preparing your organization…'),
+      await screen.findByText(
+        `${SEGUNDA_NOME} is ready. Monitoring and Alerts are already available.`,
+        undefined,
+        {timeout: 15_000},
+      ),
     ).toBeOnTheScreen();
-    // B's fresh journal still owns the surface — never A's settled rows,
-    // and the form's stages are unreachable.
-    expect(screen.getAllByText('Waiting')).toHaveLength(2);
-    expect(screen.queryAllByText('Ready')).toHaveLength(0);
     expect(
-      screen.queryByTestId('ORG.create-name-inp', {
-        includeHiddenElements: true,
-      }),
-    ).not.toBeOnTheScreen();
+      screen.getByTestId('ORG.provisioning-open-organization-btn'),
+    ).toBeOnTheScreen();
     expect(
-      screen.queryByTestId('ORG.create-intro-continue-btn', {
-        includeHiddenElements: true,
-      }),
+      screen.queryByText('Preparing your organization…'),
     ).not.toBeOnTheScreen();
-    // The document never gained a second creation: B is the only
-    // un-settled entry and A is untouched.
+
+    // The way back to the operating organization: the surface returns to
+    // A's Home without opening B.
+    await fireEvent.press(
+      screen.getByTestId('ORG.provisioning-back-to-active-btn'),
+    );
+    await waitFor(
+      () =>
+        expect(
+          mockNavigation.getRootState().routes.map(route => route.name),
+        ).toEqual(['Home']),
+      {timeout: 15_000},
+    );
+    expect(
+      await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
+    ).toHaveTextContent(orgSetup.orgName);
+    // No second creation happened and A is untouched.
     const cru = documentoPersistido();
     expect(cru.organizacoes).toHaveLength(2);
     expect(cru.ativa).toEqual({
       organizacaoId: orgSetup.orgId,
       area: 'monitoramento',
     });
-  }, 30_000);
+    expect(await orgSetup.client.listProjects()).toHaveLength(4);
+  }, 60_000);
 
   test('com B em falha_recuperavel, entrar em CreateOrganization substitui por OrganizationProvisioning (guarda :257)', async () => {
     // B's creation stopped recoverably: the document still carries it as
@@ -548,12 +581,15 @@ describe('segunda organização (navigator real)', () => {
       JSON.stringify({state: documento, version: 1}),
     );
     await orgSetup.renderNavigation();
+    // A is the operable selection, so the cold start opens A (review
+    // fronteira P1: an un-settled second organization no longer races A's
+    // activation for the landing screen); B's failure is announced there by
+    // the repair banner.
     expect(
-      await screen.findByTestId(
-        'ORG.provisioning-retry-preparation-btn',
-        {},
-        {timeout: 15_000},
-      ),
+      await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
+    ).toHaveTextContent(orgSetup.orgName);
+    expect(
+      await screen.findByTestId('HOME.org-repair-btn', {}, {timeout: 15_000}),
     ).toBeOnTheScreen();
 
     await act(async () => {

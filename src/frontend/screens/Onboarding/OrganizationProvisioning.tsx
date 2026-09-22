@@ -6,7 +6,7 @@ import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {HeaderText} from '../../sharedComponents/Text/HeaderText';
 import {BodyText} from '../../sharedComponents/Text/BodyText';
 import {LoadingIndicator} from '../../sharedComponents/LoadingIndicator';
-import {PrimaryButton} from '../../sharedComponents/Buttons';
+import {PrimaryButton, SecondaryButton} from '../../sharedComponents/Buttons';
 import {AppStackParamsList} from '../../sharedTypes/navigation';
 import {useCoiabOrganizationsState} from '../../contexts/CoiabOrganizationsStoreContext';
 import {useOrganizationActivationContext} from '../../contexts/OrganizationActivationContext';
@@ -91,6 +91,11 @@ const m = defineMessages({
   openOrganizationButton: {
     id: '$1screens.OrganizationSetup.openOrganizationButton',
     defaultMessage: 'Open organization',
+  },
+  backButton: {
+    id: '$1screens.OrganizationSetup.backButton',
+    // SPEC A :209 / B :60 — the waiting screen offers a Back button.
+    defaultMessage: 'Back',
   },
   unavailableTitle: {
     id: '$1screens.OrganizationSetup.unavailableTitle',
@@ -181,6 +186,8 @@ function DocumentDrivenProvisioning({
   ativa,
   avisoDemora,
   avisoBack,
+  preparacaoEmVoo,
+  voltarParaAtiva,
 }: {
   organizacao: OrganizacaoLocal;
   ativa: EstadoOrganizacoes['ativa'];
@@ -188,10 +195,18 @@ function DocumentDrivenProvisioning({
   avisoDemora: boolean;
   /** Fase 5: shown when a back attempt was prevented while the work is alive. */
   avisoBack: boolean;
+  /** `preparando` with a materialization alive in this session. */
+  preparacaoEmVoo: boolean;
+  /** Returns to the operating organization; absent when there is none. */
+  voltarParaAtiva: (() => void) | undefined;
 }) {
   const {formatMessage: t} = useIntl();
   const {status, error, activate, retryPreparation, recoverPendingWork} =
     useOrganizationActivationContext();
+  // Review fronteira P1: `preparando` with nothing alive was interrupted
+  // (the process died mid-preparation) — the resume is offered instead of a
+  // spinner that would never end.
+  const interrompida = organizacao.estado === 'preparando' && !preparacaoEmVoo;
   const [ativando, setAtivando] = React.useState(false);
   // Synchronous guard: the disabled prop alone lets a double tap queue a
   // second activate before the rerender publishes it.
@@ -248,10 +263,12 @@ function DocumentDrivenProvisioning({
     <View style={styles.container}>
       {organizacao.estado === 'preparando' && (
         <>
-          <LoadingIndicator
-            size="large"
-            accessibilityLabel={t(m.preparingStepA11y)}
-          />
+          {preparacaoEmVoo && (
+            <LoadingIndicator
+              size="large"
+              accessibilityLabel={t(m.preparingStepA11y)}
+            />
+          )}
           <HeaderText variant="header2" style={styles.title}>
             {t(m.preparingTitle)}
           </HeaderText>
@@ -296,7 +313,7 @@ function DocumentDrivenProvisioning({
         </BodyText>
       )}
       <AreaStepRows organizacao={organizacao} />
-      {organizacao.estado === 'falha_recuperavel' && (
+      {(organizacao.estado === 'falha_recuperavel' || interrompida) && (
         <PrimaryButton
           testID="ORG.provisioning-retry-preparation-btn"
           fullSize
@@ -330,6 +347,14 @@ function DocumentDrivenProvisioning({
           }}
         />
       )}
+      {voltarParaAtiva && !preparacaoEmVoo && (
+        <SecondaryButton
+          testID="ORG.provisioning-back-to-active-btn"
+          fullSize
+          text={t(m.backButton)}
+          onPress={voltarParaAtiva}
+        />
+      )}
     </View>
   );
 }
@@ -360,7 +385,8 @@ export const OrganizationProvisioning = ({
   // its authority when a ready organization cannot be opened.
   const emPreparo = organizacaoEmPreparo(estado);
   const organizacaoDocument = emPreparo ?? estado.organizacoes[0];
-  const {status: activationStatus} = useOrganizationActivationContext();
+  const {status: activationStatus, preparacaoViva} =
+    useOrganizationActivationContext();
   // The document's own operational id (SPEC A §4.2 regra 5): null while the
   // confirmation is pending or the document cannot be parsed.
   const derivado = derivarProjectIdAtivo(estado);
@@ -403,9 +429,14 @@ export const OrganizationProvisioning = ({
   // system's routing mandatory. The header back and the JS-side gesture
   // both dispatch GO_BACK/POP, so the listener covers every exit §3.2
   // names; the Android hardware press is consumed first below.
-  const preparandoAtiva = estado.organizacoes.some(
-    organizacao => organizacao.estado === 'preparando',
-  );
+  // Review fronteira P1: the document alone cannot tell a call in flight
+  // from one the process lost — an interrupted `preparando` has no call, so
+  // it is not held (the surface offers the resume and the way back).
+  const preparandoAtiva =
+    preparacaoViva &&
+    estado.organizacoes.some(
+      organizacao => organizacao.estado === 'preparando',
+    );
   const [avisoBack, setAvisoBack] = React.useState(false);
   // The state keeps the EVENT (a refused attempt); the notice itself is
   // derived: it is visible only while the call is in flight, so it clears
@@ -457,6 +488,22 @@ export const OrganizationProvisioning = ({
     navigation,
   ]);
 
+  // Review fronteira P1: while ANOTHER organization is open and operating
+  // (A validated `ready`, its derived id projected), this surface is never a
+  // dead end — outside a call in flight, Back returns to A's Home. Leaving
+  // is the user's explicit choice; the un-settled organization stays reachable
+  // through the selector, the repair banner and the creation guard. `popTo`
+  // returns to the Home already on the stack (its content untouched) or, on
+  // a stack that has none, replaces this surface with one.
+  const operandoOutra =
+    derivado !== null &&
+    derivado === activeProjectId &&
+    activationStatus === 'ready' &&
+    estado.ativa?.organizacaoId !== organizacaoDocument?.id;
+  const voltarParaAtiva = operandoOutra
+    ? () => navigation.popTo('Home', {screen: 'Map'})
+    : undefined;
+
   if (organizacaoDocument === undefined) {
     return (
       <View style={styles.container}>
@@ -470,6 +517,8 @@ export const OrganizationProvisioning = ({
       ativa={estado.ativa}
       avisoDemora={avisoDemora}
       avisoBack={avisoBack && preparandoAtiva}
+      preparacaoEmVoo={preparando && preparacaoViva}
+      voltarParaAtiva={voltarParaAtiva}
     />
   );
 };

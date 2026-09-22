@@ -304,7 +304,10 @@ export function useAcceptOrganizationBundle() {
                 // The engine confirms the entry (retomar dispatches by
                 // origin: `verificarEntrada` for a convite journal) and
                 // publishes the selection — its own state carries any
-                // failure, so this stays fire-and-forget.
+                // failure, so this stays fire-and-forget. With another
+                // organization operating, the confirmation runs in the
+                // background and only the document records its outcome: the
+                // open context is never taken down (review fronteira P2-2).
                 void retryPreparation(bundle.organizationId);
               } else if (entrada?.estado !== 'pronta') {
                 // Proibido projetar: the registration was REFUSED while the
