@@ -1,5 +1,5 @@
 import type {ComapeoCoreClientApi} from '@comapeo/ipc';
-import {CREATOR_ROLE_ID} from './fanout';
+import {CREATOR_ROLE_ID, OrganizationOperationError} from './fanout';
 import {markerFor, type Slot} from './marker';
 import {
   AREAS,
@@ -381,7 +381,11 @@ export function createMaterializer<
   }
 
   async function start(name: string, op: Operacao) {
-    if (condicaoDeRecusaDeCriacao()) throw new Error('creation-in-progress');
+    if (condicaoDeRecusaDeCriacao())
+      throw new OrganizationOperationError(
+        'creation-in-progress',
+        'another organization creation is in progress; resume or confirm it first',
+      );
     const error = organizationNameError(name);
     if (error) throw new Error(error);
     // The document id IS the marker's organization id (SPEC B §4.1), so the
@@ -395,7 +399,11 @@ export function createMaterializer<
     if (operacoes.get(repository) !== op) return;
     // The document may have changed while the packages were prepared: the
     // same §5.5 condition is re-verified before persisting the intent.
-    if (condicaoDeRecusaDeCriacao()) throw new Error('creation-in-progress');
+    if (condicaoDeRecusaDeCriacao())
+      throw new OrganizationOperationError(
+        'creation-in-progress',
+        'another organization creation is in progress; resume or confirm it first',
+      );
     const emptyArea = (area: Area) => ({
       etapa: 'ausente' as const,
       projectId: null,

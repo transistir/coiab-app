@@ -21,12 +21,12 @@ import {
   useCoiabOrganizationsStoreContext,
 } from '../../contexts/CoiabOrganizationsStoreContext';
 import {
-  classificarDocumento,
   derivarProjectIdAtivo,
   organizacaoEmPreparo,
 } from '../../lib/organization/coiabOrganizations';
 import {markerFor} from '../../lib/organization/marker';
 import {ErroPacote} from '../../lib/organization/pacotes';
+import {OrganizationOperationError} from '../../lib/organization/fanout';
 import {AppStackParamsList} from '../../sharedTypes/navigation';
 
 const m = defineMessages({
@@ -194,6 +194,10 @@ export const CreateOrganization = ({
   // error. A document that appeared during the attempt is the provisioning
   // surface's business, not an error sheet.
   React.useEffect(() => {
+    // PRE-MERGE 4: the sheet gate is the SAME §4.2 predicate as the catch's
+    // race swallow below (`organizacaoEmPreparo` on the document — defined
+    // iff classificarDocumento ∈ {preparando, confirmacao}). The two gates
+    // must evolve together; if one changes, change its twin.
     if (!erro || organizacaoEmPreparo(estado)) return;
     navigation.navigate('ErrorBottomSheet', {error: erro});
   }, [erro, estado, navigation]);
@@ -218,27 +222,50 @@ export const CreateOrganization = ({
       return;
     }
     iniciandoRef.current = true;
+    // The blocked state re-arms HERE, at the start of a new attempt (the
+    // state's own contract): a message that survived into a fresh press
+    // would falsify "creation in progress" once the previous flight ended.
+    // A refusal re-sets it in the catch below; success (or a race swallow)
+    // leaves it cleared.
+    setBloqueado(false);
     setIniciando(true);
     materializador
       .iniciar(trimmedName)
+      .then(() => {
+        // BLOCKER 2: a resolved start means the operation is alive and the
+        // provisioning surface owns it (it renders `preparando`/
+        // confirmation by id — Fase 3). When the document still resolves
+        // an active selection (the second creation over a settled A), the
+        // redirect effect above stays silent — `derivarProjectIdAtivo`
+        // never turns null — so the handover is the screen's own job,
+        // reading the LIVE document: for a first creation the effect has
+        // already replaced this screen (no selection ⇒ null ⇒ no spurious
+        // second replace). `.then` before `.catch`: a refusal must never
+        // navigate.
+        if (derivarProjectIdAtivo(instance.getState()) !== null) {
+          navigation.replace('OrganizationProvisioning');
+        }
+      })
       .catch((error: unknown) => {
         // The layer's OWN refusal (SPEC B §5.5, now in the materializer
         // layer): the start was refused while another creation is in
         // flight — signal the blocked state; the document is the
-        // provisioning surface's business, not an error sheet.
+        // provisioning surface's business, not an error sheet. Branch on
+        // the typed code (fanout.ts), never the message.
         if (
-          error instanceof Error &&
-          error.message === 'creation-in-progress'
+          error instanceof OrganizationOperationError &&
+          error.code === 'creation-in-progress'
         ) {
           setBloqueado(true);
           return;
         }
         // A rejection that raced against a creation in flight (or a
         // pending confirmation) is the provisioning surface's business —
-        // the §4.2 classification, not "any entry exists", is what makes
-        // a document un-creatable-over.
-        const documento = classificarDocumento(instance.getState());
-        if (documento === 'preparando' || documento === 'confirmacao') {
+        // the §4.2 predicate (`organizacaoEmPreparo`, not "any entry
+        // exists") is what makes a document un-creatable-over. PRE-MERGE
+        // 4: this is the SAME predicate as the error-sheet effect's gate
+        // above — the twin gates must evolve together.
+        if (organizacaoEmPreparo(instance.getState())) {
           return;
         }
         const falha = toError(error);

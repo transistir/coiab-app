@@ -30,6 +30,7 @@ import {
 import {useProjetarProjectIdAtivo} from '../../contexts/ActiveProjectIdStoreContext';
 import {markerFor} from '../../lib/organization/marker';
 import {ErroPacote} from '../../lib/organization/pacotes';
+import {OrganizationOperationError} from '../../lib/organization/fanout';
 import type {
   EstadoOrganizacoes,
   OrganizacaoLocal,
@@ -625,8 +626,19 @@ describe('CreateOrganization', () => {
     await waitFor(() => {
       expect(iniciar).toHaveBeenCalledWith('Órgão Segunda');
     });
-    // The form stays: no handover was warranted by a settled document.
-    expect(screen.queryByText('PROVISIONING-REACHED')).not.toBeOnTheScreen();
+    // Once `iniciar` resolves, the provisioning surface owns the living
+    // operation (it already renders `preparando`/confirmation by id —
+    // Fase 3). The redirect effect stays silent here because
+    // `derivarProjectIdAtivo` still resolves by A, so the screen hands
+    // over itself. (Updated pin: the old assertion — "the form stays" —
+    // pinned the BLOCKER 2 bug, where a resolved second creation left the
+    // user on the form with no indication that B's operation is alive.)
+    expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('ORG.create-name-inp', {
+        includeHiddenElements: true,
+      }),
+    ).not.toBeOnTheScreen();
   });
 
   test('a settled document still surfaces a genuine rejection in the sheet', async () => {
@@ -658,12 +670,14 @@ describe('CreateOrganization', () => {
   test('a start while another creation is in flight is surfaced as blocked, not swallowed', async () => {
     // SPEC B §5.5 guard now lives in the materializer layer: a start while
     // another creation is in flight (B `preparando` in the document) throws
-    // the typed `creation-in-progress`. The screen must signal that state
-    // to the user — never crash, never silence.
-    // The layer's typed refusal (SPEC B §5.5 guard, materializar.ts:384):
-    // a start while another creation is in flight throws it.
+    // the typed `creation-in-progress` (OrganizationOperationError). The
+    // screen must branch on the typed code — not the message — and signal
+    // that state to the user: never crash, never silence.
     iniciar.mockImplementation(async () => {
-      throw new Error('creation-in-progress');
+      throw new OrganizationOperationError(
+        'creation-in-progress',
+        'another organization creation is in progress',
+      );
     });
     store.instance.setState({
       versao: 1,
@@ -694,5 +708,40 @@ describe('CreateOrganization', () => {
     expect(
       screen.getByTestId('ORG.create-btn', {includeHiddenElements: true}),
     ).toBeOnTheScreen();
+  });
+  test('a new attempt clears the blocked message before the second start settles', async () => {
+    // BLOCKER 1: `bloqueado` was write-once — the message claimed a creation
+    // was in flight even after that flight ended and a fresh `iniciar`
+    // started. The reset belongs to the attempt START: the moment a second
+    // press passes the re-entry guard, the stale message must be gone. The
+    // second start here never settles, so the form stays on its loading
+    // state and the assertion cannot be satisfied by any handover.
+    iniciar
+      .mockRejectedValueOnce(
+        new OrganizationOperationError(
+          'creation-in-progress',
+          'another organization creation is in progress',
+        ),
+      )
+      .mockImplementation(() => new Promise<void>(() => {}));
+    store.instance.setState({
+      versao: 1,
+      organizacoes: [organizacaoPronta('Órgão Ativa')],
+      ativa: {organizacaoId: '0123456789abcdef', area: 'monitoramento'},
+    } as EstadoOrganizacoes);
+    await renderScreen();
+    await irParaEtapaNome();
+    await fireEvent.changeText(
+      screen.getByTestId('ORG.create-name-inp'),
+      'Órgão Segunda',
+    );
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+    expect(await screen.findByTestId('ORG.create-blocked')).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+    // The new attempt is running (loading UI replaced the button) and the
+    // falsified "creation in progress" message did not survive into it.
+    expect(screen.queryByTestId('ORG.create-btn')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('ORG.create-blocked')).not.toBeOnTheScreen();
   });
 });

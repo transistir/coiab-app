@@ -13,6 +13,7 @@ import {
   type TemplateRef,
 } from './documento';
 import {createMaterializer} from './materializar';
+import {OrganizationOperationError} from './fanout';
 import {markerFor} from './marker';
 import {reconstructOrganizations} from './reconstruct';
 import {criarTemplateSourceDePacotes, type ManifestoPacote} from './pacotes';
@@ -504,9 +505,11 @@ describe('materialização da organização', () => {
     expect(h.document.organizacoes[0]?.nome).toBe('Original');
     // A fresh publication awaits confirmation (confirmacaoPendente): the
     // layer refuses a further start with a typed error, not a silent return.
-    await expect(other.start('Overwrite')).rejects.toThrow(
-      'creation-in-progress',
-    );
+    const refusal = other.start('Overwrite');
+    await expect(refusal).rejects.toThrow(OrganizationOperationError);
+    await expect(refusal).rejects.toMatchObject({
+      code: 'creation-in-progress',
+    });
     expect(h.client.createProject).toHaveBeenCalledTimes(2);
     expect(h.document.organizacoes[0]?.nome).toBe('Original');
   });
@@ -1185,9 +1188,11 @@ describe('materialização da organização', () => {
     h.repository.write(documentoAmbosVerificados());
     h.repository.write.mockClear();
 
-    await expect(h.service.start('Segunda')).rejects.toThrow(
-      'creation-in-progress',
-    );
+    const refusal = h.service.start('Segunda');
+    await expect(refusal).rejects.toThrow(OrganizationOperationError);
+    await expect(refusal).rejects.toMatchObject({
+      code: 'creation-in-progress',
+    });
 
     // The refusal happens BEFORE any prepare, write or Core call.
     expect(h.templates.prepare).not.toHaveBeenCalled();
