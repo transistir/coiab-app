@@ -749,11 +749,18 @@ describe('CreateOrganization', () => {
   });
 
   test('a start while another creation is in flight is surfaced as blocked, not swallowed', async () => {
-    // SPEC B §5.5 guard now lives in the materializer layer: a start while
-    // another creation is in flight (B `preparando` in the document) throws
-    // the typed `creation-in-progress` (OrganizationOperationError). The
-    // screen must branch on the typed code — not the message — and signal
-    // that state to the user: never crash, never silence.
+    // SPEC B §5.5 guard lives in the materializer layer: a start whose
+    // concurrent flight never landed its registration (the exclusive()
+    // refusal — the plan's Fase 1 item 6) throws the typed
+    // `creation-in-progress` (OrganizationOperationError). The screen must
+    // branch on the typed code — not the message — and signal that state:
+    // never crash, never silence.
+    //
+    // The in-flight flight is NOT seeded into the document: the §4 guard
+    // (:257, plano) replaces an explicitly opened form the moment the
+    // document holds a `preparando` organization, so the reachable refusal
+    // is the one whose registration did not land — the form stays up,
+    // explains, and re-arms.
     iniciar.mockImplementation(async () => {
       throw new OrganizationOperationError(
         'creation-in-progress',
@@ -762,15 +769,7 @@ describe('CreateOrganization', () => {
     });
     store.instance.setState({
       versao: 1,
-      organizacoes: [
-        organizacaoPronta('Órgão Ativa'),
-        // A distinct id: the §4.2 parser rejects duplicate ids, and the
-        // in-flight creation registered its own (SPEC B §4.1).
-        {
-          ...documentoComOrganizacao('Órgão Em Voo').organizacoes[0]!,
-          id: 'fedcba9876543210',
-        },
-      ],
+      organizacoes: [organizacaoPronta('Órgão Ativa')],
       ativa: {organizacaoId: '0123456789abcdef', area: 'monitoramento'},
     } as EstadoOrganizacoes);
     await renderScreen();

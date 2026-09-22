@@ -213,13 +213,17 @@ export const CreateOrganization = ({
   }, [iniciando, navigation]);
 
   // The handover is DERIVED, not armed (the lint-clean form of the same
-  // deferred dispatch): a settled document that no selection resolves is
-  // the provisioning surface's business, and a start that RESOLVED while
-  // the document still resolves a selection is the screen's own job —
-  // both replace as soon as the flight ends and the hold is down. Both
-  // inputs are render-pure: the document read is external-store state,
-  // and `startResolvido` is only ever set from the start's own `.then`
+  // deferred dispatch): the provisioning surface owns a document with
+  // organization work alive, and a start that RESOLVED while the document
+  // still resolves a selection is the screen's own job — both replace as
+  // soon as the flight ends and the hold is down. Both inputs are
+  // render-pure: the document read is external-store state, and
+  // `startResolvido` is only ever set from the start's own `.then`
   // (an interaction event, never an effect).
+  // Plano §4 (Fase 4): the organization in preparation need not have been
+  // started here — it may ride in the persisted document from another
+  // origin (see the gate comment at the top of the component).
+  const existeOrganizacaoEmPreparo = organizacaoEmPreparo(estado) !== undefined;
   const documentoAssentadoSemSelecao =
     estado.organizacoes.length > 0 && derivarProjectIdAtivo(estado) === null;
 
@@ -233,7 +237,10 @@ export const CreateOrganization = ({
   // its organization — the provisioning surface owns it (§3.3 item 2) and
   // the replace must land regardless of the stale banner.
   const deveTrocar =
-    (documentoAssentadoSemSelecao || startResolvido) && !iniciando;
+    (existeOrganizacaoEmPreparo ||
+      documentoAssentadoSemSelecao ||
+      startResolvido) &&
+    !iniciando;
 
   // The deferred handover dispatch (estado → effect → replace): it fires
   // only when `deveTrocar` is true — by then `iniciando` is false, the
