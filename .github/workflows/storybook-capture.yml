@@ -4,13 +4,12 @@ on:
   workflow_dispatch:
 
 jobs:
-  capture:
+  build:
     runs-on: ubuntu-latest
-    # The capture manifest drives wall-clock cost directly (one emulator
-    # interaction per row); it has grown from 12 rows to 38.
-    timeout-minutes: 90
-    env:
-      STORYBOOK_PACKAGE_ID: org.coiab.rc
+    # The APK build dominates the run (~38 min). It lives in its own job so a
+    # capture flake is retried with "Re-run failed jobs", which reuses this
+    # job's APK instead of paying for the build again.
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repository
@@ -77,9 +76,60 @@ jobs:
         run: |
           npm run extract-messages
           eas build --platform android --profile storybook --local --non-interactive
+          mkdir -p apk
+          mv "$(ls -t build-*.apk | head -n 1)" apk/storybook.apk
 
-      - name: Locate built APK
-        run: echo "APK_PATH=$(ls -t build-*.apk | head -n 1)" >> "$GITHUB_ENV"
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: storybook-apk-${{ github.run_number }}
+          path: apk/storybook.apk
+          retention-days: 3
+          if-no-files-found: error
+
+  capture:
+    needs: build
+    runs-on: ubuntu-latest
+    # The capture manifest drives wall-clock cost directly (one emulator
+    # interaction per row); a full successful capture measured ~14 min.
+    timeout-minutes: 45
+    env:
+      STORYBOOK_PACKAGE_ID: org.coiab.rc
+      APK_PATH: apk/storybook.apk
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # The capture scripts need node_modules (@storybook/react-native/node).
+      # Restore only, so the two jobs never race to save the same key; the
+      # path list must match the build job's exactly, or the cache misses.
+      - name: Restore dependencies
+        id: cache-dependencies
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.gradle/caches/
+            ~/.gradle/wrapper/
+            ~/.gradle/daemon/
+            node_modules
+          key: storybook-dependencies-cache-${{ hashFiles('package-lock.json') }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        if: steps.cache-dependencies.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Download APK
+        uses: actions/download-artifact@v4
+        with:
+          name: storybook-apk-${{ github.run_number }}
+          path: apk
 
       - name: Enable KVM group perms
         run: |
@@ -87,12 +137,13 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      # AVD cache/snapshot steps intentionally removed: the snapshot save
-      # hung the runner until the 90-minute job timeout (run 34400273000,
-      # 2026-09-09) and earlier runs failed to load the cached snapshot
-      # ("Failed to load snapshot 'default_boot'", 2026-09-05). A cold
-      # emulator boot measured ~43 s, so caching bought nothing.
-
+      # Always a cold boot on a fresh AVD, by design. AVD cache/snapshot steps
+      # were removed on 2026-09-09: the snapshot save hung the runner until
+      # the job timeout (run 34400273000) and earlier runs failed to load the
+      # cached snapshot; a cold boot measures ~45 s. "Failed to load
+      # snapshot", "adb daemon on port 5037", "stop: Not implemented" and
+      # netsim lines in this step's log are cold-boot/teardown noise; the real
+      # signal is the "capture failed at position N" line.
       - name: Capture Storybook flow screenshots
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -100,14 +151,43 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: pixel_5
-          force-avd-creation: false
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          cores: 4
+          ram-size: 4096M
+          disk-size: 6000M
+          force-avd-creation: true
+          emulator-boot-timeout: 600
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
+          # The action runs each line with `sh -c`: without pipefail, `tee`
+          # would hide the capture script's exit code.
           script: |
             adb uninstall "$STORYBOOK_PACKAGE_ID" || true
             adb install "$APK_PATH"
-            scripts/storybook-capture-all.sh storybook-captures
+            bash -c 'set -o pipefail; scripts/storybook-capture-all.sh storybook-captures 2>&1 | tee "$RUNNER_TEMP/capture.log"'
             node scripts/storybook-report.mjs storybook-captures
+
+      # ELOCKED is a known runtime flake, not stale state: run 35802920896
+      # hit it in the first process after a fresh AVD, uninstall and install,
+      # one second after a story deep link paused and resumed the activity.
+      - name: Classify failure
+        if: failure()
+        run: |
+          log="$RUNNER_TEMP/capture.log"
+          {
+            echo '## Storybook capture failure'
+            if [ ! -s "$log" ]; then
+              echo '**Infra** — emulator/install failed before capture began; see the step log.'
+            elif grep -q 'device offline' "$log"; then
+              echo '**Infra** — emulator went offline mid-run. Use "Re-run failed jobs" (reuses the APK).'
+            elif grep -rqs 'ELOCKED' storybook-captures --include='*.failure-logcat.txt'; then
+              echo '**Known runtime flake** — the core backend died on `ELOCKED: File is locked`. Use "Re-run failed jobs" (reuses the APK).'
+            else
+              echo '**App/story** — inspect the failure diagnostics in the captures artifact.'
+            fi
+            echo; echo '```'
+            grep -E 'capture failed at position|timed out waiting|device offline' "$log" | tail -n 5 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload captures
         if: always()
