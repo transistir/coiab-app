@@ -489,8 +489,23 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
         setReady(null);
         const document = await ensureOrganizationDocument();
         if (cancelled) return;
-        if (!sameOrganizationDocument(persistedDocument, document)) {
-          organizationRepository.write(document);
+        // The seed only returns documents that derive an active project.
+        const monitoramentoId = derivarProjectIdAtivo(document)!;
+        const engineHoldsSeed =
+          organizationActivationStatus === 'ready' &&
+          activatedOrganizationProjectId === monitoramentoId;
+        // In production only the engine writes `ativa`, when it opens an
+        // organization, and it reads `ativa` as "already open". Writing the
+        // seed's selection while the engine holds another organization (a
+        // prior story's) makes activate() return without opening it, and
+        // the flow never settles. Until the engine holds the seed's
+        // organization, persist the document with no selection and let the
+        // activation below write it.
+        const staged: EstadoOrganizacoes = engineHoldsSeed
+          ? document
+          : {...document, ativa: null};
+        if (!sameOrganizationDocument(persistedDocument, staged)) {
+          organizationRepository.write(staged);
           return;
         }
 
@@ -498,12 +513,7 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
         // engine is initialized only once, before this async seed finishes,
         // so request opening through its public API. It validates both
         // project roles and publishes Monitoramento exactly as a real open.
-        // The seed only returns documents that derive an active project.
-        const monitoramentoId = derivarProjectIdAtivo(document)!;
-        if (
-          organizationActivationStatus === 'ready' &&
-          activatedOrganizationProjectId === monitoramentoId
-        ) {
+        if (engineHoldsSeed) {
           if (monitoramentoId !== activeProjectId) {
             // A prior no-organization story can clear the persisted
             // document and legacy projection without remounting the root
