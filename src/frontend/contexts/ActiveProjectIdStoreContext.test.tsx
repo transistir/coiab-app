@@ -6,7 +6,7 @@ import type {ComapeoCoreClientApi} from '@comapeo/ipc';
 import {
   ActiveProjectIdStoreProvider,
   createActiveProjectIdStore,
-  useActiveProjectIdActions,
+  useProjetarProjectIdAtivo,
   useActiveProjectId,
   type ActiveProjectIdStore,
 } from './ActiveProjectIdStoreContext';
@@ -72,26 +72,34 @@ describe('ActiveProjectIdStore', () => {
     stateHook.unmount();
   });
 
-  test('if project is available, store will populate with project', async () => {
-    const projectId = await client.createProject({name: 'test project'});
+  test('with no persisted id and one core project, children mount immediately and the projection invents nothing', async () => {
+    await client.createProject({name: 'test project'});
 
-    //empty store
     const activeProjectStore = createActiveProjectIdStore();
 
     const wrapper = createWrapper(activeProjectStore, client);
 
+    // renderHook itself asserts the immediate mount: behind the deleted
+    // children gate this hook would never run (result stays null); with
+    // the gate gone it renders at once.
     const stateHook = await renderHook(() => useActiveProjectId(), {
       wrapper,
     });
 
+    expect(stateHook.result.current).not.toBeNull();
+
+    // A core project exists, but the provider owns no selection authority:
+    // the projection invents nothing from what the core has.
     await waitFor(() => {
-      expect(stateHook.result.current).toStrictEqual(projectId);
+      expect(stateHook.result.current).toBeUndefined();
     });
+
+    expect(stateHook.result.current).toBeUndefined();
 
     stateHook.unmount();
   });
 
-  test('setActiveProjectId action sets the active project ID', async () => {
+  test('projetar sets and clears the projected active project ID', async () => {
     //empty store
     const activeProjectStore = createActiveProjectIdStore();
 
@@ -101,7 +109,7 @@ describe('ActiveProjectIdStore', () => {
       wrapper,
     });
 
-    const actionsHook = await renderHook(() => useActiveProjectIdActions(), {
+    const actionsHook = await renderHook(() => useProjetarProjectIdAtivo(), {
       wrapper,
     });
 
@@ -109,11 +117,13 @@ describe('ActiveProjectIdStore', () => {
       expect(stateHook.result.current).toBeUndefined();
     });
 
-    await act(async () =>
-      actionsHook.result.current.setActiveProjectId('12345'),
-    );
+    await act(async () => actionsHook.result.current('12345'));
 
     expect(stateHook.result.current).toBe('12345');
+
+    await act(async () => actionsHook.result.current(undefined));
+
+    expect(stateHook.result.current).toBeUndefined();
 
     actionsHook.unmount();
     stateHook.unmount();

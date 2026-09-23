@@ -7,22 +7,44 @@ import {randomBytes} from 'node:crypto';
 import {MEMBER_ROLE_ID} from '../../sharedTypes';
 import {connectPeers} from '../../../../tests/integration/helpers/core';
 import {parseMarker} from '../../lib/organization/marker';
+import {MMKVStoreInitializer} from '../../hooks/persistedState/createPersistedState';
+import {COIAB_ORGANIZATIONS_STORAGE_KEY} from '../../contexts/CoiabOrganizationsStoreContext';
+import type {EstadoOrganizacoes} from '../../lib/organization/coiabOrganizations';
+
+/**
+ * The RAW persisted document, exactly as the store writes it: the durable
+ * COIAB document is asserted from the disk-level truth, not from any
+ * subscribed store view (same observation as index.navigator.test.tsx).
+ */
+function documentoPersistido(): EstadoOrganizacoes {
+  const raw = MMKVStoreInitializer.getItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
+  if (typeof raw !== 'string') throw new Error('documento ausente');
+  return JSON.parse(raw).state;
+}
 
 describe('Onboarding Screens', () => {
   const inviteeSetup = setupIntegrationTestWithoutProject();
   const invitorSetup = setupIntegrationTest();
 
+  // Real navigators and real core peers end-to-end: two managers, invite
+  // sync, two invite.accept IPC calls, reconstruction, query invalidations
+  // and the engine's verification attempt — the whole path legitimately
+  // runs past jest's 5000ms default test timeout on this 2-core/3.8GB box
+  // (the old destination made the 5000ms cap fire). The 45000ms budget
+  // only bounds the wait: if the provisioning surface never appears, the
+  // waitFor below fails and this test still fails.
   test('should show the org fork, receive the organization invite bundle, and accept it', async () => {
     const user = userEvent.setup();
     await inviteeSetup.renderNavigationAsync();
-    // SPEC E6: the Success fork is organization-first — joining an
-    // Organization is a waiting state until an invite bundle arrives.
-    const JoinOrgButton = await screen.findByText('Join an Organization');
-    expect(JoinOrgButton).toBeVisible();
-    await user.press(JoinOrgButton);
+    // SPEC E6: the Success fork is organization-first — the waiting state
+    // (Aguardar convite) is what joining looks like until an invite bundle
+    // arrives.
+    const waitInviteButton = await screen.findByText('Wait for an invitation');
+    expect(waitInviteButton).toBeVisible();
+    await user.press(waitInviteButton);
     expect(
       await screen.findByText(
-        'Ask a coordinator of an existing Organization to invite this device. When the invitation arrives it will appear on this screen.',
+        'Ask a person responsible for the Organization to invite this device.',
       ),
     ).toBeVisible();
 
@@ -57,7 +79,32 @@ describe('Onboarding Screens', () => {
     expect(screen.queryByText('Join')).not.toBeOnTheScreen();
 
     await user.press(joinButton);
-    expect(await screen.findByText('You have joined Test Org')).toBeVisible();
+    // 6b-ii: a REGISTERED accept no longer renders the joined-confirmation
+    // sheet — it resets (not goBack) to OrganizationProvisioning, whose
+    // document-driven view owns the flow from here (SPEC B §5.5). The
+    // accept runs real core work (two invite.accept IPC calls, project
+    // sync, listProjects/reconstruction, query invalidations) and the
+    // engine's verification attempt — fired by the registration — then
+    // settles that view's title: 'Organization created' when the joined
+    // projects carry the imported package categories, the
+    // recoverable-failure sentence otherwise (this fixture's invitor
+    // projects carry none, so the failure sentence is the settled state).
+    // The alternation covers the document-driven view's three titles —
+    // each unique to OrganizationProvisioning in production code — so the
+    // assertion is the surface, not the verdict; the 30000ms budget only
+    // bounds the wait: if the provisioning surface never appears,
+    // findByText fails and so does the test.
+    expect(
+      await screen.findByText(
+        /Could not finish creating the organization\.|Organization created|Preparing your organization…/,
+        undefined,
+        {timeout: 30_000},
+      ),
+    ).toBeVisible();
+    // The joined-confirmation sheet never renders for a registered accept.
+    expect(
+      screen.queryByText('You have joined Test Org'),
+    ).not.toBeOnTheScreen();
 
     // Accepting invalidates the project/invite queries; let those refetches
     // settle so teardown doesn't close the IPC channel under an in-flight
@@ -92,10 +139,37 @@ describe('Onboarding Screens', () => {
       projects.every(project => (project.name ?? '').trim().length > 0),
     ).toBe(true);
 
-    expect(inviteeSetup.activeProjectId).toBe(monitoramento!.project.projectId);
+    // Fase 6b-i: a complete accept REGISTERS the joined organization
+    // (SPEC B §5.5) and hands activation to the engine — it no longer
+    // forces a project active, so the store keeps what it was seeded with
+    // (nothing here). Fase 6b-ii: the accept's destination is the
+    // OrganizationProvisioning reset asserted above — activation becomes
+    // the "Abrir organização" tap on THAT surface once the engine
+    // publishes `pronta`, and the org-first landing into Home is covered
+    // by the getInitialRoute unit tests (SPEC 10.1/E6).
+    expect(inviteeSetup.activeProjectId).toBeUndefined();
 
-    // The accept replaces the waiting screen with the confirmation; the
-    // org-first landing into Home is covered by the getInitialRoute unit
-    // tests (SPEC 10.1/E6).
-  });
+    // The durable document holds the invite entry: both accepted
+    // projectIds journaled as `criado` with NO creation snapshot and NO
+    // local template — the Fase 6a invite origin (this device created
+    // nothing; `pronta` belongs to the engine's verification, not to the
+    // accept).
+    const documento = documentoPersistido();
+    expect(documento.organizacoes).toHaveLength(1);
+    const entrada = documento.organizacoes[0]!;
+    expect(entrada.id).toBe(invitorSetup.orgId);
+    expect(entrada.nome).toBe(invitorSetup.orgName);
+    expect(entrada.materializacao.monitoramento).toStrictEqual({
+      etapa: 'criado',
+      projectId: monitoramento!.project.projectId,
+      template: null,
+      idsAntesDaCriacao: null,
+    });
+    expect(entrada.materializacao.alertas).toStrictEqual({
+      etapa: 'criado',
+      projectId: alertas!.project.projectId,
+      template: null,
+      idsAntesDaCriacao: null,
+    });
+  }, 45_000);
 });

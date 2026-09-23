@@ -5,7 +5,6 @@ import {defineMessages, useIntl} from 'react-intl';
 import {NativeRootNavigationProps} from '../../sharedTypes/navigation';
 import SuccessCheck from '../../images/Success.svg';
 import {IconTitleDescription} from '../../sharedComponents/IconTitleDescription';
-import {useActiveProjectIdActions} from '../../contexts/ActiveProjectIdStoreContext';
 
 const m = defineMessages({
   done: {
@@ -21,12 +20,11 @@ const m = defineMessages({
     defaultMessage: 'You have joined {projectName}',
   },
 });
-
 export const InviteSuccessfullyAccepted = ({
   route,
+  navigation,
 }: NativeRootNavigationProps<'InviteSuccessfullyAccepted'>) => {
   const {formatMessage} = useIntl();
-  const {setActiveProjectId} = useActiveProjectIdActions();
 
   return (
     <BottomSheetWrapper>
@@ -41,9 +39,7 @@ export const InviteSuccessfullyAccepted = ({
         <>
           <SecondaryButton
             fullSize
-            onPress={() => {
-              setActiveProjectId(route.params.projectId);
-            }}
+            onPress={() => navigation.goBack()}
             text={formatMessage(m.done)}
           />
         </>

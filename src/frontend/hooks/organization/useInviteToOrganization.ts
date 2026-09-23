@@ -4,6 +4,7 @@ import {useClientApi} from '@comapeo/core-react';
 import {useQueryClient} from '@tanstack/react-query';
 
 import {SLOTS, type Slot} from '../../lib/organization/marker';
+import {iniciarOperacao} from '../../lib/organization/operacoesEmAndamento';
 import {
   invitesQueryKey,
   membersQueryKey,
@@ -160,17 +161,23 @@ export function useInviteToOrganization() {
 
   const start = useCallback(
     async (args: InviteArgs) => {
-      if (busyRef.current) return;
-      busyRef.current = true;
-      attemptRef.current += 1;
-      const attempt = attemptRef.current;
-      argsRef.current = args;
-      setBusy(true);
-      setProgress(IDLE_PROGRESS);
-      await sendSlots(SLOTS);
-      if (attemptRef.current !== attempt) return;
-      busyRef.current = false;
-      setBusy(false);
+      const terminar = iniciarOperacao();
+      try {
+        busyRef.current = true;
+        attemptRef.current += 1;
+        const attempt = attemptRef.current;
+        argsRef.current = args;
+        setBusy(true);
+        setProgress(IDLE_PROGRESS);
+        await sendSlots(SLOTS);
+        if (attemptRef.current !== attempt) return;
+        busyRef.current = false;
+        setBusy(false);
+      } finally {
+        // Operação em voo alimenta o guard de trabalho pendente (Fase 8a);
+        // o finish é idempotente e roda em TODO caminho de saída do start.
+        terminar();
+      }
     },
     [sendSlots],
   );

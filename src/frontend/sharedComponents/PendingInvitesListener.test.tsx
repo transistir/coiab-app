@@ -7,6 +7,12 @@ import {
 } from './PendingInvitesListener';
 import {markerFor} from '../lib/organization/marker';
 import {useOrganizations} from '../hooks/organization/useOrganizations';
+import {
+  criarEstadoInicialOrganizacoes,
+  type EstadoOrganizacoes,
+} from '../lib/organization/coiabOrganizations';
+import {readyOrganization} from '../lib/organization/fixtures';
+import {useCoiabOrganizationsState} from '../contexts/CoiabOrganizationsStoreContext';
 import type {InviteLike} from '../lib/organization/bundle';
 
 jest.mock('@comapeo/core-react', () => ({
@@ -17,10 +23,37 @@ jest.mock('../hooks/organization/useOrganizations', () => ({
   useOrganizations: jest.fn(),
 }));
 
+jest.mock('../contexts/CoiabOrganizationsStoreContext', () => ({
+  useCoiabOrganizationsState: jest.fn(),
+}));
+
 const useManyInvitesMock = useManyInvites as jest.Mock;
 const useOrganizationsMock = useOrganizations as jest.Mock;
+const useCoiabOrganizationsStateMock = useCoiabOrganizationsState as jest.Mock;
 
 const ORG_ID = 'a1b2c3d4e5f60718';
+
+/**
+ * Document fixtures classified by `classificarDocumento` exactly like the
+ * startup gate classifies them: one organization in each preparation stage.
+ */
+const PREPARANDO_DOCUMENT: EstadoOrganizacoes = {
+  versao: 1,
+  organizacoes: [{...readyOrganization(ORG_ID), estado: 'preparando'}],
+  ativa: null,
+};
+
+const CONFIRMACAO_DOCUMENT: EstadoOrganizacoes = {
+  versao: 1,
+  organizacoes: [{...readyOrganization(ORG_ID), confirmacaoPendente: true}],
+  ativa: null,
+};
+
+const PRONTA_DOCUMENT: EstadoOrganizacoes = {
+  versao: 1,
+  organizacoes: [readyOrganization(ORG_ID)],
+  ativa: null,
+};
 
 function makeInvite(overrides?: Partial<InviteLike>): InviteLike {
   return {
@@ -209,6 +242,11 @@ describe('PendingInvitesListener', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     useOrganizationsMock.mockReturnValue([]);
+    // The empty document classifies as 'nenhum': every pre-existing test
+    // runs with routing unlocked, unchanged.
+    useCoiabOrganizationsStateMock.mockReturnValue(
+      criarEstadoInicialOrganizacoes(),
+    );
   });
 
   test('navigates to the Organization invite screen for a marker invite', async () => {
@@ -277,5 +315,98 @@ describe('PendingInvitesListener', () => {
     });
     expect(navigateToOrgInviteScreen).not.toHaveBeenCalled();
     expect(navigateToInviteScreen).not.toHaveBeenCalled();
+  });
+
+  test('does not navigate while the organization document is preparando', async () => {
+    // SPEC B §5.5: while the organization is being prepared the provisioning
+    // screen owns the flow — a newly arrived invite must stay pending
+    // instead of pulling the user out of it. The listener never rejects or
+    // alters the invite; routing resumes once the document leaves the
+    // preparation state ('confirmacao' / 'pronta' / 'nenhum' all route).
+    useCoiabOrganizationsStateMock.mockReturnValue(PREPARANDO_DOCUMENT);
+    useManyInvitesMock.mockReturnValue({
+      data: [
+        makeInvite({
+          inviteId: 'invite-marker',
+          projectDescription: MARKER_DESCRIPTION,
+        }),
+        makeInvite({inviteId: 'invite-plain'}),
+      ],
+    });
+    const navigateToOrgInviteScreen = jest.fn();
+    const navigateToInviteScreen = jest.fn();
+
+    render(
+      <PendingInvitesListener
+        currentRouteName="Home"
+        navigateToInviteScreen={navigateToInviteScreen}
+        navigateToOrgInviteScreen={navigateToOrgInviteScreen}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(useOrganizationsMock).toHaveBeenCalled();
+    });
+    expect(navigateToOrgInviteScreen).not.toHaveBeenCalled();
+    expect(navigateToInviteScreen).not.toHaveBeenCalled();
+  });
+
+  test('still navigates while the document waits for confirmation', async () => {
+    // 'confirmacao' is not 'preparando': the confirmation must still reach
+    // the user, so routing stays live.
+    useCoiabOrganizationsStateMock.mockReturnValue(CONFIRMACAO_DOCUMENT);
+    useManyInvitesMock.mockReturnValue({
+      data: [
+        makeInvite({
+          inviteId: 'invite-marker',
+          projectDescription: MARKER_DESCRIPTION,
+        }),
+      ],
+    });
+    const navigateToOrgInviteScreen = jest.fn();
+    const navigateToInviteScreen = jest.fn();
+
+    render(
+      <PendingInvitesListener
+        currentRouteName="Home"
+        navigateToInviteScreen={navigateToInviteScreen}
+        navigateToOrgInviteScreen={navigateToOrgInviteScreen}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(navigateToOrgInviteScreen).toHaveBeenCalledTimes(1);
+    });
+    expect(navigateToOrgInviteScreen).toHaveBeenCalledWith(
+      ORG_ID,
+      'invite-marker',
+    );
+    expect(navigateToInviteScreen).not.toHaveBeenCalled();
+  });
+
+  test('still navigates while the document is pronta', async () => {
+    // 'pronta' is not 'preparando': the listener must not be switched off by
+    // the lock. A plain invite routes; the marker invite for the ready ORG_ID
+    // stays suppressed by the existing ready-organization rule.
+    useCoiabOrganizationsStateMock.mockReturnValue(PRONTA_DOCUMENT);
+    useManyInvitesMock.mockReturnValue({
+      data: [makeInvite({inviteId: 'invite-plain'})],
+    });
+    const navigateToOrgInviteScreen = jest.fn();
+    const navigateToInviteScreen = jest.fn();
+
+    render(
+      <PendingInvitesListener
+        currentRouteName="Home"
+        navigateToInviteScreen={navigateToInviteScreen}
+        navigateToOrgInviteScreen={navigateToOrgInviteScreen}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(navigateToInviteScreen).toHaveBeenCalledTimes(1);
+    });
+    expect(navigateToInviteScreen).toHaveBeenCalledWith('invite-plain');
+    expect(navigateToOrgInviteScreen).not.toHaveBeenCalled();
   });
 });

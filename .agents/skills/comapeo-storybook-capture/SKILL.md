@@ -210,12 +210,26 @@ the mistakes that otherwise fail the run at row 1:
 node -e "const {buildIndex}=require('@storybook/react-native/node');const fs=require('fs');const ids=fs.readFileSync('.rnstorybook/capture-manifest.tsv','utf8').trim().split('\n').map(l=>l.split('\t')[1]);buildIndex({configPath:'.rnstorybook'}).then(i=>{const m=ids.filter(id=>!(id in i.entries));console.log(m.length?'MISSING: '+m.join(', '):'ALL '+ids.length+' IDS PRESENT');if(m.length)process.exitCode=1})"
 ```
 
-A runtime story id is the kebab-cased meta `title` path plus `--` plus the
-kebab-cased **export name**; a `name:` override does not change it. Also
-confirm every route name used in an `initialState` is actually registered as
-a screen in `Navigation/Stack/AppScreens.tsx` — `RootStackParamsList`
-declares at least one key (`Settings`) that is never registered and is not
-navigable.
+`scripts/storybook-manifest-check.mjs` runs the same id check **plus** the
+readiness-target column that has failed real runs: every `route:<Name>` must
+be registered as a `RootStack.Screen` in `Navigation/Stack/` **and** reached
+by the story's own seeded `initialState` (the marker the capture waits for
+is `STORYBOOK.flow-ready.<storyId>.<routeName>`, named after the container's
+current route), and every `testID:<id>` must be rendered somewhere in
+`src/` or `.rnstorybook/` source. Anything not provably valid exits 1 with a
+per-row verdict table:
+
+```sh
+node scripts/storybook-manifest-check.mjs
+```
+
+This is the check that would have caught the removed `07b` and legacy
+`JoinProjectIntro` rows before a capture run burned on them. A runtime
+story id is the kebab-cased meta `title` path plus `--` plus the
+kebab-cased **export name**; a `name:` override does not change it. Note
+that `RootStackParamsList` declares at least one key (`Settings`) that is
+never registered and is not navigable — the script reports registration
+truth, not parameter-list truth.
 
 ## A green capture run does not mean good frames
 

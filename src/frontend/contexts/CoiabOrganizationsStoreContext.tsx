@@ -3,6 +3,7 @@ import {createStore, useStore} from 'zustand';
 
 import {MMKVStoreInitializer} from '../hooks/persistedState/createPersistedState';
 import {
+  AREAS,
   Area,
   EstadoOrganizacoes,
   EtapaArea,
@@ -11,6 +12,7 @@ import {
   criarEstadoInicialOrganizacoes,
   parseEstadoOrganizacoes,
 } from '../lib/organization/coiabOrganizations';
+import {ORGANIZATION_ID_PATTERN} from '../lib/organization/marker';
 
 /**
  * The single durable COIAB organization document (SPEC A §4.2/D3). Every
@@ -190,6 +192,76 @@ export function createCoiabOrganizationsStore({persist} = {persist: false}) {
         }
         return {...state, ativa: {organizacaoId, area}};
       });
+    },
+
+    /**
+     * Registers an organization entered by ACCEPTING an invite (SPEC A §4.2
+     * rule 9, :127) in ONE write. Decision #25 keeps the MVP open to multiple
+     * organizations per device; what :127 refuses is only STARTING an entry
+     * into another organization while one is already registered — so a call
+     * with any registration present refuses here — and every id must be
+     * fresh: the organization id must match the marker
+     * pattern and must differ from both project ids, and the two project
+     * ids must differ — otherwise the §4.2 parser would reject the
+     * document on the next open. A refusal returns `false` with NO write:
+     * the caller keeps its own outcome handling instead of a half-registered
+     * entry. The journal carries the accepted projectIds as `criado` with
+     * `template: null` and no creation snapshot — this device created
+     * nothing; `verificarEntrada` (SPEC B §5.5) confirms the join, role and
+     * categories before `publicarPronta` publishes `pronta`.
+     */
+    registrarEntradaPorConvite: (p: {
+      organizacaoId: string;
+      nome: string;
+      projectIds: Record<Area, string>;
+    }): boolean => {
+      const state = store.getState();
+      // Blocked while a hydration failure is unresolved (SPEC A §5.3).
+      if (state.hidratacaoFalhou) return false;
+      // SPEC A :127 — refuses *starting an entry* into another organization
+      // while one is registered (decision #25: the MVP model holds multiple
+      // organizations per device; this is an entry-policy refusal, not a
+      // one-organization limit).
+      if (state.organizacoes.length > 0) return false;
+      if (!ORGANIZATION_ID_PATTERN.test(p.organizacaoId)) return false;
+      const nome = p.nome.trim();
+      if (nome === '') return false;
+      // Each project id is globally unique across the document (§4.2 rule 2)
+      // and never equals the organization id (the §4.2 parser rejects it).
+      const associados = new Set<string>([p.organizacaoId]);
+      for (const area of AREAS) {
+        const projectId = p.projectIds[area];
+        if (!projectId || associados.has(projectId)) return false;
+        associados.add(projectId);
+      }
+      store.setState(current => ({
+        ...current,
+        organizacoes: [
+          {
+            id: p.organizacaoId,
+            nome,
+            estado: 'preparando',
+            confirmacaoPendente: false,
+            materializacao: {
+              monitoramento: {
+                etapa: 'criado',
+                projectId: p.projectIds.monitoramento,
+                template: null,
+                idsAntesDaCriacao: null,
+              },
+              alertas: {
+                etapa: 'criado',
+                projectId: p.projectIds.alertas,
+                template: null,
+                idsAntesDaCriacao: null,
+              },
+            },
+            areaEmExecucao: null,
+            ultimoErro: null,
+          },
+        ],
+      }));
+      return true;
     },
 
     /**

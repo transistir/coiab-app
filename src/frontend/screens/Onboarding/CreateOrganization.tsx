@@ -15,33 +15,74 @@ import {BodyText} from '../../sharedComponents/Text/BodyText';
 import {PrimaryButton} from '../../sharedComponents/Buttons';
 import {LoadingIndicator} from '../../sharedComponents/LoadingIndicator';
 import {BLACK, LIGHT_GREY} from '../../lib/styles';
-import {AppStackParamsList} from '../../sharedTypes/navigation';
-import {useCreateOrganization} from '../../hooks/organization/useCreateOrganization';
-import {OrganizationOperationError} from '../../lib/organization/fanout';
+import {useOrganizationMaterializer} from '../../contexts/OrganizationMaterializerContext';
+import {
+  useCoiabOrganizationsState,
+  useCoiabOrganizationsStoreContext,
+} from '../../contexts/CoiabOrganizationsStoreContext';
+import {derivarProjectIdAtivo} from '../../lib/organization/coiabOrganizations';
 import {markerFor} from '../../lib/organization/marker';
+import {ErroPacote} from '../../lib/organization/pacotes';
+import {AppStackParamsList} from '../../sharedTypes/navigation';
 
 const m = defineMessages({
-  title: {
-    id: '$1screens.Onboarding.CreateOrganization.title',
-    defaultMessage: 'Name your Organization',
+  // SPEC B :54/:55: both stages share the title and the submit button
+  // "Criar organização" — one descriptor. Success's primary button uses
+  // the SAME id with the SAME defaultMessage (identical duplicates are
+  // allowed by the extraction gate).
+  createOrganization: {
+    id: '$1screens.OrganizationSetup.createOrganization',
+    defaultMessage: 'Create Organization',
   },
-  body: {
-    id: '$1screens.Onboarding.CreateOrganization.body',
+  createIntroBody: {
+    id: '$1screens.OrganizationSetup.createIntroBody',
+    // SPEC B :54 — verbatim.
     defaultMessage:
-      'The Organization is the way {app} organizes mapping. It contains the Monitoramento and Alertas projects.',
+      'Your Organization will have Monitoramento and Alertas, with categories ready to use. You can create it without internet.',
   },
-  placeholder: {
-    id: '$1screens.Onboarding.CreateOrganization.placeholder',
+  continueButton: {
+    id: '$1screens.OrganizationSetup.continueButton',
+    // SPEC B :54.
+    defaultMessage: 'Continue',
+  },
+  nameLabel: {
+    id: '$1screens.OrganizationSetup.nameLabel',
+    // SPEC B :55 (also the :94 table) — the field label.
     defaultMessage: 'Organization name',
   },
-  create: {
-    id: '$1screens.Onboarding.CreateOrganization.create',
-    defaultMessage: 'Create Organization',
+  nameGuidance: {
+    id: '$1screens.OrganizationSetup.nameGuidance',
+    // SPEC B :55 — verbatim.
+    defaultMessage: 'Choose a name for your Organization.',
+  },
+  nameNotIdentity: {
+    id: '$1screens.OrganizationSetup.nameNotIdentity',
+    // SPEC B :55 — verbatim.
+    defaultMessage:
+      'Using the same name as another Organization does not connect the devices. To join an existing Organization, wait for an invitation.',
+  },
+  emptyName: {
+    id: '$1screens.OrganizationSetup.emptyName',
+    // SPEC B :252 — verbatim.
+    defaultMessage: 'Enter the Organization name.',
   },
   creating: {
     id: '$1screens.Onboarding.CreateOrganization.creating',
     defaultMessage: 'Creating Organization…',
   },
+  // ⚑ SPEC (A4): there is no canonical string yet for a package failure
+  // BEFORE any write — `$1screens.OrganizationSetup.failureBody`
+  // ("…está salvo") would be false here, so this NEW minimal factual
+  // descriptor fills the gap. COPY PENDING A SPEC DECISION.
+  pacoteNaoAprovado: {
+    id: '$1screens.OrganizationSetup.pacoteNaoAprovado',
+    defaultMessage:
+      'Could not prepare the necessary files on this device. Nothing was created.',
+  },
+  // ⚑ Flag #14 (SPEC B :253 vs marker pairing): the bound the guard enforces
+  // is the MINTED MARKER's 60 chars, not the raw name — the canonical
+  // "Use no máximo 60 caracteres." would mislead, so this marker-bound
+  // message is preserved as-is until a marker v2 lands.
   tooLong: {
     id: '$1screens.Onboarding.CreateOrganization.tooLong',
     defaultMessage: 'Organization name is too long',
@@ -75,60 +116,169 @@ function toError(error: unknown): Error {
 export const CreateOrganization = ({
   navigation,
 }: NativeStackScreenProps<AppStackParamsList, 'CreateOrganization'>) => {
+  // SPEC B §3.1/D13: the journey is ONE screen with two local stages —
+  // the intro (B :54) and the name form (B :55) — never routes.
+  const [etapa, setEtapa] = React.useState<'introducao' | 'nome'>('introducao');
   const [name, setName] = React.useState('');
   const {formatMessage: t} = useIntl();
-  const {start, status, error} = useCreateOrganization();
+  // The root-owned materialization engine (SPEC B §5.4): the screen only
+  // starts it and hands the journey over to the document — the promise
+  // keeps running at the root, surviving this screen's unmount.
+  const {instance} = useCoiabOrganizationsStoreContext();
+  const estado = useCoiabOrganizationsState();
+  const materializador = useOrganizationMaterializer();
+  const organizacaoNoDocumento = estado.organizacoes[0];
+  const [erro, setErro] = React.useState<Error | null>(null);
+  const [emptyNameError, setEmptyNameError] = React.useState(false);
+  // A synchronous re-entry guard: a state check alone would let a second
+  // press slip through before the rerender publishes the loading UI.
+  const iniciandoRef = React.useRef(false);
+  const [iniciando, setIniciando] = React.useState(false);
 
-  const creating = status === 'creating';
   const trimmedName = name.trim();
   const tooLong = isNameTooLong(name);
 
+  // SPEC B :54/:55: Back from the name stage returns to the intro and
+  // creates nothing; from the intro, Back pops to the choice (Success).
+  // Only back-type removals are intercepted — the provisioning handover
+  // (replace) and any other action must pass through untouched.
   React.useEffect(() => {
-    if (status === 'success') {
-      navigation.reset({index: 0, routes: [{name: 'Home'}]});
-    } else if (status === 'error' && error !== undefined) {
-      // The fan-out refused to create a second organization while an
-      // incomplete one sits on the device (Bug 46): the provisioning screen
-      // owns that repair — it retries under the reconstructed id — so the
-      // error sheet would only dead-end a recoverable state.
-      if (
-        error instanceof OrganizationOperationError &&
-        error.code === 'incomplete-org-blocks-create'
-      ) {
-        navigation.navigate('OrganizationProvisioning');
-        return;
-      }
-      navigation.navigate('ErrorBottomSheet', {error: toError(error)});
-    }
-  }, [status, error, navigation]);
+    if (etapa !== 'nome') return;
+    const unsubscribe = navigation.addListener('beforeRemove', e => {
+      const type = e.data.action.type;
+      if (type !== 'GO_BACK' && type !== 'POP') return;
+      e.preventDefault();
+      setEtapa('introducao');
+    });
+    return unsubscribe;
+  }, [etapa, navigation]);
 
-  function handleCreatePress() {
-    if (creating || trimmedName.length === 0 || tooLong) return;
-    start(trimmedName);
+  function handleNameChange(value: string) {
+    setName(value);
+    setEmptyNameError(false);
   }
 
+  // SPEC B §3.3 items 2-3 and §5.5:241: a persisted organization outranks
+  // the form — preparando/falha_recuperavel belong to the provisioning
+  // surface's recovery, and a pending confirmation to its "Abrir
+  // organização" tap — so starting a second operation over one is never
+  // authorized. The ONE state that leaves an explicitly opened form alone
+  // is the settled one (pronta, acknowledged, selection resolvable): there
+  // the device already operates the organization, and the materializer
+  // itself refuses a second registration.
+  React.useEffect(() => {
+    if (organizacaoNoDocumento && derivarProjectIdAtivo(estado) === null) {
+      navigation.replace('OrganizationProvisioning');
+    }
+  }, [organizacaoNoDocumento, estado, navigation]);
+
+  // A rejection means NOTHING was persisted (the materializer routes every
+  // mid-materialization failure into the document as `falha_recuperavel`
+  // instead of throwing): the form stays with its draft and explains the
+  // error. A document that appeared during the attempt is the provisioning
+  // surface's business, not an error sheet.
+  React.useEffect(() => {
+    if (!erro || organizacaoNoDocumento) return;
+    navigation.navigate('ErrorBottomSheet', {error: erro});
+  }, [erro, organizacaoNoDocumento, navigation]);
+
+  function handleCreatePress() {
+    if (iniciandoRef.current || organizacaoNoDocumento) {
+      return;
+    }
+    if (trimmedName.length === 0) {
+      // SPEC B :252: an empty (or whitespace-only) name is rejected BEFORE
+      // persisting the intent — the message explains; the core is never
+      // called. (B :253's over-long bound keeps the button disabled.)
+      setEmptyNameError(true);
+      return;
+    }
+    if (tooLong) {
+      return;
+    }
+    if (!materializador) {
+      // Absent capability is fail-closed feedback, not a silent no-op.
+      setErro(new Error('materialization-unavailable'));
+      return;
+    }
+    iniciandoRef.current = true;
+    setIniciando(true);
+    materializador
+      .iniciar(trimmedName)
+      .catch((error: unknown) => {
+        // The CURRENT document decides: a rejection that raced against a
+        // persisted intent is the provisioning surface's business.
+        if (instance.getState().organizacoes[0]) return;
+        const falha = toError(error);
+        if (falha instanceof ErroPacote) {
+          // Decisão A/A4: ErrorBottomSheet surfaces `error.code` in its
+          // advanced section — the machine code rides through unchanged.
+          (falha as ErroPacote & {code?: string}).code = falha.codigo;
+          if (falha.codigo === 'pacote_nao_aprovado') {
+            // ⚑ SPEC (A4): no canonical copy for a package failure before
+            // any write — see the descriptor's comment. The message the
+            // sheet receives is the minimal factual one, never a
+            // "salvo/está salvo" claim.
+            falha.message = t(m.pacoteNaoAprovado);
+          }
+        }
+        setErro(falha);
+      })
+      .finally(() => {
+        iniciandoRef.current = false;
+        setIniciando(false);
+      });
+  }
+  if (etapa === 'introducao') {
+    return (
+      <KeyboardAvoidingView style={{width: '100%', height: '100%'}}>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.container}>
+            <View style={styles.headerArea}>
+              <HeaderText variant="header2" style={styles.title}>
+                {t(m.createOrganization)}
+              </HeaderText>
+              <BodyText style={styles.body}>{t(m.createIntroBody)}</BodyText>
+            </View>
+            <View style={styles.buttonContainer}>
+              <PrimaryButton
+                testID="ORG.create-intro-continue-btn"
+                fullSize
+                text={t(m.continueButton)}
+                onPress={() => setEtapa('nome')}
+              />
+            </View>
+          </View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
+    );
+  }
   return (
     <KeyboardAvoidingView style={{width: '100%', height: '100%'}}>
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <View style={styles.container}>
           <View style={styles.headerArea}>
             <HeaderText variant="header2" style={styles.title}>
-              {t(m.title)}
+              {t(m.createOrganization)}
             </HeaderText>
-            <BodyText style={styles.body}>
-              {t(m.body, {app: 'CoMapeo'})}
-            </BodyText>
+            <BodyText style={styles.body}>{t(m.nameGuidance)}</BodyText>
+            <BodyText style={styles.body}>{t(m.nameNotIdentity)}</BodyText>
             <View style={styles.nameForm}>
               <TextInput
                 testID="ORG.create-name-inp"
                 style={styles.textInput}
                 value={name}
-                onChangeText={setName}
+                onChangeText={handleNameChange}
                 maxLength={MARKER_MAX_LENGTH}
                 placeholderTextColor={LIGHT_GREY}
-                placeholder={t(m.placeholder)}
+                placeholder={t(m.nameLabel)}
                 autoCapitalize="none"
               />
+              {emptyNameError && (
+                <BodyText variant="smallMeta" testID="ORG.create-name-empty">
+                  {t(m.emptyName)}
+                </BodyText>
+              )}
               {tooLong && (
                 <BodyText variant="smallMeta" testID="ORG.create-name-too-long">
                   {t(m.tooLong)}
@@ -140,7 +290,7 @@ export const CreateOrganization = ({
             </View>
           </View>
           <View style={styles.buttonContainer}>
-            {creating ? (
+            {iniciando ? (
               <>
                 <LoadingIndicator size="large" style={{flex: 0}} />
                 <BodyText variant="smallMeta">{t(m.creating)}</BodyText>
@@ -149,8 +299,8 @@ export const CreateOrganization = ({
               <PrimaryButton
                 testID="ORG.create-btn"
                 fullSize
-                text={t(m.create)}
-                disabled={trimmedName.length === 0 || tooLong}
+                text={t(m.createOrganization)}
+                disabled={tooLong}
                 onPress={handleCreatePress}
               />
             )}

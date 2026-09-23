@@ -21,8 +21,15 @@ import type {Preset} from '@comapeo/schema';
 
 import type {Metadata} from '../../src/frontend/sharedTypes';
 import {
+  derivarProjectIdAtivo,
+  type Area,
+  type EstadoOrganizacoes,
+  type EtapaArea,
+} from '../../src/frontend/lib/organization/coiabOrganizations';
+import {
   markerFor,
   parseMarker,
+  type Slot,
 } from '../../src/frontend/lib/organization/marker';
 
 /**
@@ -103,6 +110,137 @@ export function useSeedOrganization(
 
     return mId;
   }, [clientApi, orgName, slots]);
+
+  return {ensure};
+}
+
+/** One organization of a `FlowStateSpec.organizations` seed. */
+export type SeedOrganization = {id: string; name: string};
+
+/** Ready organizations for the COIAB document, `activeId` selected. */
+export type SeedOrganizations = {
+  list: ReadonlyArray<SeedOrganization>;
+  activeId: string;
+};
+
+const AREA_PROJECT_NAMES: Record<Area, string> = {
+  monitoramento: 'Monitoramento',
+  alertas: 'Alertas',
+};
+
+const AREA_SLOTS: Record<Area, Slot> = {monitoramento: 'm', alertas: 'a'};
+
+/**
+ * The COIAB document (SPEC A §4.2) a device holds once every organization in
+ * `organizations` finished materializing and was acknowledged: each one
+ * `pronta` with both areas `verificado` on the `projectIds` seeded for it, and
+ * `activeId`'s Monitoramento selected.
+ *
+ * Checked with the app's own derivation, which parses the document first: a
+ * seed the app would reject throws here instead of quietly leaving the
+ * navigator on the onboarding screen set.
+ */
+export function buildOrganizationDocument(
+  organizations: SeedOrganizations,
+  projectIds: ReadonlyMap<string, Record<Area, string>>,
+): EstadoOrganizacoes {
+  const document: EstadoOrganizacoes = {
+    versao: 1,
+    organizacoes: organizations.list.map(({id, name}) => {
+      const ids = projectIds.get(id);
+      if (!ids) {
+        throw new Error(`Storybook organization ${id} has no seeded projects`);
+      }
+      // Pinned the way the integration seed pins them: the document only
+      // requires a non-empty version and hash.
+      const verificada = (area: Area): EtapaArea => ({
+        etapa: 'verificado',
+        projectId: ids[area],
+        template: {versao: '1', hash: area},
+        idsAntesDaCriacao: null,
+      });
+      return {
+        id,
+        nome: name,
+        estado: 'pronta',
+        confirmacaoPendente: false,
+        materializacao: {
+          monitoramento: verificada('monitoramento'),
+          alertas: verificada('alertas'),
+        },
+        areaEmExecucao: null,
+        ultimoErro: null,
+      };
+    }),
+    ativa: {organizacaoId: organizations.activeId, area: 'monitoramento'},
+  };
+
+  if (derivarProjectIdAtivo(document) === null) {
+    throw new Error(
+      'Storybook organizations seed is not a valid COIAB document with an open active organization',
+    );
+  }
+  return document;
+}
+
+/**
+ * Ensure both area projects of every organization in `organizations` exist,
+ * and return the COIAB document for them (`buildOrganizationDocument`).
+ *
+ * The projects are named and marked the way the materializer names and marks
+ * them, so the core rows and the document agree. Idempotent: an existing
+ * project is found by its marker (organization id + slot), never by name —
+ * every organization has a "Monitoramento". The document is returned to the
+ * caller: the plural `organizations` axis provides it story-scoped through
+ * `FlowStateScope`, while the complete singular `organization` axis writes it
+ * through the app's persisted organization repository.
+ */
+export function useSeedOrganizationDocument(
+  organizations: SeedOrganizations | undefined,
+) {
+  const clientApi = useClientApi();
+
+  const ensure = React.useCallback(async (): Promise<EstadoOrganizacoes> => {
+    if (!organizations) {
+      throw new Error('Storybook flow has no organizations to seed');
+    }
+    const projects = await clientApi.listProjects();
+
+    const projectIdFor = async (
+      organization: SeedOrganization,
+      area: Area,
+    ): Promise<string> => {
+      const existing = projects.find(project => {
+        const marker = parseMarker(project.projectDescription ?? '');
+        return (
+          marker?.organizationId === organization.id &&
+          marker.slot === AREA_SLOTS[area]
+        );
+      });
+      return (
+        existing?.projectId ??
+        clientApi.createProject({
+          name: AREA_PROJECT_NAMES[area],
+          projectDescription: markerFor(
+            organization.id,
+            AREA_SLOTS[area],
+            organization.name,
+          ),
+        })
+      );
+    };
+
+    // Sequential, so a first run creates the projects in one stable order.
+    const projectIds = new Map<string, Record<Area, string>>();
+    for (const organization of organizations.list) {
+      projectIds.set(organization.id, {
+        monitoramento: await projectIdFor(organization, 'monitoramento'),
+        alertas: await projectIdFor(organization, 'alertas'),
+      });
+    }
+
+    return buildOrganizationDocument(organizations, projectIds);
+  }, [clientApi, organizations]);
 
   return {ensure};
 }

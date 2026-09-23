@@ -26,17 +26,17 @@
   "$1Navigation.Menu.gatherObservations": {
     "message": "Reúna observações"
   },
-  "$1Navigation.Menu.justYou": {
-    "message": "Apenas você"
-  },
   "$1Navigation.Menu.mappingOnOwn": {
     "message": "Você é um mapeamento próprio."
+  },
+  "$1Navigation.Menu.justYou": {
+    "message": "Apenas você"
   },
   "$1Navigation.Menu.participant": {
     "message": "Participante"
   },
-  "$1Navigation.Menu.switchProject": {
-    "message": "Trocar Projeto"
+  "$1Navigation.Menu.switchOrganization": {
+    "message": "Trocar de organização"
   },
   "$1Navigation.Menu.team": {
     "message": "Equipe"
@@ -304,9 +304,6 @@
   "$1screens.DataPrivacy.title": {
     "message": "O CoMapeo é privado por padrão."
   },
-  "$1screens.DeviceNaming.Success.chooseProject": {
-    "message": "Escolha abaixo para iniciar seu primeiro projeto."
-  },
   "$1screens.DeviceNaming.Success.deviceReady": {
     "message": "{deviceName} está pronto!"
   },
@@ -512,6 +509,18 @@
   "$1screens.ObservationMetadataVerified.navTitle": {
     "message": "Metadados da Observação"
   },
+  "$1screens.ObservationsList.emptyAlertas": {
+    "message": "Ainda não há registros em Alertas",
+    "description": "Title of the empty observation list in the Alerts area of an organization"
+  },
+  "$1screens.ObservationsList.emptyMonitoramento": {
+    "message": "Ainda não há registros em Monitoramento",
+    "description": "Title of the empty observation list in the Monitoring area of an organization"
+  },
+  "$1screens.ObservationsList.goToMap": {
+    "message": "Ir para o mapa",
+    "description": "Action that opens the map of the current work area from the empty observation list"
+  },
   "$1screens.ObservationsList.ObservationsEmptyView.backButton": {
     "message": "Ir para mapa",
     "description": "Back button on observation list screen when no observations are yet recorded"
@@ -549,6 +558,119 @@
   },
   "$1screens.OrganizationProvisioning.skippedJoinPending": {
     "message": "Um convite para esta organização ainda está sincronizando. Tente novamente quando ele terminar."
+  },
+  "$1screens.OrganizationSetup.alertsRow": {
+    "message": "Alertas"
+  },
+  "$1screens.OrganizationSetup.areaNotComplete": {
+    "message": "Não concluído"
+  },
+  "$1screens.OrganizationSetup.areaPreparing": {
+    "message": "Preparando"
+  },
+  "$1screens.OrganizationSetup.areaReady": {
+    "message": "Pronto"
+  },
+  "$1screens.OrganizationSetup.areaWaiting": {
+    "message": "Aguardando"
+  },
+  "$1screens.OrganizationSetup.backButton": {
+    "message": "Voltar"
+  },
+  "$1screens.OrganizationSetup.continueButton": {
+    "message": "Continuar"
+  },
+  "$1screens.OrganizationSetup.createIntroBody": {
+    "message": "Sua organização terá Monitoramento e Alertas, com categorias prontas para usar. Você pode criá-la sem internet."
+  },
+  "$1screens.OrganizationSetup.createOrganization": {
+    "message": "Criar organização"
+  },
+  "$1screens.OrganizationSetup.createdBody": {
+    "message": "{organizationName} está pronta. Monitoramento e Alertas já estão disponíveis."
+  },
+  "$1screens.OrganizationSetup.createdTitle": {
+    "message": "Organização criada"
+  },
+  "$1screens.OrganizationSetup.failureBody": {
+    "message": "O que já foi preparado está salvo. Tente novamente para concluir."
+  },
+  "$1screens.OrganizationSetup.failureTitle": {
+    "message": "Não foi possível concluir a criação."
+  },
+  "$1screens.OrganizationSetup.emptyName": {
+    "message": "Informe o nome da organização."
+  },
+  "$1screens.OrganizationSetup.loadingOrganization": {
+    "message": "Carregando organização…"
+  },
+  "$1screens.OrganizationSetup.monitoringRow": {
+    "message": "Monitoramento"
+  },
+  "$1screens.OrganizationSetup.nameGuidance": {
+    "message": "Escolha um nome para sua organização."
+  },
+  "$1screens.OrganizationSetup.nameLabel": {
+    "message": "Nome da organização"
+  },
+  "$1screens.OrganizationSetup.nameNotIdentity": {
+    "message": "Usar o mesmo nome de outra organização não conecta os dispositivos. Para participar de uma organização existente, aguarde um convite."
+  },
+  "$1screens.OrganizationSetup.noOrganizationBody": {
+    "message": "Seu dispositivo ainda não está em uma organização"
+  },
+  "$1screens.OrganizationSetup.noOrganizationGuidance": {
+    "message": "Crie uma organização ou aguarde um convite para participar de uma existente."
+  },
+  "$1screens.OrganizationSetup.pacoteNaoAprovado": {
+    "message": "Não foi possível preparar os arquivos necessários neste aparelho. Nada foi criado."
+  },
+  "$1screens.OrganizationSetup.openOrganizationButton": {
+    "message": "Abrir organização"
+  },
+  "$1screens.OrganizationSetup.openingOrganization": {
+    "message": "Abrindo organização…"
+  },
+  "$1screens.OrganizationSetup.pendingWork": {
+    "message": "Conclua ou descarte o registro antes de trocar de organização"
+  },
+  "$1screens.OrganizationSetup.preparingSlowNotice": {
+    "message": "A preparação está demorando. Se não continuar, feche e abra o aplicativo."
+  },
+  "$1screens.OrganizationSetup.preparingStepA11y": {
+    "message": "Preparando sua organização"
+  },
+  "$1screens.OrganizationSetup.preparingTitle": {
+    "message": "Preparando sua organização…"
+  },
+  "$1screens.OrganizationSetup.retryActivationButton": {
+    "message": "Tentar novamente"
+  },
+  "$1screens.OrganizationSetup.retryPreparationButton": {
+    "message": "Tentar novamente"
+  },
+  "$1screens.OrganizationSetup.syncRestartRequired": {
+    "message": "A sincronização precisa ser iniciada novamente."
+  },
+  "$1screens.OrganizationSetup.unavailableTitle": {
+    "message": "Não foi possível abrir sua organização"
+  },
+  "$1screens.OrganizationSetup.waitInviteBody": {
+    "message": "Peça a uma pessoa responsável pela organização para convidar este dispositivo."
+  },
+  "$1screens.OrganizationSetup.waitInviteButton": {
+    "message": "Aguardar convite"
+  },
+  "$1screens.OrganizationSetup.waitInviteTitle": {
+    "message": "Aguardar convite"
+  },
+  "$1screens.Organizations.currentOrganization": {
+    "message": "Atual",
+    "description": "Badge naming the organization this device operates in right now"
+  },
+  "$1screens.Organizations.title": {
+    "message": "Organizações",
+    "description": "Title of the organization selector modal"
   },
   "$1screens.PhotoPreviewModal.headerButtonText": {
     "message": "Excluir foto"
@@ -812,6 +934,14 @@
   },
   "$1sharedComponents.ErrorBottomSheet.somethingWrong": {
     "message": "Ocorreu um erro"
+  },
+  "$1sharedComponents.OrganizationAreaAccesses.currentArea": {
+    "message": "Atual",
+    "description": "Badge naming the work area the device operates right now"
+  },
+  "$1sharedComponents.OrganizationAreaAccesses.pendingWork": {
+    "message": "Conclua ou descarte o registro antes de trocar de organização",
+    "description": "Blocked area switch (SPEC A §4.4:149 canonical pending-work string)"
   },
   "$1soloProject.startNewProject.title": {
     "message": "Começar um novo projeto"

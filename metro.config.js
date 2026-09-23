@@ -19,7 +19,10 @@ const finalConfig = {
     ...config.resolver,
     blockList: [...defaultBlockList],
     // For https://github.com/kristerkari/react-native-svg-transformer
-    assetExts: config.resolver.assetExts.filter(ext => ext !== 'svg'),
+    assetExts: [
+      ...config.resolver.assetExts.filter(ext => ext !== 'svg'),
+      'comapeocat',
+    ],
     sourceExts: [...config.resolver.sourceExts, 'svg'],
   },
 };

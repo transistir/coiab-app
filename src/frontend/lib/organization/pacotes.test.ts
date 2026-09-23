@@ -15,6 +15,7 @@ import manifestosGerados from './manifestos.generated.json';
 import {
   ErroPacote,
   abrirPacote,
+  conferirImportacao,
   criarTemplateSourceDePacotes,
   verificarImportacao,
   type CampoImportado,
@@ -24,13 +25,18 @@ import {
   type ManifestoPacote,
   type Pacote,
   type PresetImportado,
+  type ProjetoComPresets,
 } from './pacotes';
+import {VERSAO_INTERINA} from './pacotesInstalados';
 
 // FS tests never touch the disk: the reader is injected as an in-memory map
 // of ORIGINAL BYTES. Fixtures are real `.comapeocat` archives built with the
 // comapeocat Writer — the same format the real #30 packages ship in.
 
 const CAMINHO = '/pkg/monitoramento.comapeocat';
+
+/** 16 lowercase hex — the document id IS the marker's organization id. */
+const ORG_ID = '0123456789abcdef';
 
 const SVG_ARVORE =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#228B22"/></svg>';
@@ -102,6 +108,45 @@ const FIXTURE_ALERTAS: PacoteFixture = {
     },
   ],
   selecao: {observation: ['alerta-fogo'], track: ['alerta-rio']},
+};
+
+const FIXTURE_ICONES: PacoteFixture = {
+  metadata: {name: 'Icones COIAB', version: '1.0.0'},
+  categorias: [
+    {
+      id: 'peixe',
+      name: 'Peixe',
+      appliesTo: ['observation'],
+      tags: {fauna: 'peixe'},
+      icon: 'peixe',
+    },
+    {
+      id: 'passaro',
+      name: 'Pássaro',
+      appliesTo: ['observation'],
+      tags: {fauna: 'passaro'},
+      icon: 'passaro',
+    },
+    {
+      id: 'flor',
+      name: 'Flor',
+      appliesTo: ['observation'],
+      tags: {flora: 'flor'},
+      icon: 'flor',
+    },
+    {
+      id: 'rio',
+      name: 'Rio',
+      appliesTo: ['track'],
+      tags: {waterway: 'river'},
+    },
+  ],
+  icones: [
+    {id: 'peixe', svg: SVG_ARVORE},
+    {id: 'passaro', svg: SVG_ARVORE},
+    {id: 'flor', svg: SVG_ARVORE},
+  ],
+  selecao: {observation: ['peixe'], track: ['rio']},
 };
 
 async function construirPacote(fixture: PacoteFixture): Promise<Uint8Array> {
@@ -176,6 +221,14 @@ function pacoteMonitoramentoBytes(): Promise<Uint8Array> {
   return bytesMonitoramento;
 }
 
+let bytesIcones: Promise<Uint8Array> | null = null;
+function pacoteIconesBytes(): Promise<Uint8Array> {
+  if (!bytesIcones) {
+    bytesIcones = construirPacote(FIXTURE_ICONES);
+  }
+  return bytesIcones;
+}
+
 /** Core maps `appliesTo` to the preset geometry (`import-categories.js`). */
 const GEOMETRIA_POR_APLICACAO = {observation: 'point', track: 'line'} as const;
 
@@ -230,9 +283,15 @@ async function emularImportacaoCore(bytes: Uint8Array) {
       point: conteudo.selecao.observation.map(id => `preset-${id}`),
       line: conteudo.selecao.track.map(id => `preset-${id}`),
     },
+    // The PERSISTED shape: core spreads the package `{name, version}` into
+    // configMetadata (import-categories.js:276-283), but the strict
+    // projectSettings schema (node_modules/@comapeo/core/dist/
+    // mapeo-project.d.ts:4987-5009, `additionalProperties: false`) drops
+    // `version` — the persisted doc carries exactly {name, buildDate,
+    // importDate, fileVersion}. The emulation mirrors what
+    // `$getProjectSettings` can ever return, NOT what was passed in.
     configMetadata: {
       name: conteudo.metadata.name,
-      version: conteudo.metadata.version,
       fileVersion: conteudo.fileVersion,
     },
   };
@@ -467,6 +526,24 @@ describe('verificarImportacao (Core preset shape + §5.4 canonical conferência 
     importado: Awaited<ReturnType<typeof emularImportacaoCore>>;
   }> {
     const bytes = await pacoteMonitoramentoBytes();
+    const leitor = leitorEmMemoria({[CAMINHO]: bytes});
+    const manifesto = await manifestoDe(bytes);
+    const pacote = await abrirPacote(CAMINHO, manifesto.ref, manifesto, leitor);
+    const importado = await emularImportacaoCore(bytes);
+    return {pacote, leitor, importado};
+  }
+
+  /** Project WITHOUT the icon read surface — the real rpc core surface. */
+  function semListagemDe(projeto: ProjetoComPresets) {
+    return {
+      preset: projeto.preset,
+      field: projeto.field,
+      $getProjectSettings: projeto.$getProjectSettings,
+    };
+  }
+
+  async function abrirIcones() {
+    const bytes = await pacoteIconesBytes();
     const leitor = leitorEmMemoria({[CAMINHO]: bytes});
     const manifesto = await manifestoDe(bytes);
     const pacote = await abrirPacote(CAMINHO, manifesto.ref, manifesto, leitor);
@@ -813,16 +890,180 @@ describe('verificarImportacao (Core preset shape + §5.4 canonical conferência 
     ).resolves.toBe(false);
   });
 
-  test('project without the icon read surface cannot prove the package icons → false', async () => {
+  test('icon listing absent (real rpc core has no icon.getMany): verifies via icon REFERENCES → true', async () => {
+    // Real core 7.4.0 / ipc 9.0.1 exposes NO icon listing (`icon.getMany`
+    // → `ReferenceError: icon is not defined`,
+    // tests/integration/cliente-superficie.test.ts). `$importCategories`
+    // still writes a string `preset.iconRef.docId`, so without the listing
+    // the import is proven BY REFERENCE and verification completes.
     const {pacote, leitor, importado} = await abrir();
-    const projeto = projetoCore(importado);
+    const semListagem = semListagemDe(projetoCore(importado));
+    await expect(
+      conferirImportacao(semListagem, pacote, leitor),
+    ).resolves.toBeNull();
+    await expect(
+      verificarImportacao(semListagem, pacote, leitor),
+    ).resolves.toBe(true);
+  });
+
+  test('icon listing present but REJECTING → leitura_falhou (retryable)', async () => {
+    // Presence is decided STATICALLY in the adapter: on rpc-reflector every
+    // property is a callable proxy (rpc-reflector/client.js:316), so a
+    // runtime `typeof === 'function'` check is always true, and core ships
+    // inside the same binary (core-react-native/src/version.ts:49), so a
+    // listing member the adapter declares cannot be stale. A listing that
+    // REJECTS is a real read failure — swallowing it would turn a real
+    // failure into a silently weaker by-reference proof — so it surfaces as
+    // `leitura_falhou` (retryable), the same as any failing read.
+    const {pacote, leitor, importado} = await abrir();
+    const projeto = {
+      ...projetoCore(importado),
+      icon: {
+        getMany: jest.fn(async () => {
+          throw new ReferenceError('icon is not defined');
+        }),
+      },
+    };
+    await expect(conferirImportacao(projeto, pacote, leitor)).resolves.toBe(
+      'leitura_falhou',
+    );
+    await expect(verificarImportacao(projeto, pacote, leitor)).resolves.toBe(
+      false,
+    );
+  });
+
+  test('icon listing REJECTING on a multi-icon package → leitura_falhou (retryable)', async () => {
+    // The production shape: real packages declare several icons. A listing
+    // that rejects cannot fall back to the by-reference proof: that would
+    // silently weaken the evidence instead of reporting the read failure.
+    const {pacote, leitor, importado} = await abrirIcones();
+    const projeto = {
+      ...projetoCore(importado),
+      icon: {
+        getMany: jest.fn(async () => {
+          throw new ReferenceError('icon is not defined');
+        }),
+      },
+    };
+    await expect(conferirImportacao(projeto, pacote, leitor)).resolves.toBe(
+      'leitura_falhou',
+    );
+    await expect(verificarImportacao(projeto, pacote, leitor)).resolves.toBe(
+      false,
+    );
+  });
+
+  test('iconeResolvivel resolves false → icone_divergente', async () => {
+    // Without the listing, the by-reference structure is proven first and
+    // then every referenced docId is resolved THROUGH CORE: a docId that
+    // does not resolve (e.g. a dangling iconRef after an interrupted import)
+    // diverges.
+    const {pacote, leitor, importado} = await abrir();
+    const projeto = {
+      ...semListagemDe(projetoCore(importado)),
+      iconeResolvivel: async () => false,
+    };
+    await expect(conferirImportacao(projeto, pacote, leitor)).resolves.toBe(
+      'icone_divergente',
+    );
+    await expect(verificarImportacao(projeto, pacote, leitor)).resolves.toBe(
+      false,
+    );
+  });
+
+  test('iconeResolvivel throwing → leitura_falhou (retryable, not treated apart)', async () => {
+    // A throw from the resolver is a READ failure like any other: the outer
+    // catch turns it into `leitura_falhou` — verification never treats a
+    // failing icon read as a divergence, and it is retryable.
+    const {pacote, leitor, importado} = await abrir();
+    const projeto = {
+      ...semListagemDe(projetoCore(importado)),
+      iconeResolvivel: async () => {
+        throw new Error('route unavailable');
+      },
+    };
+    await expect(conferirImportacao(projeto, pacote, leitor)).resolves.toBe(
+      'leitura_falhou',
+    );
+    await expect(verificarImportacao(projeto, pacote, leitor)).resolves.toBe(
+      false,
+    );
+  });
+
+  test('icon listing absent: two categories with DIFFERENT icons whose presets share one docId → icone_divergente', async () => {
+    const {pacote, leitor, importado} = await abrirIcones();
+    // `peixe` and `flor` carry different package icons but both presets
+    // resolve to ONE icon document: a collision the package never had.
+    const projeto = semListagemDe(
+      projetoCore({
+        ...importado,
+        presets: importado.presets.map(preset =>
+          preset.docId === 'preset-flor'
+            ? {...preset, iconRef: {docId: 'icone-peixe'}}
+            : preset,
+        ),
+      }),
+    );
+    await expect(conferirImportacao(projeto, pacote, leitor)).resolves.toBe(
+      'icone_divergente',
+    );
+  });
+
+  test('icon listing absent: category with icon whose preset iconRef is null → icone_divergente', async () => {
+    const {pacote, leitor, importado} = await abrir();
+    const projeto = semListagemDe(
+      projetoCore({
+        ...importado,
+        presets: importado.presets.map(preset =>
+          preset.docId === 'preset-arvore'
+            ? {...preset, iconRef: null}
+            : preset,
+        ),
+      }),
+    );
+    await expect(conferirImportacao(projeto, pacote, leitor)).resolves.toBe(
+      'icone_divergente',
+    );
+  });
+
+  test('icon listing absent: fewer distinct icon docIds than declared icon names → icone_divergente', async () => {
+    const {pacote, leitor, importado} = await abrirIcones();
+    // Three declared icons, but `passaro` and `flor` resolve to ONE
+    // document: 2 distinct docIds cannot partition 3 declared names.
+    const projeto = semListagemDe(
+      projetoCore({
+        ...importado,
+        presets: importado.presets.map(preset =>
+          preset.docId === 'preset-flor'
+            ? {...preset, iconRef: {docId: 'icone-passaro'}}
+            : preset,
+        ),
+      }),
+    );
+    await expect(conferirImportacao(projeto, pacote, leitor)).resolves.toBe(
+      'icone_divergente',
+    );
+  });
+
+  test('regression (icon.getMany present): multi-icon package still verifies by NAME bijection → true', async () => {
+    const {pacote, leitor, importado} = await abrirIcones();
+    await expect(
+      verificarImportacao(projetoCore(importado), pacote, leitor),
+    ).resolves.toBe(true);
+  });
+
+  test('regression (icon.getMany present): docId shared by different icon names still diverges → false', async () => {
+    const {pacote, leitor, importado} = await abrirIcones();
     await expect(
       verificarImportacao(
-        {
-          preset: projeto.preset,
-          field: projeto.field,
-          $getProjectSettings: projeto.$getProjectSettings,
-        },
+        projetoCore({
+          ...importado,
+          presets: importado.presets.map(preset =>
+            preset.docId === 'preset-flor'
+              ? {...preset, iconRef: {docId: 'icone-peixe'}}
+              : preset,
+          ),
+        }),
         pacote,
         leitor,
       ),
@@ -919,7 +1160,16 @@ describe('verificarImportacao (Core preset shape + §5.4 canonical conferência 
     ).resolves.toBe(false);
   });
 
-  test('configMetadata version diverging from the package metadata → false', async () => {
+  test('configMetadata.version never persists (strict core schema) → a divergent version cannot reject → true', async () => {
+    // node_modules/@comapeo/core/dist/mapeo-project.d.ts:4987-5009:
+    // projectSettings' configMetadata is exactly {name, buildDate,
+    // importDate, fileVersion} with `additionalProperties: false`, while
+    // `$importCategories` (import-categories.js:276-283) passes the package
+    // `{name, version}` in — `version` is dropped at validation, so
+    // `configMetadata.version` is ALWAYS absent on a persisted project. The
+    // conferência must not demand it (no real import could ever pass); a
+    // version a read surface reports that differs from the package is not
+    // proof of divergence.
     const {pacote, leitor, importado} = await abrir();
     await expect(
       verificarImportacao(
@@ -930,6 +1180,26 @@ describe('verificarImportacao (Core preset shape + §5.4 canonical conferência 
             configMetadata: {
               ...importado.settings.configMetadata,
               version: '9.9.9',
+            },
+          },
+        }),
+        pacote,
+        leitor,
+      ),
+    ).resolves.toBe(true);
+  });
+
+  test('configMetadata fileVersion diverging from the package → false', async () => {
+    const {pacote, leitor, importado} = await abrir();
+    await expect(
+      verificarImportacao(
+        projetoCore({
+          ...importado,
+          settings: {
+            ...importado.settings,
+            configMetadata: {
+              ...importado.settings.configMetadata,
+              fileVersion: '0.0.0',
             },
           },
         }),
@@ -1049,9 +1319,22 @@ describe('criarTemplateSourceDePacotes (real adapter behind TemplateSource)', ()
       },
     };
     const imports: string[] = [];
-    function makeProject(name: string) {
+    function makeProject(name: string, projectDescription: string) {
+      // One persistent settings object per project — Core MERGES
+      // $setProjectSettings over it (mapeo-project.js) and the marker set
+      // at createProject (mapeo-manager.js:499) survives the import.
+      const settings: Record<string, unknown> = {
+        name,
+        sendStats: false,
+        projectDescription,
+      };
+      const presets: object[] = [];
+      const campos: object[] = [];
+      const icones: object[] = [];
       const project = {
-        ...projetoCore({presets: [], campos: [], settings: {}}),
+        preset: {getMany: async () => presets},
+        field: {getMany: async () => campos},
+        icon: {getMany: async () => icones},
         $member: {
           getById: async () => ({
             name: 'Device',
@@ -1059,17 +1342,17 @@ describe('criarTemplateSourceDePacotes (real adapter behind TemplateSource)', ()
             role: {roleId: 'a12a6702b93bd7ff'},
           }),
         },
-        $setProjectSettings: async () => {},
+        $setProjectSettings: async (next: Record<string, unknown>) => {
+          Object.assign(settings, next);
+        },
+        $getProjectSettings: async () => ({...settings}),
         $importCategories: async ({filePath}: {filePath: string}) => {
           imports.push(filePath);
           const imported = await emularImportacaoCore(arquivos[filePath]!);
-          Object.assign(
-            project,
-            projetoCore({
-              ...imported,
-              settings: {...imported.settings, name, sendStats: false},
-            }),
-          );
+          presets.push(...imported.presets);
+          campos.push(...imported.campos);
+          icones.push(...imported.icones);
+          Object.assign(settings, imported.settings);
         },
       };
       return project;
@@ -1085,15 +1368,23 @@ describe('criarTemplateSourceDePacotes (real adapter behind TemplateSource)', ()
       setDeviceInfo: async () => {},
       listProjects: async () =>
         [...projects.keys()].map(projectId => ({projectId})),
-      createProject: jest.fn(async ({name}: {name: string}) => {
-        if (projects.size === 1 && failSecond) {
-          failSecond = false;
-          throw new Error('interrupted');
-        }
-        const id = `project-${projects.size}`;
-        projects.set(id, makeProject(name));
-        return id;
-      }),
+      createProject: jest.fn(
+        async ({
+          name,
+          projectDescription,
+        }: {
+          name: string;
+          projectDescription: string;
+        }) => {
+          if (projects.size === 1 && failSecond) {
+            failSecond = false;
+            throw new Error('interrupted');
+          }
+          const id = `project-${projects.size}`;
+          projects.set(id, makeProject(name, projectDescription));
+          return id;
+        },
+      ),
       getProject: async (id: string) => projects.get(id)!,
     };
     const templates = criarTemplateSourceDePacotes({
@@ -1106,7 +1397,7 @@ describe('criarTemplateSourceDePacotes (real adapter behind TemplateSource)', ()
       client,
       repository,
       templates,
-      generateId: () => 'org',
+      generateId: () => ORG_ID,
     }).start('Associação');
     expect(document.organizacoes[0]?.estado).toBe('falha_recuperavel');
     expect(projects.size).toBe(1);
@@ -1141,7 +1432,7 @@ describe('criarTemplateSourceDePacotes (real adapter behind TemplateSource)', ()
       client: {...client},
       repository,
       templates: afterUpdate,
-      generateId: () => 'unused',
+      generateId: () => '8888888888888888',
     }).retry();
 
     expect(document.organizacoes[0]?.estado).toBe('pronta');
@@ -1263,12 +1554,15 @@ describe('criarTemplateSourceDePacotes (real adapter behind TemplateSource)', ()
 
 describe('extrairManifesto (extração Node — R1 bundling, anti-drift)', () => {
   test('deep-equals the real package canonical content and hashes like node:crypto sha256', async () => {
-    const bytes = await pacoteMonitoramentoBytes();
+    const bytes = await construirPacote({
+      ...FIXTURE_MONITORAMENTO,
+      metadata: {...FIXTURE_MONITORAMENTO.metadata, version: VERSAO_INTERINA},
+    });
     const {hash, conteudo} = await extrairManifesto(bytes);
     expect(hash).toBe(createHash('sha256').update(bytes).digest('hex'));
     expect(conteudo).toEqual({
       fileVersion: expect.any(String),
-      metadata: {name: 'Monitoramento COIAB', version: '1.0.0'},
+      metadata: {name: 'Monitoramento COIAB', version: VERSAO_INTERINA},
       categorias: [
         {
           id: 'arvore',
@@ -1310,8 +1604,14 @@ describe('manifestos.generated.json (manifestos embarcados — anti-drift)', () 
       Area,
       ManifestoPacote
     >;
-    const bytesM = await pacoteMonitoramentoBytes();
-    const bytesA = await construirPacote(FIXTURE_ALERTAS);
+    const bytesM = await construirPacote({
+      ...FIXTURE_MONITORAMENTO,
+      metadata: {...FIXTURE_MONITORAMENTO.metadata, version: VERSAO_INTERINA},
+    });
+    const bytesA = await construirPacote({
+      ...FIXTURE_ALERTAS,
+      metadata: {...FIXTURE_ALERTAS.metadata, version: VERSAO_INTERINA},
+    });
     const pares: Array<[Area, Uint8Array]> = [
       ['monitoramento', bytesM],
       ['alertas', bytesA],

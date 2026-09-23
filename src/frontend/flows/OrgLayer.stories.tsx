@@ -14,6 +14,12 @@ import {FLOW_STATES} from '../../../.rnstorybook/utils/flowState';
  * backend cannot hold a pending invite without a second device to send it.
  * The sheet is therefore captured in its no-bundle (definitive/close) state,
  * which is the state a real device sees whenever the invites are gone.
+ *
+ * Also not coverable: the Organizations selector's opening state ("Opening
+ * organization…") and its failed-switch explanation. Both are the screen's
+ * own component state, set only by tapping a row, and the capture pipeline
+ * selects stories and waits — it never taps. The opening state is also
+ * transient: it lasts only as long as the switch's calls into the backend.
  */
 const NoStoryComponent = () => null;
 
@@ -63,6 +69,12 @@ const homeState: InitialState = {
   index: 0,
 };
 
+/** Where the drawer's "Switch organization" entry leaves the stack. */
+const organizationSelectorState: InitialState = {
+  routes: [{name: 'Home'}, {name: 'Organizations'}],
+  index: 1,
+};
+
 /** The fail-closed screen shown while the Organization is incomplete. */
 export const OrganizationProvisioning: Story = {
   name: '01 Organization Provisioning',
@@ -98,5 +110,19 @@ export const HomeWithOrganization: Story = {
   name: '04 Home With Organization',
   parameters: {
     flow: {state: FLOW_STATES.namedWithOrganization, initialState: homeState},
+  },
+};
+
+/**
+ * The organization selector over Home: two ready organizations, the active
+ * one listed first and marked current although it sorts second by name.
+ */
+export const OrganizationSelector: Story = {
+  name: '05 Organization Selector',
+  parameters: {
+    flow: {
+      state: FLOW_STATES.twoOrganizationsEarlyAccess,
+      initialState: organizationSelectorState,
+    },
   },
 };

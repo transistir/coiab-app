@@ -1,9 +1,16 @@
 import {
+  buildOrganizationDocument,
   matchSeedIndex,
   selectPointPreset,
   selectSeedPosition,
   selectSeedPresets,
 } from './seedData';
+import {
+  classificarDocumento,
+  derivarProjectIdAtivo,
+  ordenarOrganizacoes,
+  parseEstadoOrganizacoes,
+} from '../../src/frontend/lib/organization/coiabOrganizations';
 import type {Preset} from '@comapeo/schema';
 import type {BBox} from 'geojson';
 
@@ -190,5 +197,75 @@ describe('matchSeedIndex', () => {
     expect(matchSeedIndex({lat: beyond.lat, lon: beyond.lon}, bbox, 5)).toBe(
       Number.MAX_SAFE_INTEGER,
     );
+  });
+});
+
+describe('buildOrganizationDocument', () => {
+  const organizationA = {id: 'aaaaaaaaaaaaaaaa', name: 'Test Organization A'};
+  const organizationB = {id: 'bbbbbbbbbbbbbbbb', name: 'Test Organization B'};
+  const projectIds = new Map([
+    [organizationA.id, {monitoramento: 'project-a-m', alertas: 'project-a-a'}],
+    [organizationB.id, {monitoramento: 'project-b-m', alertas: 'project-b-a'}],
+  ]);
+  const seed = {
+    list: [organizationA, organizationB],
+    activeId: organizationB.id,
+  };
+
+  it('builds a document the app parses as fully open', () => {
+    const document = buildOrganizationDocument(seed, projectIds);
+
+    expect(parseEstadoOrganizacoes(document)).not.toBeNull();
+    expect(classificarDocumento(document)).toBe('pronta');
+    expect(derivarProjectIdAtivo(document)).toBe('project-b-m');
+  });
+
+  it('gives the selector two activatable rows, the active one first although it sorts second', () => {
+    expect(
+      ordenarOrganizacoes(buildOrganizationDocument(seed, projectIds)),
+    ).toEqual([
+      {
+        id: organizationB.id,
+        rotulo: 'Test Organization B',
+        atual: true,
+        ativavel: true,
+      },
+      {
+        id: organizationA.id,
+        rotulo: 'Test Organization A',
+        atual: false,
+        ativavel: true,
+      },
+    ]);
+  });
+
+  it('refuses an active id that is not one of the organizations', () => {
+    expect(() =>
+      buildOrganizationDocument(
+        {...seed, activeId: 'cccccccccccccccc'},
+        projectIds,
+      ),
+    ).toThrow(/not a valid COIAB document/);
+  });
+
+  it('refuses an organization without seeded projects', () => {
+    expect(() =>
+      buildOrganizationDocument(seed, new Map([...projectIds].slice(0, 1))),
+    ).toThrow(/has no seeded projects/);
+  });
+
+  it('refuses a project shared by two organizations', () => {
+    expect(() =>
+      buildOrganizationDocument(
+        seed,
+        new Map([
+          ...projectIds,
+          [
+            organizationB.id,
+            {monitoramento: 'project-a-m', alertas: 'project-b-a'},
+          ],
+        ]),
+      ),
+    ).toThrow(/not a valid COIAB document/);
   });
 });

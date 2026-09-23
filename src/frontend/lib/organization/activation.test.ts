@@ -8,7 +8,7 @@ import {
   createOrganizationActivation,
   type ActivationProject,
 } from './activation';
-import {parseEstadoOrganizacoes} from './coiabOrganizations';
+import {parseEstadoOrganizacoes, type Area} from './coiabOrganizations';
 import {MEMBER_ROLE_ID} from '../../sharedTypes';
 
 function setup() {
@@ -1060,6 +1060,285 @@ describe('co-revisão: recheque de trabalho pendente e endurecimento da hidrata�
     expect(store.instance.getState().ativa).toEqual({
       organizacaoId: 'A',
       area: 'monitoramento',
+    });
+  });
+
+  test('M-7 adaptador de preparação ausente preserva preparando sem gravação durável de falha', async () => {
+    const {store, activation} = durableSetup();
+    store.instance.setState({
+      organizacoes: [
+        {
+          ...readyOrganization(),
+          estado: 'preparando',
+          areaEmExecucao: 'alertas',
+        },
+      ],
+      ativa: null,
+    });
+    const before = store.instance.getState();
+    await activation.initialize();
+    // Indisponibilidade é publicada com status existente do motor: capacidade
+    // ausente não é tentativa que falhou (SPEC A §4.2 regra 7).
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'unavailable',
+      error: 'preparation-adapter-required',
+    });
+    // NENHUMA escrita: documento persistido intacto por identidade.
+    expect(store.instance.getState()).toBe(before);
+    expect(store.instance.getState().organizacoes[0]).toMatchObject({
+      estado: 'preparando',
+      areaEmExecucao: 'alertas',
+      ultimoErro: null,
+    });
+    const durable = JSON.parse(lerRegistro() as string).state;
+    expect(durable.organizacoes[0]?.estado).toBe('preparando');
+    expect(JSON.stringify(durable)).not.toContain('falha_recuperavel');
+  });
+});
+describe('revalidate(): o motor publica a perda de acesso do contexto aberto (Fase 10a-fix-1)', () => {
+  function readySetup() {
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState(organizationDocument(), true);
+    const role = jest.fn(async () => ({roleId: MEMBER_ROLE_ID}));
+    const getProject = jest.fn<Promise<ActivationProject>, [id: string]>(
+      async () => ({$getOwnRole: role}),
+    );
+    const activation = createOrganizationActivation({store, getProject});
+    return {store, role, getProject, activation};
+  }
+
+  test('sucesso não publica nada: mesmo estado, mesma geração, cadastro por identidade', async () => {
+    const {store, getProject, activation} = readySetup();
+    await activation.initialize();
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'ready',
+      projectId: 'A-a',
+      generation: 1,
+    });
+    const before = activation.instance.getState();
+    const documentBefore = store.instance.getState();
+    getProject.mockClear();
+
+    expect(await activation.revalidate()).toBe(true);
+
+    // A checagem cobre as DUAS áreas, na ordem canônica — nunca `listProjects`.
+    expect(getProject.mock.calls.map(call => call[0])).toEqual(['A-m', 'A-a']);
+    // Nenhuma publicação: o estado observável é o MESMO objeto (não houve
+    // setState) e a geração não anda — o usuário não é jogado para Home/Map.
+    expect(activation.instance.getState()).toBe(before);
+    expect(activation.instance.getState().generation).toBe(before.generation);
+    expect(store.instance.getState()).toBe(documentBefore);
+  });
+
+  test('status fora de ready é no-op: nenhuma publicação e nenhuma chamada ao core', async () => {
+    // recovery: a última tentativa já falhou; se revalidate agisse, publicaria.
+    const recoverySetup = readySetup();
+    await recoverySetup.activation.initialize();
+    recoverySetup.getProject.mockImplementation(async () => {
+      throw new Error('Project not found');
+    });
+    await recoverySetup.activation.activate('A', {area: 'monitoramento'});
+    const recovery = recoverySetup.activation.instance.getState();
+    expect(recovery.status).toBe('recovery');
+    // A contagem do boot e da tentativa anterior não interessa: daqui em
+    // diante revalidate não pode fazer NENHUMA chamada ao core.
+    recoverySetup.getProject.mockClear();
+
+    expect(await recoverySetup.activation.revalidate()).toBe(false);
+    expect(recoverySetup.activation.instance.getState()).toBe(recovery);
+    expect(recoverySetup.getProject).not.toHaveBeenCalled();
+
+    // absent: sem organizações, `ativa` nem chega a ser consultada pelo core.
+    const absentSetup = readySetup();
+    absentSetup.store.instance.setState(
+      {...organizationDocument(), organizacoes: []},
+      true,
+    );
+    await absentSetup.activation.initialize();
+    const absent = absentSetup.activation.instance.getState();
+    expect(absent.status).toBe('absent');
+    expect(await absentSetup.activation.revalidate()).toBe(false);
+    expect(absentSetup.activation.instance.getState()).toBe(absent);
+    expect(absentSetup.getProject).not.toHaveBeenCalled();
+  });
+
+  test('negação de acesso publica recovery com access-unavailable e preserva ativa (regra 8)', async () => {
+    const {store, getProject, activation} = readySetup();
+    await activation.initialize();
+    const openContext = activation.captureContext();
+    const documentBefore = store.instance.getState();
+    getProject.mockImplementation(async id => ({
+      $getOwnRole: async () => ({
+        roleId: id === 'A-a' ? 'blocked' : MEMBER_ROLE_ID,
+      }),
+    }));
+
+    expect(await activation.revalidate()).toBe(false);
+
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'recovery',
+      error: 'access-unavailable',
+      // FIX-D: a identidade da origem sobrevive para o cleanup da próxima
+      // ativação; a geração não anda.
+      projectId: 'A-a',
+      generation: 1,
+    });
+    // A perda de acesso deixa o contexto "não atual": o gate roteia por isso.
+    expect(activation.isCurrent(openContext)).toBe(false);
+    // Regra 8 do §4.2: indisponível nunca apaga `ativa` — documento intacto
+    // por identidade.
+    expect(store.instance.getState()).toBe(documentBefore);
+    expect(store.instance.getState().ativa).toEqual({
+      organizacaoId: 'A',
+      area: 'alertas',
+    });
+  });
+
+  test('a checagem cobre as duas áreas: negação só em Monitoramento é fatal mesmo com ativa em Alertas', async () => {
+    // `ativa` é A/alertas e o projectId publicado é A-a: se a checagem
+    // olhasse só a área ativa, uma negação em A-m passaria despercebida e o
+    // contexto seguiria 'ready'.
+    const {getProject, activation} = readySetup();
+    await activation.initialize();
+    // O boot validou as duas áreas; o que interessa aqui é SÓ a chamada de
+    // revalidate.
+    getProject.mockClear();
+    getProject.mockImplementation(async id => ({
+      $getOwnRole: async () => ({
+        roleId: id === 'A-m' ? 'blocked' : MEMBER_ROLE_ID,
+      }),
+    }));
+
+    expect(await activation.revalidate()).toBe(false);
+
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'recovery',
+      error: 'access-unavailable',
+    });
+    // O loop para na primeira negação (Monitoramento precede Alertas): a
+    // área ativa não foi consultada depois dela.
+    expect(getProject.mock.calls.map(call => call[0])).toEqual(['A-m']);
+  });
+});
+
+describe('revalidate(): delegação ao motor com force (Fase 11b)', () => {
+  function setupComAtiva(area: Area) {
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState(
+      {...organizationDocument(), ativa: {organizacaoId: 'A', area}},
+      true,
+    );
+    const getProject = jest.fn<Promise<ActivationProject>, [id: string]>(
+      async () => ({
+        $getOwnRole: jest.fn(async () => ({roleId: MEMBER_ROLE_ID})),
+        $sync: {
+          stop: jest.fn(async () => {}),
+        },
+        disconnectServers: jest.fn(async () => {}),
+      }),
+    );
+    const activation = createOrganizationActivation({store, getProject});
+    return {store, getProject, activation};
+  }
+
+  test('revogação na área NÃO selecionada: delegação força a revalidação e publica recovery sem trocar a seleção nem desligar a origem (A CA10)', async () => {
+    const {store, getProject, activation} = setupComAtiva('monitoramento');
+    await activation.initialize();
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'ready',
+      projectId: 'A-m',
+      generation: 1,
+    });
+    const before = activation.instance.getState();
+    const documentBefore = store.instance.getState();
+    getProject.mockImplementation(async id => ({
+      $getOwnRole: jest.fn(async () => ({
+        roleId: id === 'A-a' ? 'blocked' : MEMBER_ROLE_ID,
+      })),
+      $sync: {stop: jest.fn(async () => {})},
+      disconnectServers: jest.fn(async () => {}),
+    }));
+
+    expect(await activation.revalidate()).toBe(false);
+
+    // A negação em Alertas (a área NÃO selecionada) é fatal: a checagem
+    // cobre os DOIS slots e o motor publica a perda pelo caminho de falha
+    // da organização aberta (FIX-C), preservando `ativa` por identidade
+    // (regra 8) e a identidade da origem (FIX-D).
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'recovery',
+      error: 'access-unavailable',
+      projectId: 'A-m',
+      generation: 1,
+    });
+    // A delegação é READ-ONLY: nenhum teardown de sync, nenhuma gravação
+    // durável, nenhuma geração nova.
+    for (const call of getProject.mock.results) {
+      const project = await call.value;
+      expect(project.$sync?.stop).not.toHaveBeenCalled();
+      expect(project.disconnectServers).not.toHaveBeenCalled();
+    }
+    expect(store.instance.getState()).toBe(documentBefore);
+    expect(activation.instance.getState().generation).toBe(before.generation);
+  });
+
+  test('delegação saudável depois de uma troca de área: revalida as duas áreas e publica nada (mesma geração, mesmo objeto)', async () => {
+    const {store, getProject, activation} = setupComAtiva('alertas');
+    await activation.initialize();
+    expect(await activation.activate('A', {area: 'monitoramento'})).toBe(true);
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'ready',
+      projectId: 'A-m',
+      generation: 2,
+    });
+    const before = activation.instance.getState();
+    const documentBefore = store.instance.getState();
+    getProject.mockClear();
+
+    expect(await activation.revalidate()).toBe(true);
+
+    // A passagem forçada re-observa as duas áreas, na ordem canônica — e
+    // NADA publica: o contexto saudável nunca anda de geração nem sofre
+    // teardown (o usuário não é jogado para Home/Map por uma checagem).
+    expect(getProject.mock.calls.map(call => call[0])).toEqual(['A-m', 'A-a']);
+    expect(activation.instance.getState()).toBe(before);
+    expect(store.instance.getState()).toBe(documentBefore);
+  });
+
+  test('sob o travamento compartilhado: delegação durante uma ativação em voo é recusada sem publicar', async () => {
+    const {store, getProject, activation} = setupComAtiva('alertas');
+    await activation.initialize();
+    const documentBefore = store.instance.getState();
+    let releaseValidacao!: () => void;
+    const validacaoPresa = new Promise<void>(resolve => {
+      releaseValidacao = resolve;
+    });
+    let consultas = 0;
+    getProject.mockImplementation(async () => ({
+      $getOwnRole: jest.fn(async () => {
+        consultas += 1;
+        if (consultas === 1) await validacaoPresa;
+        return {roleId: MEMBER_ROLE_ID};
+      }),
+    }));
+    const troca = activation.activate('A', {area: 'monitoramento'});
+    // A ativação está em voo: a intenção DELEGADA é distinta e é recusada
+    // com o motivo publicado na mesma superfície de erro — nunca aliada ao
+    // resultado da troca em voo.
+    expect(await activation.revalidate()).toBe(false);
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'opening',
+      error: 'operation-in-progress',
+    });
+    expect(store.instance.getState()).toBe(documentBefore);
+    releaseValidacao();
+    expect(await troca).toBe(true);
+    // O assentamento da troca sobrescreve o erro da recusa, como de costume.
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'ready',
+      projectId: 'A-m',
+      generation: 2,
+      error: undefined,
     });
   });
 });

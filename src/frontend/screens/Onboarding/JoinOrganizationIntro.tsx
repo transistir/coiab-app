@@ -11,18 +11,24 @@ import {DARK_ORANGE} from '../../lib/styles';
 import {AppStackParamsList} from '../../sharedTypes/navigation';
 
 const m = defineMessages({
+  // SPEC B :100: the waiting title changed meaning ("Join an Organization"
+  // → Aguardar convite), so the descriptor is new and lives under the
+  // OrganizationSetup namespace.
   title: {
-    id: '$1screens.Onboarding.JoinOrganizationIntro.title',
-    defaultMessage: 'Join an Organization',
+    id: '$1screens.OrganizationSetup.waitInviteTitle',
+    // SPEC B :60 (also A :143 §4.4 glossary).
+    defaultMessage: 'Wait for an invitation',
   },
   body: {
-    id: '$1screens.Onboarding.JoinOrganizationIntro.body',
+    id: '$1screens.OrganizationSetup.waitInviteBody',
+    // SPEC B :60 — verbatim.
     defaultMessage:
-      'Ask a coordinator of an existing Organization to invite this device. When the invitation arrives it will appear on this screen.',
+      'Ask a person responsible for the Organization to invite this device.',
   },
-  ok: {
-    id: '$1screens.Onboarding.JoinOrganizationIntro.ok',
-    defaultMessage: 'OK',
+  back: {
+    id: '$1screens.OrganizationSetup.backButton',
+    // SPEC A :209 / B :60 — the waiting screen offers a Back button.
+    defaultMessage: 'Back',
   },
 });
 
@@ -36,7 +42,7 @@ export const JoinOrganizationIntro = ({
 }: NativeStackScreenProps<AppStackParamsList, 'JoinOrganizationIntro'>) => {
   const {formatMessage: t} = useIntl();
 
-  function handleOkPress() {
+  function handleBackPress() {
     if (navigation.canGoBack()) {
       navigation.goBack();
     }
@@ -53,10 +59,10 @@ export const JoinOrganizationIntro = ({
       </View>
       <View style={styles.actions}>
         <PrimaryButton
-          testID="ORG.join-intro-ok-btn"
+          testID="ORG.join-intro-back-btn"
           fullSize
-          text={t(m.ok)}
-          onPress={handleOkPress}
+          text={t(m.back)}
+          onPress={handleBackPress}
         />
       </View>
     </View>

@@ -1,534 +1,670 @@
 import * as React from 'react';
-import {Alert, Text} from 'react-native';
-import {NavigationContainer} from '@react-navigation/native';
-import {createNativeStackNavigator} from '@react-navigation/native-stack';
-import {render, screen, userEvent} from '@testing-library/react-native';
+import {
+  act,
+  render,
+  screen,
+  userEvent,
+  waitFor,
+} from '@testing-library/react-native';
 import {IntlProvider} from 'react-intl';
-import {useManyInvites} from '@comapeo/core-react';
+import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 
 import {OrganizationProvisioning} from './OrganizationProvisioning';
-import {useOrganizations} from '../../hooks/organization/useOrganizations';
-import {useCreateOrganization} from '../../hooks/organization/useCreateOrganization';
-import {useDiscardIncompleteOrganization} from '../../hooks/organization/useDiscardIncompleteOrganization';
-import {markerFor} from '../../lib/organization/marker';
 import {
-  organizationCreationProvenanceStore,
-  recordOrganizationCreationProvenance,
-} from '../../lib/organization/creationProvenance';
-import type {DiscardResult} from '../../lib/organization/fanout';
-import type {InviteLike} from '../../lib/organization/bundle';
-import type {ReconstructedOrganization} from '../../lib/organization/reconstruct';
+  CoiabOrganizationsStoreProvider,
+  createCoiabOrganizationsStore,
+  type CoiabOrganizationsStore,
+} from '../../contexts/CoiabOrganizationsStoreContext';
+import {
+  criarEtapaAreaAusente,
+  type EstadoOrganizacoes,
+  type EtapaArea,
+  type OrganizacaoLocal,
+} from '../../lib/organization/coiabOrganizations';
+
+jest.mock('../../contexts/ActiveProjectIdStoreContext', () => {
+  const holder = {current: undefined as string | undefined};
+  return {
+    __projetarProjectIdAtivo: (projectId: string | undefined) => {
+      holder.current = projectId;
+    },
+    useActiveProjectId: () => holder.current,
+  };
+});
+
+const activeProjectIdMock = jest.requireMock(
+  '../../contexts/ActiveProjectIdStoreContext',
+) as {__projetarProjectIdAtivo(projectId: string | undefined): void};
 import type {AppStackParamsList} from '../../sharedTypes/navigation';
-
-jest.mock('@comapeo/core-react', () => ({
-  useManyInvites: jest.fn(),
-}));
-
-jest.mock('../../hooks/organization/useOrganizations', () => ({
-  useOrganizations: jest.fn(),
-}));
-
-jest.mock('../../hooks/organization/useCreateOrganization', () => ({
-  useCreateOrganization: jest.fn(),
-}));
-
-jest.mock('../../hooks/organization/useDiscardIncompleteOrganization', () => ({
-  useDiscardIncompleteOrganization: jest.fn(),
-}));
-
-const useOrganizationsMock = useOrganizations as jest.Mock;
-const useCreateOrganizationMock = useCreateOrganization as jest.Mock;
-const useDiscardMock = useDiscardIncompleteOrganization as jest.Mock;
-const useManyInvitesMock = useManyInvites as jest.Mock;
-
-const start = jest.fn();
-const discard = jest.fn();
-
-function mockOrganizations(organizations: ReconstructedOrganization[]) {
-  useOrganizationsMock.mockReturnValue(organizations);
-}
-
-function mockInvites(invites: InviteLike[]) {
-  useManyInvitesMock.mockReturnValue({data: invites});
-}
-
-function mockCreateOrganization(
-  overrides?: Partial<ReturnType<typeof useCreateOrganization>>,
-) {
-  useCreateOrganizationMock.mockReturnValue({
-    start,
-    reset: jest.fn(),
-    status: 'idle',
-    error: undefined,
-    organizationId: undefined,
-    ...overrides,
-  });
-}
-
-function mockDiscard(
-  overrides?: Partial<ReturnType<typeof useDiscardIncompleteOrganization>>,
-) {
-  useDiscardMock.mockReturnValue({
-    discard,
-    reset: jest.fn(),
-    status: 'idle',
-    error: undefined,
-    result: undefined,
-    discardedOrganizationId: undefined,
-    ...overrides,
-  });
-}
-
-/** The buttons of the most recent `Alert.alert` call. */
-function alertButtons(): Array<{text?: string; onPress?: () => void}> {
-  const buttons = alertSpy.mock.calls[alertSpy.mock.calls.length - 1]?.[2];
-  if (!Array.isArray(buttons)) throw new Error('no alert buttons');
-  return buttons;
-}
-
-function pressAlertButton(text: string) {
-  const button = alertButtons().find(entry => entry.text === text);
-  if (!button) {
-    throw new Error(
-      `no alert button ${text}; got ${alertButtons()
-        .map(entry => entry.text)
-        .join(', ')}`,
-    );
-  }
-  button.onPress?.();
-}
-
-const Stack = createNativeStackNavigator<AppStackParamsList>();
-
-const HomeStub = () => <Text>HOME-REACHED</Text>;
-const SuccessStub = () => <Text>START-OVER-FORK-REACHED</Text>;
-
-type ProvisioningProps = React.ComponentProps<typeof OrganizationProvisioning>;
+/**
+ * The screen's own Home reset is exercised at the navigator level; the stub
+ * keeps the unit tree free of a navigator while still failing loudly if a
+ * state change ever reaches for it.
+ */
+const navigationReset = jest.fn();
+const navigationAddListener: jest.Mock = jest.fn(() => () => {});
+const screenProps = {
+  navigation: {reset: navigationReset, addListener: navigationAddListener},
+  route: {
+    key: 'OrganizationProvisioning',
+    name: 'OrganizationProvisioning',
+  },
+} as unknown as NativeStackScreenProps<
+  AppStackParamsList,
+  'OrganizationProvisioning'
+>;
 
 /**
- * Every `navigation.reset` the screen dispatches, in order. Two resets in
- * one commit settle on the last route, so the rendered screen alone cannot
- * tell a clean hop from a flash through another screen.
+ * jest-expo resolves the iOS no-op BackHandler (nothing dispatches), so the
+ * hardware layer is asserted against the same module path the app runs on
+ * Android, with subscriptions recorded for removal checks.
  */
-let resetCalls: Array<Parameters<ProvisioningProps['navigation']['reset']>[0]>;
+jest.mock('react-native/Libraries/Utilities/BackHandler', () => {
+  const live: Array<{handler: () => boolean}> = [];
+  const addEventListener = jest.fn((_event: string, handler: () => boolean) => {
+    live.push({handler});
+    return {
+      remove: jest.fn(() => {
+        live.splice(
+          live.findIndex(item => item.handler === handler),
+          1,
+        );
+      }),
+    };
+  });
+  // The deep-import shim is consumed as `.default` by react-native's index,
+  // so the mock must carry the same shape.
+  return {
+    __esModule: true,
+    __live: live,
+    default: {exitApp: () => {}, addEventListener},
+  };
+});
 
-const RecordingProvisioning = (props: ProvisioningProps) => {
-  const {navigation} = props;
-  // Memoized on the real navigation object so the screen's effect deps stay
-  // as stable as they are in the app.
-  const recordingNavigation = React.useMemo(
-    () => ({
-      ...navigation,
-      reset: (state: Parameters<typeof navigation.reset>[0]) => {
-        resetCalls.push(state);
-        navigation.reset(state);
-      },
-    }),
-    [navigation],
-  );
-  return (
-    <OrganizationProvisioning {...props} navigation={recordingNavigation} />
-  );
+const backHandlerMock = jest.requireMock(
+  'react-native/Libraries/Utilities/BackHandler',
+) as {
+  __live: Array<{handler: () => boolean}>;
+  default: {addEventListener: jest.Mock};
 };
 
+jest.mock('../../contexts/OrganizationActivationContext', () => {
+  const holder = {current: undefined as unknown};
+  return {
+    __setActivation: (activation: unknown) => {
+      holder.current = activation;
+    },
+    useOrganizationActivationContext: () => {
+      if (holder.current === undefined) {
+        throw new Error('OrganizationActivationContext missing');
+      }
+      return holder.current;
+    },
+  };
+});
+
+const activate = jest.fn<Promise<boolean>, [string, {acknowledge: true}]>();
+const retryPreparation = jest.fn<Promise<boolean>, [string]>();
+const recoverPendingWork = jest.fn<Promise<boolean>, []>();
+
+const activationMock = jest.requireMock(
+  '../../contexts/OrganizationActivationContext',
+) as {__setActivation(activation: unknown): void};
+
+let store: CoiabOrganizationsStore;
+
 /**
- * ONE navigator tree for the initial render and every rerender: a rerender
- * whose screen set differs from the mounted one remounts the navigator and
- * wipes its navigation state.
+ * The screen reads the document and the activation handle; nothing else.
+ * No navigator: the screen does not navigate — routing belongs to the
+ * startup gate and the generation rule, tested at the navigator level.
  */
-function navigatorTree() {
-  return (
+function renderScreen() {
+  return render(
     <IntlProvider locale="en" messages={{}}>
-      <NavigationContainer>
-        <Stack.Navigator>
-          <Stack.Screen
-            name="OrganizationProvisioning"
-            component={RecordingProvisioning}
-            options={{headerShown: false}}
-          />
-          <Stack.Screen name="Home" component={HomeStub} />
-          <Stack.Screen name="Success" component={SuccessStub} />
-        </Stack.Navigator>
-      </NavigationContainer>
-    </IntlProvider>
+      <CoiabOrganizationsStoreProvider store={store}>
+        <OrganizationProvisioning {...screenProps} />
+      </CoiabOrganizationsStoreProvider>
+    </IntlProvider>,
   );
 }
 
-async function renderScreen() {
-  return render(navigatorTree());
+function etapa(overrides: Partial<EtapaArea>): EtapaArea {
+  return {...criarEtapaAreaAusente(), ...overrides};
 }
 
-const readyOrganization: ReconstructedOrganization = {
-  state: 'ready',
-  organizationId: 'a'.repeat(16),
-  organizationName: 'Org',
-  slots: {m: 'project-m', a: 'project-a'},
+const PAR_PRONTA: OrganizacaoLocal['materializacao'] = {
+  monitoramento: etapa({
+    etapa: 'verificado',
+    projectId: 'proj-m-1',
+    template: {versao: '1', hash: 'm'},
+  }),
+  alertas: etapa({
+    etapa: 'verificado',
+    projectId: 'proj-a-1',
+    template: {versao: '1', hash: 'a'},
+  }),
 };
 
-const invalidOrganization: ReconstructedOrganization = {
-  state: 'invalid',
-  organizationId: 'b'.repeat(16),
-  reason: 'duplicate-slot',
-  organizationName: undefined,
-  slots: {},
-};
+function organizacao(
+  overrides: Partial<OrganizacaoLocal> = {},
+): OrganizacaoLocal {
+  return {
+    id: 'org-1',
+    nome: 'Primeira',
+    estado: 'preparando',
+    confirmacaoPendente: false,
+    materializacao: {
+      monitoramento: criarEtapaAreaAusente(),
+      alertas: criarEtapaAreaAusente(),
+    },
+    areaEmExecucao: null,
+    ultimoErro: null,
+    ...overrides,
+  };
+}
 
-const incompleteOrganization: ReconstructedOrganization = {
-  state: 'incomplete',
-  organizationId: 'c'.repeat(16),
-  organizationName: 'Partial Org',
-  slots: {m: 'project-m'},
-};
+/** Parser-valid document (SPEC A §4.2): what the startup gate routes on. */
+function documento(
+  organizacoes: OrganizacaoLocal[],
+  ativa: EstadoOrganizacoes['ativa'] = null,
+): EstadoOrganizacoes {
+  return {versao: 1, organizacoes, ativa};
+}
 
-const namelessIncompleteOrganization: ReconstructedOrganization = {
-  state: 'incomplete',
-  organizationId: 'd'.repeat(16),
-  organizationName: undefined,
-  slots: {a: 'project-a'},
-};
+/** Seeds the persisted document this screen renders from. */
+function seedDocument(
+  organizacoes: OrganizacaoLocal[],
+  ativa: EstadoOrganizacoes['ativa'] = null,
+) {
+  store.instance.setState(
+    {...documento(organizacoes, ativa), hidratacaoFalhou: false},
+    true,
+  );
+}
 
-let alertSpy: jest.SpyInstance;
+/** Exact English text of the slow-preparation notice (SPEC B §3.2:68). */
+const SLOW_NOTICE =
+  'Preparation is taking a while. If it does not continue, close and reopen the application.';
 
 beforeEach(() => {
   jest.clearAllMocks();
-  resetCalls = [];
-  organizationCreationProvenanceStore.setState({organizationIds: []});
-  mockOrganizations([]);
-  mockCreateOrganization();
-  mockDiscard();
-  mockInvites([]);
-  alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-});
-
-afterEach(() => {
-  alertSpy.mockRestore();
+  store = createCoiabOrganizationsStore({persist: false});
+  activate.mockResolvedValue(true);
+  retryPreparation.mockResolvedValue(true);
+  recoverPendingWork.mockResolvedValue(false);
+  activationMock.__setActivation({
+    activate,
+    retryPreparation,
+    recoverPendingWork,
+  });
+  activeProjectIdMock.__projetarProjectIdAtivo(undefined);
+  backHandlerMock.__live.length = 0;
 });
 
 describe('OrganizationProvisioning', () => {
-  test('shows the setup text while there is no ready organization', async () => {
-    await renderScreen();
+  // Document-driven view (SPEC B §4.4): the persisted document exists, so IT
+  // decides what renders. The activation engine owns every exit.
+  describe('document-driven provisioning', () => {
+    test('a ready organization with a pending confirmation shows the confirmation and no other button', async () => {
+      seedDocument([
+        organizacao({
+          estado: 'pronta',
+          confirmacaoPendente: true,
+          materializacao: PAR_PRONTA,
+        }),
+      ]);
 
-    expect(screen.getByText('Setting up your Organization…')).toBeOnTheScreen();
-    expect(screen.queryByText('HOME-REACHED')).not.toBeOnTheScreen();
+      await renderScreen();
+
+      expect(screen.getByText('Organization created')).toBeOnTheScreen();
+      expect(
+        screen.getByText(
+          'Primeira is ready. Monitoring and Alerts are already available.',
+        ),
+      ).toBeOnTheScreen();
+      expect(screen.getAllByText('Ready')).toHaveLength(2);
+      expect(
+        screen.getByTestId('ORG.provisioning-open-organization-btn'),
+      ).toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('ORG.provisioning-retry-preparation-btn'),
+      ).not.toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('ORG.provisioning-retry-activation-btn'),
+      ).not.toBeOnTheScreen();
+    });
+
+    test('a double tap on Abrir organização produces ONE activate call', async () => {
+      seedDocument([
+        organizacao({
+          estado: 'pronta',
+          confirmacaoPendente: true,
+          materializacao: PAR_PRONTA,
+        }),
+      ]);
+      // Hold the call in flight until the test releases it: the second tap
+      // must land while the first is still running.
+      let releaseActivate: (value: boolean) => void = () => {};
+      activate.mockImplementation(
+        () =>
+          new Promise<boolean>(resolve => {
+            releaseActivate = resolve;
+          }),
+      );
+      const user = userEvent.setup();
+      await renderScreen();
+
+      const buttonTestId = 'ORG.provisioning-open-organization-btn';
+      await user.press(screen.getByTestId(buttonTestId));
+      // The call is in flight: the button is disabled for a second tap.
+      expect(screen.getByTestId(buttonTestId)).toBeDisabled();
+      await user.press(screen.getByTestId(buttonTestId));
+      releaseActivate(true);
+      await waitFor(() => {
+        expect(screen.getByTestId(buttonTestId)).toBeEnabled();
+      });
+
+      expect(activate).toHaveBeenCalledTimes(1);
+      expect(activate).toHaveBeenCalledWith('org-1', {acknowledge: true});
+    });
+
+    test('a recoverable failure shows the canonical sentences and Tentar novamente calls retryPreparation', async () => {
+      seedDocument([
+        organizacao({
+          estado: 'falha_recuperavel',
+          materializacao: {
+            monitoramento: etapa({
+              etapa: 'verificado',
+              projectId: 'proj-m-1',
+              template: {versao: '1', hash: 'm'},
+            }),
+            alertas: etapa({etapa: 'criado', projectId: 'proj-a-1'}),
+          },
+          ultimoErro: {
+            codigo: 'preparation-failed',
+            area: 'alertas',
+            ocorridoEm: '2026-09-15T00:00:00.000Z',
+          },
+        }),
+      ]);
+      const user = userEvent.setup();
+      await renderScreen();
+
+      expect(
+        screen.getByText('Could not finish creating the organization.'),
+      ).toBeOnTheScreen();
+      expect(
+        screen.getByText(
+          'What was already prepared is saved. Try again to finish.',
+        ),
+      ).toBeOnTheScreen();
+      // The failed area is named; the verified one stays Ready.
+      expect(screen.getByText('Monitoring')).toBeOnTheScreen();
+      expect(screen.getAllByText('Ready')).toHaveLength(1);
+      expect(screen.getByText('Alerts')).toBeOnTheScreen();
+      expect(screen.getByText('Not completed')).toBeOnTheScreen();
+
+      await user.press(
+        screen.getByTestId('ORG.provisioning-retry-preparation-btn'),
+      );
+
+      expect(retryPreparation).toHaveBeenCalledTimes(1);
+      expect(retryPreparation).toHaveBeenCalledWith('org-1');
+      expect(activate).not.toHaveBeenCalled();
+    });
+
+    test('preparando shows one row per area with the right states and no buttons', async () => {
+      seedDocument([
+        organizacao({
+          estado: 'preparando',
+          materializacao: {
+            monitoramento: etapa({etapa: 'criado', projectId: 'proj-m-1'}),
+            alertas: etapa({etapa: 'ausente'}),
+          },
+        }),
+      ]);
+      await renderScreen();
+
+      expect(
+        screen.getByText('Preparing your organization…'),
+      ).toBeOnTheScreen();
+      expect(screen.getByText('Monitoring')).toBeOnTheScreen();
+      expect(screen.getByText('Preparing')).toBeOnTheScreen();
+      expect(screen.getByText('Alerts')).toBeOnTheScreen();
+      expect(screen.getByText('Waiting')).toBeOnTheScreen();
+      // SPEC A §4.2:210 — while preparing, the screen has NO buttons at all.
+      expect(
+        screen.queryByTestId('ORG.provisioning-open-organization-btn'),
+      ).not.toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('ORG.provisioning-retry-preparation-btn'),
+      ).not.toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('ORG.provisioning-retry-activation-btn'),
+      ).not.toBeOnTheScreen();
+    });
   });
 
-  test('shows the error line when an organization is invalid, and stays put', async () => {
-    mockOrganizations([invalidOrganization]);
-    await renderScreen();
+  // Fail-closed open states (SPEC B §4.4 table row "Organização indisponível"):
+  // the document is settled ('pronta', acknowledged) but the activation engine
+  // refused to open it — the screen must say so and offer Tentar novamente
+  // through the engine.
+  describe('open organization failed (recovery / unavailable)', () => {
+    const prontaAtiva = {
+      organizacao: organizacao({
+        estado: 'pronta',
+        confirmacaoPendente: false,
+        materializacao: PAR_PRONTA,
+      }),
+      ativa: {organizacaoId: 'org-1', area: 'monitoramento'} as const,
+    };
 
-    expect(
-      screen.getByText(
-        'Something is wrong with this Organization. Contact support.',
-      ),
-    ).toBeOnTheScreen();
-    expect(screen.queryByText('HOME-REACHED')).not.toBeOnTheScreen();
-  });
+    test.each([
+      ['recovery', 'access-unavailable'],
+      ['unavailable', 'unavailable'],
+    ] as const)(
+      'status %s shows the unavailable copy and Tentar novamente reactivates with the document area',
+      async (status, error) => {
+        seedDocument([prontaAtiva.organizacao], prontaAtiva.ativa);
+        activationMock.__setActivation({
+          status,
+          error,
+          activate,
+          retryPreparation,
+          recoverPendingWork,
+        });
+        const user = userEvent.setup();
+        await renderScreen();
 
-  test('refuses to finish a setup this device cannot prove it started', async () => {
-    // An organization degraded by a leave/removal is `incomplete` with a name
-    // too — indistinguishable from an interrupted create without durable
-    // provenance. Finishing it would fabricate an unrelated project and mark
-    // the organization ready without the original slot's data or members.
-    const user = userEvent.setup();
-    mockOrganizations([incompleteOrganization]);
-    await renderScreen();
+        expect(
+          screen.getByText('Could not open your organization'),
+        ).toBeOnTheScreen();
+        // The failed open is not the confirmation (no Abrir organização)
+        // and not a preparation retry.
+        expect(
+          screen.queryByTestId('ORG.provisioning-open-organization-btn'),
+        ).not.toBeOnTheScreen();
+        expect(
+          screen.queryByTestId('ORG.provisioning-retry-preparation-btn'),
+        ).not.toBeOnTheScreen();
 
-    expect(
-      screen.queryByTestId('ORG.provisioning-retry-btn'),
-    ).not.toBeOnTheScreen();
-    expect(
-      screen.getByText(
-        'This Organization was not left half-created on this device, so its setup cannot be finished here.',
-      ),
-    ).toBeOnTheScreen();
-    // The escape hatch stays: the setup is not a permanent lockout.
-    await user.press(screen.getByTestId('ORG.provisioning-discard-btn'));
-    expect(start).not.toHaveBeenCalled();
-  });
-
-  test('stays on the repair surface while another organization is ready', async () => {
-    // Mixed state: `some(ready)` must not send the invalid organization's
-    // only diagnosis surface back to Home the moment it renders.
-    mockOrganizations([readyOrganization, invalidOrganization]);
-    await renderScreen();
-
-    expect(screen.queryByText('HOME-REACHED')).not.toBeOnTheScreen();
-    expect(
-      screen.getByText(
-        'Something is wrong with this Organization. Contact support.',
-      ),
-    ).toBeOnTheScreen();
-  });
-
-  test('offers to finish setting up for an incomplete organization with a name', async () => {
-    mockOrganizations([incompleteOrganization]);
-    recordOrganizationCreationProvenance(incompleteOrganization.organizationId);
-    await renderScreen();
-
-    expect(screen.getByTestId('ORG.provisioning-retry-btn')).toBeOnTheScreen();
-    expect(screen.getByText('Finish setting up')).toBeOnTheScreen();
-  });
-
-  test('pressing the retry resumes the reconstructed organization (idempotent fan-out)', async () => {
-    const user = userEvent.setup();
-    mockOrganizations([incompleteOrganization]);
-    recordOrganizationCreationProvenance(incompleteOrganization.organizationId);
-    await renderScreen();
-
-    await user.press(screen.getByTestId('ORG.provisioning-retry-btn'));
-
-    expect(start).toHaveBeenCalledTimes(1);
-    expect(start).toHaveBeenCalledWith('Partial Org', 'cccccccccccccccc');
-  });
-
-  test('stays passive (no retry) when the incomplete organization has no name', async () => {
-    mockOrganizations([namelessIncompleteOrganization]);
-    await renderScreen();
-
-    expect(screen.getByText('Setting up your Organization…')).toBeOnTheScreen();
-    expect(
-      screen.queryByTestId('ORG.provisioning-retry-btn'),
-    ).not.toBeOnTheScreen();
-  });
-
-  test('hides the retry button while a pending invite covers the missing slot', async () => {
-    // The invite sheet completes the organization — fabricating the slot
-    // here would create a private project alongside it.
-    mockOrganizations([incompleteOrganization]);
-    recordOrganizationCreationProvenance(incompleteOrganization.organizationId);
-    mockInvites([
-      {
-        inviteId: 'invite-a',
-        projectDescription: markerFor('c'.repeat(16), 'a', 'Partial Org'),
-        invitorDeviceId: 'invitor-1',
-        roleName: 'Coordinator',
-        receivedAt: 1,
-        state: 'pending',
+        await user.press(
+          screen.getByTestId('ORG.provisioning-retry-activation-btn'),
+        );
+        expect(activate).toHaveBeenCalledTimes(1);
+        expect(activate).toHaveBeenCalledWith('org-1', {area: 'monitoramento'});
+        expect(retryPreparation).not.toHaveBeenCalled();
       },
-    ]);
-    await renderScreen();
-
-    expect(screen.getByText('Setting up your Organization…')).toBeOnTheScreen();
-    expect(
-      screen.queryByTestId('ORG.provisioning-retry-btn'),
-    ).not.toBeOnTheScreen();
-  });
-
-  test('hides the retry button while the fan-out is running', async () => {
-    mockOrganizations([incompleteOrganization]);
-    recordOrganizationCreationProvenance(incompleteOrganization.organizationId);
-    mockCreateOrganization({status: 'creating'});
-    await renderScreen();
-
-    expect(
-      screen.queryByTestId('ORG.provisioning-retry-btn'),
-    ).not.toBeOnTheScreen();
-    expect(screen.getByText('Setting up your Organization…')).toBeOnTheScreen();
-  });
-
-  test('advances to Home when an organization becomes ready', async () => {
-    const view = await renderScreen();
-
-    mockOrganizations([readyOrganization]);
-    // Re-render so the hook publishes the new organization state.
-    view.rerender(navigatorTree());
-
-    expect(await screen.findByText('HOME-REACHED')).toBeOnTheScreen();
-  });
-
-  test('offers the discard escape hatch even when the incomplete organization has no name', async () => {
-    // A nameless incomplete org has no retry (no name, no marker can be
-    // minted) — the discard is the only way out of the creation lockout.
-    mockOrganizations([namelessIncompleteOrganization]);
-    await renderScreen();
-
-    expect(
-      screen.getByTestId('ORG.provisioning-discard-btn'),
-    ).toBeOnTheScreen();
-  });
-
-  test('discards only after the destructive confirm, and cancel leaves everything alone', async () => {
-    const user = userEvent.setup();
-    mockOrganizations([incompleteOrganization]);
-    await renderScreen();
-
-    await user.press(screen.getByTestId('ORG.provisioning-discard-btn'));
-
-    expect(alertSpy).toHaveBeenCalledTimes(1);
-    // The confirm must say what a leave costs: joined projects are left too.
-    expect(alertSpy.mock.calls[0][1]).toBe(
-      "This device will leave the projects in this setup. Other members will see this device leave the projects. If this device is a project's only coordinator, then no other device can add or remove devices, adjust project info, or update the categories set. Observations not yet synced from this device will no longer be available here, so export any important data first. Other members keep the projects and their copies.",
     );
-    expect(discard).not.toHaveBeenCalled();
 
-    pressAlertButton('Cancel');
-    expect(discard).not.toHaveBeenCalled();
+    test('a double tap on Tentar novamente produces ONE activate call', async () => {
+      seedDocument([prontaAtiva.organizacao], prontaAtiva.ativa);
+      // Hold the call in flight until the test releases it: the second tap
+      // must land while the first is still running.
+      let releaseActivate: (value: boolean) => void = () => {};
+      activate.mockImplementation(
+        () =>
+          new Promise<boolean>(resolve => {
+            releaseActivate = resolve;
+          }),
+      );
+      activationMock.__setActivation({
+        status: 'recovery',
+        error: 'access-unavailable',
+        activate,
+        retryPreparation,
+        recoverPendingWork,
+      });
+      const user = userEvent.setup();
+      await renderScreen();
 
-    await user.press(screen.getByTestId('ORG.provisioning-discard-btn'));
-    pressAlertButton('Discard and start over');
-    expect(discard).toHaveBeenCalledWith('cccccccccccccccc');
-  });
+      const buttonTestId = 'ORG.provisioning-retry-activation-btn';
+      await user.press(screen.getByTestId(buttonTestId));
+      // The call is in flight: the ref guard disables the button itself.
+      expect(screen.getByTestId(buttonTestId)).toBeDisabled();
+      await user.press(screen.getByTestId(buttonTestId));
+      releaseActivate(true);
+      await waitFor(() => {
+        expect(screen.getByTestId(buttonTestId)).toBeEnabled();
+      });
 
-  test('a fully discarded organization routes back to the start-over fork', async () => {
-    mockOrganizations([namelessIncompleteOrganization]);
-    mockDiscard({
-      status: 'success',
-      discardedOrganizationId: 'd'.repeat(16),
-      result: {
-        ok: true,
-        removed: [{slot: 'a', projectId: 'project-a'}],
-        skipped: [],
-      } satisfies DiscardResult,
+      expect(activate).toHaveBeenCalledTimes(1);
+      expect(activate).toHaveBeenCalledWith('org-1', {area: 'monitoramento'});
     });
-    await renderScreen();
-
-    expect(
-      await screen.findByText('START-OVER-FORK-REACHED'),
-    ).toBeOnTheScreen();
   });
 
-  test('a successful discard next to a ready organization goes straight to the start-over fork, never through Home', async () => {
-    // N10a: the discarded setup is filtered out of the collection, so the
-    // device looks "ready, nothing degraded" on the same commit the discard
-    // result lands. The discard owns that navigation — no Home flash first.
-    mockOrganizations([readyOrganization]);
-    mockDiscard({
-      status: 'success',
-      discardedOrganizationId: 'c'.repeat(16),
-      result: {
-        ok: true,
-        removed: [{slot: 'm', projectId: 'project-m'}],
-        skipped: [],
-      } satisfies DiscardResult,
-    });
-    await renderScreen();
-
-    expect(
-      await screen.findByText('START-OVER-FORK-REACHED'),
-    ).toBeOnTheScreen();
-    expect(resetCalls).toEqual([{index: 0, routes: [{name: 'Success'}]}]);
-  });
-
-  test('a successful discard stays on the repair surface while another degraded organization remains', async () => {
-    // Greptile P1: a discard that frees the device must not hide another
-    // organization that still needs repair — the start-over fork only owns
-    // the next decision when NOTHING on the device is degraded anymore.
-    const user = userEvent.setup();
-    mockOrganizations([incompleteOrganization, invalidOrganization]);
-    mockDiscard({
-      status: 'success',
-      result: {
-        ok: true,
-        removed: [{slot: 'm', projectId: 'project-m'}],
-        skipped: [],
-      } satisfies DiscardResult,
-    });
-    await renderScreen();
-
-    await user.press(screen.getByTestId('ORG.provisioning-discard-btn'));
-    pressAlertButton('Discard and start over');
-
-    // The discarded setup is gone; the remaining invalid organization's
-    // diagnosis stays on screen — no automatic hop to the start-over fork.
-    expect(
-      await screen.findByText(
-        'Something is wrong with this Organization. Contact support.',
-      ),
-    ).toBeOnTheScreen();
-    expect(screen.queryByText('START-OVER-FORK-REACHED')).not.toBeOnTheScreen();
-  });
-
-  test('a skip because the setup changed mid-discard is explained the same way', async () => {
-    mockOrganizations([incompleteOrganization]);
-    mockDiscard({
-      status: 'success',
-      result: {
-        ok: false,
-        removed: [],
-        skipped: [
-          {slot: 'm', projectId: 'project-m', reason: 'no-longer-incomplete'},
+  // Blocked boot (SPEC A §4.4:149 canonical pending-work string, CA15): the
+  // engine published 'unavailable' + 'pending-work' with the origin preserved.
+  // The §4.4 string is the content, and reopening the origin is what
+  // concludes the work — the screen asks the engine, it does not fabricate
+  // its own path back.
+  describe('pending-work', () => {
+    test('shows the §4.4 string and calls recoverPendingWork', async () => {
+      seedDocument(
+        [
+          organizacao({
+            estado: 'pronta',
+            confirmacaoPendente: false,
+            materializacao: PAR_PRONTA,
+          }),
         ],
-      } satisfies DiscardResult,
+        {organizacaoId: 'org-1', area: 'monitoramento'},
+      );
+      activationMock.__setActivation({
+        status: 'unavailable',
+        error: 'pending-work',
+        activate,
+        retryPreparation,
+        recoverPendingWork,
+      });
+      await renderScreen();
+
+      expect(
+        screen.getByText(
+          'Finish or discard the record before switching organization',
+        ),
+      ).toBeOnTheScreen();
+      expect(recoverPendingWork).toHaveBeenCalledTimes(1);
+      // No manual reactivation on this state: the work origin is the only
+      // exit and the engine owns it.
+      expect(
+        screen.queryByTestId('ORG.provisioning-retry-activation-btn'),
+      ).not.toBeOnTheScreen();
     });
-    await renderScreen();
-
-    expect(
-      screen.getByText(
-        'Monitoramento changed while it was being discarded, so it was kept.',
-      ),
-    ).toBeOnTheScreen();
-    expect(screen.queryByText('START-OVER-FORK-REACHED')).not.toBeOnTheScreen();
   });
 
-  test('a pending join skip explains that the invitation must finish syncing', async () => {
-    mockOrganizations([incompleteOrganization]);
-    mockDiscard({
-      status: 'success',
-      result: {
-        ok: false,
-        removed: [{slot: 'm', projectId: 'project-m'}],
-        skipped: [{slot: 'a', projectId: 'project-a', reason: 'join-pending'}],
-      } satisfies DiscardResult,
+  // SPEC B §3.2:68 — after 30 s in preparando the screen says so and NEVER
+  // retries: a presentation timeout does not cancel a native operation, so
+  // time alone must not authorize another call.
+  describe('slow preparation notice', () => {
+    test('after 30 s the notice shows and no retry is ever fired', async () => {
+      seedDocument([organizacao({estado: 'preparando'})]);
+      jest.useFakeTimers();
+      try {
+        await renderScreen();
+
+        await act(async () => {
+          jest.advanceTimersByTime(29_999);
+        });
+        expect(screen.queryByText(SLOW_NOTICE)).not.toBeOnTheScreen();
+
+        await act(async () => {
+          jest.advanceTimersByTime(1);
+        });
+        expect(screen.getByText(SLOW_NOTICE)).toBeOnTheScreen();
+
+        // Far past the notice: still shown, still no call.
+        await act(async () => {
+          jest.advanceTimersByTime(300_000);
+        });
+        expect(screen.getByText(SLOW_NOTICE)).toBeOnTheScreen();
+        expect(retryPreparation).not.toHaveBeenCalled();
+        expect(activate).not.toHaveBeenCalled();
+      } finally {
+        jest.useRealTimers();
+      }
     });
-    await renderScreen();
 
-    expect(
-      screen.getByText(
-        'An invitation for this organization is still syncing. Try again once it finishes.',
-      ),
-    ).toBeOnTheScreen();
-    expect(screen.queryByText('START-OVER-FORK-REACHED')).not.toBeOnTheScreen();
+    test('leaving preparando hides the notice and re-entering restarts the wait', async () => {
+      seedDocument([organizacao({estado: 'preparando'})]);
+      jest.useFakeTimers();
+      try {
+        await renderScreen();
+        await act(async () => {
+          jest.advanceTimersByTime(30_000);
+        });
+        expect(screen.getByText(SLOW_NOTICE)).toBeOnTheScreen();
+
+        await act(async () => {
+          seedDocument([organizacao({estado: 'falha_recuperavel'})]);
+        });
+        expect(screen.queryByText(SLOW_NOTICE)).not.toBeOnTheScreen();
+
+        // A fresh wait: nothing before the new 30 s.
+        await act(async () => {
+          seedDocument([organizacao({estado: 'preparando'})]);
+        });
+        await act(async () => {
+          jest.advanceTimersByTime(29_999);
+        });
+        expect(screen.queryByText(SLOW_NOTICE)).not.toBeOnTheScreen();
+        await act(async () => {
+          jest.advanceTimersByTime(1);
+        });
+        expect(screen.getByText(SLOW_NOTICE)).toBeOnTheScreen();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
   });
 
-  test('a failed discard says so and stays on the screen', async () => {
-    // Finding 2: a discard error must reach the user — never a silent
-    // return to a screen that looks untouched.
-    const view = await renderScreen();
-    expect(
-      screen.queryByText(/went wrong while discarding/),
-    ).not.toBeOnTheScreen();
+  // SPEC B §3.2:64/:68 (consult Phase 12:315): while preparando, Back is
+  // blocked at every layer. In any other state the user leaves normally —
+  // the 10b-i states' own exits must stay untouched.
+  describe('back lock', () => {
+    /** Dispatches a synthetic beforeRemove event at the active listener. */
+    function preventBeforeRemove(actionType: string) {
+      const registrations = navigationAddListener.mock.calls.filter(
+        ([event]) => event === 'beforeRemove',
+      );
+      const listener = registrations.at(-1)?.[1] as
+        | ((e: {
+            data: {action: {type: string}};
+            preventDefault: () => void;
+          }) => void)
+        | undefined;
+      if (!listener) {
+        throw new Error('no beforeRemove listener registered');
+      }
+      const preventDefault = jest.fn();
+      listener({data: {action: {type: actionType}}, preventDefault});
+      return preventDefault;
+    }
 
-    mockDiscard({status: 'error', error: new Error('IPC_GONE')});
-    view.rerender(navigatorTree());
+    test('back is prevented while preparando', async () => {
+      seedDocument([organizacao({estado: 'preparando'})]);
+      await renderScreen();
 
-    expect(
-      await screen.findByText(
-        'Something went wrong while discarding this setup. It was not fully removed — you can try again.',
-      ),
-    ).toBeOnTheScreen();
-    expect(screen.queryByText('START-OVER-FORK-REACHED')).not.toBeOnTheScreen();
-    expect(screen.queryByText('HOME-REACHED')).not.toBeOnTheScreen();
-    expect(screen.getByText('Setting up your Organization…')).toBeOnTheScreen();
-  });
+      // Android hardware back is consumed.
+      expect(backHandlerMock.default.addEventListener).toHaveBeenCalledTimes(1);
+      expect(backHandlerMock.__live).toHaveLength(1);
+      const [backEvent, backHandler] =
+        backHandlerMock.default.addEventListener.mock.calls[0];
+      expect(backEvent).toBe('hardwareBackPress');
+      expect(backHandler()).toBe(true);
 
-  test('hides the discard action while the fan-out runs', async () => {
-    mockOrganizations([incompleteOrganization]);
-    mockCreateOrganization({status: 'creating'});
-    await renderScreen();
+      // Back-type removals are prevented…
+      expect(preventBeforeRemove('GO_BACK')).toHaveBeenCalled();
+      expect(preventBeforeRemove('POP')).toHaveBeenCalled();
+      // …while the screen's own Home reset passes untouched.
+      expect(preventBeforeRemove('RESET')).not.toHaveBeenCalled();
+    });
 
-    expect(
-      screen.queryByTestId('ORG.provisioning-discard-btn'),
-    ).not.toBeOnTheScreen();
-  });
+    test('leaving preparando removes the hardware-back consumption', async () => {
+      seedDocument([organizacao({estado: 'preparando'})]);
+      await renderScreen();
+      expect(backHandlerMock.__live).toHaveLength(1);
 
-  test('hides the discard action while a pending invite covers the missing slot', async () => {
-    // The invite completes the organization — that is the expected path, not
-    // tearing the setup down.
-    mockOrganizations([incompleteOrganization]);
-    mockInvites([
-      {
-        inviteId: 'invite-a',
-        projectDescription: markerFor('c'.repeat(16), 'a', 'Partial Org'),
-        invitorDeviceId: 'invitor-1',
-        roleName: 'Coordinator',
-        receivedAt: 1,
-        state: 'pending',
+      await act(async () => {
+        seedDocument([organizacao({estado: 'falha_recuperavel'})]);
+      });
+      expect(backHandlerMock.__live).toHaveLength(0);
+    });
+
+    test.each([
+      [
+        'a recoverable failure',
+        () => seedDocument([organizacao({estado: 'falha_recuperavel'})]),
+      ],
+      [
+        'a pending confirmation',
+        () =>
+          seedDocument([
+            organizacao({
+              estado: 'pronta',
+              confirmacaoPendente: true,
+              materializacao: PAR_PRONTA,
+            }),
+          ]),
+      ],
+      [
+        'an unavailable settled organization',
+        () => {
+          seedDocument(
+            [
+              organizacao({
+                estado: 'pronta',
+                confirmacaoPendente: false,
+                materializacao: PAR_PRONTA,
+              }),
+            ],
+            {organizacaoId: 'org-1', area: 'monitoramento'},
+          );
+          activationMock.__setActivation({
+            status: 'unavailable',
+            error: 'unavailable',
+            activate,
+            retryPreparation,
+            recoverPendingWork,
+          });
+        },
+      ],
+      [
+        'a pending-work blocked boot',
+        () => {
+          seedDocument(
+            [
+              organizacao({
+                estado: 'pronta',
+                confirmacaoPendente: false,
+                materializacao: PAR_PRONTA,
+              }),
+            ],
+            {organizacaoId: 'org-1', area: 'monitoramento'},
+          );
+          activationMock.__setActivation({
+            status: 'unavailable',
+            error: 'pending-work',
+            activate,
+            retryPreparation,
+            recoverPendingWork,
+          });
+        },
+      ],
+      ['a missing document', () => {}],
+    ] as Array<[string, () => void]>)(
+      'back is not blocked while there is %s',
+      async (_label, seed) => {
+        seed();
+        await renderScreen();
+
+        expect(
+          navigationAddListener.mock.calls.filter(
+            ([event]) => event === 'beforeRemove',
+          ),
+        ).toHaveLength(0);
+        expect(backHandlerMock.default.addEventListener).not.toHaveBeenCalled();
       },
-    ]);
-    await renderScreen();
-
-    expect(
-      screen.queryByTestId('ORG.provisioning-discard-btn'),
-    ).not.toBeOnTheScreen();
+    );
   });
 });
