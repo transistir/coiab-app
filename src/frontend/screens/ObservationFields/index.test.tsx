@@ -251,6 +251,9 @@ describe('Observation Fields', () => {
       await user.press(await screen.findByText('Details'));
     }
 
+    // Cost measured at ~4-5.3s depending on cold/warm runner (issue #75).
+    // The default 5s budget leaves no headroom on the shared CI runner,
+    // so this test flakes intermittently — give it an explicit budget.
     test('correct back button behaviour', async () => {
       const user = userEvent.setup();
       await navigateToObservationDetails(user);
@@ -301,6 +304,6 @@ describe('Observation Fields', () => {
       //should navigate back to create observation screen when done clicked
       await user.press(doneButton);
       expect(await screen.findByTestId('OBS.create-obs')).toBeVisible();
-    });
+    }, 15000);
   });
 });
