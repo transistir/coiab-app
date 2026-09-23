@@ -501,7 +501,11 @@ export function createOrganizationActivation({
       try {
         return await performInitialization();
       } finally {
-        retomarInterrompida();
+        // FIX-B's startup block holds ALL startup work until the persisted
+        // work is recovered — a background resume included.
+        const {status, error} = instance.getState();
+        if (status !== 'unavailable' || error !== 'pending-work')
+          retomarInterrompida();
       }
     });
   }

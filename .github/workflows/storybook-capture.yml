@@ -159,12 +159,13 @@ jobs:
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           # The action runs each line with `sh -c`: without pipefail, `tee`
-          # would hide the capture script's exit code.
+          # would hide the capture script's exit code. The report shares the
+          # log so Classify failure can tell its failure from an app failure;
+          # `-e` keeps a failed capture from being masked by the report's exit.
           script: |
             adb uninstall "$STORYBOOK_PACKAGE_ID" || true
             adb install "$APK_PATH"
-            bash -c 'set -o pipefail; scripts/storybook-capture-all.sh storybook-captures 2>&1 | tee "$RUNNER_TEMP/capture.log"'
-            node scripts/storybook-report.mjs storybook-captures
+            bash -c 'set -eo pipefail; scripts/storybook-capture-all.sh storybook-captures 2>&1 | tee "$RUNNER_TEMP/capture.log"; node scripts/storybook-report.mjs storybook-captures 2>&1 | tee -a "$RUNNER_TEMP/capture.log"'
 
       # ELOCKED is a known runtime flake, not stale state: run 35802920896
       # hit it in the first process after a fresh AVD, uninstall and install,
@@ -177,6 +178,8 @@ jobs:
             echo '## Storybook capture failure'
             if [ ! -s "$log" ]; then
               echo '**Infra** — emulator/install failed before capture began; see the step log.'
+            elif grep '^storybook-report: ' "$log" | grep -vq '^storybook-report: wrote '; then
+              echo '**Report** — every capture succeeded; the HTML report step failed (see the storybook-report line below).'
             elif grep -q 'device offline' "$log"; then
               echo '**Infra** — emulator went offline mid-run. Use "Re-run failed jobs" (reuses the APK).'
             elif grep -rqs 'ELOCKED' storybook-captures --include='*.failure-logcat.txt'; then
@@ -185,7 +188,7 @@ jobs:
               echo '**App/story** — inspect the failure diagnostics in the captures artifact.'
             fi
             echo; echo '```'
-            grep -E 'capture failed at position|timed out waiting|device offline' "$log" | tail -n 5 || true
+            grep -E 'capture failed at position|timed out waiting|device offline|^storybook-report: ' "$log" | tail -n 5 || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 

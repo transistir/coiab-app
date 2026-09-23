@@ -825,6 +825,48 @@ describe('segunda organização em preparo com A operando (review fronteira)', (
         ?.estado,
     ).toBe('pronta');
   });
+
+  test('trabalho persistido bloqueando o boot não retoma B em segundo plano', async () => {
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState(
+      {
+        versao: 1,
+        organizacoes: [
+          readyOrganization('A'),
+          {
+            ...readyOrganization('B'),
+            estado: 'preparando',
+            areaEmExecucao: 'alertas',
+          },
+        ],
+        ativa: {organizacaoId: 'A', area: 'alertas'},
+      },
+      true,
+    );
+    const getProject = jest.fn();
+    const resume = jest.fn(async () => {});
+    const activation = createOrganizationActivation({
+      store,
+      getProject,
+      resumePreparation: resume,
+      // Origem em A/monitoramento, seleção em A/alertas: o boot bloqueia.
+      hasPendingWork: () => true,
+      getPendingWorkProjectId: () => 'A-m',
+    });
+
+    await expect(activation.initialize()).resolves.toBe(false);
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'unavailable',
+      error: 'pending-work',
+    });
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(resume).not.toHaveBeenCalled();
+    expect(getProject).not.toHaveBeenCalled();
+    expect(
+      store.instance.getState().organizacoes.find(item => item.id === 'B'),
+    ).toMatchObject({estado: 'preparando', areaEmExecucao: 'alertas'});
+  });
 });
 
 type CoiabStore = ReturnType<typeof createCoiabOrganizationsStore>;
