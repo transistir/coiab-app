@@ -4,6 +4,7 @@ import {View} from 'react-native';
 
 import {useFlowState, type FlowStateSpec} from '../utils/flowState';
 import {FlowStatePlaceholder} from '../utils/FlowStatePlaceholder';
+import {FlowStateScope} from '../utils/FlowStateScope';
 
 type FlowParameters = {
   flow?: {
@@ -39,9 +40,16 @@ export const withFlowState: Decorator = (Story, context) => {
 
   if (!ready) return <FlowStatePlaceholder spec={flow?.state} />;
 
+  // The marker sits inside the scope: a story waiting on its scoped
+  // organization to open is not ready yet.
   return (
-    <View style={{flex: 1}} testID={`STORYBOOK.flow-ready.${context.id}`}>
-      <Story />
-    </View>
+    <FlowStateScope
+      key={`${context.id}:${ready.key}`}
+      resolved={ready}
+      fallback={<FlowStatePlaceholder spec={flow?.state} />}>
+      <View style={{flex: 1}} testID={`STORYBOOK.flow-ready.${context.id}`}>
+        <Story />
+      </View>
+    </FlowStateScope>
   );
 };

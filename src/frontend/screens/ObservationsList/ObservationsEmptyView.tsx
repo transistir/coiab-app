@@ -7,8 +7,29 @@ import {ScreenContentWithDock} from '../../sharedComponents/ScreenContentWithDoc
 import {BodyText} from '../../sharedComponents/Text/BodyText';
 import {HeaderText} from '../../sharedComponents/Text/HeaderText';
 import {SecondaryButton} from '../../sharedComponents/Buttons';
+import {useActiveProject} from '../../contexts/ActiveProjectContext';
+import {useCoiabOrganizationsState} from '../../contexts/CoiabOrganizationsStoreContext';
+import {derivarProjectIdAtivo} from '../../lib/organization/coiabOrganizations';
 
 const m = defineMessages({
+  emptyMonitoramento: {
+    id: '$1screens.ObservationsList.emptyMonitoramento',
+    description:
+      'Title of the empty observation list in the Monitoring area of an organization',
+    defaultMessage: 'No records yet in Monitoring',
+  },
+  emptyAlertas: {
+    id: '$1screens.ObservationsList.emptyAlertas',
+    description:
+      'Title of the empty observation list in the Alerts area of an organization',
+    defaultMessage: 'No records yet in Alerts',
+  },
+  goToMap: {
+    id: '$1screens.ObservationsList.goToMap',
+    description:
+      'Action that opens the map of the current work area from the empty observation list',
+    defaultMessage: 'Go to the map',
+  },
   noObservationsTitle: {
     id: '$1screens.ObservationsList.ObservationsEmptyView.noObservationsTitle',
     description:
@@ -38,6 +59,16 @@ export const ObservationEmptyView = ({
   onPressBack: () => void;
 }) => {
   const {formatMessage: t} = useIntl();
+  // SPEC A §4.4:147 — the per-area empty copy names the area the device
+  // operates, resolved from the persisted document exactly like
+  // HomeHeader does (derivation must match the project being rendered).
+  const {projectId} = useActiveProject();
+  const estado = useCoiabOrganizationsState();
+  const derivado = derivarProjectIdAtivo(estado);
+  const areaAtiva =
+    derivado !== null && derivado === projectId
+      ? estado.ativa?.area
+      : undefined;
 
   return (
     <ScreenContentWithDock
@@ -48,16 +79,26 @@ export const ObservationEmptyView = ({
         <SecondaryButton
           fullSize
           onPress={onPressBack}
-          text={t(m.backButton)}
+          text={t(areaAtiva ? m.goToMap : m.backButton)}
         />
       }>
       <View style={styles.iconCircle}>
         <ObservationListIcon size={ICON_SIZE} />
       </View>
-      <HeaderText variant="header2" style={styles.text}>
-        {t(m.noObservationsTitle)}
-      </HeaderText>
-      <BodyText style={styles.text}>{t(m.noObservationsDesc)}</BodyText>
+      {areaAtiva ? (
+        <HeaderText variant="header2" style={styles.text}>
+          {areaAtiva === 'monitoramento'
+            ? t(m.emptyMonitoramento)
+            : t(m.emptyAlertas)}
+        </HeaderText>
+      ) : (
+        <>
+          <HeaderText variant="header2" style={styles.text}>
+            {t(m.noObservationsTitle)}
+          </HeaderText>
+          <BodyText style={styles.text}>{t(m.noObservationsDesc)}</BodyText>
+        </>
+      )}
     </ScreenContentWithDock>
   );
 };

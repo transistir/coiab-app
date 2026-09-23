@@ -1,15 +1,11 @@
 import React from 'react';
 import {ScrollView, StyleSheet, View, TouchableOpacity} from 'react-native';
 import {useIntl, defineMessages} from 'react-intl';
-import Fontisto from '@react-native-vector-icons/fontisto';
 import MaterialIcons from '@react-native-vector-icons/material-icons';
 
 import {useActiveProject} from '../../contexts/ActiveProjectContext';
-import {useProjectRoleAndDetails} from '../../hooks/useProjectRoleAndDetails';
-import {displayDescription} from '../../lib/organization/marker';
 import {HeaderText} from '../../sharedComponents/Text/HeaderText';
 import {BodyText} from '../../sharedComponents/Text/BodyText';
-import NoProjectIcon from '../../images/NoProjectIcon.svg';
 import ExchangeIcon from '../../images/Exchange.svg';
 import GraphIcon from '../../images/Graph.svg';
 import {
@@ -29,18 +25,6 @@ const m = defineMessages({
   title: {
     id: '$1Screens.ProjectSettings.title',
     defaultMessage: 'Coordinator Tools',
-  },
-  configTitle: {
-    id: '$1Screens.ProjectSettings.configTitle',
-    defaultMessage: 'Project Categories',
-  },
-  updateCategories: {
-    id: 'Screens.ProjectSettings.updateCategories',
-    defaultMessage: 'Update Set',
-  },
-  editInfo: {
-    id: 'Screens.ProjectSettings.editInfo',
-    defaultMessage: 'Edit Info',
   },
   remoteArchiveOn: {
     id: '$1Screens.ProjectSettings.remoteArchiveOn',
@@ -81,7 +65,6 @@ const m = defineMessages({
 
 export const ProjectSettings = () => {
   const {projectId} = useActiveProject();
-  const projectInfo = useProjectRoleAndDetails(projectId);
   const {formatMessage} = useIntl();
   const {navigate} = useNavigationFromRoot();
   const {data: configData} = useProjectSettings();
@@ -92,17 +75,6 @@ export const ProjectSettings = () => {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <SettingsCardRow
-        icon={<NoProjectIcon width={24} height={24} />}
-        title={projectInfo.projectHeader}
-        subtitle={
-          // SPEC 3.9/15: a marker description displays as the
-          // organization name, never the raw technical value.
-          displayDescription(projectInfo.projectDescription)
-        }
-        buttonText={formatMessage(m.editInfo)}
-        onPress={() => navigate('EditProjectDetails')}
-      />
-      <SettingsCardRow
         icon={<ExchangeIcon width={24} height={24} color={NEW_DARK_GREY} />}
         title={formatMessage(
           remoteArchiveOn ? m.remoteArchiveOn : m.remoteArchiveOff,
@@ -110,15 +82,6 @@ export const ProjectSettings = () => {
         subtitle={formatMessage(m.remoteArchiveDesc)}
         buttonText={formatMessage(m.viewDetails)}
         onPress={() => navigate('RemoteArchive')}
-      />
-      <SettingsCardRow
-        icon={
-          <Fontisto name="nav-icon-grid-a" size={24} color={NEW_DARK_GREY} />
-        }
-        title={formatMessage(m.configTitle)}
-        subtitle={configData?.configMetadata?.name}
-        buttonText={formatMessage(m.updateCategories)}
-        onPress={() => navigate('Categories')}
       />
       <SettingsCardRow
         icon={<GraphIcon width={24} height={24} color={NEW_DARK_GREY} />}

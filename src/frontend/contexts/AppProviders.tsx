@@ -56,6 +56,12 @@ import {
   QADeviceNameStoreContext,
   type QADeviceNameStore,
 } from './QADeviceNameStoreContext';
+import {
+  CoiabOrganizationsStoreProvider,
+  createCoiabOrganizationsStore,
+} from './CoiabOrganizationsStoreContext';
+import {OrganizationActivationProvider} from './OrganizationActivationContext';
+import {OrganizationMaterializerProvider} from './OrganizationMaterializerContext';
 
 /**
  * SPEC A CA09: persisted work must carry and validate its origin. Wires the
@@ -120,6 +126,13 @@ export const AppProviders = ({
   unitSystemStore,
   qaDeviceNameStore,
 }: AppProvidersProps) => {
+  // The COIAB organization document is one durable singleton (SPEC A §4.2/D3):
+  // created once per mount, persisted so a restart keeps the active
+  // organization.
+  const [coiabOrganizationsStore] = React.useState(() =>
+    createCoiabOrganizationsStore({persist: true}),
+  );
+
   return (
     <UnitSystemStoreContext value={unitSystemStore}>
       <AppUsageStatsProvider value={appUsageStatsStore}>
@@ -152,7 +165,16 @@ export const AppProviders = ({
                                       value={earlyAccessStore}>
                                       <QADeviceNameStoreContext
                                         value={qaDeviceNameStore}>
-                                        <AuthProvider>{children}</AuthProvider>
+                                        <CoiabOrganizationsStoreProvider
+                                          store={coiabOrganizationsStore}>
+                                          <OrganizationMaterializerProvider>
+                                            <OrganizationActivationProvider>
+                                              <AuthProvider>
+                                                {children}
+                                              </AuthProvider>
+                                            </OrganizationActivationProvider>
+                                          </OrganizationMaterializerProvider>
+                                        </CoiabOrganizationsStoreProvider>
                                       </QADeviceNameStoreContext>
                                     </EarlyAccessStoreProvider>
                                   </DraftObservationProvider>

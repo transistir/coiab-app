@@ -19,17 +19,29 @@ const m = defineMessages({
     id: '$1screens.DeviceNaming.Success.deviceReady',
     defaultMessage: '{deviceName} is ready!',
   },
-  chooseProject: {
-    id: '$1screens.DeviceNaming.Success.chooseProject',
-    defaultMessage: 'Choose from below to start with an Organization.',
+  // SPEC B :99-100: the decision descriptors are NEW (the old DeviceNaming
+  // Success ids inverted the hierarchy or changed meaning) and live under
+  // the OrganizationSetup namespace — the state this screen forwards to.
+  noOrganizationBody: {
+    id: '$1screens.OrganizationSetup.noOrganizationBody',
+    // SPEC A :142 (§4.4 glossary).
+    defaultMessage: 'Your device is not yet part of an Organization',
   },
-  createOrg: {
-    id: '$1screens.DeviceNaming.Success.createOrg',
+  noOrganizationGuidance: {
+    id: '$1screens.OrganizationSetup.noOrganizationGuidance',
+    // SPEC B :53.
+    defaultMessage:
+      'Create an Organization or wait for an invitation to join an existing one.',
+  },
+  createOrganization: {
+    id: '$1screens.OrganizationSetup.createOrganization',
+    // SPEC B :53 — the PRIMARY action, not the legacy join-first order.
     defaultMessage: 'Create Organization',
   },
-  joinOrg: {
-    id: '$1screens.DeviceNaming.Success.joinOrg',
-    defaultMessage: 'Join an Organization',
+  waitInviteButton: {
+    id: '$1screens.OrganizationSetup.waitInviteButton',
+    // SPEC B :53 — the SECONDARY action.
+    defaultMessage: 'Wait for an invitation',
   },
 });
 export const Success = ({
@@ -54,7 +66,10 @@ export const Success = ({
               {t(m.deviceReady, {deviceName})}
             </HeaderText>
           </View>
-          <BodyText style={styles.bodyText}>{t(m.chooseProject)}</BodyText>
+          <BodyText style={styles.bodyText}>{t(m.noOrganizationBody)}</BodyText>
+          <BodyText style={styles.bodyText}>
+            {t(m.noOrganizationGuidance)}
+          </BodyText>
         </View>
       </View>
 
@@ -62,7 +77,7 @@ export const Success = ({
         <PrimaryButton
           testID="ONBOARDING.create-org-btn"
           fullSize
-          text={t(m.createOrg)}
+          text={t(m.createOrganization)}
           iconPosition="left"
           renderIcon={({size}) => (
             <ProjectCoordinatorIcon
@@ -79,7 +94,7 @@ export const Success = ({
         <SecondaryButton
           testID="ONBOARDING.join-org-btn"
           fullSize
-          text={t(m.joinOrg)}
+          text={t(m.waitInviteButton)}
           iconPosition="left"
           renderIcon={({size}) => (
             <ProjectParticipantIcon

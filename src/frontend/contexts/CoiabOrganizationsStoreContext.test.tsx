@@ -414,6 +414,187 @@ describe('CoiabOrganizationsStore.publicarPronta (SPEC A §4.2 regras 2, 3 e 9)'
   });
 });
 
+describe('CoiabOrganizationsStore.registrarEntradaPorConvite (SPEC A §4.2 regra 9, :127)', () => {
+  beforeEach(() => {
+    // MMKV is shared across tests: a leftover document (e.g. an earlier
+    // hydration round-trip) would legally refuse the registration (SPEC A
+    // :127 — the document must be empty).
+    MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
+  });
+
+  afterEach(() => {
+    MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
+  });
+
+  const entradaValida = {
+    organizacaoId: '0123456789abcdef',
+    nome: '  Por convite  ',
+    projectIds: {monitoramento: 'm-convite-1', alertas: 'a-convite-1'},
+  };
+
+  test('registra preparando com journal criado e nome aparado', () => {
+    const store = createCoiabOrganizationsStore();
+    const antes = store.instance.getState();
+
+    const ok = store.actions.registrarEntradaPorConvite(entradaValida);
+
+    expect(ok).toBe(true);
+    expect(store.instance.getState().organizacoes).toStrictEqual([
+      {
+        id: '0123456789abcdef',
+        nome: 'Por convite',
+        estado: 'preparando',
+        confirmacaoPendente: false,
+        materializacao: {
+          monitoramento: {
+            etapa: 'criado',
+            projectId: 'm-convite-1',
+            template: null,
+            idsAntesDaCriacao: null,
+          },
+          alertas: {
+            etapa: 'criado',
+            projectId: 'a-convite-1',
+            template: null,
+            idsAntesDaCriacao: null,
+          },
+        },
+        areaEmExecucao: null,
+        ultimoErro: null,
+      },
+    ]);
+    // O registro é a única mudança: nada é ativado nem reconhecido.
+    expect(store.instance.getState().ativa).toBe(antes.ativa);
+  });
+
+  test('recusa a segunda organização (SPEC A :127) e deixa o documento intocado', () => {
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState(
+      {versao: 1, organizacoes: [criarOrganizacaoPreparando()], ativa: null},
+      true,
+    );
+    const antes = store.instance.getState();
+    const publish = jest.fn();
+    store.instance.subscribe(publish);
+
+    const ok = store.actions.registrarEntradaPorConvite(entradaValida);
+
+    expect(ok).toBe(false);
+    expect(store.instance.getState()).toBe(antes);
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  test('recusa ids de projeto iguais', () => {
+    const store = createCoiabOrganizationsStore();
+    const antes = store.instance.getState();
+
+    const ok = store.actions.registrarEntradaPorConvite({
+      ...entradaValida,
+      projectIds: {monitoramento: 'm-convite-1', alertas: 'm-convite-1'},
+    });
+
+    expect(ok).toBe(false);
+    expect(store.instance.getState()).toBe(antes);
+  });
+
+  test('recusa o id da organização igual a um id de projeto (o parser rejeitaria)', () => {
+    const store = createCoiabOrganizationsStore();
+    const antes = store.instance.getState();
+
+    const ok = store.actions.registrarEntradaPorConvite({
+      ...entradaValida,
+      projectIds: {
+        monitoramento: '0123456789abcdef',
+        alertas: 'a-convite-1',
+      },
+    });
+
+    expect(ok).toBe(false);
+    expect(store.instance.getState()).toBe(antes);
+  });
+
+  test('recusa nome vazio ou só whitespace', () => {
+    const store = createCoiabOrganizationsStore();
+
+    for (const nome of ['', '   ']) {
+      const antes = store.instance.getState();
+      const ok = store.actions.registrarEntradaPorConvite({
+        ...entradaValida,
+        nome,
+      });
+      expect(ok).toBe(false);
+      expect(store.instance.getState()).toBe(antes);
+    }
+  });
+
+  test('recusa id fora de ORGANIZATION_ID_PATTERN', () => {
+    const store = createCoiabOrganizationsStore();
+    const antes = store.instance.getState();
+
+    const ok = store.actions.registrarEntradaPorConvite({
+      ...entradaValida,
+      organizacaoId: 'NAO-HEX',
+    });
+
+    expect(ok).toBe(false);
+    expect(store.instance.getState()).toBe(antes);
+  });
+
+  test('recusa quando a hidratação falhou', () => {
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState({hidratacaoFalhou: true});
+    const antes = store.instance.getState();
+
+    const ok = store.actions.registrarEntradaPorConvite(entradaValida);
+
+    expect(ok).toBe(false);
+    expect(store.instance.getState()).toBe(antes);
+  });
+
+  test('entrada registrada sobrevive ao round-trip do MMKV (parser aceita criado com template null)', () => {
+    const write = jest.spyOn(MMKVStoreInitializer, 'setItem');
+    const store = createCoiabOrganizationsStore({persist: true});
+    try {
+      const ok = store.actions.registrarEntradaPorConvite(entradaValida);
+      expect(ok).toBe(true);
+      expect(write).toHaveBeenCalledTimes(1);
+    } finally {
+      write.mockRestore();
+    }
+
+    const reidratado = createCoiabOrganizationsStore({persist: true});
+    expect(reidratado.instance.getState()).toStrictEqual({
+      versao: 1,
+      organizacoes: [
+        {
+          id: '0123456789abcdef',
+          nome: 'Por convite',
+          estado: 'preparando',
+          confirmacaoPendente: false,
+          materializacao: {
+            monitoramento: {
+              etapa: 'criado',
+              projectId: 'm-convite-1',
+              template: null,
+              idsAntesDaCriacao: null,
+            },
+            alertas: {
+              etapa: 'criado',
+              projectId: 'a-convite-1',
+              template: null,
+              idsAntesDaCriacao: null,
+            },
+          },
+          areaEmExecucao: null,
+          ultimoErro: null,
+        },
+      ],
+      ativa: null,
+      hidratacaoFalhou: false,
+    });
+  });
+});
+
 describe('confirmação atômica e falha de persistência (CA02/CA09/CA14)', () => {
   test('Abrir organização reconhece e seleciona Monitoramento em uma escrita, sobrevive à reabertura', () => {
     const store = createCoiabOrganizationsStore({persist: true});
