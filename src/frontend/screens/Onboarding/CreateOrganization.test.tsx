@@ -30,6 +30,7 @@ import {
 import {useProjetarProjectIdAtivo} from '../../contexts/ActiveProjectIdStoreContext';
 import {markerFor} from '../../lib/organization/marker';
 import {ErroPacote} from '../../lib/organization/pacotes';
+import {OrganizationOperationError} from '../../lib/organization/fanout';
 import type {
   EstadoOrganizacoes,
   OrganizacaoLocal,
@@ -52,6 +53,8 @@ const PT_MESSAGES = {
   '$1screens.OrganizationSetup.nameNotIdentity':
     'Usar o mesmo nome de outra organização não conecta os dispositivos. Para participar de uma organização existente, aguarde um convite.',
   '$1screens.OrganizationSetup.emptyName': 'Informe o nome da organização.',
+  '$1screens.Onboarding.CreateOrganization.creationInProgress':
+    'Já existe uma criação de organização em andamento.',
 };
 
 jest.mock('../../contexts/OrganizationMaterializerContext', () => ({
@@ -112,9 +115,38 @@ function documentoComOrganizacao(nome: string): EstadoOrganizacoes {
     ativa: null,
   };
 }
+/**
+ * A settled first organization: ready, acknowledged, both areas verified —
+ * the §4.2 shape CA12's form-opening scenario operates on.
+ */
+function organizacaoPronta(nome: string): OrganizacaoLocal {
+  return {
+    ...documentoComOrganizacao(nome).organizacoes[0]!,
+    estado: 'pronta',
+    confirmacaoPendente: false,
+    materializacao: {
+      monitoramento: {
+        etapa: 'verificado',
+        projectId: 'p-m',
+        template: {versao: '1', hash: 'm'},
+        idsAntesDaCriacao: null,
+      },
+      alertas: {
+        etapa: 'verificado',
+        projectId: 'p-a',
+        template: {versao: '1', hash: 'a'},
+        idsAntesDaCriacao: null,
+      },
+    },
+  };
+}
 
 /** The materializer's observable side effect: the document gains the org. */
 const registrar = async (nome: string) => {
+  // One tick after the start, like the real materializer: the document
+  // settles while the creation hold is already registered, and the
+  // handover replace commits after it.
+  await Promise.resolve();
   store.instance.setState(documentoComOrganizacao(nome));
 };
 
@@ -464,6 +496,83 @@ describe('CreateOrganization', () => {
     expect(screen.queryByText('HOME-REACHED')).not.toBeOnTheScreen();
   });
 
+  test('a first creation whose resolved document has no resolvable selection replaces EXACTLY once', async () => {
+    // The redirect effect owns this handover (the persisted B has no
+    // selection, so `derivarProjectIdAtivo` is null) and the `.then()`'s
+    // live-document read must stay silent — a second replace would push the
+    // provisioning surface twice over the same operation.
+    mockMaterializador({iniciar: registrar});
+    await renderScreen();
+    await irParaEtapaNome();
+
+    // Count navigation outcomes at the container: every dispatch emits one
+    // `state` event, so a landing on the provisioning surface is one event
+    // whose focused route is `OrganizationProvisioning` — and a spurious
+    // second replace is a second one.
+    const landings: Array<string> = [];
+    const unsubscribe = navigationRef.addListener('state', e => {
+      const {state} = e.data;
+      if (!state) return;
+      const last = state.routes[state.routes.length - 1];
+      if (last) landings.push(last.name);
+    });
+    try {
+      await fireEvent.changeText(
+        screen.getByTestId('ORG.create-name-inp'),
+        'Órgão Teste',
+      );
+      await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+
+      expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
+      expect(landings).toEqual(['OrganizationProvisioning']);
+      expect(screen.queryByTestId('ORG.create-name-inp')).not.toBeOnTheScreen();
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  // REGRESSION PIN (Fase 5): the handover replace used to fire while the
+  // creation hold (`usePreventRemove`) was registered and be re-dispatched
+  // off the beforeRemove emission; the deferred commit removed the route
+  // while the provider's registration still held it, and
+  // PreventRemoveProvider crashed on the mount — "Couldn't find a route
+  // with the key CreateOrganization-…". The handover now releases the hold
+  // and dispatches from the handover effect, never re-dispatching a
+  // prevented removal. The registrar below is SYNCHRONOUS — the document
+  // settles inside the press's own commit, so the hold registers and the
+  // replace races in ONE flush: the tightest form of the exact window that
+  // crashed.
+  test('the handover replace lands once when the creation hold releases in the same commit', async () => {
+    const registrarSincrono = async (nome: string) => {
+      store.instance.setState(documentoComOrganizacao(nome));
+    };
+    mockMaterializador({iniciar: registrarSincrono});
+    await renderScreen();
+    await irParaEtapaNome();
+
+    const landings: Array<string> = [];
+    const unsubscribe = navigationRef.addListener('state', e => {
+      const {state} = e.data;
+      if (!state) return;
+      const last = state.routes[state.routes.length - 1];
+      if (last) landings.push(last.name);
+    });
+    try {
+      await fireEvent.changeText(
+        screen.getByTestId('ORG.create-name-inp'),
+        'Órgão Teste',
+      );
+      await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+
+      expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
+      expect(landings).toEqual(['OrganizationProvisioning']);
+      // A replace, not a push: the form is gone with its draft handed over.
+      expect(screen.queryByTestId('ORG.create-name-inp')).not.toBeOnTheScreen();
+    } finally {
+      unsubscribe();
+    }
+  });
+
   test('a rejection with no document entry opens the error sheet and keeps the name', async () => {
     // The materializer rejects before anything is persisted (a template
     // package failure, an MMKV write refusal): nothing was created, so the
@@ -547,25 +656,7 @@ describe('CreateOrganization', () => {
     // resolves), opening the creation form from Home is an explicit act —
     // it must not be bounced to a confirmation the user already consumed,
     // and `iniciar` would refuse a second registration anyway.
-    const pronta: OrganizacaoLocal = {
-      ...documentoComOrganizacao('Órgão Ativa').organizacoes[0]!,
-      estado: 'pronta',
-      confirmacaoPendente: false,
-      materializacao: {
-        monitoramento: {
-          etapa: 'verificado',
-          projectId: 'p-m',
-          template: {versao: '1', hash: 'm'},
-          idsAntesDaCriacao: null,
-        },
-        alertas: {
-          etapa: 'verificado',
-          projectId: 'p-a',
-          template: {versao: '1', hash: 'a'},
-          idsAntesDaCriacao: null,
-        },
-      },
-    };
+    const pronta = organizacaoPronta('Órgão Ativa');
     store.instance.setState({
       versao: 1,
       organizacoes: [pronta],
@@ -576,5 +667,382 @@ describe('CreateOrganization', () => {
     expect(screen.getByTestId('ORG.create-name-inp')).toBeOnTheScreen();
     expect(screen.queryByText('PROVISIONING-REACHED')).not.toBeOnTheScreen();
     expect(iniciar).not.toHaveBeenCalled();
+  });
+
+  test('a settled document re-opened without an active selection still routes to OrganizationProvisioning', async () => {
+    // Redirect preserved (Fase 4): "opened the create screen with an
+    // already-settled document" — A is pronta and acknowledged, but the
+    // device is not operating it (no resolvable active selection), so the
+    // confirmation/selection surface owns the document, not the form.
+    store.instance.setState({
+      versao: 1,
+      organizacoes: [organizacaoPronta('Órgão Ativa')],
+      ativa: null,
+    } as EstadoOrganizacoes);
+    await renderScreen();
+
+    expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
+    expect(screen.queryByTestId('ORG.create-name-inp')).not.toBeOnTheScreen();
+    expect(iniciar).not.toHaveBeenCalled();
+  });
+
+  test('a settled document does not short-circuit the second creation', async () => {
+    // Fase 4: with A `pronta`, acknowledged and operating (the rule-5
+    // projection resolves) and NOTHING in flight, B's press must reach the
+    // materializer — the gate is no longer "any organization exists"
+    // (`organizacoes[0]`), it is the materializer's own typed refusal.
+    store.instance.setState({
+      versao: 1,
+      organizacoes: [organizacaoPronta('Órgão Ativa')],
+      ativa: {organizacaoId: '0123456789abcdef', area: 'monitoramento'},
+    } as EstadoOrganizacoes);
+    await renderScreen();
+    await irParaEtapaNome();
+    await fireEvent.changeText(
+      screen.getByTestId('ORG.create-name-inp'),
+      '  Órgão Segunda  ',
+    );
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+
+    await waitFor(() => {
+      expect(iniciar).toHaveBeenCalledWith('Órgão Segunda');
+    });
+    // Once `iniciar` resolves, the provisioning surface owns the living
+    // operation (it already renders `preparando`/confirmation by id —
+    // Fase 3). The redirect effect stays silent here because
+    // `derivarProjectIdAtivo` still resolves by A, so the screen hands
+    // over itself. (Updated pin: the old assertion — "the form stays" —
+    // pinned the BLOCKER 2 bug, where a resolved second creation left the
+    // user on the form with no indication that B's operation is alive.)
+    expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('ORG.create-name-inp', {
+        includeHiddenElements: true,
+      }),
+    ).not.toBeOnTheScreen();
+  });
+
+  test('a settled document still surfaces a genuine rejection in the sheet', async () => {
+    // The race swallow keyed on `organizacoes[0]` silenced B's real failures
+    // (template refusal, write refusal) whenever a settled organization was
+    // present — a rejection with nothing in flight is an error sheet, never
+    // silence.
+    mockMaterializador({
+      iniciar: async () => {
+        throw new Error('boom');
+      },
+    });
+    store.instance.setState({
+      versao: 1,
+      organizacoes: [organizacaoPronta('Órgão Ativa')],
+      ativa: {organizacaoId: '0123456789abcdef', area: 'monitoramento'},
+    } as EstadoOrganizacoes);
+    await renderScreen();
+    await irParaEtapaNome();
+    await fireEvent.changeText(
+      screen.getByTestId('ORG.create-name-inp'),
+      'Órgão Segunda',
+    );
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+
+    expect(await screen.findByText('ERROR: boom')).toBeOnTheScreen();
+  });
+
+  test('a start while another creation is in flight is surfaced as blocked, not swallowed', async () => {
+    // SPEC B §5.5 guard lives in the materializer layer: a start whose
+    // concurrent flight never landed its registration (the exclusive()
+    // refusal — the plan's Fase 1 item 6) throws the typed
+    // `creation-in-progress` (OrganizationOperationError). The screen must
+    // branch on the typed code — not the message — and signal that state:
+    // never crash, never silence.
+    //
+    // The in-flight flight is NOT seeded into the document: the §4 guard
+    // (:257, plano) replaces an explicitly opened form the moment the
+    // document holds a `preparando` organization, so the reachable refusal
+    // is the one whose registration did not land — the form stays up,
+    // explains, and re-arms.
+    iniciar.mockImplementation(async () => {
+      throw new OrganizationOperationError(
+        'creation-in-progress',
+        'another organization creation is in progress',
+      );
+    });
+    store.instance.setState({
+      versao: 1,
+      organizacoes: [organizacaoPronta('Órgão Ativa')],
+      ativa: {organizacaoId: '0123456789abcdef', area: 'monitoramento'},
+    } as EstadoOrganizacoes);
+    await renderScreen();
+    await irParaEtapaNome();
+    await fireEvent.changeText(
+      screen.getByTestId('ORG.create-name-inp'),
+      'Órgão Segunda',
+    );
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+
+    await waitFor(() => {
+      expect(iniciar).toHaveBeenCalledWith('Órgão Segunda');
+    });
+    expect(await screen.findByTestId('ORG.create-blocked')).toBeOnTheScreen();
+    // The form stays usable and the press never crashed it.
+    expect(
+      screen.getByTestId('ORG.create-btn', {includeHiddenElements: true}),
+    ).toBeOnTheScreen();
+  });
+  test('a new attempt clears the blocked message before the second start settles', async () => {
+    // BLOCKER 1: `bloqueado` was write-once — the message claimed a creation
+    // was in flight even after that flight ended and a fresh `iniciar`
+    // started. The reset belongs to the attempt START: the moment a second
+    // press passes the re-entry guard, the stale message must be gone. The
+    // second start here never settles, so the form stays on its loading
+    // state and the assertion cannot be satisfied by any handover.
+    iniciar
+      .mockRejectedValueOnce(
+        new OrganizationOperationError(
+          'creation-in-progress',
+          'another organization creation is in progress',
+        ),
+      )
+      .mockImplementation(() => new Promise<void>(() => {}));
+    store.instance.setState({
+      versao: 1,
+      organizacoes: [organizacaoPronta('Órgão Ativa')],
+      ativa: {organizacaoId: '0123456789abcdef', area: 'monitoramento'},
+    } as EstadoOrganizacoes);
+    await renderScreen();
+    await irParaEtapaNome();
+    await fireEvent.changeText(
+      screen.getByTestId('ORG.create-name-inp'),
+      'Órgão Segunda',
+    );
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+    expect(await screen.findByTestId('ORG.create-blocked')).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+    // The new attempt is running (loading UI replaced the button) and the
+    // falsified "creation in progress" message did not survive into it.
+    expect(screen.queryByTestId('ORG.create-btn')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('ORG.create-blocked')).not.toBeOnTheScreen();
+  });
+
+  // SPEC B §3.2:64/:68 (Fase 5): while a start is in flight — or the blocked
+  // banner is up — Back cannot remove this screen. The etapa-back (nome →
+  // intro, §3.1) is the screen's own rule and stays; the LEAK is the back
+  // from the intro, where nothing was listening: the pop removed the screen
+  // with the operation (or the banner's re-arm contract) alive.
+  describe('back lock during a live operation', () => {
+    test('a back dispatch while a start is in flight never removes the screen', async () => {
+      mockMaterializador({iniciar: () => new Promise<void>(() => {})});
+      await renderScreen();
+      await irParaEtapaNome();
+      await fireEvent.changeText(
+        screen.getByTestId('ORG.create-name-inp'),
+        'Órgão Teste',
+      );
+      await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+      // The start is in flight (the loading UI replaced the button).
+      expect(screen.queryByTestId('ORG.create-btn')).not.toBeOnTheScreen();
+
+      // The etapa-back is the screen's own §3.1 rule: intro, no pop.
+      await act(async () => {
+        navigationRef.goBack();
+      });
+      expect(
+        screen.getByTestId('ORG.create-intro-continue-btn'),
+      ).toBeOnTheScreen();
+      expect(screen.queryByText('SUCCESS-STUB')).not.toBeOnTheScreen();
+
+      // From the intro, back WOULD pop the screen with the start alive.
+      await act(async () => {
+        navigationRef.goBack();
+      });
+      expect(
+        screen.getByTestId('ORG.create-intro-continue-btn'),
+      ).toBeOnTheScreen();
+      expect(screen.queryByText('SUCCESS-STUB')).not.toBeOnTheScreen();
+    });
+
+    test('a refused start releases the back hold', async () => {
+      // B5-3 (fix round 2): the typed refusal (§5.5) means THIS screen's
+      // start never happened — no call of its own is in flight, so §3.2's
+      // narrow authorization does not extend to it. Back must work: the
+      // §3.1 hop brings the intro, and the next back pops to Success.
+      iniciar.mockImplementation(async () => {
+        throw new OrganizationOperationError(
+          'creation-in-progress',
+          'another organization creation is in progress',
+        );
+      });
+      store.instance.setState({
+        versao: 1,
+        organizacoes: [organizacaoPronta('Órgão Ativa')],
+        ativa: {organizacaoId: '0123456789abcdef', area: 'monitoramento'},
+      } as EstadoOrganizacoes);
+      await renderScreen();
+      await irParaEtapaNome();
+      await fireEvent.changeText(
+        screen.getByTestId('ORG.create-name-inp'),
+        'Órgão Segunda',
+      );
+      await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+      expect(await screen.findByTestId('ORG.create-blocked')).toBeOnTheScreen();
+
+      // The etapa-back is the screen's own §3.1 rule: intro, no pop.
+      await act(async () => {
+        navigationRef.goBack();
+      });
+      expect(
+        screen.getByTestId('ORG.create-intro-continue-btn'),
+      ).toBeOnTheScreen();
+      expect(screen.queryByText('SUCCESS-STUB')).not.toBeOnTheScreen();
+
+      // The refusal is not a live operation: the pop goes through.
+      await act(async () => {
+        navigationRef.goBack();
+      });
+      expect(screen.getByText('SUCCESS-STUB')).toBeOnTheScreen();
+    });
+
+    test('a refusal does not block the handover when the document settles without a selection', async () => {
+      // B5-3 (fix round 2): `bloqueado` is a terminal banner state, not a
+      // gate on the handover. A refused start never resolves (the typed
+      // refusal never reaches the `.then`), so `startResolvido` stays
+      // false; when the OTHER flight registers its organization
+      // (`preparando`, no resolvable selection — §3.3 item 2), the
+      // provisioning surface owns the document and the replace must land
+      // even though the stale banner state is still up.
+      iniciar.mockRejectedValueOnce(
+        new OrganizationOperationError(
+          'creation-in-progress',
+          'another organization creation is in progress',
+        ),
+      );
+      store.instance.setState({
+        versao: 1,
+        organizacoes: [organizacaoPronta('Órgão Ativa')],
+        ativa: {organizacaoId: '0123456789abcdef', area: 'monitoramento'},
+      } as EstadoOrganizacoes);
+      await renderScreen();
+      await irParaEtapaNome();
+      await fireEvent.changeText(
+        screen.getByTestId('ORG.create-name-inp'),
+        'Órgão Segunda',
+      );
+      await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+      expect(await screen.findByTestId('ORG.create-blocked')).toBeOnTheScreen();
+
+      // The other flight registers its organization.
+      await act(async () => {
+        store.instance.setState(documentoComOrganizacao('Órgão Em Voo'));
+      });
+      expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
+    });
+
+    test('back during flight explains itself at the intro and the handover lands exactly once', async () => {
+      // Reviewer pin (fix round 2): the §3.1 hop (first back) and the
+      // handover were never tested together. The first back turns the name
+      // form into the intro — where the creating copy explains the hold
+      // (B5-2) — the second back is dropped while the flight is alive, and
+      // the resolved start lands on the provisioning surface EXACTLY once.
+      let releaseStart: () => void = () => {};
+      mockMaterializador({
+        iniciar: (nome: string) =>
+          new Promise<void>(resolve => {
+            releaseStart = () => {
+              void registrar(nome).then(() => resolve());
+            };
+          }),
+      });
+      await renderScreen();
+      await irParaEtapaNome();
+
+      const landings: Array<string> = [];
+      const unsubscribe = navigationRef.addListener('state', e => {
+        const {state} = e.data;
+        if (!state) return;
+        const last = state.routes[state.routes.length - 1];
+        if (last) landings.push(last.name);
+      });
+      try {
+        await fireEvent.changeText(
+          screen.getByTestId('ORG.create-name-inp'),
+          'Órgão Teste',
+        );
+        await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+        // The start is in flight (the loading UI replaced the button).
+        expect(screen.queryByTestId('ORG.create-btn')).not.toBeOnTheScreen();
+
+        // The etapa-back brings the intro forward…
+        await act(async () => {
+          navigationRef.goBack();
+        });
+        expect(
+          screen.getByTestId('ORG.create-intro-continue-btn'),
+        ).toBeOnTheScreen();
+        // …and the creating copy explains the still-alive flight (B5-2).
+        expect(screen.getByTestId('ORG.create-creating')).toBeOnTheScreen();
+
+        // A second back from the intro is held with the start alive.
+        await act(async () => {
+          navigationRef.goBack();
+        });
+        expect(
+          screen.getByTestId('ORG.create-intro-continue-btn'),
+        ).toBeOnTheScreen();
+        expect(screen.queryByText('SUCCESS-STUB')).not.toBeOnTheScreen();
+
+        // The start resolves: the document settles, the hold releases and
+        // the handover replace lands — exactly one navigation event.
+        await act(async () => {
+          releaseStart();
+        });
+        expect(
+          await screen.findByText('PROVISIONING-REACHED'),
+        ).toBeOnTheScreen();
+        expect(landings).toEqual(['OrganizationProvisioning']);
+      } finally {
+        unsubscribe();
+      }
+    });
+
+    test('idle back from the intro still leaves the screen', async () => {
+      await renderScreen();
+      await act(async () => {
+        navigationRef.goBack();
+      });
+      expect(screen.getByText('SUCCESS-STUB')).toBeOnTheScreen();
+    });
+  });
+
+  // B5-4 on this screen (fix round 3): the generation gate's RESET is the
+  // system's own routing (SPEC B §5.5's recovery table) — a prevented reset
+  // is consumed-and-dropped because the gate advances its generation before
+  // dispatching and never retries. Pinned at the navigator level with the
+  // REAL PreventRemoveProvider: a RESET dispatch that removes the held
+  // screen must LAND — the same pin shape Provisioning carries in its own
+  // file.
+  describe('navigator-level reset passes the hold (GenerationTransitionGate)', () => {
+    test('a system reset removes the held screen and lands on its destination', async () => {
+      mockMaterializador({iniciar: () => new Promise<void>(() => {})});
+      await renderScreen();
+      await irParaEtapaNome();
+      await fireEvent.changeText(
+        screen.getByTestId('ORG.create-name-inp'),
+        'Órgão Teste',
+      );
+      await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+      // The hold is live: the loading UI replaced the button.
+      expect(screen.queryByTestId('ORG.create-btn')).not.toBeOnTheScreen();
+
+      await act(async () => {
+        navigationRef.reset({index: 0, routes: [{name: 'Home'}]});
+      });
+
+      expect(screen.getByText('HOME-REACHED')).toBeOnTheScreen();
+      expect(screen.queryByText('SUCCESS-STUB')).not.toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('ORG.create-intro-continue-btn'),
+      ).not.toBeOnTheScreen();
+    });
   });
 });

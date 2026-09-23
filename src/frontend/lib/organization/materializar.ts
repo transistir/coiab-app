@@ -1,5 +1,5 @@
 import type {ComapeoCoreClientApi} from '@comapeo/ipc';
-import {CREATOR_ROLE_ID} from './fanout';
+import {CREATOR_ROLE_ID, OrganizationOperationError} from './fanout';
 import {markerFor, type Slot} from './marker';
 import {
   AREAS,
@@ -8,6 +8,7 @@ import {
   type OrganizacaoLocal,
   type TemplateRef,
 } from './documento';
+import {classificarDocumento} from './coiabOrganizations';
 
 export type OrganizationRepository = {
   read(): EstadoOrganizacoes;
@@ -124,24 +125,51 @@ export function createMaterializer<
   repository: OrganizationRepository;
   generateId(): string;
 }) {
-  const current = () => repository.read().organizacoes[0]!;
-  const save = (org: OrganizacaoLocal) =>
-    repository.write({...repository.read(), organizacoes: [org]});
+  /** Upsert by id: the operation's own entry is replaced in place or
+   * appended — the array is NEVER replaced wholesale, so the other
+   * organizations in the document always survive a checkpoint. */
+  const save = (org: OrganizacaoLocal) => {
+    const documento = repository.read();
+    repository.write({
+      ...documento,
+      organizacoes: documento.organizacoes.some(o => o.id === org.id)
+        ? documento.organizacoes.map(o => (o.id === org.id ? org : o))
+        : [...documento.organizacoes, org],
+    });
+  };
+  /**
+   * A creation may open a NEW intent only when EVERY organization is ready
+   * and acknowledged (the SPEC B §5.5 guard, now at the layer): any journal
+   * still in progress, or a publication awaiting confirmation, must be
+   * resumed/confirmed first — never shadowed by a second creation.
+   */
+  const condicaoDeRecusaDeCriacao = () =>
+    ['preparando', 'confirmacao'].includes(
+      classificarDocumento(repository.read()),
+    );
 
+  /** The persisted journal entry this operation reads and alters. */
+  const currentFor = (op: Operacao) =>
+    repository.read().organizacoes.find(o => o.id === op.organizacaoId)!;
   /**
    * An operation is alive ONLY while it is the latest one registered for this
    * repository AND the persisted journal still belongs to its organization —
    * checkpoints confirm the identity of the journal they are about to alter.
+   * Every read below resolves the operation's OWN entry by id, never by
+   * array index: a multi-organization document resumes the organization the
+   * operation belongs to (comportamento 5).
    */
   function operacaoViva(op: Operacao): boolean {
     return (
       operacoes.get(repository) === op &&
       op.organizacaoId !== null &&
-      repository.read().organizacoes[0]?.id === op.organizacaoId
+      repository.read().organizacoes.some(o => o.id === op.organizacaoId)
     );
   }
   function assertViva(op: Operacao): void {
-    if (!operacaoViva(op)) throw new OperacaoExpirada();
+    if (!operacaoViva(op)) {
+      throw new OperacaoExpirada();
+    }
   }
 
   /** Journal checkpoint: refuses to write for a superseded operation. */
@@ -151,7 +179,7 @@ export function createMaterializer<
     patch: Partial<OrganizacaoLocal['materializacao'][Area]>,
   ) => {
     assertViva(op);
-    const org = current();
+    const org = currentFor(op);
     save({
       ...org,
       areaEmExecucao: patch.etapa === 'verificado' ? null : area,
@@ -177,7 +205,7 @@ export function createMaterializer<
     assertViva(op);
     const ids = {} as Record<Area, string>;
     for (const area of AREAS) {
-      const projectId = current().materializacao[area].projectId;
+      const projectId = currentFor(op).materializacao[area].projectId;
       if (!projectId) throw new Error('conference-missing-projects');
       ids[area] = projectId;
     }
@@ -193,7 +221,7 @@ export function createMaterializer<
       if (
         settings.name !== NAMES[area] ||
         settings.sendStats !== false ||
-        settings.projectDescription !== marcador(current(), area)
+        settings.projectDescription !== marcador(currentFor(op), area)
       ) {
         throw new Error('conference-settings');
       }
@@ -219,7 +247,7 @@ export function createMaterializer<
     try {
       for (const area of AREAS) {
         assertViva(op);
-        const entry = current().materializacao[area];
+        const entry = currentFor(op).materializacao[area];
         let projectId = entry.projectId;
         if (entry.etapa === 'verificado') {
           // §242: a completed area is never re-created or re-imported. A
@@ -233,7 +261,7 @@ export function createMaterializer<
           await verified.$setProjectSettings({
             name: NAMES[area],
             sendStats: false,
-            projectDescription: marcador(current(), area),
+            projectDescription: marcador(currentFor(op), area),
           });
           assertViva(op);
           if (!(await templates.verify(verified, packages[area], projectId))) {
@@ -260,7 +288,7 @@ export function createMaterializer<
             projectId = await client.createProject({
               name: NAMES[area],
               configPath: '',
-              projectDescription: marcador(current(), area),
+              projectDescription: marcador(currentFor(op), area),
             });
             assertViva(op);
           }
@@ -270,7 +298,7 @@ export function createMaterializer<
           AREAS.some(
             other =>
               other !== area &&
-              current().materializacao[other].projectId === projectId,
+              currentFor(op).materializacao[other].projectId === projectId,
           )
         )
           throw new Error('duplicate-project-id');
@@ -288,7 +316,7 @@ export function createMaterializer<
         await project.$setProjectSettings({
           name: NAMES[area],
           sendStats: false,
-          projectDescription: marcador(current(), area),
+          projectDescription: marcador(currentFor(op), area),
         });
         assertViva(op);
         const device = await client.getDeviceInfo();
@@ -330,7 +358,7 @@ export function createMaterializer<
       // §5.4 step 6: the final conferência gates publication on BOTH paths.
       await conferenciaFinal(op, packages);
       assertViva(op);
-      save({...current(), estado: 'pronta', confirmacaoPendente: true});
+      save({...currentFor(op), estado: 'pronta', confirmacaoPendente: true});
     } catch (error) {
       // A superseded operation exits silently: the journal now belongs to
       // another operation and must not be touched by this one.
@@ -342,18 +370,22 @@ export function createMaterializer<
     // A stale operation never rewrites a journal that is no longer its own.
     if (!operacaoViva(op)) return;
     save({
-      ...current(),
+      ...currentFor(op),
       estado: 'falha_recuperavel',
       ultimoErro: {
         codigo: 'preparation-failed',
-        area: current().areaEmExecucao,
+        area: currentFor(op).areaEmExecucao,
         ocorridoEm: new Date().toISOString(),
       },
     });
   }
 
   async function start(name: string, op: Operacao) {
-    if (current()) return;
+    if (condicaoDeRecusaDeCriacao())
+      throw new OrganizationOperationError(
+        'creation-in-progress',
+        'another organization creation is in progress; resume or confirm it first',
+      );
     const error = organizationNameError(name);
     if (error) throw new Error(error);
     // The document id IS the marker's organization id (SPEC B §4.1), so the
@@ -365,7 +397,13 @@ export function createMaterializer<
     // A concurrent operation may have persisted an intent (or superseded this
     // one) while the packages were being prepared — never write on its behalf.
     if (operacoes.get(repository) !== op) return;
-    if (repository.read().organizacoes[0]) return;
+    // The document may have changed while the packages were prepared: the
+    // same §5.5 condition is re-verified before persisting the intent.
+    if (condicaoDeRecusaDeCriacao())
+      throw new OrganizationOperationError(
+        'creation-in-progress',
+        'another organization creation is in progress; resume or confirm it first',
+      );
     const emptyArea = (area: Area) => ({
       etapa: 'ausente' as const,
       projectId: null,
@@ -388,13 +426,17 @@ export function createMaterializer<
     await materialize(op, packages);
   }
   async function resume(op: Operacao) {
-    if (current()?.estado !== 'preparando') return;
-    op.organizacaoId = current().id;
+    const preparando = repository
+      .read()
+      .organizacoes.find(o => o.estado === 'preparando');
+
+    if (!preparando) return;
+    op.organizacaoId = preparando.id;
     try {
       assertViva(op);
       const packages = await templates.prepare({
-        monitoramento: current().materializacao.monitoramento.template,
-        alertas: current().materializacao.alertas.template,
+        monitoramento: preparando.materializacao.monitoramento.template,
+        alertas: preparando.materializacao.alertas.template,
       });
       assertViva(op);
       await materialize(op, packages);
@@ -403,16 +445,18 @@ export function createMaterializer<
       fail(op);
     }
   }
-
   async function retry(op: Operacao) {
-    if (current()?.estado !== 'falha_recuperavel') return;
-    op.organizacaoId = current().id;
+    const falha = repository
+      .read()
+      .organizacoes.find(o => o.estado === 'falha_recuperavel');
+    if (!falha) return;
+    op.organizacaoId = falha.id;
     // Mirrors resume(): a superseded operation exits silently and a failed
     // "preparando" checkpoint (e.g. an MMKV write error) routes to fail()
     // instead of rejecting the exclusive operation.
     try {
       assertViva(op);
-      save({...current(), estado: 'preparando', ultimoErro: null});
+      save({...currentFor(op), estado: 'preparando', ultimoErro: null});
     } catch (error) {
       if (error instanceof OperacaoExpirada) return;
       fail(op);
@@ -421,9 +465,22 @@ export function createMaterializer<
   }
   function exclusive(work: (op: Operacao) => Promise<void>) {
     const existing = running.get(client) ?? runningRepositories.get(repository);
-    if (existing) return existing;
-    // Different client wrappers over the same journal share this operation;
-    // none may supersede its token while a native write is still in flight.
+    if (existing) {
+      // Discriminating rule for a join against an in-flight operation:
+      // (1) the SAME client instance always shares its wrapper's own
+      // operation (double submit, remount); (2) any other client joins
+      // only while the document holds an organization that is not ready
+      // or awaits confirmation — it waits for the owner to settle that
+      // journal without racing a second intent (operation identity, M-1);
+      // (3) every other case — the document fully ready+acknowledged
+      // while the owner is still inside prepare, nothing persisted — is a
+      // NEW intent in flight: it must reject instead of joining and
+      // resolving as success (M-2, M-3).
+      if (running.get(client) === existing || condicaoDeRecusaDeCriacao()) {
+        return existing;
+      }
+      return Promise.reject(new Error('operation-in-progress'));
+    }
     const op: Operacao = {organizacaoId: null};
     const operation = Promise.resolve()
       .then(() => work(op))

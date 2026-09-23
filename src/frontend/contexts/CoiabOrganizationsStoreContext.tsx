@@ -196,16 +196,24 @@ export function createCoiabOrganizationsStore({persist} = {persist: false}) {
 
     /**
      * Registers an organization entered by ACCEPTING an invite (SPEC A §4.2
-     * rule 9, :127) in ONE write. Decision #25 keeps the MVP open to multiple
-     * organizations per device; what :127 refuses is only STARTING an entry
-     * into another organization while one is already registered — so a call
-     * with any registration present refuses here — and every id must be
-     * fresh: the organization id must match the marker
-     * pattern and must differ from both project ids, and the two project
-     * ids must differ — otherwise the §4.2 parser would reject the
-     * document on the next open. A refusal returns `false` with NO write:
-     * the caller keeps its own outcome handling instead of a half-registered
-     * entry. The journal carries the accepted projectIds as `criado` with
+     * rule 9) in ONE write. Decision #25 keeps the MVP open to multiple
+     * organizations per device: the accepted entry is appended to the
+     * document, or replaces its own entry in place when the same
+     * organization id is re-delivered and that entry is still `preparando`
+     * or `falha_recuperavel` (the re-preparation path, idempotent for an
+     * identical bundle) — every other entry survives, and the `ativa` slot
+     * never changes here (only an explicit activation moves it).
+     * Refusals return `false` with NO write — a half-registered entry
+     * is never published: the organization id must match the marker
+     * pattern, ids must be pairwise distinct within the bundle (the
+     * organization id must differ from both project ids and the two project
+     * ids must differ — otherwise the §4.2 parser would reject the document
+     * on the next open), and a projectId already associated with a
+     * DIFFERENT local organization is a collision (§4.2 rule 2), and an
+     * organization that already reached `pronta` refuses any re-delivery —
+     * its journal already holds the true projectIds, so accepting again
+     * could only downgrade the entry. The
+     * journal carries the accepted projectIds as `criado` with
      * `template: null` and no creation snapshot — this device created
      * nothing; `verificarEntrada` (SPEC B §5.5) confirms the join, role and
      * categories before `publicarPronta` publishes `pronta`.
@@ -218,11 +226,6 @@ export function createCoiabOrganizationsStore({persist} = {persist: false}) {
       const state = store.getState();
       // Blocked while a hydration failure is unresolved (SPEC A §5.3).
       if (state.hidratacaoFalhou) return false;
-      // SPEC A :127 — refuses *starting an entry* into another organization
-      // while one is registered (decision #25: the MVP model holds multiple
-      // organizations per device; this is an entry-policy refusal, not a
-      // one-organization limit).
-      if (state.organizacoes.length > 0) return false;
       if (!ORGANIZATION_ID_PATTERN.test(p.organizacaoId)) return false;
       const nome = p.nome.trim();
       if (nome === '') return false;
@@ -234,32 +237,58 @@ export function createCoiabOrganizationsStore({persist} = {persist: false}) {
         if (!projectId || associados.has(projectId)) return false;
         associados.add(projectId);
       }
+      // §4.2 rule 2: a projectId already associated with a DIFFERENT local
+      // organization is a collision — the invite is refused before any
+      // write, so the document is never half-registered or corrupted.
+      for (const area of AREAS) {
+        if (!projetoSemAssociacao(state, p.organizacaoId, p.projectIds[area])) {
+          return false;
+        }
+      }
+      // A re-delivery for an organization that already reached `pronta` is
+      // refused with NO write: its journal already holds the true
+      // projectIds — accepting again would only downgrade the entry
+      // (estado back to `preparando`, pinned templates reset to `criado`,
+      // pending confirmation reset). `preparando` and `falha_recuperavel`
+      // keep the in-place replace as the re-preparation path.
+      const existente = state.organizacoes.find(
+        item => item.id === p.organizacaoId,
+      );
+      if (existente?.estado === 'pronta') return false;
+      const novaEntrada: OrganizacaoLocal = {
+        id: p.organizacaoId,
+        nome,
+        estado: 'preparando',
+        confirmacaoPendente: false,
+        materializacao: {
+          monitoramento: {
+            etapa: 'criado',
+            projectId: p.projectIds.monitoramento,
+            template: null,
+            idsAntesDaCriacao: null,
+          },
+          alertas: {
+            etapa: 'criado',
+            projectId: p.projectIds.alertas,
+            template: null,
+            idsAntesDaCriacao: null,
+          },
+        },
+        areaEmExecucao: null,
+        ultimoErro: null,
+      };
       store.setState(current => ({
         ...current,
-        organizacoes: [
-          {
-            id: p.organizacaoId,
-            nome,
-            estado: 'preparando',
-            confirmacaoPendente: false,
-            materializacao: {
-              monitoramento: {
-                etapa: 'criado',
-                projectId: p.projectIds.monitoramento,
-                template: null,
-                idsAntesDaCriacao: null,
-              },
-              alertas: {
-                etapa: 'criado',
-                projectId: p.projectIds.alertas,
-                template: null,
-                idsAntesDaCriacao: null,
-              },
-            },
-            areaEmExecucao: null,
-            ultimoErro: null,
-          },
-        ],
+        // N-safe upsert: append the accepted entry, or replace its own entry
+        // in place on a re-delivery of the same organization id. Every other
+        // entry — and `ativa` — is carried over untouched by the spread.
+        organizacoes: current.organizacoes.some(
+          existente => existente.id === p.organizacaoId,
+        )
+          ? current.organizacoes.map(existente =>
+              existente.id === p.organizacaoId ? novaEntrada : existente,
+            )
+          : [...current.organizacoes, novaEntrada],
       }));
       return true;
     },

@@ -9,7 +9,7 @@ import {CREATOR_ROLE_ID, MEMBER_ROLE_ID} from '../sharedTypes';
 import {clienteDeCriacao} from '../lib/organization/clienteDeCriacao';
 import type {EstadoOrganizacoes} from '../lib/organization/coiabOrganizations';
 import {readyOrganization} from '../lib/organization/fixtures';
-import {verificarEntrada} from '../lib/organization/entrada';
+import {confirmarEntrada} from '../lib/organization/entrada';
 import {
   createMaterializer,
   type CreationProject,
@@ -55,21 +55,21 @@ jest.mock('../lib/organization/materializar', () => {
   };
 });
 
-// The origin dispatch calls the REAL `verificarEntrada` (wrapped, so the
+// The origin dispatch calls the REAL `confirmarEntrada` (wrapped, so the
 // dispatch itself stays observable at the boundary).
 jest.mock('../lib/organization/entrada', () => {
   const actual = jest.requireActual('../lib/organization/entrada') as {
-    verificarEntrada: (options: unknown) => Promise<void>;
+    confirmarEntrada: (options: unknown) => Promise<void>;
   };
   return {
     ...actual,
-    verificarEntrada: jest.fn(actual.verificarEntrada),
+    confirmarEntrada: jest.fn(actual.confirmarEntrada),
   };
 });
 
 const useClientApiMock = useClientApi as unknown as jest.Mock;
 const createMaterializerMock = createMaterializer as unknown as jest.Mock;
-const verificarEntradaMock = verificarEntrada as unknown as jest.Mock;
+const confirmarEntradaMock = confirmarEntrada as unknown as jest.Mock;
 
 /** Stable project surface per id: settings written by the materializer must
  * read back identical in the final conferência. */
@@ -136,7 +136,7 @@ function preparingDocument(): EstadoOrganizacoes {
 /**
  * Invite-entry journal (SPEC B §5.5): both areas hold an accepted project
  * id with NO creation snapshot and NO template — the shape that dispatches
- * to `verificarEntrada` instead of the creation resume.
+ * to `confirmarEntrada` instead of the creation resume.
  */
 function conviteDocument(): EstadoOrganizacoes {
   return {
@@ -166,6 +166,29 @@ function conviteDocument(): EstadoOrganizacoes {
       },
     ],
     ativa: null,
+  };
+}
+
+/**
+ * Multi-organization document (comportamento 5): A settled, ready and
+ * acknowledged (confirmacaoPendente false) FIRST, B still `preparando`
+ * behind it. The resume must target B by id — the first slot no longer
+ * owns the only journal.
+ */
+const ORG_ID_B = 'fedcba9876543210';
+
+function twoOrganizationsDocument(): EstadoOrganizacoes {
+  return {
+    versao: 1,
+    organizacoes: [
+      readyOrganization(ORG_ID),
+      {
+        ...readyOrganization(ORG_ID_B),
+        estado: 'preparando',
+        confirmacaoPendente: false,
+      },
+    ],
+    ativa: {organizacaoId: ORG_ID, area: 'alertas'},
   };
 }
 
@@ -258,6 +281,56 @@ describe('OrganizationMaterializerContext', () => {
     expect(resume).not.toHaveBeenCalled();
   });
 
+  test('retomar localiza pelo id no documento inteiro: pronta A não esconde preparando B', async () => {
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState(twoOrganizationsDocument(), true);
+    const {hook} = await renderMaterializador(store);
+
+    await act(async () => {
+      await hook.result.current!.retomar(ORG_ID_B);
+    });
+
+    // B's creation journal resumed; the dispatch stayed a creation resume
+    // (B carries templates) and A's settled journal was left untouched.
+    const materializer = createMaterializerMock.mock.results[0]!.value;
+    expect(materializer.resume).toHaveBeenCalledTimes(1);
+    expect(confirmarEntradaMock).not.toHaveBeenCalled();
+    const [primeira, segunda] = store.instance.getState().organizacoes;
+    expect(primeira).toMatchObject({
+      id: ORG_ID,
+      estado: 'pronta',
+      confirmacaoPendente: false,
+    });
+    expect(segunda).toMatchObject({
+      id: ORG_ID_B,
+      estado: 'pronta',
+      confirmacaoPendente: true,
+    });
+
+    await act(async () => {
+      await hook.unmount();
+    });
+  });
+
+  test('retomar continua recusando um id que não existe no documento', async () => {
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState(twoOrganizationsDocument(), true);
+    const {hook} = await renderMaterializador(store);
+
+    await act(async () => {
+      await expect(
+        hook.result.current!.retomar('organizacao-inexistente'),
+      ).rejects.toThrow('organization-not-resumable');
+    });
+
+    const resume = createMaterializerMock.mock.results[0]!.value.resume;
+    expect(resume).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await hook.unmount();
+    });
+  });
+
   test('retomar retoma a organização persistida e invalida a consulta de projetos', async () => {
     const store = createCoiabOrganizationsStore();
     store.instance.setState(preparingDocument(), true);
@@ -303,10 +376,10 @@ describe('OrganizationMaterializerContext', () => {
 
     const materializer = createMaterializerMock.mock.results[0]!.value;
     expect(materializer.resume).not.toHaveBeenCalled();
-    expect(verificarEntradaMock).toHaveBeenCalledTimes(1);
+    expect(confirmarEntradaMock).toHaveBeenCalledTimes(1);
     // The REAL creation adapter is the client: it is the one that offers
     // `iconeResolvivel`, the icon proof the verification relies on.
-    const options = verificarEntradaMock.mock.calls[0]![0] as {
+    const options = confirmarEntradaMock.mock.calls[0]![0] as {
       store: CoiabOrganizationsStore;
       client: unknown;
       templates: unknown;
@@ -358,7 +431,7 @@ describe('OrganizationMaterializerContext', () => {
 
     const materializer = createMaterializerMock.mock.results[0]!.value;
     expect(materializer.resume).toHaveBeenCalledTimes(1);
-    expect(verificarEntradaMock).not.toHaveBeenCalled();
+    expect(confirmarEntradaMock).not.toHaveBeenCalled();
 
     await act(async () => {
       await hook.unmount();

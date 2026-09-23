@@ -9,7 +9,10 @@ import {
   useCoiabOrganizationsStoreContext,
   type CoiabOrganizationsStore,
 } from '../../contexts/CoiabOrganizationsStoreContext';
-import {useOrganizationMaterializer} from '../../contexts/OrganizationMaterializerContext';
+import {
+  useMaterializacaoViva,
+  useOrganizationMaterializer,
+} from '../../contexts/OrganizationMaterializerContext';
 import {useDraftObservationState} from '../../contexts/DraftObservationContext';
 import {TrackStoreContext} from '../../contexts/TrackStoreContext';
 import {
@@ -36,6 +39,12 @@ export type OrganizationActivationHandle = Pick<
   ActivationState,
   'status' | 'projectId' | 'generation' | 'error' | 'pendingWorkOrigin'
 > & {
+  /**
+   * Review fronteira P1: a materialization is alive in this session. An
+   * organization in `preparando` without one was interrupted, and its
+   * surface must offer the resume and a way back instead of a spinner.
+   */
+  preparacaoViva: boolean;
   activate: OrganizationActivation['activate'];
   revalidate: OrganizationActivation['revalidate'];
   retryPreparation: OrganizationActivation['retryPreparation'];
@@ -93,6 +102,7 @@ export function useOrganizationActivation(): OrganizationActivationHandle {
   // `null` outside the root materializer provider: the engine then publishes
   // `preparation-adapter-required` instead of resuming (P3-8 degradation).
   const materializador = useOrganizationMaterializer();
+  const preparacaoViva = useMaterializacaoViva();
   // Trilha e rascunho são os trabalhos que o guard observa além dos convites
   // (Fase 8a); os provedores ficam acima do driver raiz (AppProviders :143/:160).
   const trackStore = useContext(TrackStoreContext);
@@ -213,6 +223,7 @@ export function useOrganizationActivation(): OrganizationActivationHandle {
       generation: state.generation,
       error: state.error,
       pendingWorkOrigin: state.pendingWorkOrigin,
+      preparacaoViva,
       activate: activation.activate,
       revalidate: activation.revalidate,
       retryPreparation: activation.retryPreparation,
@@ -224,6 +235,7 @@ export function useOrganizationActivation(): OrganizationActivationHandle {
       state.generation,
       state.error,
       state.pendingWorkOrigin,
+      preparacaoViva,
       activation.activate,
       activation.revalidate,
       activation.retryPreparation,

@@ -63,3 +63,14 @@ export const SwitchOrganizationEntry: Story = {
     flow: {state: FLOW_STATES.twoOrganizationsEarlyAccess},
   },
 };
+
+/**
+ * The open drawer over a single ready organization: no selector entry, but
+ * the create entry exists — the way to a second organization.
+ */
+export const CreateOrganizationEntry: Story = {
+  name: '02 Create Organization Entry',
+  parameters: {
+    flow: {state: FLOW_STATES.oneOrganizationEarlyAccess},
+  },
+};

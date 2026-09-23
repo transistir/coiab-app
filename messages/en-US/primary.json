@@ -567,6 +567,9 @@
   "$1screens.Onboarding.CreateOrganization.creating": {
     "message": "Creating Organization…"
   },
+  "$1screens.Onboarding.CreateOrganization.creationInProgress": {
+    "message": "An Organization creation is already in progress."
+  },
   "$1screens.Onboarding.CreateOrganization.tooLong": {
     "message": "Organization name is too long"
   },
@@ -617,6 +620,10 @@
   },
   "$1screens.OrganizationSetup.areaWaiting": {
     "message": "Waiting"
+  },
+  "$1screens.OrganizationSetup.backBlocked": {
+    "message": "You cannot leave this screen while an organization operation is in progress.",
+    "description": "Shown when a back attempt is prevented (SPEC B §3.2:64/:68, Fase 5)"
   },
   "$1screens.OrganizationSetup.backButton": {
     "message": "Back"

@@ -90,11 +90,14 @@ import {COIAB_ORGANIZATIONS_STORAGE_KEY} from '../../src/frontend/contexts/Coiab
 import {parseMarker} from '../../src/frontend/lib/organization/marker';
 import {sleep} from '../../src/frontend/lib/sleep';
 import {
+  CreateSecondOrganization,
   HomeWithOrganization,
   OrganizationSelector,
   ReviewOrganizationInvite,
+  SecondOrganizationProvisioning,
 } from '../../src/frontend/flows/OrgLayer.stories';
 import OrgLayerDrawerMeta, {
+  CreateOrganizationEntry,
   SwitchOrganizationEntry,
 } from '../../src/frontend/flows/OrgLayerDrawer.stories';
 import {withFlowState} from '../decorators/withFlowState';
@@ -140,15 +143,38 @@ function ReviewOrganizationInviteStory() {
   );
 }
 
+const CREATE_SECOND_STORY_ID = 'flows-orglayer--create-second-organization';
+
+function CreateSecondOrganizationStory() {
+  return withRealNavigator(
+    (() => null) as unknown as StoryFn,
+    storyContext(CREATE_SECOND_STORY_ID, CreateSecondOrganization.parameters),
+  );
+}
+
+const SECOND_PROVISIONING_STORY_ID =
+  'flows-orglayer--second-organization-provisioning';
+
+function SecondOrganizationProvisioningStory() {
+  return withRealNavigator(
+    (() => null) as unknown as StoryFn,
+    storyContext(
+      SECOND_PROVISIONING_STORY_ID,
+      SecondOrganizationProvisioning.parameters,
+    ),
+  );
+}
+
 const DRAWER_STORY_ID = 'flows-orglayerdrawer--switch-organization-entry';
+const CREATE_ENTRY_STORY_ID = 'flows-orglayerdrawer--create-organization-entry';
 
 /**
  * `Flows/OrgLayerDrawer` declares `[withFlowState, withNavigation]`; Storybook
  * applies the first innermost, so `withNavigation` wraps `withFlowState`,
  * which wraps the story component.
  */
-function drawerStory(parameters: unknown) {
-  const context = storyContext(DRAWER_STORY_ID, parameters);
+function drawerStory(parameters: unknown, id: string = DRAWER_STORY_ID) {
+  const context = storyContext(id, parameters);
   const FlowStateStory = () =>
     withFlowState(OrgLayerDrawerMeta.component as unknown as StoryFn, context);
   return function DrawerStory() {
@@ -158,6 +184,32 @@ function drawerStory(parameters: unknown) {
 
 const ROW_A = 'ORGANIZATIONS.row-aaaaaaaaaaaaaaaa';
 const ROW_B = 'ORGANIZATIONS.row-bbbbbbbbbbbbbbbb';
+
+/**
+ * An organizations seed as the app's persisted store holds it; by default the
+ * two-organization one.
+ */
+function expectPersistedOrganizations(
+  organizations: string[] = [
+    'aaaaaaaaaaaaaaaa:pronta',
+    'bbbbbbbbbbbbbbbb:pronta',
+  ],
+  activeId = 'bbbbbbbbbbbbbbbb',
+) {
+  const persisted = JSON.parse(
+    MMKVStoreInitializer.getItem(COIAB_ORGANIZATIONS_STORAGE_KEY) as string,
+  ).state;
+  expect(
+    persisted.organizacoes.map(
+      (organization: {id: string; estado: string}) =>
+        `${organization.id}:${organization.estado}`,
+    ),
+  ).toEqual(organizations);
+  expect(persisted.ativa).toEqual({
+    organizacaoId: activeId,
+    area: 'monitoramento',
+  });
+}
 
 describe('organization stories (FlowStateScope)', () => {
   let client: ComapeoCoreClientApi;
@@ -262,11 +314,10 @@ describe('organization stories (FlowStateScope)', () => {
       within(screen.getByTestId(ROW_A)).queryByText('Current'),
     ).not.toBeOnTheScreen();
 
-    // The document reached the story without touching the app's persisted
-    // one; the backend holds both organizations' two area projects.
-    expect(
-      MMKVStoreInitializer.getItem(COIAB_ORGANIZATIONS_STORAGE_KEY),
-    ).toBeFalsy();
+    // The document reached the story through the app's persisted store, the
+    // one production hydrates; the backend holds both organizations' two area
+    // projects.
+    expectPersistedOrganizations();
     expect(
       (await client.listProjects())
         .map(project => parseMarker(project.projectDescription ?? ''))
@@ -294,9 +345,99 @@ describe('organization stories (FlowStateScope)', () => {
       screen.getByTestId(`STORYBOOK.flow-ready.${DRAWER_STORY_ID}`),
     ).toBeOnTheScreen();
     expect(screen.getByText('Test Organization B')).toBeOnTheScreen();
+    expectPersistedOrganizations();
+  }, 60_000);
+
+  test('the drawer create row: one ready organization offers the create entry, not the selector', async () => {
+    await renderStory(
+      drawerStory(CreateOrganizationEntry.parameters, CREATE_ENTRY_STORY_ID),
+    );
+
     expect(
-      MMKVStoreInitializer.getItem(COIAB_ORGANIZATIONS_STORAGE_KEY),
-    ).toBeFalsy();
+      await screen.findByTestId(
+        'MENU.criar-organizacao',
+        {},
+        {timeout: 30_000},
+      ),
+    ).toBeOnTheScreen();
+    expect(
+      screen.getByTestId(`STORYBOOK.flow-ready.${CREATE_ENTRY_STORY_ID}`),
+    ).toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('MENU.trocar-organizacao'),
+    ).not.toBeOnTheScreen();
+    expectPersistedOrganizations(
+      ['aaaaaaaaaaaaaaaa:pronta'],
+      'aaaaaaaaaaaaaaaa',
+    );
+  }, 60_000);
+
+  test('the create-second row: CreateOrganization renders its form over Home and a ready organization', async () => {
+    await renderStory(CreateSecondOrganizationStory);
+
+    expect(
+      await screen.findByTestId(
+        'ORG.create-intro-continue-btn',
+        {},
+        {timeout: 30_000},
+      ),
+    ).toBeOnTheScreen();
+    // The capture row's readiness pair: the story marker plus its route.
+    expect(
+      screen.getByTestId(
+        `STORYBOOK.flow-ready.${CREATE_SECOND_STORY_ID}.CreateOrganization`,
+      ),
+    ).toBeOnTheScreen();
+    // The real path: the drawer entry pushes over Home, which stays mounted.
+    expect(
+      screen.getByTestId('MAIN.map-screen', {includeHiddenElements: true}),
+    ).toBeOnTheScreen();
+    expectPersistedOrganizations(
+      ['aaaaaaaaaaaaaaaa:pronta'],
+      'aaaaaaaaaaaaaaaa',
+    );
+  }, 60_000);
+
+  test('the second-provisioning row: the organization in preparation is shown, not the open one', async () => {
+    await renderStory(SecondOrganizationProvisioningStory);
+
+    expect(
+      await screen.findByText(
+        'Preparing your organization…',
+        {},
+        {timeout: 30_000},
+      ),
+    ).toBeOnTheScreen();
+    // The capture row's readiness pair: the story marker plus its route.
+    expect(
+      screen.getByTestId(
+        `STORYBOOK.flow-ready.${SECOND_PROVISIONING_STORY_ID}.OrganizationProvisioning`,
+      ),
+    ).toBeOnTheScreen();
+    // B's rows — Monitoramento done, Alertas in execution. A, ready, would
+    // show no preparation rows at all.
+    expect(screen.getByText('Ready')).toBeOnTheScreen();
+    expect(screen.getByText('Preparing')).toBeOnTheScreen();
+    expect(
+      screen.getByTestId('MAIN.map-screen', {includeHiddenElements: true}),
+    ).toBeOnTheScreen();
+
+    // A stays open and active; B is persisted mid-materialization.
+    expectPersistedOrganizations(
+      ['aaaaaaaaaaaaaaaa:pronta', 'bbbbbbbbbbbbbbbb:preparando'],
+      'aaaaaaaaaaaaaaaa',
+    );
+    expect(
+      (await client.listProjects())
+        .map(project => parseMarker(project.projectDescription ?? ''))
+        .map(marker => `${marker?.organizationId}:${marker?.slot}`)
+        .sort(),
+    ).toEqual([
+      'aaaaaaaaaaaaaaaa:a',
+      'aaaaaaaaaaaaaaaa:m',
+      'bbbbbbbbbbbbbbbb:a',
+      'bbbbbbbbbbbbbbbb:m',
+    ]);
   }, 60_000);
 
   test('without the earlyAccess axis the app flag stays in charge and the entry does not exist', async () => {

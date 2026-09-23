@@ -224,7 +224,6 @@ describe('OrganizationInviteReceived', () => {
     start.mockResolvedValue({
       ok: true,
       accepted: [{slot: 'a', projectId: 'project-a'}],
-      activeProjectId: 'project-a',
     });
     const user = userEvent.setup();
     await renderScreen();
@@ -283,7 +282,6 @@ describe('OrganizationInviteReceived', () => {
         {slot: 'm', projectId: 'project-m'},
         {slot: 'a', projectId: 'project-a'},
       ],
-      activeProjectId: 'project-m',
     });
     const user = userEvent.setup();
     await renderScreen();
@@ -297,7 +295,13 @@ describe('OrganizationInviteReceived', () => {
     expect(Object.keys(bundle.invites).sort()).toStrictEqual(['a', 'm']);
   });
 
-  test('a successful accept lands on the joined confirmation', async () => {
+  test('a re-delivery for an already-ready organization resets to OrganizationProvisioning', async () => {
+    // The organization is already durably entered (a `pronta` entry in the
+    // document): the accept stays ok with NO registeredOrganizationId — and
+    // like a registered accept it must land on the provisioning surface, the
+    // owner of the publication and the pending confirmation. The old
+    // project-id ladder navigated to the joined confirmation with a project
+    // id NOTHING activates.
     mockInvites([makeInvite('m'), makeInvite('a')]);
     start.mockResolvedValue({
       ok: true,
@@ -305,14 +309,15 @@ describe('OrganizationInviteReceived', () => {
         {slot: 'm', projectId: 'project-m'},
         {slot: 'a', projectId: 'project-a'},
       ],
-      activeProjectId: 'project-m',
+      registeredOrganizationId: undefined,
     });
     const user = userEvent.setup();
     await renderScreen();
 
     await user.press(screen.getByTestId('ORG.invite-join-btn'));
 
-    expect(await screen.findByText('JOINED-Org Um')).toBeOnTheScreen();
+    expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
+    expect(screen.queryByText('JOINED-Org Um')).not.toBeOnTheScreen();
   });
 
   test('a registered accept routes to OrganizationProvisioning, not the joined confirmation', async () => {
@@ -328,7 +333,6 @@ describe('OrganizationInviteReceived', () => {
         {slot: 'm', projectId: 'project-m'},
         {slot: 'a', projectId: 'project-a'},
       ],
-      activeProjectId: undefined,
       registeredOrganizationId: ORG_ID,
     });
     const user = userEvent.setup();

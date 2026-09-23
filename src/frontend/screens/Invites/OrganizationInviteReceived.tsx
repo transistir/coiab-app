@@ -123,13 +123,7 @@ export const OrganizationInviteReceived = ({
         bundle.invites[slot] !== undefined,
     );
 
-  // Role display comes from the bundle as before; the organization name
-  // falls back to the locally-reconstructed org (the sender's marker name
-  // may be absent on a partial bundle).
-  const organizationDisplayName = bundle
-    ? bundle.organizationName || localOrg?.organizationName
-    : undefined;
-
+  // Role display comes from the bundle, as before.
   const translatedRole =
     bundle?.roleName === 'Coordinator'
       ? formatMessage(m.coordinatorRole)
@@ -171,53 +165,30 @@ export const OrganizationInviteReceived = ({
       return;
     }
 
-    // 6b-i/SPEC B §5.5: a complete accept REGISTERS the organization and
-    // activates no project — the provisioning surface owns the `pronta`
-    // publication and the pending confirmation (SPEC A §4.2 rule 9), so
-    // the project-id ladder below does not apply. Reset (not goBack) so
-    // the stale invite context cannot return to this sheet.
-    if (result.registeredOrganizationId !== undefined) {
-      navigation.reset({
-        index: 0,
-        routes: [{name: 'OrganizationProvisioning'}],
-      });
-      return;
-    }
-
-    // SPEC 8.6: land on the Monitoramento slot of the organization — this
-    // accept's own result first, then the id the hook activated.
-    const projectId =
-      result.accepted.find(({slot}) => slot === 'm')?.projectId ??
-      result.activeProjectId ??
-      result.accepted.find(({slot}) => slot === 'a')?.projectId;
-    if (projectId === undefined) {
-      navigation.goBack();
-      return;
-    }
-
-    const projectName =
-      organizationDisplayName || formatMessage(m.organizationName);
-
-    // Accepting while still in onboarding (the org fork's waiting screen is
-    // JoinOrganizationIntro) simply replaces the waiting screen with the
-    // confirmation — the gate decides the landing (SPEC 10.1/E6).
-    const isInOnboarding = navigation
-      .getState()
-      .routes.find(route => route.name === 'JoinOrganizationIntro');
-    if (isInOnboarding) {
-      navigation.replace('InviteSuccessfullyAccepted', {
-        projectName,
-        projectId,
-      });
-      return;
-    }
-
-    // otherwise reset the navigation so that the stale project is no longer showing.
+    // Every successful accept leaves the organization ENTERED in the durable
+    // document: either registered by THIS accept — the engine hand-off owns
+    // the `pronta` publication and the pending confirmation (SPEC B §5.5,
+    // SPEC A §4.2 rule 9) — or a re-delivery for an organization already
+    // `pronta` there. The provisioning surface owns both, so it owns the
+    // landing: reset (not goBack) so the stale invite context cannot return
+    // to this sheet. (The old project-id ladder navigated to the joined
+    // confirmation with a projectId nothing activates — it is gone.)
+    // The reset is dispatched inline, right after the awaited accept (the
+    // BottomSheetWrapper lets RESET through without its exit-animation
+    // delay). It carries the navigator's full state (`stale: false`) plus a
+    // fresh route key, never a partial `{index, routes}`: a partial reset is
+    // stored un-rehydrated, and when the removed Home route's nested
+    // navigator unmounts, its cleanup reads the root state through the
+    // render-time fallback and writes the old [Home, this sheet] stack back
+    // over the reset.
     navigation.reset({
-      index: 1,
+      ...navigation.getState(),
+      index: 0,
       routes: [
-        {name: 'Home'},
-        {name: 'InviteSuccessfullyAccepted', params: {projectName, projectId}},
+        {
+          key: `OrganizationProvisioning-${Date.now().toString(36)}`,
+          name: 'OrganizationProvisioning',
+        },
       ],
     });
   }

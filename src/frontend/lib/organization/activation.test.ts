@@ -709,6 +709,180 @@ describe('recuperação de journal (CA03)', () => {
   });
 });
 
+// Review fronteira P1 + P2-2: with A operating, B interrupted in `preparando`
+// resumes at boot, in the background — after A's restoration and without
+// ever publishing over A's context.
+describe('segunda organização em preparo com A operando (review fronteira)', () => {
+  function segundaSetup(
+    resumePreparation: (id: string, store: CoiabStore) => Promise<void>,
+  ) {
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState(
+      {
+        versao: 1,
+        organizacoes: [
+          readyOrganization('A'),
+          {
+            ...readyOrganization('B'),
+            estado: 'preparando',
+            areaEmExecucao: 'alertas',
+          },
+        ],
+        ativa: {organizacaoId: 'A', area: 'monitoramento'},
+      },
+      true,
+    );
+    const getProject = jest.fn(async () => ({
+      $getOwnRole: async () => ({roleId: MEMBER_ROLE_ID}),
+    }));
+    const resume = jest.fn((id: string) => resumePreparation(id, store));
+    const activation = createOrganizationActivation({
+      store,
+      getProject,
+      resumePreparation: resume,
+    });
+    const statuses: string[] = [];
+    activation.instance.subscribe(state => statuses.push(state.status));
+    return {store, activation, resume, statuses};
+  }
+  const concluir = async (id: string, store: CoiabStore) => {
+    store.instance.setState(state => ({
+      organizacoes: state.organizacoes.map(item =>
+        item.id === id
+          ? {...readyOrganization(id), confirmacaoPendente: true}
+          : item,
+      ),
+    }));
+  };
+
+  test('o boot restaura A e depois retoma B em segundo plano, sem publicar sobre A', async () => {
+    const {store, activation, resume, statuses} = segundaSetup(concluir);
+
+    await expect(activation.initialize()).resolves.toBe(true);
+    await waitForResume(resume);
+
+    expect(resume).toHaveBeenCalledTimes(1);
+    expect(resume).toHaveBeenCalledWith('B');
+    expect(
+      store.instance.getState().organizacoes.find(item => item.id === 'B'),
+    ).toMatchObject({estado: 'pronta', confirmacaoPendente: true});
+    // A opened and stayed open: B's preparation never published
+    // preparing/confirmation over the operating context.
+    expect(statuses).toEqual(['opening', 'ready']);
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'ready',
+      projectId: 'A-m',
+      generation: 1,
+    });
+    expect(store.instance.getState().ativa).toEqual({
+      organizacaoId: 'A',
+      area: 'monitoramento',
+    });
+    // A second initialize never resumes B again.
+    await activation.initialize();
+    expect(resume).toHaveBeenCalledTimes(1);
+  });
+
+  test('a falha de B em segundo plano é durável em B e A continua ready', async () => {
+    const {store, activation, statuses} = segundaSetup(async () => {
+      throw new Error('core failed');
+    });
+
+    await activation.initialize();
+    await waitForSettled(
+      () =>
+        store.instance.getState().organizacoes.find(item => item.id === 'B')
+          ?.estado === 'falha_recuperavel',
+    );
+
+    expect(statuses).toEqual(['opening', 'ready']);
+    expect(activation.instance.getState().status).toBe('ready');
+  });
+
+  test('retryPreparation de B com A operando não toma o lock nem publica: revalidate de A segue viva', async () => {
+    let liberarB!: () => void;
+    const bEmVoo = new Promise<void>(resolve => {
+      liberarB = resolve;
+    });
+    const {store, activation, statuses} = segundaSetup(async (id, s) => {
+      await bEmVoo;
+      await concluir(id, s);
+    });
+    await activation.initialize();
+    // The boot's own background resume of B is in flight; a retry of the same
+    // organization joins it instead of starting a second one.
+    const retry = activation.retryPreparation('B');
+
+    // A's role revalidation is not refused by B's long preparation.
+    await expect(activation.revalidate()).resolves.toBe(true);
+    expect(activation.instance.getState().error).toBeUndefined();
+
+    liberarB();
+    await expect(retry).resolves.toBe(true);
+    expect(statuses).toEqual(['opening', 'ready']);
+    expect(
+      store.instance.getState().organizacoes.find(item => item.id === 'B')
+        ?.estado,
+    ).toBe('pronta');
+  });
+
+  test('trabalho persistido bloqueando o boot não retoma B em segundo plano', async () => {
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState(
+      {
+        versao: 1,
+        organizacoes: [
+          readyOrganization('A'),
+          {
+            ...readyOrganization('B'),
+            estado: 'preparando',
+            areaEmExecucao: 'alertas',
+          },
+        ],
+        ativa: {organizacaoId: 'A', area: 'alertas'},
+      },
+      true,
+    );
+    const getProject = jest.fn();
+    const resume = jest.fn(async () => {});
+    const activation = createOrganizationActivation({
+      store,
+      getProject,
+      resumePreparation: resume,
+      // Origem em A/monitoramento, seleção em A/alertas: o boot bloqueia.
+      hasPendingWork: () => true,
+      getPendingWorkProjectId: () => 'A-m',
+    });
+
+    await expect(activation.initialize()).resolves.toBe(false);
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'unavailable',
+      error: 'pending-work',
+    });
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(resume).not.toHaveBeenCalled();
+    expect(getProject).not.toHaveBeenCalled();
+    expect(
+      store.instance.getState().organizacoes.find(item => item.id === 'B'),
+    ).toMatchObject({estado: 'preparando', areaEmExecucao: 'alertas'});
+  });
+});
+
+type CoiabStore = ReturnType<typeof createCoiabOrganizationsStore>;
+
+async function waitForSettled(done: () => boolean) {
+  for (let i = 0; i < 50 && !done(); i++) {
+    await new Promise(resolve => setTimeout(resolve, 0));
+  }
+  expect(done()).toBe(true);
+}
+
+async function waitForResume(resume: jest.Mock) {
+  await waitForSettled(() => resume.mock.calls.length > 0);
+  await Promise.all(resume.mock.results.map(result => result.value));
+}
+
 describe('A-v4-1: guard global de trabalho pendente na alternância de área (§5.2:172)', () => {
   // §5.2:172 "Alternar área aplica os mesmos bloqueios"; §5.3:180 "um único
   // trabalho em andamento": o predicado é global ("há trabalho pendente?") e

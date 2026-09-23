@@ -6,6 +6,8 @@ import MaterialDesignIcons from '@react-native-vector-icons/material-design-icon
 import {BodyText} from './Text/BodyText';
 import {BLUE_GREY, DARK_GREY, VERY_LIGHT_GREY} from '../lib/styles';
 import {useOrganizations} from '../hooks/organization/useOrganizations';
+import {useCoiabOrganizationsState} from '../contexts/CoiabOrganizationsStoreContext';
+import {organizacaoEmPreparo} from '../lib/organization/coiabOrganizations';
 
 const m = defineMessages({
   needsAttention: {
@@ -24,8 +26,17 @@ const m = defineMessages({
 export function OrganizationRepairBanner({onPress}: {onPress: () => void}) {
   const {formatMessage} = useIntl();
   const organizations = useOrganizations();
+  // Review fronteira P1: the persisted document is the authority for an
+  // un-settled organization — one interrupted before Core holds any of its
+  // projects is invisible to the reconstruction, and the cold start now
+  // opens the operating organization instead of its provisioning surface.
+  const emPreparo = organizacaoEmPreparo(useCoiabOrganizationsState());
 
-  if (organizations.every(org => org.state === 'ready')) return null;
+  if (
+    emPreparo === undefined &&
+    organizations.every(org => org.state === 'ready')
+  )
+    return null;
 
   return (
     <TouchableOpacity

@@ -40,13 +40,8 @@ export const withFlowState: Decorator = (Story, context) => {
 
   if (!ready) return <FlowStatePlaceholder spec={flow?.state} />;
 
-  // The marker sits inside the scope: a story waiting on its scoped
-  // organization to open is not ready yet.
   return (
-    <FlowStateScope
-      key={`${context.id}:${ready.key}`}
-      resolved={ready}
-      fallback={<FlowStatePlaceholder spec={flow?.state} />}>
+    <FlowStateScope key={`${context.id}:${ready.key}`} resolved={ready}>
       <View style={{flex: 1}} testID={`STORYBOOK.flow-ready.${context.id}`}>
         <Story />
       </View>

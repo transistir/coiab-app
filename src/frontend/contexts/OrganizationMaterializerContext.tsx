@@ -1,11 +1,12 @@
-import {createContext, ReactNode, useContext, useMemo} from 'react';
+import {createContext, ReactNode, useContext, useMemo, useState} from 'react';
 import {useClientApi} from '@comapeo/core-react';
 import {useQueryClient} from '@tanstack/react-query';
+import {createStore, useStore, type StoreApi} from 'zustand';
 
 import {clienteDeCriacao} from '../lib/organization/clienteDeCriacao';
 import {
+  confirmarEntrada,
   origemDaOrganizacao,
-  verificarEntrada,
 } from '../lib/organization/entrada';
 import {
   createMaterializer,
@@ -24,9 +25,10 @@ import {useCoiabOrganizationsStoreContext} from './CoiabOrganizationsStoreContex
  * root next to the activation driver: `iniciar` registers a new organization
  * (never used to resume) and `retomar` continues the persisted `preparando`
  * journal — the resume adapter `useOrganizationActivation` injects into the
- * activation engine. `retomar` refuses any id other than the first (and only)
- * organization of the document, so a stale caller can never resume a journal
- * that no longer belongs to it.
+ * activation engine. `retomar` locates the organization by id ANYWHERE in
+ * the document — a settled `pronta` first entry never shadows a later
+ * `preparando` one — and refuses any id absent from it, so a stale caller
+ * can never resume a journal that no longer belongs to it.
  */
 export type OrganizationMaterializerHandle = {
   iniciar(nome: string): Promise<void>;
@@ -35,6 +37,16 @@ export type OrganizationMaterializerHandle = {
 
 const OrganizationMaterializerContext =
   createContext<OrganizationMaterializerHandle | null>(null);
+
+/**
+ * Review fronteira P1: how many `iniciar`/`retomar` calls are alive in this
+ * session. A document in `preparando` with none alive was interrupted — the
+ * provisioning surface must offer a way out instead of a spinner that never
+ * ends.
+ */
+const MaterializacoesVivasContext = createContext<StoreApi<number> | null>(
+  null,
+);
 
 export function OrganizationMaterializerProvider({
   children,
@@ -52,7 +64,12 @@ export function OrganizationMaterializerProvider({
   const store = useCoiabOrganizationsStoreContext();
   const clientApi = useClientApi();
   const queryClient = useQueryClient();
+  const [vivas] = useState(() => createStore<number>(() => 0));
   const materializador = useMemo<OrganizationMaterializerHandle>(() => {
+    const acompanhar = (operacao: () => Promise<void>) => {
+      vivas.setState(n => n + 1, true);
+      return operacao().finally(() => vivas.setState(n => n - 1, true));
+    };
     const fonte = templates ?? criarTemplateSourceInstalado();
     const materializer = createMaterializer({
       client: clienteDeCriacao(clientApi),
@@ -60,49 +77,66 @@ export function OrganizationMaterializerProvider({
       repository: repositorioDoStore(store),
       generateId: generateOrganizationId,
     });
-    return {
-      iniciar: nome =>
-        materializer
-          .start(nome)
+    const retomar = async (organizacaoId: string) => {
+      const organizacao = store.instance
+        .getState()
+        .organizacoes.find(o => o.id === organizacaoId);
+      if (!organizacao) {
+        throw new Error('organization-not-resumable');
+      }
+      // SPEC B §5.5 dispatch: a journal whose BOTH areas are accepted
+      // invites (no creation snapshot, no template) is an INVITE entry —
+      // the resume must CONFIRM it (`verificarEntrada`, through the real
+      // creation adapter so the icon proof rides along), never create.
+      // Anything else is a creation journal and keeps resuming.
+      if (origemDaOrganizacao(organizacao) === 'convite') {
+        await confirmarEntrada({
+          store,
+          client: clienteDeCriacao(clientApi),
+          templates: fonte,
+          organizacaoId,
+        }).finally(() =>
+          queryClient.invalidateQueries({queryKey: projectsQueryKey}),
+        );
+      } else {
+        await materializer
+          .resume()
           .finally(() =>
             queryClient.invalidateQueries({queryKey: projectsQueryKey}),
-          ),
-      retomar: async organizacaoId => {
-        const organizacao = store.instance.getState().organizacoes[0];
-        if (!organizacao || organizacao.id !== organizacaoId) {
-          throw new Error('organization-not-resumable');
-        }
-        // SPEC B §5.5 dispatch: a journal whose BOTH areas are accepted
-        // invites (no creation snapshot, no template) is an INVITE entry —
-        // the resume must CONFIRM it (`verificarEntrada`, through the real
-        // creation adapter so the icon proof rides along), never create.
-        // Anything else is a creation journal and keeps resuming.
-        if (origemDaOrganizacao(organizacao) === 'convite') {
-          await verificarEntrada({
-            store,
-            client: clienteDeCriacao(clientApi),
-            templates: fonte,
-            organizacaoId,
-          }).finally(() =>
-            queryClient.invalidateQueries({queryKey: projectsQueryKey}),
           );
-        } else {
-          await materializer
-            .resume()
+      }
+    };
+    return {
+      iniciar: nome =>
+        acompanhar(() =>
+          materializer
+            .start(nome)
             .finally(() =>
               queryClient.invalidateQueries({queryKey: projectsQueryKey}),
-            );
-        }
-      },
+            ),
+        ),
+      retomar: organizacaoId => acompanhar(() => retomar(organizacaoId)),
     };
-  }, [store, clientApi, templates, queryClient]);
+  }, [store, clientApi, templates, queryClient, vivas]);
 
   return (
     <OrganizationMaterializerContext value={materializador}>
-      {children}
+      <MaterializacoesVivasContext value={vivas}>
+        {children}
+      </MaterializacoesVivasContext>
     </OrganizationMaterializerContext>
   );
 }
+
+/**
+ * Whether a materialization (creation or resume) is alive in this session;
+ * `false` outside the root provider, where nothing can materialize.
+ */
+export function useMaterializacaoViva(): boolean {
+  const vivas = useContext(MaterializacoesVivasContext);
+  return useStore(vivas ?? SEM_MATERIALIZADOR, n => n > 0);
+}
+const SEM_MATERIALIZADOR = createStore<number>(() => 0);
 
 /**
  * `null` outside the root provider: consumers must treat absence as "no

@@ -91,8 +91,10 @@ export function createOrganizationActivation({
   let origemValidada: {projectId: string; generation: number} | undefined;
   let inFlight: Promise<boolean> | undefined;
   let inFlightKey: string | undefined;
-  // A-v4-4 (M-2): EVERY entry point — activate, initialize, retryPreparation
-  // and the pending-work recovery — shares this single lock. `perform` runs
+  // A-v4-4 (M-2): EVERY entry point that touches the published context —
+  // activate, initialize, revalidate, the subject's retryPreparation and the
+  // pending-work recovery — shares this single lock (a background
+  // preparation of another organization has its own, see below). `perform` runs
   // synchronously up to its first await: its entry guards must decide on the
   // state that exists when the caller asks for the change, not a later one.
   //
@@ -382,11 +384,55 @@ export function createOrganizationActivation({
   }
 
   const automaticallyResumed = new Set<string>();
-  function retryPreparation(id: string) {
-    return runExclusive(`retryPreparation:${id}`, () => performPreparation(id));
+
+  // Review fronteira P1/P2-2: the published status belongs to ONE subject —
+  // the organization the boot selects (the active one, or the only one).
+  // Preparing any OTHER organization is background work: it advances that
+  // organization's journal in the document (which is what its provisioning
+  // surface reads) and never publishes preparing/confirmation/failure over
+  // the subject's context — an operating A stays `ready`, so its role
+  // revalidation and removal listener stay alive while B is prepared.
+  function sujeitoDoMotor(): string | undefined {
+    const {ativa, organizacoes} = store.instance.getState();
+    if (ativa) return ativa.organizacaoId;
+    return organizacoes.length === 1 ? organizacoes[0]!.id : undefined;
   }
 
-  async function performPreparation(id: string) {
+  // Background preparations do not touch the subject's context, so they do
+  // not take the shared intent lock (a long materialization would otherwise
+  // refuse A's revalidation for its whole duration). They are serialized
+  // among themselves with the same intent rule: the same organization joins
+  // the running preparation, a different one is refused — the document keeps
+  // at most one organization in preparation.
+  let preparacaoEmSegundoPlano:
+    {id: string; operation: Promise<boolean>} | undefined;
+  function prepararEmSegundoPlano(id: string): Promise<boolean> {
+    if (preparacaoEmSegundoPlano) {
+      if (preparacaoEmSegundoPlano.id === id)
+        return preparacaoEmSegundoPlano.operation;
+      instance.setState({error: 'operation-in-progress'});
+      return Promise.resolve(false);
+    }
+    const operation = performPreparation(id, false);
+    preparacaoEmSegundoPlano = {id, operation};
+    void operation.finally(() => {
+      if (preparacaoEmSegundoPlano?.operation === operation)
+        preparacaoEmSegundoPlano = undefined;
+    });
+    return operation;
+  }
+
+  function retryPreparation(id: string) {
+    if (sujeitoDoMotor() !== id) return prepararEmSegundoPlano(id);
+    return runExclusive(`retryPreparation:${id}`, () =>
+      performPreparation(id, true),
+    );
+  }
+
+  async function performPreparation(id: string, publicar: boolean) {
+    const publish = (state: Partial<ActivationState>) => {
+      if (publicar) instance.setState(state);
+    };
     const org = store.instance
       .getState()
       .organizacoes.find(item => item.id === id);
@@ -397,7 +443,7 @@ export function createOrganizationActivation({
     // ('preparando', areaEmExecucao intact, no journal write) and the
     // published state says why using statuses the engine already has.
     if (!resumePreparation) {
-      instance.setState({
+      publish({
         status: 'unavailable',
         error: 'preparation-adapter-required',
       });
@@ -408,7 +454,7 @@ export function createOrganizationActivation({
         item.id === id ? {...item, estado: 'preparando' as const} : item,
       ),
     }));
-    instance.setState({status: 'preparing'});
+    publish({status: 'preparing'});
     try {
       await resumePreparation(id);
       const completed = store.instance
@@ -416,7 +462,7 @@ export function createOrganizationActivation({
         .organizacoes.find(item => item.id === id);
       if (completed?.estado !== 'pronta')
         throw new Error('preparation-incomplete');
-      instance.setState({status: 'confirmation'});
+      publish({status: 'confirmation'});
       return true;
     } catch {
       // Publication may have succeeded before the adapter's late rejection.
@@ -426,7 +472,7 @@ export function createOrganizationActivation({
         .getState()
         .organizacoes.find(item => item.id === id);
       if (completed?.estado === 'pronta') {
-        instance.setState({status: 'confirmation', error: undefined});
+        publish({status: 'confirmation', error: undefined});
         return true;
       }
       store.instance.setState(state => ({
@@ -445,13 +491,42 @@ export function createOrganizationActivation({
             : item,
         ),
       }));
-      instance.setState({status: 'failure'});
+      publish({status: 'failure'});
       return false;
     }
   }
 
   function initialize() {
-    return runExclusive('initialize', performInitialization);
+    return runExclusive('initialize', async () => {
+      try {
+        return await performInitialization();
+      } finally {
+        // FIX-B's startup block holds ALL startup work until the persisted
+        // work is recovered — a background resume included.
+        const {status, error} = instance.getState();
+        if (status !== 'unavailable' || error !== 'pending-work')
+          retomarInterrompida();
+      }
+    });
+  }
+
+  // Review fronteira P1: an organization interrupted in `preparando` that is
+  // NOT the boot's subject (B created or entered while A operates) resumes
+  // too — nothing else would ever resume it: the resume button only exists
+  // for a recorded failure. It runs in the background and only AFTER the
+  // subject's restoration settled: the materializer's journal checkpoints
+  // replace the document, and the restoration refuses to commit over a
+  // document that changed under it ('document-changed').
+  function retomarInterrompida() {
+    const {organizacoes, hidratacaoFalhou} = store.instance.getState();
+    if (hidratacaoFalhou) return;
+    const sujeito = sujeitoDoMotor();
+    const interrompida = organizacoes.find(
+      org => org.estado === 'preparando' && org.id !== sujeito,
+    );
+    if (!interrompida || automaticallyResumed.has(interrompida.id)) return;
+    automaticallyResumed.add(interrompida.id);
+    void prepararEmSegundoPlano(interrompida.id);
   }
 
   async function performInitialization() {
@@ -510,7 +585,7 @@ export function createOrganizationActivation({
         !automaticallyResumed.has(selected.id)
       ) {
         automaticallyResumed.add(selected.id);
-        return performPreparation(selected.id);
+        return performPreparation(selected.id, true);
       }
     } else if (selected.confirmacaoPendente) {
       instance.setState({status: 'confirmation'});

@@ -91,6 +91,13 @@ const m = defineMessages({
     // pt-BR ships the verbatim §6.1 string "Trocar de organização".
     description: 'Drawer menu entry that opens the organization selector',
   },
+  // Same intl id + byte-identical defaultMessage as
+  // CreateOrganization.tsx / Success.tsx (identical duplicates pass the
+  // extraction gate); the drawer entry reuses the onboarding title.
+  createOrganization: {
+    id: '$1screens.OrganizationSetup.createOrganization',
+    defaultMessage: 'Create Organization',
+  },
 });
 export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
   const {formatMessage} = useIntl();
@@ -202,6 +209,25 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
                       accessibilityLabel="Open the organization selector.">
                       <BodyText variant="medium">
                         {formatMessage(m.switchOrganization)}
+                      </BodyText>
+                    </TouchableOpacity>
+                  )}
+                  {/* SPEC Fase 6/Q3: the create entry exists only with
+                      early access on AND an operating organization; with
+                      either false it does not exist (no hidden or
+                      disabled control). Q4: reuses the canonical
+                      $1screens.OrganizationSetup.createOrganization id. */}
+                  {isEarly && !semOrganizacaoOperavel && (
+                    <TouchableOpacity
+                      testID="MENU.criar-organizacao"
+                      style={styles.trocarOrganizacaoRow}
+                      onPress={() => {
+                        closeMenu();
+                        navigation.navigate('CreateOrganization');
+                      }}
+                      accessibilityLabel="Open the organization creation flow.">
+                      <BodyText variant="medium">
+                        {formatMessage(m.createOrganization)}
                       </BodyText>
                     </TouchableOpacity>
                   )}

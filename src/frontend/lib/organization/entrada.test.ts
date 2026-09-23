@@ -12,6 +12,9 @@ import type {
 import {criarEtapaAreaAusente} from './coiabOrganizations';
 import {
   ClienteDeEntrada,
+  confirmarEntrada,
+  INTERVALO_JOIN_MS,
+  PRAZO_JOIN_MS,
   ProjetoDeEntrada,
   origemDaOrganizacao,
   verificarEntrada,
@@ -339,5 +342,76 @@ describe('verificarEntrada (SPEC B §5.5)', () => {
         }),
       ),
     ).toBe('criacao');
+  });
+});
+
+describe('confirmarEntrada: espera o join sair de pending', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const joining = [
+    {projectId: 'm-convite-1', status: 'joining' as const},
+    {projectId: 'a-convite-1', status: 'joined' as const},
+  ];
+  const joined = [
+    {projectId: 'm-convite-1', status: 'joined' as const},
+    {projectId: 'a-convite-1', status: 'joined' as const},
+  ];
+
+  test('join-pending re-checa até o join sair de pending e publica pronta', async () => {
+    const h = harness();
+    h.client.listProjects
+      .mockResolvedValueOnce(joining)
+      .mockResolvedValueOnce(joining)
+      .mockResolvedValue(joined);
+
+    const confirmacao = confirmarEntrada(h.deps);
+    await jest.advanceTimersByTimeAsync(2 * INTERVALO_JOIN_MS);
+    await confirmacao;
+
+    expect(h.client.listProjects).toHaveBeenCalledTimes(3);
+    // The packages are opened ONCE for the whole wait.
+    expect(h.templates.prepare).toHaveBeenCalledTimes(1);
+    expect(h.store.instance.getState().organizacoes[0]).toMatchObject({
+      estado: 'pronta',
+      confirmacaoPendente: true,
+    });
+  });
+
+  test('qualquer outra recusa sobe na hora, sem esperar', async () => {
+    const h = harness({
+      roleIds: {monitoramento: 'sem-papel', alertas: 'sem-papel'},
+    });
+
+    await expect(confirmarEntrada(h.deps)).rejects.toThrow(
+      'access-unavailable',
+    );
+    expect(h.client.listProjects).toHaveBeenCalledTimes(1);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  test('join-pending além do prazo de 60s sobe como falha', async () => {
+    const h = harness({rows: joining});
+    let rejeitado: unknown;
+    const confirmacao = confirmarEntrada(h.deps).catch(error => {
+      rejeitado = error;
+    });
+
+    await jest.advanceTimersByTimeAsync(PRAZO_JOIN_MS - INTERVALO_JOIN_MS);
+    expect(rejeitado).toBeUndefined();
+
+    await jest.advanceTimersByTimeAsync(INTERVALO_JOIN_MS);
+    await confirmacao;
+    expect(rejeitado).toEqual(new Error('join-pending'));
+    expect(h.client.listProjects).toHaveBeenCalledTimes(
+      PRAZO_JOIN_MS / INTERVALO_JOIN_MS + 1,
+    );
+    expect(h.templates.prepare).toHaveBeenCalledTimes(1);
+    const org = h.store.instance.getState().organizacoes[0];
+    expect(org?.estado).toBe('preparando');
   });
 });

@@ -28,9 +28,6 @@ const repositorios = new WeakMap<
 function estadoAtual(store: CoiabOrganizationsStore): EstadoOrganizacoes {
   const state = store.instance.getState();
   if (state.hidratacaoFalhou) throw 'hydration-failed';
-  if (state.organizacoes.length > 1) {
-    throw 'multiple-organizations-unsupported';
-  }
   return {
     versao: state.versao,
     organizacoes: state.organizacoes,

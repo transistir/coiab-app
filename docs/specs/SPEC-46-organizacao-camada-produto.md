@@ -1246,3 +1246,19 @@ FRONTEND_ONLY_VIABLE
 Não existe veredito intermediário baseado em criar metadata dedicada: `organizationId + slot` devem usar `projectDescription`.
 
 Se alguma limitação impedir essa composição mesmo usando o canal existente, registrar `FRONTEND_ONLY_NOT_VIABLE` com a falha reproduzível e a capability mínima que estaria faltando. Qualquer proposta de mudança em Core/backend deve ser justificada por essa evidência.
+
+---
+
+## Decisões pós-implementação (emenda 2026-09-22)
+
+Nota: este documento não possui lista D1..D13 própria — a numeração canônica vive nos SPECs A/B
+de `docs/specs/organizacao/`. Os itens abaixo são o registro da sessão de implementação de 2026-09-22.
+
+**D14.** Traduções pt-BR dos novos ids de mensagem: 5 strings adicionadas A MÃO na Fase 10, sem automação de catálogo (decisão da sessão 2026-09-22).
+
+Log de decisões pós-implementação:
+
+- Holds de navegação: listeners diretos `beforeRemove` (GO_BACK/POP + BackHandler); RESET do sistema passa (§3.2 = saída de usuário).
+- Hold estreito: estado exato `'preparando'` (§3.2 literal); reset-Home usa predicado largo.
+- `DeepLinkListener`: mesmo gate de convites pendentes durante operação viva.
+- Cancelamento do formulário em preparo: política em Fase 7 (pendente).

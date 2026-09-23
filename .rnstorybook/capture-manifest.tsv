@@ -43,3 +43,6 @@ exchange	exchange-screen--wifi-disconnected	testID:no-wifi-icon	2	07 Wifi Discon
 exchange	exchange-nowifidisplay--no-wifi	testID:EXCHANGE.no-wifi-display	2	08 No Wifi Display
 org-layer	flows-orglayer--organization-selector	testID:ORGANIZATIONS.list	10	05 Organization Selector
 org-layer	flows-orglayerdrawer--switch-organization-entry	testID:MENU.trocar-organizacao	2	06 Drawer Switch Organization Entry
+org-layer	flows-orglayerdrawer--create-organization-entry	testID:MENU.criar-organizacao	2	07 Drawer Create Organization Entry
+org-layer	flows-orglayer--create-second-organization	route:CreateOrganization	2	08 Create Second Organization
+org-layer	flows-orglayer--second-organization-provisioning	route:OrganizationProvisioning	2	09 Second Organization Provisioning

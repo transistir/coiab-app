@@ -26,6 +26,7 @@ import type {
   OrganizationInviteBundle,
 } from '../../lib/organization/bundle';
 import {OrganizationOperationError} from '../../lib/organization/fanout';
+import type {OrganizacaoLocal} from '../../lib/organization/coiabOrganizations';
 import {markerFor} from '../../lib/organization/marker';
 import {
   invitesQueryKey,
@@ -234,6 +235,368 @@ describe('useAcceptOrganizationBundle', () => {
         },
       },
     });
+
+    hook.unmount();
+  });
+  test('a second invitation hands the retoma to the invited organization by id, leaving A and ativa untouched', async () => {
+    // A is ready and acknowledged, selected as active. The retoma of B's
+    // accept must point at B's id — never at the first entry of the
+    // document — and must not touch A nor the persisted selection.
+    const ORG_A_ID = '9c8b7a6d5e4f3210';
+    const organizacaoA: OrganizacaoLocal = {
+      id: ORG_A_ID,
+      nome: 'Org A',
+      estado: 'pronta',
+      confirmacaoPendente: false,
+      materializacao: {
+        monitoramento: {
+          etapa: 'verificado',
+          projectId: 'A-monitoramento',
+          template: {versao: '1', hash: 'hash-a-m'},
+          idsAntesDaCriacao: null,
+        },
+        alertas: {
+          etapa: 'verificado',
+          projectId: 'A-alertas',
+          template: {versao: '1', hash: 'hash-a-a'},
+          idsAntesDaCriacao: null,
+        },
+      },
+      areaEmExecucao: null,
+      ultimoErro: null,
+    };
+    coiabStore.instance.setState(
+      {
+        versao: 1,
+        organizacoes: [organizacaoA],
+        ativa: {organizacaoId: ORG_A_ID, area: 'monitoramento'},
+      },
+      true,
+    );
+    const {clientApi, accept} = createFakeClient();
+    accept
+      .mockResolvedValueOnce('project-monitoramento')
+      .mockResolvedValueOnce('project-alertas');
+    const registrarEntrada = jest.spyOn(
+      coiabStore.actions,
+      'registrarEntradaPorConvite',
+    );
+    const projetar = jest.spyOn(store.actions, 'projetar');
+
+    const hook = await renderHook(
+      () => ({
+        acceptBundle: useAcceptOrganizationBundle(),
+        activeProjectId: useActiveProjectId(),
+      }),
+      {wrapper: createWrapper(clientApi)},
+    );
+
+    let outcome: AcceptOrganizationBundleResult | undefined;
+    await act(async () => {
+      outcome = await hook.result.current.acceptBundle.start(makeBundle());
+    });
+
+    expect(hook.result.current.acceptBundle.status).toBe('success');
+    expect(accept).toHaveBeenCalledTimes(2);
+    expect(registrarEntrada).toHaveBeenCalledTimes(1);
+    expect(registrarEntrada).toHaveBeenCalledWith({
+      organizacaoId: ORG_ID,
+      nome: ORG_NAME,
+      projectIds: {
+        monitoramento: 'project-monitoramento',
+        alertas: 'project-alertas',
+      },
+    });
+    // The retoma points at B by id; the hook never projects a project id.
+    expect(mockRetryPreparation).toHaveBeenCalledTimes(1);
+    expect(mockRetryPreparation).toHaveBeenCalledWith(ORG_ID);
+    expect(projetar).not.toHaveBeenCalled();
+    expect(outcome).toMatchObject({
+      ok: true,
+      registeredOrganizationId: ORG_ID,
+    });
+    // A preserved by reference; B appended; the persisted selection intact.
+    const depois = coiabStore.instance.getState();
+    expect(depois.organizacoes).toHaveLength(2);
+    expect(depois.organizacoes[0]).toBe(organizacaoA);
+    expect(depois.organizacoes[1]?.id).toBe(ORG_ID);
+    expect(depois.ativa).toStrictEqual({
+      organizacaoId: ORG_A_ID,
+      area: 'monitoramento',
+    });
+
+    hook.unmount();
+  });
+
+  test('an accept whose organization is absent from the document at retoma time fails with invite-registration-missing and writes nothing', async () => {
+    // The registration refuses (a projectId already associated with another
+    // local organization), so the bundle's organization has NO entry in the
+    // durable document at retoma time — an impossible state for the invite
+    // flow. The hook must publish a typed error with NO write: no
+    // projection, no retoma hand-off, the document byte-identical and the
+    // pinned recovery identity untouched.
+    const ORG_A_ID = '9c8b7a6d5e4f3210';
+    const organizacaoA: OrganizacaoLocal = {
+      id: ORG_A_ID,
+      nome: 'Org A',
+      estado: 'preparando',
+      confirmacaoPendente: false,
+      materializacao: {
+        monitoramento: {
+          etapa: 'criado',
+          projectId: 'project-monitoramento',
+          template: null,
+          idsAntesDaCriacao: null,
+        },
+        alertas: {
+          etapa: 'criado',
+          projectId: 'A-alertas',
+          template: null,
+          idsAntesDaCriacao: null,
+        },
+      },
+      areaEmExecucao: null,
+      ultimoErro: null,
+    };
+    coiabStore.instance.setState(
+      {versao: 1, organizacoes: [organizacaoA], ativa: null},
+      true,
+    );
+    const {clientApi, accept} = createFakeClient();
+    accept
+      .mockResolvedValueOnce('project-monitoramento')
+      .mockResolvedValueOnce('project-alertas');
+    const registrarEntrada = jest.spyOn(
+      coiabStore.actions,
+      'registrarEntradaPorConvite',
+    );
+    const projetar = jest.spyOn(store.actions, 'projetar');
+
+    const hook = await renderHook(
+      () => ({
+        acceptBundle: useAcceptOrganizationBundle(),
+        activeProjectId: useActiveProjectId(),
+      }),
+      {wrapper: createWrapper(clientApi)},
+    );
+
+    let outcome: AcceptOrganizationBundleResult | undefined;
+    await act(async () => {
+      outcome = await hook.result.current.acceptBundle.start(makeBundle());
+    });
+
+    expect(hook.result.current.acceptBundle.status).toBe('error');
+    const error = hook.result.current.acceptBundle.error;
+    expect(error).toBeInstanceOf(OrganizationOperationError);
+    expect((error as OrganizationOperationError).code).toBe(
+      'invite-registration-missing',
+    );
+    expect((error as OrganizationOperationError).details?.organizationId).toBe(
+      ORG_ID,
+    );
+    expect(registrarEntrada).toHaveBeenCalledTimes(1);
+    expect(projetar).not.toHaveBeenCalled();
+    expect(mockRetryPreparation).not.toHaveBeenCalled();
+    // No write: A preserved by reference, nothing appended, ativa intact.
+    const depois = coiabStore.instance.getState();
+    expect(depois.organizacoes).toStrictEqual([organizacaoA]);
+    expect(depois.organizacoes[0]).toBe(organizacaoA);
+    expect(depois.ativa).toBeNull();
+    // The failure must not unpin the recovery identity.
+    expect(identityStore.instance.getState()).toStrictEqual({
+      [ORG_ID]: {invitorDeviceId: 'invitor-1', roleName: 'Coordinator'},
+    });
+    expect(outcome).toMatchObject({ok: false});
+
+    hook.unmount();
+  });
+
+  test('a re-delivery for an already-ready organization stays a success without a retoma hand-off', async () => {
+    // The organization reached `pronta` in the document: the store REFUSES
+    // the re-delivery with NO write, but the entry is present by id — the
+    // organization is already durably entered, so the outcome stays a
+    // success with NO retoma hand-off (the engine has nothing to prepare)
+    // and NO projection. Not an `invite-registration-missing` error.
+    const {clientApi, accept} = createFakeClient([
+      {
+        projectId: 'project-monitoramento',
+        projectDescription: markerFor(ORG_ID, 'm', ORG_NAME),
+      },
+      {
+        projectId: 'project-alertas',
+        projectDescription: markerFor(ORG_ID, 'a', ORG_NAME),
+      },
+    ]);
+    const pronta: OrganizacaoLocal = {
+      id: ORG_ID,
+      nome: ORG_NAME,
+      estado: 'pronta',
+      confirmacaoPendente: true,
+      materializacao: {
+        monitoramento: {
+          etapa: 'verificado',
+          projectId: 'project-monitoramento',
+          template: {versao: '1', hash: 'hash-b-m'},
+          idsAntesDaCriacao: null,
+        },
+        alertas: {
+          etapa: 'verificado',
+          projectId: 'project-alertas',
+          template: {versao: '1', hash: 'hash-b-a'},
+          idsAntesDaCriacao: null,
+        },
+      },
+      areaEmExecucao: null,
+      ultimoErro: null,
+    };
+    coiabStore.instance.setState(
+      {versao: 1, organizacoes: [pronta], ativa: null},
+      true,
+    );
+    const registrarEntrada = jest.spyOn(
+      coiabStore.actions,
+      'registrarEntradaPorConvite',
+    );
+    const projetar = jest.spyOn(store.actions, 'projetar');
+
+    const hook = await renderHook(
+      () => ({
+        acceptBundle: useAcceptOrganizationBundle(),
+        activeProjectId: useActiveProjectId(),
+      }),
+      {wrapper: createWrapper(clientApi)},
+    );
+
+    let outcome: AcceptOrganizationBundleResult | undefined;
+    await act(async () => {
+      outcome = await hook.result.current.acceptBundle.start(makeBundle());
+    });
+
+    // Every slot is already local — nothing is accepted again.
+    expect(accept).not.toHaveBeenCalled();
+    expect(hook.result.current.acceptBundle.status).toBe('success');
+    expect(hook.result.current.acceptBundle.error).toBeUndefined();
+    // The registration was attempted and REFUSED (asserted on its own
+    // return, not inferred from the outcome); the entry is present and
+    // `pronta`, so the hook neither hands off nor projects.
+    expect(registrarEntrada).toHaveBeenCalledTimes(1);
+    expect(registrarEntrada.mock.results[0]?.value).toBe(false);
+    expect(mockRetryPreparation).not.toHaveBeenCalled();
+    expect(projetar).not.toHaveBeenCalled();
+    expect(outcome).toMatchObject({
+      ok: true,
+      registeredOrganizationId: undefined,
+    });
+    // The document kept the `pronta` entry untouched (no downgrade).
+    const depois = coiabStore.instance.getState();
+    expect(depois.organizacoes[0]).toBe(pronta);
+    // Both slots were already local — the recovery identity is cleared.
+    expect(identityStore.instance.getState()).toStrictEqual({});
+
+    hook.unmount();
+  });
+
+  test('a refusal that is not a re-delivery of a pronta entry fails with invite-registration-missing', async () => {
+    // `entrada` proves only that an entry with that id EXISTS — not that the
+    // registration's write landed. Here the id already exists by ANOTHER
+    // origin (a local creation still `preparando`) and the registration is
+    // refused by a projectId collision with a DIFFERENT local organization:
+    // the outcome must be the typed error, not a success that swallows the
+    // refusal.
+    const ORG_B_ID = 'b2c3d4e5f6071899';
+    const localPreparando: OrganizacaoLocal = {
+      id: ORG_ID,
+      nome: ORG_NAME,
+      estado: 'preparando',
+      confirmacaoPendente: false,
+      materializacao: {
+        monitoramento: {
+          etapa: 'criado',
+          projectId: 'local-monitoramento',
+          template: null,
+          idsAntesDaCriacao: null,
+        },
+        alertas: {
+          etapa: 'criado',
+          projectId: 'local-alertas',
+          template: null,
+          idsAntesDaCriacao: null,
+        },
+      },
+      areaEmExecucao: null,
+      ultimoErro: null,
+    };
+    const outraOrigem: OrganizacaoLocal = {
+      id: ORG_B_ID,
+      nome: 'Org B',
+      estado: 'pronta',
+      confirmacaoPendente: false,
+      materializacao: {
+        monitoramento: {
+          etapa: 'verificado',
+          projectId: 'project-monitoramento',
+          template: {versao: '1', hash: 'hash-b-m'},
+          idsAntesDaCriacao: null,
+        },
+        alertas: {
+          etapa: 'verificado',
+          projectId: 'project-b-alertas',
+          template: {versao: '1', hash: 'hash-b-a'},
+          idsAntesDaCriacao: null,
+        },
+      },
+      areaEmExecucao: null,
+      ultimoErro: null,
+    };
+    coiabStore.instance.setState(
+      {versao: 1, organizacoes: [localPreparando, outraOrigem], ativa: null},
+      true,
+    );
+    const {clientApi, accept} = createFakeClient();
+    accept
+      .mockResolvedValueOnce('project-monitoramento')
+      .mockResolvedValueOnce('project-alertas');
+    const registrarEntrada = jest.spyOn(
+      coiabStore.actions,
+      'registrarEntradaPorConvite',
+    );
+
+    const hook = await renderHook(
+      () => ({
+        acceptBundle: useAcceptOrganizationBundle(),
+        activeProjectId: useActiveProjectId(),
+      }),
+      {wrapper: createWrapper(clientApi)},
+    );
+
+    let outcome: AcceptOrganizationBundleResult | undefined;
+    await act(async () => {
+      outcome = await hook.result.current.acceptBundle.start(makeBundle());
+    });
+
+    expect(hook.result.current.acceptBundle.status).toBe('error');
+    const error = hook.result.current.acceptBundle.error;
+    expect(error).toBeInstanceOf(OrganizationOperationError);
+    expect((error as OrganizationOperationError).code).toBe(
+      'invite-registration-missing',
+    );
+    expect((error as OrganizationOperationError).details?.organizationId).toBe(
+      ORG_ID,
+    );
+    // The registration was attempted and refused.
+    expect(registrarEntrada).toHaveBeenCalledTimes(1);
+    expect(registrarEntrada.mock.results[0]?.value).toBe(false);
+    expect(mockRetryPreparation).not.toHaveBeenCalled();
+    // No write: both entries preserved by reference, ativa untouched.
+    const depois = coiabStore.instance.getState();
+    expect(depois.organizacoes[0]).toBe(localPreparando);
+    expect(depois.organizacoes[1]).toBe(outraOrigem);
+    expect(depois.ativa).toBeNull();
+    // The failure must not unpin the recovery identity.
+    expect(identityStore.instance.getState()).toStrictEqual({
+      [ORG_ID]: {invitorDeviceId: 'invitor-1', roleName: 'Coordinator'},
+    });
+    expect(outcome).toMatchObject({ok: false});
 
     hook.unmount();
   });

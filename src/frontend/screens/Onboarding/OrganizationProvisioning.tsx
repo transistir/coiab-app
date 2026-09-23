@@ -6,7 +6,7 @@ import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {HeaderText} from '../../sharedComponents/Text/HeaderText';
 import {BodyText} from '../../sharedComponents/Text/BodyText';
 import {LoadingIndicator} from '../../sharedComponents/LoadingIndicator';
-import {PrimaryButton} from '../../sharedComponents/Buttons';
+import {PrimaryButton, SecondaryButton} from '../../sharedComponents/Buttons';
 import {AppStackParamsList} from '../../sharedTypes/navigation';
 import {useCoiabOrganizationsState} from '../../contexts/CoiabOrganizationsStoreContext';
 import {useOrganizationActivationContext} from '../../contexts/OrganizationActivationContext';
@@ -16,6 +16,7 @@ import {
   derivarProjectIdAtivo,
   type EstadoOrganizacoes,
   type EtapaArea,
+  organizacaoEmPreparo,
   type OrganizacaoLocal,
 } from '../../lib/organization/coiabOrganizations';
 import {DARK_GREY, RED} from '../../lib/styles';
@@ -91,6 +92,11 @@ const m = defineMessages({
     id: '$1screens.OrganizationSetup.openOrganizationButton',
     defaultMessage: 'Open organization',
   },
+  backButton: {
+    id: '$1screens.OrganizationSetup.backButton',
+    // SPEC A :209 / B :60 — the waiting screen offers a Back button.
+    defaultMessage: 'Back',
+  },
   unavailableTitle: {
     id: '$1screens.OrganizationSetup.unavailableTitle',
     defaultMessage: 'Could not open your organization',
@@ -109,6 +115,16 @@ const m = defineMessages({
       'Finish or discard the record before switching organization',
     description:
       'Blocked boot with work in progress (SPEC A §4.4:149 canonical pending-work string, CA15)',
+  },
+  // ⚑ COPY PENDING SPEC B §5.5: no canonical string exists for a back
+  // attempt refused while the document still holds work to conclude — this
+  // minimal factual descriptor fills the gap (the Fase 4 pattern).
+  backBlocked: {
+    id: '$1screens.OrganizationSetup.backBlocked',
+    defaultMessage:
+      'You cannot leave this screen while an organization operation is in progress.',
+    description:
+      'Shown when a back attempt is prevented (SPEC B §3.2:64/:68, Fase 5)',
   },
 });
 
@@ -169,15 +185,28 @@ function DocumentDrivenProvisioning({
   organizacao,
   ativa,
   avisoDemora,
+  avisoBack,
+  preparacaoEmVoo,
+  voltarParaAtiva,
 }: {
   organizacao: OrganizacaoLocal;
   ativa: EstadoOrganizacoes['ativa'];
   /** SPEC B §3.2:68: shown after 30 s in preparando; never authorizes a retry. */
   avisoDemora: boolean;
+  /** Fase 5: shown when a back attempt was prevented while the work is alive. */
+  avisoBack: boolean;
+  /** `preparando` with a materialization alive in this session. */
+  preparacaoEmVoo: boolean;
+  /** Returns to the operating organization; absent when there is none. */
+  voltarParaAtiva: (() => void) | undefined;
 }) {
   const {formatMessage: t} = useIntl();
   const {status, error, activate, retryPreparation, recoverPendingWork} =
     useOrganizationActivationContext();
+  // Review fronteira P1: `preparando` with nothing alive was interrupted
+  // (the process died mid-preparation) — the resume is offered instead of a
+  // spinner that would never end.
+  const interrompida = organizacao.estado === 'preparando' && !preparacaoEmVoo;
   const [ativando, setAtivando] = React.useState(false);
   // Synchronous guard: the disabled prop alone lets a double tap queue a
   // second activate before the rerender publishes it.
@@ -234,10 +263,12 @@ function DocumentDrivenProvisioning({
     <View style={styles.container}>
       {organizacao.estado === 'preparando' && (
         <>
-          <LoadingIndicator
-            size="large"
-            accessibilityLabel={t(m.preparingStepA11y)}
-          />
+          {preparacaoEmVoo && (
+            <LoadingIndicator
+              size="large"
+              accessibilityLabel={t(m.preparingStepA11y)}
+            />
+          )}
           <HeaderText variant="header2" style={styles.title}>
             {t(m.preparingTitle)}
           </HeaderText>
@@ -274,8 +305,15 @@ function DocumentDrivenProvisioning({
       {trabalhoPendente && (
         <BodyText style={styles.bodyText}>{t(m.pendingWork)}</BodyText>
       )}
+      {avisoBack && (
+        <BodyText
+          style={styles.bodyText}
+          testID="ORG.provisioning-back-blocked">
+          {t(m.backBlocked)}
+        </BodyText>
+      )}
       <AreaStepRows organizacao={organizacao} />
-      {organizacao.estado === 'falha_recuperavel' && (
+      {(organizacao.estado === 'falha_recuperavel' || interrompida) && (
         <PrimaryButton
           testID="ORG.provisioning-retry-preparation-btn"
           fullSize
@@ -309,6 +347,14 @@ function DocumentDrivenProvisioning({
           }}
         />
       )}
+      {voltarParaAtiva && !preparacaoEmVoo && (
+        <SecondaryButton
+          testID="ORG.provisioning-back-to-active-btn"
+          fullSize
+          text={t(m.backButton)}
+          onPress={voltarParaAtiva}
+        />
+      )}
     </View>
   );
 }
@@ -317,9 +363,11 @@ function DocumentDrivenProvisioning({
  * Fail-closed screen for an Organization that is not an open, acknowledged
  * organization yet (SPEC 10.1 / SPEC B §3.3-§4.4).
  *
- * The persisted organization document (`estado.organizacoes[0]`) is the only
- * content authority: `preparando` shows the two area rows with no buttons;
- * `falha_recuperavel` offers Tentar novamente through the activation engine;
+ * The content authority is the organization in preparation — §4.2's
+ * `organizacaoEmPreparo` read — falling back to the first organization
+ * when every one is settled: `preparando` shows the two area rows with
+ * no buttons; `falha_recuperavel` offers Tentar novamente through the
+ * activation engine;
  * `pronta` with a pending confirmation offers Abrir organização and waits;
  * and a settled document the engine failed to open (`recovery` |
  * `unavailable`) says so and reactivates through the engine — blocked work
@@ -329,10 +377,34 @@ function DocumentDrivenProvisioning({
  */
 export const OrganizationProvisioning = ({
   navigation,
+  route,
 }: NativeStackScreenProps<AppStackParamsList, 'OrganizationProvisioning'>) => {
   const estado = useCoiabOrganizationsState();
-  const organizacaoDocument = estado.organizacoes[0];
-  const {status: activationStatus} = useOrganizationActivationContext();
+  // Review fronteira P2-3: the removal explanation is presented over this
+  // surface BEFORE the engine's revalidation publishes the loss, so in that
+  // window A still reads `ready` with its derived id projected. While the
+  // sheet sits above this route, the Home reset below must not fire — it
+  // would drop the explanation the recovery then never restores. The effect
+  // reads the stack fresh: on the reset that mounts this route, render-time
+  // navigation state still carries the previous stack. The key signature
+  // only re-runs the effect when the stack changes (the sheet leaving by
+  // Back).
+  const [pilha, setPilha] = React.useState('');
+  React.useEffect(
+    () =>
+      navigation.addListener('state', e => {
+        setPilha(e.data.state.routes.map(item => item.key).join());
+      }),
+    [navigation],
+  );
+  // The content authority (SPEC B §4.4): the organization still in
+  // preparation anywhere in the document, falling back to the first entry
+  // when all are `pronta` — the recovery/`unavailable` contract below keeps
+  // its authority when a ready organization cannot be opened.
+  const emPreparo = organizacaoEmPreparo(estado);
+  const organizacaoDocument = emPreparo ?? estado.organizacoes[0];
+  const {status: activationStatus, preparacaoViva} =
+    useOrganizationActivationContext();
   // The document's own operational id (SPEC A §4.2 regra 5): null while the
   // confirmation is pending or the document cannot be parsed.
   const derivado = derivarProjectIdAtivo(estado);
@@ -353,18 +425,50 @@ export const OrganizationProvisioning = ({
       setAvisoDemora(false);
     };
   }, [preparando]);
-  // SPEC B §3.2:64/:68 (consult Phase 12:315): while preparando, Back is
-  // blocked at every layer — the router's back-type removals (header back,
-  // the hardware button's GO_BACK dispatch) are prevented, and the Android
-  // hardware handler consumes the press before the native stack pops. Any
-  // other state leaves freely, including this screen's own Home reset, so
-  // only back-type actions are prevented.
+  // SPEC B §3.2:64/:68 (Fase 5, fix round 2): the hold is the SPEC's own
+  // narrow one. §3.2 authorizes the block ONLY "durante uma chamada de
+  // criação/importação" — the document expresses that as an organization
+  // exactly in `preparando` — and only for the user's exits: "bloquear a
+  // saída pelo cabeçalho, gesto e botão Voltar do Android". A recoverable
+  // failure is NOT a call in flight ("Após uma falha, manter a tela de
+  // recuperação e permitir sair do app pelo sistema") and neither is a
+  // pending confirmation ("Antes de confirmar, voltar é permitido"), so
+  // Back passes in both — the OrganizationRepairBanner's entry (a failure
+  // behind a ready organization) must never trap the user on this screen.
+  // The WIDE §4.2 predicate is BLOCKER B1's own Home-reset gate below (a
+  // settled-but-unacknowledged B must not let Home take over); the hold is
+  // NOT its twin — framing it so was Fase 5's design error.
+  // Programmatic removals are not user exits, so they pass untouched:
+  // `usePreventRemove` cannot serve this hold because it preventDefaults
+  // EVERY removal (core's own beforeRemove listener) and a prevented RESET
+  // is consumed-and-dropped — GenerationTransitionGate advances its
+  // generation before dispatching and never retries, and its recovery/
+  // `unavailable` prune has no backstop. §5.5's recovery table makes the
+  // system's routing mandatory. The header back and the JS-side gesture
+  // both dispatch GO_BACK/POP, so the listener covers every exit §3.2
+  // names; the Android hardware press is consumed first below.
+  // Review fronteira P1: the document alone cannot tell a call in flight
+  // from one the process lost — an interrupted `preparando` has no call, so
+  // it is not held (the surface offers the resume and the way back).
+  const preparandoAtiva =
+    preparacaoViva &&
+    estado.organizacoes.some(
+      organizacao => organizacao.estado === 'preparando',
+    );
+  const [avisoBack, setAvisoBack] = React.useState(false);
+  // The state keeps the EVENT (a refused attempt); the notice itself is
+  // derived: it is visible only while the call is in flight, so it clears
+  // on the very commit the hold ends — no clearing effect, no stale render.
   React.useEffect(() => {
-    if (!preparando) return;
+    if (!preparandoAtiva) return;
     const unsubscribe = navigation.addListener('beforeRemove', e => {
       const type = e.data.action.type;
+      // A USER back attempt is refused with an explanation; a programmatic
+      // removal (the generation gate's reset, the system's §5.5
+      // reconciliation routing) is mandatory and never prevented here.
       if (type !== 'GO_BACK' && type !== 'POP') return;
       e.preventDefault();
+      setAvisoBack(true);
     });
     const hardware = BackHandler.addEventListener(
       'hardwareBackPress',
@@ -374,7 +478,7 @@ export const OrganizationProvisioning = ({
       unsubscribe();
       hardware.remove();
     };
-  }, [preparando, navigation]);
+  }, [preparandoAtiva, navigation]);
   // SPEC B (5b): with a persisted organization document, the reconstruction
   // alone must never navigate — Home opens only through a validated
   // activation whose projected id matches the document's own derivation. The
@@ -384,15 +488,48 @@ export const OrganizationProvisioning = ({
   // after the Suspense remount and routes on the same validated condition.
   React.useEffect(() => {
     if (organizacaoDocument === undefined) return;
+    // BLOCKER B1: the Fase 4 handover lands here the moment A is ready AND
+    // operating — the engine never unpublishes 'ready' when B enters
+    // preparation, and both ids still resolve A. The §4.2 predicate is the
+    // gate's own twin of the content authority above: while ANY organization
+    // is un-settled (preparando, recoverable failure, pending confirmation),
+    // this surface stays its owner and Home must not take over.
+    if (emPreparo !== undefined) return;
+    const {routes} = navigation.getState();
+    if (
+      routes
+        .slice(routes.findIndex(item => item.key === route.key) + 1)
+        .some(item => item.name === 'RemovedFromProjectBottomSheet')
+    )
+      return;
     if (activationStatus !== 'ready' || derivado !== activeProjectId) return;
     navigation.reset({index: 0, routes: [{name: 'Home'}]});
   }, [
     organizacaoDocument,
+    emPreparo,
+    pilha,
+    route.key,
     activationStatus,
     derivado,
     activeProjectId,
     navigation,
   ]);
+
+  // Review fronteira P1: while ANOTHER organization is open and operating
+  // (A validated `ready`, its derived id projected), this surface is never a
+  // dead end — outside a call in flight, Back returns to A's Home. Leaving
+  // is the user's explicit choice; the un-settled organization stays reachable
+  // through the selector, the repair banner and the creation guard. `popTo`
+  // returns to the Home already on the stack (its content untouched) or, on
+  // a stack that has none, replaces this surface with one.
+  const operandoOutra =
+    derivado !== null &&
+    derivado === activeProjectId &&
+    activationStatus === 'ready' &&
+    estado.ativa?.organizacaoId !== organizacaoDocument?.id;
+  const voltarParaAtiva = operandoOutra
+    ? () => navigation.popTo('Home', {screen: 'Map'})
+    : undefined;
 
   if (organizacaoDocument === undefined) {
     return (
@@ -406,6 +543,9 @@ export const OrganizationProvisioning = ({
       organizacao={organizacaoDocument}
       ativa={estado.ativa}
       avisoDemora={avisoDemora}
+      avisoBack={avisoBack && preparandoAtiva}
+      preparacaoEmVoo={preparando && preparacaoViva}
+      voltarParaAtiva={voltarParaAtiva}
     />
   );
 };

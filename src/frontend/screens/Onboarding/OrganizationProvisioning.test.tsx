@@ -1,4 +1,5 @@
 import * as React from 'react';
+import {Text} from 'react-native';
 import {
   act,
   render,
@@ -7,7 +8,18 @@ import {
   waitFor,
 } from '@testing-library/react-native';
 import {IntlProvider} from 'react-intl';
-import type {NativeStackScreenProps} from '@react-navigation/native-stack';
+import {
+  NavigationContainer,
+  NavigationContext,
+  NavigationRouteContext,
+  createNavigationContainerRef,
+  type NavigationProp,
+  type ParamListBase,
+} from '@react-navigation/native';
+import {
+  createNativeStackNavigator,
+  type NativeStackScreenProps,
+} from '@react-navigation/native-stack';
 
 import {OrganizationProvisioning} from './OrganizationProvisioning';
 import {
@@ -36,15 +48,55 @@ const activeProjectIdMock = jest.requireMock(
   '../../contexts/ActiveProjectIdStoreContext',
 ) as {__projetarProjectIdAtivo(projectId: string | undefined): void};
 import type {AppStackParamsList} from '../../sharedTypes/navigation';
+
 /**
  * The screen's own Home reset is exercised at the navigator level; the stub
  * keeps the unit tree free of a navigator while still failing loudly if a
  * state change ever reaches for it.
  */
 const navigationReset = jest.fn();
-const navigationAddListener: jest.Mock = jest.fn(() => () => {});
+/** The explicit way back to the operating organization (review P1). */
+const navigationPopTo = jest.fn();
+/**
+ * Registrations are recorded WITH their unsubscribe: the helper below must
+ * dispatch only at a LIVE listener — a stale (already-unsubscribed) closure
+ * would still execute when invoked directly.
+ */
+const navigationSubscriptions: Array<{
+  event: string;
+  listener: (...args: Array<unknown>) => unknown;
+  active: boolean;
+}> = [];
+const navigationAddListener: jest.Mock = jest.fn(
+  (event: string, listener: (...args: Array<unknown>) => unknown) => {
+    const subscription = {
+      event,
+      listener,
+      active: true,
+      unsubscribe: () => {
+        subscription.active = false;
+      },
+    };
+    navigationSubscriptions.push(subscription);
+    return subscription.unsubscribe;
+  },
+);
+const navigationMock = {
+  reset: navigationReset,
+  popTo: navigationPopTo,
+  addListener: navigationAddListener,
+  // The Home-reset hold (P2-3) reads the stack: this screen alone.
+  getState: () => ({
+    index: 0,
+    routes: [
+      {key: 'OrganizationProvisioning', name: 'OrganizationProvisioning'},
+    ],
+  }),
+  // The context provider's value type (NavigationProp) requires the full
+  // helper surface; the stub's contract is the calls the screen makes.
+} as unknown as NavigationProp<ParamListBase>;
 const screenProps = {
-  navigation: {reset: navigationReset, addListener: navigationAddListener},
+  navigation: navigationMock,
   route: {
     key: 'OrganizationProvisioning',
     name: 'OrganizationProvisioning',
@@ -53,7 +105,6 @@ const screenProps = {
   AppStackParamsList,
   'OrganizationProvisioning'
 >;
-
 /**
  * jest-expo resolves the iOS no-op BackHandler (nothing dispatches), so the
  * hardware layer is asserted against the same module path the app runs on
@@ -122,7 +173,11 @@ function renderScreen() {
   return render(
     <IntlProvider locale="en" messages={{}}>
       <CoiabOrganizationsStoreProvider store={store}>
-        <OrganizationProvisioning {...screenProps} />
+        <NavigationContext.Provider value={navigationMock}>
+          <NavigationRouteContext.Provider value={screenProps.route}>
+            <OrganizationProvisioning {...screenProps} />
+          </NavigationRouteContext.Provider>
+        </NavigationContext.Provider>
       </CoiabOrganizationsStoreProvider>
     </IntlProvider>,
   );
@@ -186,19 +241,28 @@ function seedDocument(
 const SLOW_NOTICE =
   'Preparation is taking a while. If it does not continue, close and reopen the application.';
 
+/** Exact English text of the blocked-back notice (Fase 5, ⚑ COPY PENDING). */
+const BACK_BLOCKED =
+  'You cannot leave this screen while an organization operation is in progress.';
+
 beforeEach(() => {
   jest.clearAllMocks();
   store = createCoiabOrganizationsStore({persist: false});
   activate.mockResolvedValue(true);
   retryPreparation.mockResolvedValue(true);
   recoverPendingWork.mockResolvedValue(false);
+  // A document in `preparando` is, by default, a call in flight in this
+  // session; the interrupted case (nothing alive) is set per test.
   activationMock.__setActivation({
     activate,
     retryPreparation,
     recoverPendingWork,
+    preparacaoViva: true,
   });
   activeProjectIdMock.__projetarProjectIdAtivo(undefined);
   backHandlerMock.__live.length = 0;
+  // jest.clearAllMocks resets the mock's call log but not this ledger.
+  navigationSubscriptions.length = 0;
 });
 
 describe('OrganizationProvisioning', () => {
@@ -342,6 +406,43 @@ describe('OrganizationProvisioning', () => {
       expect(
         screen.queryByTestId('ORG.provisioning-retry-activation-btn'),
       ).not.toBeOnTheScreen();
+    });
+  });
+
+  // Multi-organization document (comportamento 5): A settled, ready and
+  // acknowledged FIRST, B still `preparando` behind it. The content
+  // authority is the organization in preparation — the rows are B's own
+  // journal, never the settled first entry's.
+  describe('multi-organization document', () => {
+    test("renders the preparing organization's area rows, not the settled first one's", async () => {
+      seedDocument([
+        organizacao({
+          estado: 'pronta',
+          confirmacaoPendente: false,
+          materializacao: PAR_PRONTA,
+        }),
+        organizacao({
+          id: 'org-2',
+          nome: 'Segunda',
+          estado: 'preparando',
+          materializacao: {
+            monitoramento: etapa({etapa: 'criado', projectId: 'proj-m-2'}),
+            alertas: etapa({etapa: 'ausente'}),
+          },
+        }),
+      ]);
+      await renderScreen();
+
+      expect(
+        screen.getByText('Preparing your organization…'),
+      ).toBeOnTheScreen();
+      // B's rows: one preparing, one waiting.
+      expect(screen.getByText('Monitoring')).toBeOnTheScreen();
+      expect(screen.getByText('Preparing')).toBeOnTheScreen();
+      expect(screen.getByText('Alerts')).toBeOnTheScreen();
+      expect(screen.getByText('Waiting')).toBeOnTheScreen();
+      // Never A's settled "Ready" rows.
+      expect(screen.queryAllByText('Ready')).toHaveLength(0);
     });
   });
 
@@ -538,25 +639,42 @@ describe('OrganizationProvisioning', () => {
     });
   });
 
-  // SPEC B §3.2:64/:68 (consult Phase 12:315): while preparando, Back is
-  // blocked at every layer. In any other state the user leaves normally —
-  // the 10b-i states' own exits must stay untouched.
+  // SPEC B §3.2:64/:68 (Fase 5, fix round 2): the hold is the SPEC's own
+  // narrow one. §3.2 authorizes the block ONLY "durante uma chamada de
+  // criação/importação" — an organization exactly in `preparando` — and
+  // only for the user's exits: "bloquear a saída pelo cabeçalho, gesto e
+  // botão Voltar do Android". A recoverable failure is NOT a call in
+  // flight ("Após uma falha, manter a tela de recuperação e permitir sair
+  // do app pelo sistema") and neither is a pending confirmation ("Antes de
+  // confirmar, voltar é permitido") — Back passes in both, so the repair
+  // banner's entry (a failure behind a ready organization) never traps the
+  // user. Programmatic removals are not user exits: the generation gate's
+  // RESET is the system's mandatory routing (§5.5's recovery table) and
+  // passes untouched — a prevented RESET is consumed-and-dropped, since
+  // the gate advances its generation before dispatching and never retries.
   describe('back lock', () => {
-    /** Dispatches a synthetic beforeRemove event at the active listener. */
+    /**
+     * Dispatches a synthetic beforeRemove event at the screen's active
+     * listener. No listener registered means the screen intercepts nothing:
+     * the returned spy can then only be "not called" — so the
+     * `not.toHaveBeenCalled()` passing-through pins are valid, but they
+     * would also pass vacuously against a listener that registered and
+     * ignored the event; the navigator-level RESET pin below is what
+     * proves a dispatch actually lands.
+     */
     function preventBeforeRemove(actionType: string) {
-      const registrations = navigationAddListener.mock.calls.filter(
-        ([event]) => event === 'beforeRemove',
+      const live = navigationSubscriptions.filter(
+        subscription =>
+          subscription.event === 'beforeRemove' && subscription.active,
       );
-      const listener = registrations.at(-1)?.[1] as
+      const listener = live.at(-1)?.listener as
         | ((e: {
             data: {action: {type: string}};
             preventDefault: () => void;
           }) => void)
         | undefined;
-      if (!listener) {
-        throw new Error('no beforeRemove listener registered');
-      }
       const preventDefault = jest.fn();
+      if (!listener) return preventDefault;
       listener({data: {action: {type: actionType}}, preventDefault});
       return preventDefault;
     }
@@ -573,37 +691,85 @@ describe('OrganizationProvisioning', () => {
       expect(backEvent).toBe('hardwareBackPress');
       expect(backHandler()).toBe(true);
 
-      // Back-type removals are prevented…
-      expect(preventBeforeRemove('GO_BACK')).toHaveBeenCalled();
-      expect(preventBeforeRemove('POP')).toHaveBeenCalled();
-      // …while the screen's own Home reset passes untouched.
+      // A back attempt is answered with prevention and the explanation…
+      await act(async () => {
+        expect(preventBeforeRemove('GO_BACK')).toHaveBeenCalled();
+      });
+      expect(screen.getByText(BACK_BLOCKED)).toBeOnTheScreen();
+      await act(async () => {
+        expect(preventBeforeRemove('POP')).toHaveBeenCalled();
+      });
+      // …while a programmatic RESET (the generation gate's system routing)
+      // passes untouched — preventing it would consume-and-drop the gate's
+      // only dispatch.
       expect(preventBeforeRemove('RESET')).not.toHaveBeenCalled();
     });
 
-    test('leaving preparando removes the hardware-back consumption', async () => {
+    test('a blocked back attempt explains itself and clears when the operation settles', async () => {
+      seedDocument([organizacao({estado: 'preparando'})]);
+      await renderScreen();
+      expect(screen.queryByText(BACK_BLOCKED)).not.toBeOnTheScreen();
+
+      await act(async () => {
+        preventBeforeRemove('GO_BACK');
+      });
+      expect(screen.getByText(BACK_BLOCKED)).toBeOnTheScreen();
+
+      await act(async () => {
+        seedDocument([
+          organizacao({
+            estado: 'pronta',
+            confirmacaoPendente: false,
+            materializacao: PAR_PRONTA,
+          }),
+        ]);
+      });
+      expect(screen.queryByText(BACK_BLOCKED)).not.toBeOnTheScreen();
+    });
+
+    test('leaving the in-preparation document removes the hardware-back consumption', async () => {
       seedDocument([organizacao({estado: 'preparando'})]);
       await renderScreen();
       expect(backHandlerMock.__live).toHaveLength(1);
 
+      // §3.2: a persisted failure is not a call in flight — the recovery
+      // screen must "permitir sair do app pelo sistema".
       await act(async () => {
         seedDocument([organizacao({estado: 'falha_recuperavel'})]);
       });
       expect(backHandlerMock.__live).toHaveLength(0);
+      expect(preventBeforeRemove('GO_BACK')).not.toHaveBeenCalled();
     });
 
     test.each([
       [
-        'a recoverable failure',
+        'a recoverable failure — not a call in flight, §3.2 lets the user leave',
         () => seedDocument([organizacao({estado: 'falha_recuperavel'})]),
       ],
       [
-        'a pending confirmation',
+        'a pending confirmation — "antes de confirmar, voltar é permitido"',
         () =>
           seedDocument([
             organizacao({
               estado: 'pronta',
               confirmacaoPendente: true,
               materializacao: PAR_PRONTA,
+            }),
+          ]),
+      ],
+      [
+        'a recoverable failure behind a ready organization — the repair banner entry',
+        () =>
+          seedDocument([
+            organizacao({
+              estado: 'pronta',
+              confirmacaoPendente: false,
+              materializacao: PAR_PRONTA,
+            }),
+            organizacao({
+              id: 'org-2',
+              nome: 'Segunda',
+              estado: 'falha_recuperavel',
             }),
           ]),
       ],
@@ -658,13 +824,329 @@ describe('OrganizationProvisioning', () => {
         seed();
         await renderScreen();
 
-        expect(
-          navigationAddListener.mock.calls.filter(
-            ([event]) => event === 'beforeRemove',
-          ),
-        ).toHaveLength(0);
         expect(backHandlerMock.default.addEventListener).not.toHaveBeenCalled();
+        // The screen's listener is registered only while a call is in
+        // flight; with none, nothing answers a back attempt with
+        // prevention.
+        expect(preventBeforeRemove('GO_BACK')).not.toHaveBeenCalled();
       },
     );
+  });
+
+  // B5-4 (fix round 2): the generation gate's RESET is the system's own
+  // routing (SPEC B §5.5's recovery table, §3.3's ordered routing) — a
+  // prevented reset is consumed-and-dropped because the gate advances its
+  // generation before dispatching and never retries. Pinned at the
+  // navigator level with the REAL PreventRemoveProvider: a RESET dispatch
+  // (the exact shape GenerationTransitionGate sends in
+  // Navigation/Stack/index.tsx) that removes the held screen must LAND.
+  describe('navigator-level reset passes the hold (GenerationTransitionGate)', () => {
+    const NavStack = createNativeStackNavigator<AppStackParamsList>();
+    const navigationRef = createNavigationContainerRef<AppStackParamsList>();
+    const HomeStub = () => <Text>HOME-REACHED</Text>;
+
+    test('a system reset removes the held screen and lands on its destination', async () => {
+      seedDocument([organizacao({estado: 'preparando'})]);
+      await render(
+        <IntlProvider locale="en" messages={{}}>
+          <CoiabOrganizationsStoreProvider store={store}>
+            <NavigationContainer ref={navigationRef}>
+              <NavStack.Navigator initialRouteName="OrganizationProvisioning">
+                <NavStack.Screen name="Home" component={HomeStub} />
+                <NavStack.Screen
+                  name="OrganizationProvisioning"
+                  component={OrganizationProvisioning}
+                />
+              </NavStack.Navigator>
+            </NavigationContainer>
+          </CoiabOrganizationsStoreProvider>
+        </IntlProvider>,
+      );
+      await screen.findByText('Preparing your organization…');
+
+      await act(async () => {
+        navigationRef.reset({index: 0, routes: [{name: 'Home'}]});
+      });
+
+      expect(screen.getByText('HOME-REACHED')).toBeOnTheScreen();
+      expect(
+        screen.queryByText('Preparing your organization…'),
+      ).not.toBeOnTheScreen();
+    });
+  });
+
+  // BLOCKER B1 (review 7b1a023d): the Fase 4 handover navigates here the
+  // moment A is ready AND operating — the engine never unpublishes its
+  // 'ready' status when B enters preparation, and both ids resolve A. The
+  // surviving hop must not read that pair as "go Home" while the document
+  // still holds an un-settled organization: the surface owns B's
+  // preparation (§4.2 content authority — Fase 3 already renders it).
+  describe('second-creation handover (BLOCKER B1)', () => {
+    test('a ready-and-operating A with B still preparing does NOT reset to Home', async () => {
+      seedDocument(
+        [
+          organizacao({
+            estado: 'pronta',
+            confirmacaoPendente: false,
+            materializacao: PAR_PRONTA,
+          }),
+          organizacao({
+            id: 'org-2',
+            nome: 'Segunda',
+            estado: 'preparando',
+            materializacao: {
+              monitoramento: etapa({etapa: 'criado', projectId: 'proj-m-2'}),
+              alertas: etapa({etapa: 'ausente'}),
+            },
+          }),
+        ],
+        {organizacaoId: 'org-1', area: 'monitoramento'},
+      );
+      activationMock.__setActivation({
+        status: 'ready',
+        activate,
+        retryPreparation,
+        recoverPendingWork,
+      });
+      // Both the projected id and the document's derivation resolve A.
+      activeProjectIdMock.__projetarProjectIdAtivo('proj-m-1');
+      await renderScreen();
+
+      // The surface stays the owner of B's preparation…
+      expect(
+        screen.getByText('Preparing your organization…'),
+      ).toBeOnTheScreen();
+      // …so the validated pair (ready + matching ids) must not bounce Home.
+      expect(navigationReset).not.toHaveBeenCalled();
+    });
+  });
+
+  // Review fronteira P1: a `preparando` document with NO materialization
+  // alive in this session was interrupted (the process died mid-preparation).
+  // The surface is never a buttonless spinner: it offers the resume, lets
+  // Back through, and — with another organization operating — the way back.
+  describe('interrupted preparation (review fronteira P1)', () => {
+    const operandoAComBPreparando = () => {
+      seedDocument(
+        [
+          organizacao({
+            estado: 'pronta',
+            confirmacaoPendente: false,
+            materializacao: PAR_PRONTA,
+          }),
+          organizacao({id: 'org-2', nome: 'Segunda', estado: 'preparando'}),
+        ],
+        {organizacaoId: 'org-1', area: 'monitoramento'},
+      );
+      activeProjectIdMock.__projetarProjectIdAtivo('proj-m-1');
+    };
+
+    test('without a live call the surface offers the resume and does not hold Back', async () => {
+      seedDocument([organizacao({estado: 'preparando'})]);
+      activationMock.__setActivation({
+        activate,
+        retryPreparation,
+        recoverPendingWork,
+        preparacaoViva: false,
+      });
+      const user = userEvent.setup();
+      await renderScreen();
+
+      expect(
+        screen.getByText('Preparing your organization…'),
+      ).toBeOnTheScreen();
+      expect(
+        screen.queryByLabelText('Preparing your organization'),
+      ).not.toBeOnTheScreen();
+      expect(backHandlerMock.default.addEventListener).not.toHaveBeenCalled();
+      expect(
+        navigationSubscriptions.filter(
+          subscription =>
+            subscription.event === 'beforeRemove' && subscription.active,
+        ),
+      ).toHaveLength(0);
+      // No other organization operates: there is nowhere to go back to.
+      expect(
+        screen.queryByTestId('ORG.provisioning-back-to-active-btn'),
+      ).not.toBeOnTheScreen();
+
+      await user.press(
+        screen.getByTestId('ORG.provisioning-retry-preparation-btn'),
+      );
+      expect(retryPreparation).toHaveBeenCalledTimes(1);
+      expect(retryPreparation).toHaveBeenCalledWith('org-1');
+    });
+
+    test('with A operating, Back returns to A without touching B', async () => {
+      operandoAComBPreparando();
+      activationMock.__setActivation({
+        status: 'ready',
+        activate,
+        retryPreparation,
+        recoverPendingWork,
+        preparacaoViva: false,
+      });
+      const user = userEvent.setup();
+      await renderScreen();
+
+      await user.press(
+        screen.getByTestId('ORG.provisioning-back-to-active-btn'),
+      );
+      expect(navigationPopTo).toHaveBeenCalledWith('Home', {screen: 'Map'});
+      expect(navigationReset).not.toHaveBeenCalled();
+      expect(retryPreparation).not.toHaveBeenCalled();
+      expect(activate).not.toHaveBeenCalled();
+    });
+
+    test('while the call is alive there is no exit and no resume', async () => {
+      operandoAComBPreparando();
+      activationMock.__setActivation({
+        status: 'ready',
+        activate,
+        retryPreparation,
+        recoverPendingWork,
+        preparacaoViva: true,
+      });
+      await renderScreen();
+
+      expect(
+        screen.getByLabelText('Preparing your organization'),
+      ).toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('ORG.provisioning-back-to-active-btn'),
+      ).not.toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('ORG.provisioning-retry-preparation-btn'),
+      ).not.toBeOnTheScreen();
+      expect(backHandlerMock.__live).toHaveLength(1);
+    });
+  });
+
+  // The reset's original contract (first accept/activation): a document with
+  // ONLY a settled, acknowledged organization — no preparation anywhere —
+  // still opens Home through the validated pair. BLOCKER B1's gate must not
+  // kill this path.
+  describe('settled-document Home reset (first-accept contract)', () => {
+    test('a ready-and-operating settled document with no preparation resets to Home', async () => {
+      seedDocument(
+        [
+          organizacao({
+            estado: 'pronta',
+            confirmacaoPendente: false,
+            materializacao: PAR_PRONTA,
+          }),
+        ],
+        {organizacaoId: 'org-1', area: 'monitoramento'},
+      );
+      activationMock.__setActivation({
+        status: 'ready',
+        activate,
+        retryPreparation,
+        recoverPendingWork,
+      });
+      activeProjectIdMock.__projetarProjectIdAtivo('proj-m-1');
+      await renderScreen();
+
+      expect(navigationReset).toHaveBeenCalledTimes(1);
+      expect(navigationReset).toHaveBeenCalledWith({
+        index: 0,
+        routes: [{name: 'Home'}],
+      });
+    });
+
+    test('a mismatched projected id never validates the reset', async () => {
+      seedDocument(
+        [
+          organizacao({
+            estado: 'pronta',
+            confirmacaoPendente: false,
+            materializacao: PAR_PRONTA,
+          }),
+        ],
+        {organizacaoId: 'org-1', area: 'monitoramento'},
+      );
+      activationMock.__setActivation({
+        status: 'ready',
+        activate,
+        retryPreparation,
+        recoverPendingWork,
+      });
+      activeProjectIdMock.__projetarProjectIdAtivo('proj-other');
+      await renderScreen();
+
+      expect(navigationReset).not.toHaveBeenCalled();
+    });
+
+    // Review fronteira P2-3: the removal explanation is presented over this
+    // surface before the engine publishes the loss — A still reads `ready`
+    // with its id projected. The sheet above holds the Home reset; once it
+    // leaves the stack, the reset's own contract applies again.
+    test('the removal sheet above holds the Home reset until it leaves the stack', async () => {
+      const NavStack = createNativeStackNavigator<AppStackParamsList>();
+      const navigationRef = createNavigationContainerRef<AppStackParamsList>();
+      const HomeStub = () => <Text>HOME-REACHED</Text>;
+      const SheetStub = () => <Text>SHEET-REACHED</Text>;
+      seedDocument(
+        [
+          organizacao({
+            estado: 'pronta',
+            confirmacaoPendente: false,
+            materializacao: PAR_PRONTA,
+          }),
+        ],
+        {organizacaoId: 'org-1', area: 'monitoramento'},
+      );
+      activationMock.__setActivation({
+        status: 'ready',
+        activate,
+        retryPreparation,
+        recoverPendingWork,
+      });
+      activeProjectIdMock.__projetarProjectIdAtivo('proj-m-1');
+      await render(
+        <IntlProvider locale="en" messages={{}}>
+          <CoiabOrganizationsStoreProvider store={store}>
+            <NavigationContainer
+              ref={navigationRef}
+              initialState={{
+                index: 1,
+                routes: [
+                  {name: 'OrganizationProvisioning'},
+                  {
+                    name: 'RemovedFromProjectBottomSheet',
+                    params: {projectId: 'proj-m-1'},
+                  },
+                ],
+              }}>
+              <NavStack.Navigator>
+                <NavStack.Screen name="Home" component={HomeStub} />
+                <NavStack.Screen
+                  name="OrganizationProvisioning"
+                  component={OrganizationProvisioning}
+                />
+                <NavStack.Screen
+                  name="RemovedFromProjectBottomSheet"
+                  component={SheetStub}
+                  options={{presentation: 'transparentModal'}}
+                />
+              </NavStack.Navigator>
+            </NavigationContainer>
+          </CoiabOrganizationsStoreProvider>
+        </IntlProvider>,
+      );
+      await screen.findByText('SHEET-REACHED');
+      expect(
+        navigationRef.getRootState().routes.map(item => item.name),
+      ).toEqual(['OrganizationProvisioning', 'RemovedFromProjectBottomSheet']);
+
+      await act(async () => {
+        navigationRef.goBack();
+      });
+
+      expect(await screen.findByText('HOME-REACHED')).toBeOnTheScreen();
+      expect(
+        navigationRef.getRootState().routes.map(item => item.name),
+      ).toEqual(['Home']);
+    });
   });
 });

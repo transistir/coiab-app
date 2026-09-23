@@ -1,5 +1,6 @@
 import * as React from 'react';
 import {
+  BackHandler,
   Keyboard,
   KeyboardAvoidingView,
   StyleSheet,
@@ -20,9 +21,13 @@ import {
   useCoiabOrganizationsState,
   useCoiabOrganizationsStoreContext,
 } from '../../contexts/CoiabOrganizationsStoreContext';
-import {derivarProjectIdAtivo} from '../../lib/organization/coiabOrganizations';
+import {
+  derivarProjectIdAtivo,
+  organizacaoEmPreparo,
+} from '../../lib/organization/coiabOrganizations';
 import {markerFor} from '../../lib/organization/marker';
 import {ErroPacote} from '../../lib/organization/pacotes';
+import {OrganizationOperationError} from '../../lib/organization/fanout';
 import {AppStackParamsList} from '../../sharedTypes/navigation';
 
 const m = defineMessages({
@@ -69,6 +74,13 @@ const m = defineMessages({
   creating: {
     id: '$1screens.Onboarding.CreateOrganization.creating',
     defaultMessage: 'Creating Organization…',
+  },
+  // ⚑ SPEC (A4): there is no canonical copy for the materializer's typed
+  // refusal (SPEC B §5.5 guard) — this minimal factual descriptor fills
+  // the gap. COPY PENDING A SPEC DECISION.
+  creationInProgress: {
+    id: '$1screens.Onboarding.CreateOrganization.creationInProgress',
+    defaultMessage: 'An Organization creation is already in progress.',
   },
   // ⚑ SPEC (A4): there is no canonical string yet for a package failure
   // BEFORE any write — `$1screens.OrganizationSetup.failureBody`
@@ -127,13 +139,118 @@ export const CreateOrganization = ({
   const {instance} = useCoiabOrganizationsStoreContext();
   const estado = useCoiabOrganizationsState();
   const materializador = useOrganizationMaterializer();
-  const organizacaoNoDocumento = estado.organizacoes[0];
+  // SPEC B §3.3 items 2-3 and §5.5: a document with a creation in flight
+  // (or a pending confirmation) outranks the form — the provisioning
+  // surface owns its recovery and its confirmation — and a settled
+  // document NOT being operated (no resolvable active selection) is the
+  // same handover: starting over it is never authorized. The ONE state
+  // that leaves an explicitly opened form alone is the settled,
+  // operating one (pronta, acknowledged, selection resolvable): there the
+  // device already operates the organization, and a second creation is
+  // the materializer's own guarded call.
+  // The handover is the ONE replace that must land while a hold was set
+  // (SPEC B §3.2). It is DERIVED (`deveTrocar` below): it fires only in a
+  // commit where the flight has ended (`!iniciando`), so the hold's
+  // listener below is already unsubscribed when the replace dispatches and
+  // beforeRemove passes it untouched. Dispatching it under the hold and
+  // re-dispatching a prevented action off the beforeRemove emission (the
+  // `VISITED_ROUTE_KEYS` skip) committed it while the provider's
+  // route-key registration still held this route:
+  // PreventRemoveProvider refuses to register a hold for a route the
+  // navigation state no longer contains (the mount crash this screen had).
+  const [startResolvido, setStartResolvido] = React.useState(false);
   const [erro, setErro] = React.useState<Error | null>(null);
   const [emptyNameError, setEmptyNameError] = React.useState(false);
   // A synchronous re-entry guard: a state check alone would let a second
   // press slip through before the rerender publishes the loading UI.
   const iniciandoRef = React.useRef(false);
   const [iniciando, setIniciando] = React.useState(false);
+  // The layer's typed refusal (SPEC B §5.5) surfaces as a blocked state:
+  // the form stays, explains, and re-arms — never crash, never silence.
+  const [bloqueado, setBloqueado] = React.useState(false);
+
+  // SPEC B §3.2:64/:68 (Fase 5, fix round 3): while a start is in flight,
+  // Back cannot remove this screen — the one state §3.2 names ("durante
+  // uma chamada de criação/importação"). The screen explains the hold in
+  // BOTH of its stages: the name form renders the loading state
+  // (`m.creating`), and the §3.1 listener below has already turned a first
+  // back into the intro hop — where the SAME `m.creating` copy renders
+  // while the flight is alive, so a dropped second back is never silent.
+  // The typed refusal (SPEC B §5.5) is NOT a live operation of this
+  // screen: a refused start never resolves, so it does not extend the
+  // hold — §3.2's authorization stays narrow, and Back keeps working
+  // after a refusal (`iniciando` alone is the predicate — never
+  // `|| bloqueado`, B5-3).
+  // Programmatic removals are not user exits, so they pass untouched:
+  // `usePreventRemove` cannot serve this hold because it preventDefaults
+  // EVERY removal (core's own beforeRemove listener) and a prevented RESET
+  // is consumed-and-dropped — GenerationTransitionGate advances its
+  // generation before dispatching and never retries. Same defect B5-4
+  // fixed in OrganizationProvisioning: §5.5's recovery table makes the
+  // system's routing mandatory. The header back and the JS-side gesture
+  // both dispatch GO_BACK/POP, so the listener covers every exit §3.2
+  // names; the Android hardware press is consumed first below.
+  React.useEffect(() => {
+    if (!iniciando) return;
+    const unsubscribe = navigation.addListener('beforeRemove', e => {
+      const type = e.data.action.type;
+      // A USER back attempt is held (the removal stays dropped: a back at
+      // the name stage was already turned into the screen's own intro hop
+      // by the §3.1 listener below); a programmatic removal (the
+      // generation gate's reset, the system's §5.5 reconciliation
+      // routing) is mandatory and never prevented here.
+      if (type !== 'GO_BACK' && type !== 'POP') return;
+      e.preventDefault();
+    });
+    const hardware = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => true,
+    );
+    return () => {
+      unsubscribe();
+      hardware.remove();
+    };
+  }, [iniciando, navigation]);
+
+  // The handover is DERIVED, not armed (the lint-clean form of the same
+  // deferred dispatch): the provisioning surface owns a document with
+  // organization work alive, and a start that RESOLVED while the document
+  // still resolves a selection is the screen's own job — both replace as
+  // soon as the flight ends and the hold is down. Both inputs are
+  // render-pure: the document read is external-store state, and
+  // `startResolvido` is only ever set from the start's own `.then`
+  // (an interaction event, never an effect).
+  // Plano §4 (Fase 4): the organization in preparation need not have been
+  // started here — it may ride in the persisted document from another
+  // origin (see the gate comment at the top of the component).
+  const existeOrganizacaoEmPreparo = organizacaoEmPreparo(estado) !== undefined;
+  const documentoAssentadoSemSelecao =
+    estado.organizacoes.length > 0 && derivarProjectIdAtivo(estado) === null;
+
+  // `bloqueado` does NOT gate the handover. A typed refusal means THIS
+  // screen's start never resolved — the refusal is thrown before the
+  // `.then`, so `startResolvido` stays false and the gate is naturally
+  // false after a refusal. `bloqueado` itself is a terminal banner state
+  // (cleared only by a fresh press), so reading it here would pin Back and
+  // the handover shut until the user re-attempts; when the document later
+  // settles without a resolvable selection — the other flight registering
+  // its organization — the provisioning surface owns it (§3.3 item 2) and
+  // the replace must land regardless of the stale banner.
+  const deveTrocar =
+    (existeOrganizacaoEmPreparo ||
+      documentoAssentadoSemSelecao ||
+      startResolvido) &&
+    !iniciando;
+
+  // The deferred handover dispatch (estado → effect → replace): it fires
+  // only when `deveTrocar` is true — by then `iniciando` is false, the
+  // hold's listener is unsubscribed, and beforeRemove passes the replace
+  // untouched. No setState in the body: the predicate is derived above,
+  // and navigation is the external system.
+  React.useEffect(() => {
+    if (!deveTrocar) return;
+    navigation.replace('OrganizationProvisioning');
+  }, [deveTrocar, navigation]);
 
   const trimmedName = name.trim();
   const tooLong = isNameTooLong(name);
@@ -158,32 +275,22 @@ export const CreateOrganization = ({
     setEmptyNameError(false);
   }
 
-  // SPEC B §3.3 items 2-3 and §5.5:241: a persisted organization outranks
-  // the form — preparando/falha_recuperavel belong to the provisioning
-  // surface's recovery, and a pending confirmation to its "Abrir
-  // organização" tap — so starting a second operation over one is never
-  // authorized. The ONE state that leaves an explicitly opened form alone
-  // is the settled one (pronta, acknowledged, selection resolvable): there
-  // the device already operates the organization, and the materializer
-  // itself refuses a second registration.
-  React.useEffect(() => {
-    if (organizacaoNoDocumento && derivarProjectIdAtivo(estado) === null) {
-      navigation.replace('OrganizationProvisioning');
-    }
-  }, [organizacaoNoDocumento, estado, navigation]);
-
   // A rejection means NOTHING was persisted (the materializer routes every
   // mid-materialization failure into the document as `falha_recuperavel`
   // instead of throwing): the form stays with its draft and explains the
   // error. A document that appeared during the attempt is the provisioning
   // surface's business, not an error sheet.
   React.useEffect(() => {
-    if (!erro || organizacaoNoDocumento) return;
+    // PRE-MERGE 4: the sheet gate is the SAME §4.2 predicate as the catch's
+    // race swallow below (`organizacaoEmPreparo` on the document — defined
+    // iff classificarDocumento ∈ {preparando, confirmacao}). The two gates
+    // must evolve together; if one changes, change its twin.
+    if (!erro || organizacaoEmPreparo(estado)) return;
     navigation.navigate('ErrorBottomSheet', {error: erro});
-  }, [erro, organizacaoNoDocumento, navigation]);
+  }, [erro, estado, navigation]);
 
   function handleCreatePress() {
-    if (iniciandoRef.current || organizacaoNoDocumento) {
+    if (iniciandoRef.current || deveTrocar) {
       return;
     }
     if (trimmedName.length === 0) {
@@ -202,13 +309,51 @@ export const CreateOrganization = ({
       return;
     }
     iniciandoRef.current = true;
+    // The blocked state re-arms HERE, at the start of a new attempt (the
+    // state's own contract): a message that survived into a fresh press
+    // would falsify "creation in progress" once the previous flight ended.
+    // A refusal re-sets it in the catch below; success (or a race swallow)
+    // leaves it cleared.
+    setBloqueado(false);
     setIniciando(true);
     materializador
       .iniciar(trimmedName)
+      .then(() => {
+        // BLOCKER 2: a resolved start means the operation is alive and the
+        // provisioning surface owns it (it renders `preparando`/
+        // confirmation by id — Fase 3). When the document still resolves
+        // an active selection (the second creation over a settled A), the
+        // derived predicate above stays false — `derivarProjectIdAtivo`
+        // never turns null — so the handover is the screen's own job:
+        // `startResolvido` flips the `deveTrocar` gate and the effect
+        // BELOW dispatches the replace once the flight ends. For a first
+        // creation the predicate has already replaced this screen (no
+        // selection ⇒ null ⇒ no spurious second replace). `.then` before
+        // `.catch`: a refusal must never navigate.
+        setStartResolvido(true);
+      })
       .catch((error: unknown) => {
-        // The CURRENT document decides: a rejection that raced against a
-        // persisted intent is the provisioning surface's business.
-        if (instance.getState().organizacoes[0]) return;
+        // The layer's OWN refusal (SPEC B §5.5, now in the materializer
+        // layer): the start was refused while another creation is in
+        // flight — signal the blocked state; the document is the
+        // provisioning surface's business, not an error sheet. Branch on
+        // the typed code (fanout.ts), never the message.
+        if (
+          error instanceof OrganizationOperationError &&
+          error.code === 'creation-in-progress'
+        ) {
+          setBloqueado(true);
+          return;
+        }
+        // A rejection that raced against a creation in flight (or a
+        // pending confirmation) is the provisioning surface's business —
+        // the §4.2 predicate (`organizacaoEmPreparo`, not "any entry
+        // exists") is what makes a document un-creatable-over. PRE-MERGE
+        // 4: this is the SAME predicate as the error-sheet effect's gate
+        // above — the twin gates must evolve together.
+        if (organizacaoEmPreparo(instance.getState())) {
+          return;
+        }
         const falha = toError(error);
         if (falha instanceof ErroPacote) {
           // Decisão A/A4: ErrorBottomSheet surfaces `error.code` in its
@@ -239,6 +384,15 @@ export const CreateOrganization = ({
                 {t(m.createOrganization)}
               </HeaderText>
               <BodyText style={styles.body}>{t(m.createIntroBody)}</BodyText>
+              {/* B5-2 (fix round 2): a first back lands here (the §3.1
+                  hop) while the start is still in flight — the creating
+                  copy is what the user sees when a second back is dropped
+                  by the hold above; without it the drop is silent. */}
+              {iniciando && (
+                <BodyText variant="smallMeta" testID="ORG.create-creating">
+                  {t(m.creating)}
+                </BodyText>
+              )}
             </View>
             <View style={styles.buttonContainer}>
               <PrimaryButton
@@ -290,6 +444,11 @@ export const CreateOrganization = ({
             </View>
           </View>
           <View style={styles.buttonContainer}>
+            {bloqueado && (
+              <BodyText variant="smallMeta" testID="ORG.create-blocked">
+                {t(m.creationInProgress)}
+              </BodyText>
+            )}
             {iniciando ? (
               <>
                 <LoadingIndicator size="large" style={{flex: 0}} />

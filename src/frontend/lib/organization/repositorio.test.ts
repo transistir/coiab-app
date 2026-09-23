@@ -194,7 +194,7 @@ describe('repositorioDoStore', () => {
     expect(store.instance.getState().organizacoes).toStrictEqual([]);
   });
 
-  test('read e write recusam duas organizações', () => {
+  test('read devolve um documento com duas organizações', () => {
     MMKVStoreInitializer.setItem(
       COIAB_ORGANIZATIONS_STORAGE_KEY,
       JSON.stringify({state: documentoComDuasOrganizacoes(), version: 1}),
@@ -203,19 +203,46 @@ describe('repositorioDoStore', () => {
       createCoiabOrganizationsStore({persist: true}),
     );
 
-    // Index-0 clobbering: a second organization must never be silently
-    // replaced by a single-organization write.
-    expect(repositorio.read).toThrow('multiple-organizations-unsupported');
+    // N organizações são legais no documento durável (§4.2 não impõe
+    // cardinalidade): read devolve as duas, sem lançar e sem truncar.
+    expect(repositorio.read()).toStrictEqual(documentoComDuasOrganizacoes());
+  });
 
-    const antes = lerRaw();
-    expect(() =>
-      repositorio.write({
-        versao: 1,
-        organizacoes: [organizacaoPreparando()],
-        ativa: null,
-      }),
-    ).toThrow('multiple-organizations-unsupported');
-    expect(lerRaw()).toBe(antes);
+  test('write persiste um documento com duas organizações', () => {
+    // The materializer's real flow: read the N-org document, upsert its own
+    // organization, write the WHOLE array back over the N-org state.
+    MMKVStoreInitializer.setItem(
+      COIAB_ORGANIZATIONS_STORAGE_KEY,
+      JSON.stringify({state: documentoComDuasOrganizacoes(), version: 1}),
+    );
+    const store = createCoiabOrganizationsStore({persist: true});
+    const repositorio = repositorioDoStore(store);
+    const documento = documentoComDuasOrganizacoes();
+    const primeiraRenomeada = {
+      ...documento.organizacoes[0]!,
+      nome: 'Primeira Atualizada',
+    };
+    const atualizado = {
+      ...documento,
+      organizacoes: [primeiraRenomeada, documento.organizacoes[1]!],
+    };
+
+    repositorio.write(atualizado);
+
+    // The durable value keeps the exact §4.2 shape with BOTH organizations.
+    expect(JSON.parse(lerRaw() as string)).toStrictEqual({
+      state: atualizado,
+      version: 1,
+    });
+    // Published state carries the written array by reference.
+    expect(store.instance.getState().organizacoes).toBe(
+      atualizado.organizacoes,
+    );
+    // A fresh store rehydrates BOTH organizations.
+    expect(
+      createCoiabOrganizationsStore({persist: true}).instance.getState()
+        .organizacoes,
+    ).toStrictEqual(atualizado.organizacoes);
   });
 
   test('write recusa um documento que o parser §4.2 rejeita', () => {

@@ -55,7 +55,12 @@ export type OrganizationErrorCode =
   | 'bundle-inconsistent'
   | 'accept-partial'
   | 'incomplete-org-blocks-create'
-  | 'organization-not-incomplete';
+  | 'organization-not-incomplete'
+  | 'invite-registration-missing'
+  // SPEC B §5.5: a start refused because another creation is in flight or
+  // awaits confirmation (materializar's guard) — the UI surfaces it as a
+  // blocked state, not an error sheet.
+  | 'creation-in-progress';
 
 export class OrganizationOperationError extends Error {
   readonly code: OrganizationErrorCode;

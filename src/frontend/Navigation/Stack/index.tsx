@@ -147,6 +147,10 @@ const ROTAS_SEM_PROJETO: Record<string, true> = {
   OrganizationInviteReceived: true,
   InviteSuccessfullyAccepted: true,
   InviteCanceled: true,
+  // Review fronteira P2-3: the removal explanation reads the removed slot
+  // from its route params, and it must survive the recovery its own
+  // detection triggers.
+  RemovedFromProjectBottomSheet: true,
 };
 
 export function GenerationTransitionGate({
@@ -201,7 +205,19 @@ export const RootStackNavigator = () => {
   // reconstruction no longer routes — marker-only project rows say nothing
   // about what this device may open.
   const estadoOrganizacoes = useCoiabOrganizationsState();
-  const documento = classificarDocumento(estadoOrganizacoes);
+  // SPEC A §4.2 rule 5: the operational project is DERIVED from the active
+  // selection — the screen set is the document's word, never the legacy
+  // persisted active id.
+  const derivado = derivarProjectIdAtivo(estadoOrganizacoes);
+  // Review fronteira P1: an un-settled SECOND organization never takes the
+  // cold start away from an operable selection. With A ready, acknowledged
+  // and selected, the boot routes A's activation exactly as a settled
+  // document would (loader, then Home), while B resumes in the background
+  // and stays reachable through the selector and the creation guard —
+  // otherwise the landing screen depended on whether A published before or
+  // after the navigator mounted.
+  const documento =
+    derivado !== null ? 'pronta' : classificarDocumento(estadoOrganizacoes);
   // SPEC A §5.3:168/§4.2: the content history is keyed by the organization
   // + area selection, so switching either one starts a fresh content root.
   const contextKey = estadoOrganizacoes.ativa
@@ -210,10 +226,6 @@ export const RootStackNavigator = () => {
   // The engine's published selection (SPEC A §5.2): status, generation and
   // the operational project id the provider projects into the active store.
   const {status: ativacao, generation} = useOrganizationActivationContext();
-  // SPEC A §4.2 rule 5: the operational project is DERIVED from the active
-  // selection — the screen set is the document's word, never the legacy
-  // persisted active id.
-  const derivado = derivarProjectIdAtivo(estadoOrganizacoes);
   const isNotReadyForInvite =
     security.authState !== 'authenticated' ||
     !deviceInfo.name ||

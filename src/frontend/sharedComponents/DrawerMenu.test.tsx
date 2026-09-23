@@ -331,6 +331,42 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     expect(mockNavigation.navigate).toHaveBeenCalledWith('Organizations');
   });
 
+  test('acesso antecipado ligado, organização operável: a entrada de criar existe', async () => {
+    await renderDrawer(true, {earlyAccess: true});
+
+    expect(
+      await screen.findByTestId('MENU.criar-organizacao'),
+    ).toBeOnTheScreen();
+  });
+
+  test('acesso antecipado desligado, organização operável: criar não existe', async () => {
+    // Q3 exige AS DUAS condições — flag ligado e organização operável.
+    await renderDrawer(true);
+
+    await screen.findByTestId('MENU.area-alertas');
+    expect(
+      screen.queryByTestId('MENU.criar-organizacao'),
+    ).not.toBeOnTheScreen();
+  });
+
+  test('acesso antecipado ligado, sem organização operável: criar não existe', async () => {
+    await renderDrawer(false, {earlyAccess: true});
+
+    await screen.findByTestId('MENU.main-action-button');
+    expect(
+      screen.queryByTestId('MENU.criar-organizacao'),
+    ).not.toBeOnTheScreen();
+  });
+
+  test('toque em criar: fecha o menu e abre CreateOrganization', async () => {
+    await renderDrawer(true, {earlyAccess: true});
+
+    await fireEvent.press(await screen.findByTestId('MENU.criar-organizacao'));
+
+    expect(closeMenu).toHaveBeenCalledTimes(1);
+    expect(mockNavigation.navigate).toHaveBeenCalledWith('CreateOrganization');
+  });
+
   test('não-regressão com a entrada de troca: áreas, nome e proibidas ausentes', async () => {
     // §6.1:197 — "Trocar de projeto" e "Nova colaboração" não voltam com o
     // seletor; o nome e os dois acessos fixos continuam como estavam.

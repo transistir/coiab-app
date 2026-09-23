@@ -21,6 +21,8 @@ import type {Preset} from '@comapeo/schema';
 
 import type {Metadata} from '../../src/frontend/sharedTypes';
 import {
+  AREAS,
+  criarEtapaAreaAusente,
   derivarProjectIdAtivo,
   type Area,
   type EstadoOrganizacoes,
@@ -114,10 +116,17 @@ export function useSeedOrganization(
   return {ensure};
 }
 
-/** One organization of a `FlowStateSpec.organizations` seed. */
-export type SeedOrganization = {id: string; name: string};
+/**
+ * One organization of a `FlowStateSpec.organizations` seed. `preparing` names
+ * the area its materialization is running on (`areaEmExecucao`); unset, the
+ * organization is ready.
+ */
+export type SeedOrganization = {id: string; name: string; preparing?: Area};
 
-/** Ready organizations for the COIAB document, `activeId` selected. */
+/**
+ * Organizations for the COIAB document, `activeId` selected. At most one of
+ * them may be `preparing`, and never the active one.
+ */
 export type SeedOrganizations = {
   list: ReadonlyArray<SeedOrganization>;
   activeId: string;
@@ -131,10 +140,24 @@ const AREA_PROJECT_NAMES: Record<Area, string> = {
 const AREA_SLOTS: Record<Area, Slot> = {monitoramento: 'm', alertas: 'a'};
 
 /**
+ * The areas whose project `organization` has already created: every area of
+ * a ready organization, and of one being prepared, the areas the materializer
+ * walked through (`AREAS` order) up to the one in execution.
+ */
+export function seededAreas(organization: SeedOrganization): Area[] {
+  const {preparing} = organization;
+  return preparing ? AREAS.slice(0, AREAS.indexOf(preparing) + 1) : [...AREAS];
+}
+
+/**
  * The COIAB document (SPEC A §4.2) a device holds once every organization in
  * `organizations` finished materializing and was acknowledged: each one
  * `pronta` with both areas `verificado` on the `projectIds` seeded for it, and
  * `activeId`'s Monitoramento selected.
+ *
+ * An organization marked `preparing` is instead caught mid-materialization:
+ * `preparando`, the areas before the one in execution `verificado`, that one
+ * `importando` on its created project, and the rest still `ausente`.
  *
  * Checked with the app's own derivation, which parses the document first: a
  * seed the app would reject throws here instead of quietly leaving the
@@ -142,33 +165,44 @@ const AREA_SLOTS: Record<Area, Slot> = {monitoramento: 'm', alertas: 'a'};
  */
 export function buildOrganizationDocument(
   organizations: SeedOrganizations,
-  projectIds: ReadonlyMap<string, Record<Area, string>>,
+  projectIds: ReadonlyMap<string, Partial<Record<Area, string>>>,
 ): EstadoOrganizacoes {
+  if (organizations.list.filter(({preparing}) => preparing).length > 1) {
+    throw new Error(
+      'Storybook organizations seed allows at most one organization being prepared',
+    );
+  }
+
   const document: EstadoOrganizacoes = {
     versao: 1,
-    organizacoes: organizations.list.map(({id, name}) => {
+    organizacoes: organizations.list.map(organization => {
+      const {id, name, preparing} = organization;
       const ids = projectIds.get(id);
-      if (!ids) {
+      const linked = seededAreas(organization);
+      if (!ids || linked.some(area => !ids[area])) {
         throw new Error(`Storybook organization ${id} has no seeded projects`);
       }
-      // Pinned the way the integration seed pins them: the document only
-      // requires a non-empty version and hash.
-      const verificada = (area: Area): EtapaArea => ({
-        etapa: 'verificado',
-        projectId: ids[area],
-        template: {versao: '1', hash: area},
-        idsAntesDaCriacao: null,
-      });
+      const etapa = (area: Area): EtapaArea => {
+        if (!linked.includes(area)) return criarEtapaAreaAusente();
+        // Pinned the way the integration seed pins them: the document only
+        // requires a non-empty version and hash.
+        return {
+          etapa: area === preparing ? 'importando' : 'verificado',
+          projectId: ids[area]!,
+          template: {versao: '1', hash: area},
+          idsAntesDaCriacao: null,
+        };
+      };
       return {
         id,
         nome: name,
-        estado: 'pronta',
+        estado: preparing ? 'preparando' : 'pronta',
         confirmacaoPendente: false,
         materializacao: {
-          monitoramento: verificada('monitoramento'),
-          alertas: verificada('alertas'),
+          monitoramento: etapa('monitoramento'),
+          alertas: etapa('alertas'),
         },
-        areaEmExecucao: null,
+        areaEmExecucao: preparing ?? null,
         ultimoErro: null,
       };
     }),
@@ -184,16 +218,17 @@ export function buildOrganizationDocument(
 }
 
 /**
- * Ensure both area projects of every organization in `organizations` exist,
- * and return the COIAB document for them (`buildOrganizationDocument`).
+ * Ensure the area projects of every organization in `organizations` exist
+ * (`seededAreas`), and return the COIAB document for them
+ * (`buildOrganizationDocument`).
  *
  * The projects are named and marked the way the materializer names and marks
  * them, so the core rows and the document agree. Idempotent: an existing
  * project is found by its marker (organization id + slot), never by name —
  * every organization has a "Monitoramento". The document is returned to the
- * caller: the plural `organizations` axis provides it story-scoped through
- * `FlowStateScope`, while the complete singular `organization` axis writes it
- * through the app's persisted organization repository.
+ * caller, which writes it through the app's persisted organization
+ * repository — for the plural `organizations` axis and the complete singular
+ * `organization` axis alike.
  */
 export function useSeedOrganizationDocument(
   organizations: SeedOrganizations | undefined,
@@ -231,12 +266,13 @@ export function useSeedOrganizationDocument(
     };
 
     // Sequential, so a first run creates the projects in one stable order.
-    const projectIds = new Map<string, Record<Area, string>>();
+    const projectIds = new Map<string, Partial<Record<Area, string>>>();
     for (const organization of organizations.list) {
-      projectIds.set(organization.id, {
-        monitoramento: await projectIdFor(organization, 'monitoramento'),
-        alertas: await projectIdFor(organization, 'alertas'),
-      });
+      const ids: Partial<Record<Area, string>> = {};
+      for (const area of seededAreas(organization)) {
+        ids[area] = await projectIdFor(organization, area);
+      }
+      projectIds.set(organization.id, ids);
     }
 
     return buildOrganizationDocument(organizations, projectIds);

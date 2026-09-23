@@ -351,10 +351,7 @@ export const withRealNavigator: Decorator = (Story, context) => {
   return (
     <View style={{flex: 1}} testID={storyReadyTestId}>
       <View style={{flex: 1}} testID={routeReadyTestId}>
-        <FlowStateScope
-          key={`${context.id}:${ready.key}`}
-          resolved={ready}
-          fallback={<FlowStatePlaceholder spec={flow?.state} />}>
+        <FlowStateScope key={`${context.id}:${ready.key}`} resolved={ready}>
           <NavigationContainer
             key={`${context.id}:${ready.key}`}
             ref={navigationRef}
@@ -369,9 +366,9 @@ export const withRealNavigator: Decorator = (Story, context) => {
             onUnhandledAction={handleUnhandledAction}>
             <RootStackNavigator />
           </NavigationContainer>
-          {/* Sibling AFTER the container, inside the same scope so a scope
-              holding on its fallback mounts both together (see the guard's
-              doc comment): child effects run before parent effects, so a
+          {/* Sibling AFTER the container, inside the same keyed scope so it
+              mounts both together (see the guard's doc comment): child
+              effects run before parent effects, so a
               guard inside the container would subscribe before it and LIFO
               dispatch would let the container pop the seeded stack first. */}
           <ConsumeHardwareBackPress
