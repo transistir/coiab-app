@@ -85,6 +85,13 @@ const navigationMock = {
   reset: navigationReset,
   popTo: navigationPopTo,
   addListener: navigationAddListener,
+  // The Home-reset hold (P2-3) reads the stack: this screen alone.
+  getState: () => ({
+    index: 0,
+    routes: [
+      {key: 'OrganizationProvisioning', name: 'OrganizationProvisioning'},
+    ],
+  }),
   // The context provider's value type (NavigationProp) requires the full
   // helper surface; the stub's contract is the calls the screen makes.
 } as unknown as NavigationProp<ParamListBase>;
@@ -1068,6 +1075,78 @@ describe('OrganizationProvisioning', () => {
       await renderScreen();
 
       expect(navigationReset).not.toHaveBeenCalled();
+    });
+
+    // Review fronteira P2-3: the removal explanation is presented over this
+    // surface before the engine publishes the loss — A still reads `ready`
+    // with its id projected. The sheet above holds the Home reset; once it
+    // leaves the stack, the reset's own contract applies again.
+    test('the removal sheet above holds the Home reset until it leaves the stack', async () => {
+      const NavStack = createNativeStackNavigator<AppStackParamsList>();
+      const navigationRef = createNavigationContainerRef<AppStackParamsList>();
+      const HomeStub = () => <Text>HOME-REACHED</Text>;
+      const SheetStub = () => <Text>SHEET-REACHED</Text>;
+      seedDocument(
+        [
+          organizacao({
+            estado: 'pronta',
+            confirmacaoPendente: false,
+            materializacao: PAR_PRONTA,
+          }),
+        ],
+        {organizacaoId: 'org-1', area: 'monitoramento'},
+      );
+      activationMock.__setActivation({
+        status: 'ready',
+        activate,
+        retryPreparation,
+        recoverPendingWork,
+      });
+      activeProjectIdMock.__projetarProjectIdAtivo('proj-m-1');
+      await render(
+        <IntlProvider locale="en" messages={{}}>
+          <CoiabOrganizationsStoreProvider store={store}>
+            <NavigationContainer
+              ref={navigationRef}
+              initialState={{
+                index: 1,
+                routes: [
+                  {name: 'OrganizationProvisioning'},
+                  {
+                    name: 'RemovedFromProjectBottomSheet',
+                    params: {projectId: 'proj-m-1'},
+                  },
+                ],
+              }}>
+              <NavStack.Navigator>
+                <NavStack.Screen name="Home" component={HomeStub} />
+                <NavStack.Screen
+                  name="OrganizationProvisioning"
+                  component={OrganizationProvisioning}
+                />
+                <NavStack.Screen
+                  name="RemovedFromProjectBottomSheet"
+                  component={SheetStub}
+                  options={{presentation: 'transparentModal'}}
+                />
+              </NavStack.Navigator>
+            </NavigationContainer>
+          </CoiabOrganizationsStoreProvider>
+        </IntlProvider>,
+      );
+      await screen.findByText('SHEET-REACHED');
+      expect(
+        navigationRef.getRootState().routes.map(item => item.name),
+      ).toEqual(['OrganizationProvisioning', 'RemovedFromProjectBottomSheet']);
+
+      await act(async () => {
+        navigationRef.goBack();
+      });
+
+      expect(await screen.findByText('HOME-REACHED')).toBeOnTheScreen();
+      expect(
+        navigationRef.getRootState().routes.map(item => item.name),
+      ).toEqual(['Home']);
     });
   });
 });

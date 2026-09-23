@@ -377,8 +377,26 @@ function DocumentDrivenProvisioning({
  */
 export const OrganizationProvisioning = ({
   navigation,
+  route,
 }: NativeStackScreenProps<AppStackParamsList, 'OrganizationProvisioning'>) => {
   const estado = useCoiabOrganizationsState();
+  // Review fronteira P2-3: the removal explanation is presented over this
+  // surface BEFORE the engine's revalidation publishes the loss, so in that
+  // window A still reads `ready` with its derived id projected. While the
+  // sheet sits above this route, the Home reset below must not fire — it
+  // would drop the explanation the recovery then never restores. The effect
+  // reads the stack fresh: on the reset that mounts this route, render-time
+  // navigation state still carries the previous stack. The key signature
+  // only re-runs the effect when the stack changes (the sheet leaving by
+  // Back).
+  const [pilha, setPilha] = React.useState('');
+  React.useEffect(
+    () =>
+      navigation.addListener('state', e => {
+        setPilha(e.data.state.routes.map(item => item.key).join());
+      }),
+    [navigation],
+  );
   // The content authority (SPEC B §4.4): the organization still in
   // preparation anywhere in the document, falling back to the first entry
   // when all are `pronta` — the recovery/`unavailable` contract below keeps
@@ -477,11 +495,20 @@ export const OrganizationProvisioning = ({
     // is un-settled (preparando, recoverable failure, pending confirmation),
     // this surface stays its owner and Home must not take over.
     if (emPreparo !== undefined) return;
+    const {routes} = navigation.getState();
+    if (
+      routes
+        .slice(routes.findIndex(item => item.key === route.key) + 1)
+        .some(item => item.name === 'RemovedFromProjectBottomSheet')
+    )
+      return;
     if (activationStatus !== 'ready' || derivado !== activeProjectId) return;
     navigation.reset({index: 0, routes: [{name: 'Home'}]});
   }, [
     organizacaoDocument,
     emPreparo,
+    pilha,
+    route.key,
     activationStatus,
     derivado,
     activeProjectId,

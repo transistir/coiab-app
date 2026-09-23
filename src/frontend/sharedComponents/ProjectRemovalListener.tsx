@@ -72,20 +72,35 @@ const SlotRoleListener = ({projectId}: {projectId: string}) => {
       // surface BEFORE the engine publishes the loss — both routes are
       // projectless, so the generation gate's recovery rule keeps them —
       // and names the removed slot itself, which may be the unselected one.
+      // Full-state reset with fresh keys (see OrganizationInviteReceived): a
+      // partial `{index, routes}` is overwritten by the removed Home route's
+      // nested-navigator cleanup. The provisioning surface holds its own
+      // Home reset while the sheet sits above it (review fronteira P2-3).
+      const estadoAtual = navigation.getState();
       if (
         event.role.roleId === BLOCKED_ROLE_ID &&
-        navigation.getState()?.routes.at(-1)?.name !==
-          'RemovedFromProjectBottomSheet'
-      )
+        estadoAtual &&
+        estadoAtual.routes.at(-1)?.name !== 'RemovedFromProjectBottomSheet'
+      ) {
+        const sufixo = Date.now().toString(36);
         navigation.dispatch(
           CommonActions.reset({
+            ...estadoAtual,
             index: 1,
             routes: [
-              {name: 'OrganizationProvisioning'},
-              {name: 'RemovedFromProjectBottomSheet', params: {projectId}},
+              {
+                key: `OrganizationProvisioning-${sufixo}`,
+                name: 'OrganizationProvisioning',
+              },
+              {
+                key: `RemovedFromProjectBottomSheet-${sufixo}`,
+                name: 'RemovedFromProjectBottomSheet',
+                params: {projectId},
+              },
             ],
           }),
         );
+      }
       if (despachandoRef.current) return;
       despachandoRef.current = true;
       void revalidate().finally(() => {
