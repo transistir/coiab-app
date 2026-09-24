@@ -590,7 +590,7 @@
     "message": "Este convite está incompleto. Peça para quem enviou convidar você novamente."
   },
   "$1screens.OrganizationInviteReceived.invitedToJoin": {
-    "message": "Você foi convidado para..."
+    "message": "Você recebeu um convite para..."
   },
   "$1screens.OrganizationInviteReceived.joinAsRole": {
     "message": "Entrar como {role}?"
@@ -993,7 +993,7 @@
     "message": "Remover o dispositivo"
   },
   "$1screens.YourTeam.ReviewOrganizationInvite.couldNotReach": {
-    "message": "Não foi possível alcançar {name} para {project}."
+    "message": "Não foi possível conectar com {name} para {project}."
   },
   "$1screens.YourTeam.ReviewOrganizationInvite.genericError": {
     "message": "Algo deu errado ao convidar {name} para {project}."
