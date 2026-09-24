@@ -515,6 +515,72 @@ describe('materialização da organização', () => {
     expect(h.client.createProject).toHaveBeenCalledTimes(2);
     expect(h.document.organizacoes[0]?.nome).toBe('Original');
   });
+  test('CA11/CA12: remount com OUTRO client e o MESMO repository junta a operação em andamento pelo nome normalizado', async () => {
+    // The test above reuses `h.client` for the remount, so it only exercises
+    // the client-keyed join. A REAL remount rebuilds the wrapper: the client
+    // object is NEW and only the repository is memoized across it — the join
+    // must then come from the repository-keyed registry.
+    const h = harness();
+    let releaseCreation!: () => void;
+    let creationEntered!: () => void;
+    const blocked = new Promise<void>(resolve => {
+      releaseCreation = resolve;
+    });
+    const entered = new Promise<void>(resolve => {
+      creationEntered = resolve;
+    });
+    h.client.createProject.mockImplementation(
+      async ({name, projectDescription}) => {
+        if (h.client.createProject.mock.calls.length === 1) {
+          creationEntered();
+          await blocked;
+        }
+        const id = `id-${h.projects.length}`;
+        h.projects.push(id);
+        h.settings.set(id, {name, sendStats: false, projectDescription});
+        return id;
+      },
+    );
+    const started = h.service.start('Comunidade');
+    await entered;
+    // Blocked inside the first createProject: the intent is already
+    // persisted (estado 'preparando'), so the §5.5 gate that decides the
+    // cross-client join is satisfiable.
+    const remountedClient = {
+      listProjects: jest.fn(async () => []),
+      createProject: jest.fn(async () => 'never-created'),
+      getDeviceInfo: jest.fn(async () => ({
+        deviceId: 'device',
+        name: 'Meu aparelho',
+        deviceType: 'mobile' as const,
+      })),
+      setDeviceInfo: jest.fn(async () => {}),
+      getProject: jest.fn(),
+    };
+    const remounted = createMaterializer({
+      client: remountedClient,
+      templates: h.templates,
+      repository: h.repository,
+      generateId: () => '2222222222222222',
+    });
+    // SAME normalized name (padding differs): the submission JOINS the
+    // in-flight operation — resolved with the VERY SAME promise, never
+    // refused.
+    const joined = remounted.start('  Comunidade  ');
+    expect(joined).toBe(started);
+    // The join ran none of its own work.
+    expect(remountedClient.createProject).not.toHaveBeenCalled();
+    expect(remountedClient.listProjects).not.toHaveBeenCalled();
+    expect(h.templates.prepare).toHaveBeenCalledTimes(1);
+    releaseCreation();
+    await Promise.all([started, joined]);
+    expect(h.client.createProject).toHaveBeenCalledTimes(2);
+    expect(h.document.organizacoes).toHaveLength(1);
+    expect(h.document.organizacoes[0]).toMatchObject({
+      nome: 'Comunidade',
+      estado: 'pronta',
+    });
+  });
   test('M-1: start and resume through two client wrappers share the repository operation and journal exactly two projects', async () => {
     const h = harness();
     let releaseCreation!: () => void;
@@ -759,6 +825,104 @@ describe('materialização da organização', () => {
       nome: 'Órgão Um',
       estado: 'pronta',
     });
+  });
+  test('P2: com DOIS registros divergentes em voo (client→A, repository→B) a recusa de creation-in-progress independe do registro consultado primeiro', async () => {
+    // The P2 test above pairs a foreign client with the SAME repository, so
+    // only ONE lock entry is ever in flight. Here TWO genuine creations run
+    // concurrently (clientA+repoA 'Água'; clientB+repoB 'Batata') and a
+    // wrapper pairs clientA with repoB: its client-keyed registry points at
+    // 'Água' and its repository-keyed one at 'Batata' — two distinct
+    // operations, no dedup. A submission must be refused when EITHER entry
+    // carries a different name, whichever registry is consulted first:
+    // reading only the client-keyed one would JOIN the submission into
+    // 'Água' while 'Batata' is still mid-flight on this repository.
+    const ha = harnessMulti();
+    const hb = harnessMulti();
+    // Gate BOTH genuine creations inside their first createProject: when the
+    // divergent submissions are judged, both intents are already persisted.
+    const portao = (h: ReturnType<typeof harnessMulti>) => {
+      let soltar!: () => void;
+      let entrar!: () => void;
+      const solto = new Promise<void>(resolve => {
+        soltar = resolve;
+      });
+      const entrou = new Promise<void>(resolve => {
+        entrar = resolve;
+      });
+      h.client.createProject.mockImplementation(
+        async ({name, projectDescription}) => {
+          if (h.client.createProject.mock.calls.length === 1) {
+            entrar();
+            await solto;
+          }
+          const id = `id-${h.projects.length}`;
+          h.projects.push(id);
+          h.settings.set(id, {name, sendStats: false, projectDescription});
+          return id;
+        },
+      );
+      return {soltar, entrar};
+    };
+    const portaoA = portao(ha);
+    const portaoB = portao(hb);
+    const emVooA = ha.service.start('Água');
+    await portaoA.entrar;
+    const emVooB = hb.service.start('Batata');
+    await portaoB.entrar;
+
+    // (1) client entry 'Água' (matches), repository entry 'Batata'
+    // (diverges — consulted SECOND): the refusal must still come.
+    const divergenteAB = createMaterializer({
+      client: ha.client,
+      templates: hb.templates,
+      repository: hb.repository,
+      generateId: () => '2222222222222222',
+    });
+    // (2) The mirrored wrapper: client entry 'Batata' (diverges — consulted
+    // FIRST), repository entry 'Água' (matches). Same refusal, other order.
+    const divergenteBA = createMaterializer({
+      client: hb.client,
+      templates: ha.templates,
+      repository: ha.repository,
+      generateId: () => '3333333333333333',
+    });
+    const peloCliente = divergenteAB.start('Água');
+    const peloRepositorio = divergenteBA.start('Água');
+
+    for (const recusado of [peloCliente, peloRepositorio]) {
+      expect(recusado).not.toBe(emVooA);
+      expect(recusado).not.toBe(emVooB);
+      await expect(recusado).rejects.toThrow(OrganizationOperationError);
+      await expect(recusado).rejects.toMatchObject({
+        code: 'creation-in-progress',
+      });
+    }
+    // The refused intents prepared and created nothing of their own (each
+    // wrapper would have hit the OTHER harness's prepare if it had run) —
+    // while the gates are closed each genuine creation sits inside its own
+    // single createProject call and nothing else may have reached Core.
+    expect(ha.templates.prepare).toHaveBeenCalledTimes(1);
+    expect(hb.templates.prepare).toHaveBeenCalledTimes(1);
+    expect(ha.client.createProject).toHaveBeenCalledTimes(1);
+    expect(hb.client.createProject).toHaveBeenCalledTimes(1);
+
+    portaoA.soltar();
+    portaoB.soltar();
+    await Promise.all([emVooA, emVooB]);
+    // Each in-flight creation settled on its own document; the refused
+    // submissions became NO organization anywhere.
+    expect(ha.document.organizacoes).toHaveLength(1);
+    expect(ha.document.organizacoes[0]).toMatchObject({
+      nome: 'Água',
+      estado: 'pronta',
+    });
+    expect(hb.document.organizacoes).toHaveLength(1);
+    expect(hb.document.organizacoes[0]).toMatchObject({
+      nome: 'Batata',
+      estado: 'pronta',
+    });
+    expect(ha.client.createProject).toHaveBeenCalledTimes(2);
+    expect(hb.client.createProject).toHaveBeenCalledTimes(2);
   });
   test.each([
     '',
