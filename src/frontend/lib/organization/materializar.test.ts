@@ -849,6 +849,7 @@ describe('materialização da organização', () => {
       const entrou = new Promise<void>(resolve => {
         entrar = resolve;
       });
+      void entrou;
       h.client.createProject.mockImplementation(
         async ({name, projectDescription}) => {
           if (h.client.createProject.mock.calls.length === 1) {
