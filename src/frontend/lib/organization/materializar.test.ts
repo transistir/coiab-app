@@ -488,7 +488,7 @@ describe('materialização da organização', () => {
       expect(h.projects).toEqual(['id-0', 'id-1']);
     },
   );
-  test('CA11/CA12: double submit, remount and start with an existing organization share one operation', async () => {
+  test('CA11/CA12: double submit and remount with the SAME name share one operation', async () => {
     const h = harness();
     const other = createMaterializer({
       client: h.client,
@@ -496,10 +496,12 @@ describe('materialização da organização', () => {
       repository: h.repository,
       generateId: () => '2222222222222222',
     });
+    // Double tap and remount submit the SAME name: all three calls resolve
+    // with the ONE operation — none of them is refused.
     await Promise.all([
       h.service.start('Original'),
-      h.service.start('Double'),
-      other.start('Remount'),
+      h.service.start('Original'),
+      other.start('Original'),
     ]);
     expect(h.client.createProject).toHaveBeenCalledTimes(2);
     expect(h.document.organizacoes[0]?.nome).toBe('Original');
@@ -512,6 +514,72 @@ describe('materialização da organização', () => {
     });
     expect(h.client.createProject).toHaveBeenCalledTimes(2);
     expect(h.document.organizacoes[0]?.nome).toBe('Original');
+  });
+  test('CA11/CA12: remount com OUTRO client e o MESMO repository junta a operação em andamento pelo nome normalizado', async () => {
+    // The test above reuses `h.client` for the remount, so it only exercises
+    // the client-keyed join. A REAL remount rebuilds the wrapper: the client
+    // object is NEW and only the repository is memoized across it — the join
+    // must then come from the repository-keyed registry.
+    const h = harness();
+    let releaseCreation!: () => void;
+    let creationEntered!: () => void;
+    const blocked = new Promise<void>(resolve => {
+      releaseCreation = resolve;
+    });
+    const entered = new Promise<void>(resolve => {
+      creationEntered = resolve;
+    });
+    h.client.createProject.mockImplementation(
+      async ({name, projectDescription}) => {
+        if (h.client.createProject.mock.calls.length === 1) {
+          creationEntered();
+          await blocked;
+        }
+        const id = `id-${h.projects.length}`;
+        h.projects.push(id);
+        h.settings.set(id, {name, sendStats: false, projectDescription});
+        return id;
+      },
+    );
+    const started = h.service.start('Comunidade');
+    await entered;
+    // Blocked inside the first createProject: the intent is already
+    // persisted (estado 'preparando'), so the §5.5 gate that decides the
+    // cross-client join is satisfiable.
+    const remountedClient = {
+      listProjects: jest.fn(async () => []),
+      createProject: jest.fn(async () => 'never-created'),
+      getDeviceInfo: jest.fn(async () => ({
+        deviceId: 'device',
+        name: 'Meu aparelho',
+        deviceType: 'mobile' as const,
+      })),
+      setDeviceInfo: jest.fn(async () => {}),
+      getProject: jest.fn(),
+    };
+    const remounted = createMaterializer({
+      client: remountedClient,
+      templates: h.templates,
+      repository: h.repository,
+      generateId: () => '2222222222222222',
+    });
+    // SAME normalized name (padding differs): the submission JOINS the
+    // in-flight operation — resolved with the VERY SAME promise, never
+    // refused.
+    const joined = remounted.start('  Comunidade  ');
+    expect(joined).toBe(started);
+    // The join ran none of its own work.
+    expect(remountedClient.createProject).not.toHaveBeenCalled();
+    expect(remountedClient.listProjects).not.toHaveBeenCalled();
+    expect(h.templates.prepare).toHaveBeenCalledTimes(1);
+    releaseCreation();
+    await Promise.all([started, joined]);
+    expect(h.client.createProject).toHaveBeenCalledTimes(2);
+    expect(h.document.organizacoes).toHaveLength(1);
+    expect(h.document.organizacoes[0]).toMatchObject({
+      nome: 'Comunidade',
+      estado: 'pronta',
+    });
   });
   test('M-1: start and resume through two client wrappers share the repository operation and journal exactly two projects', async () => {
     const h = harness();
@@ -602,7 +670,11 @@ describe('materialização da organização', () => {
       repository: h.repository,
       generateId: () => '2222222222222222',
     });
-    const second = other.start('Segunda');
+    // The SAME name: a differently named foreign start is judged by the
+    // cross-name rule instead (typed 'creation-in-progress', P2 test). This
+    // pin keeps the generic judgment for an equal-named NEW intent with
+    // nothing persisted: it may not join and resolve as success.
+    const second = other.start('Primeira');
     // Still blocked inside prepare: the second intent must have created
     // nothing and awaited nothing.
     expect(h.client.createProject).not.toHaveBeenCalled();
@@ -667,9 +739,12 @@ describe('materialização da organização', () => {
       repository: h.repository,
       generateId: () => '2222222222222222',
     });
-    const third = other.start('Terceira');
-    // Still held inside prepare with NOTHING persisted: the foreign intent
-    // must have created nothing and awaited nothing.
+    const third = other.start('Segunda');
+    // The SAME name as the in-flight start: a differently named foreign
+    // start is judged by the cross-name rule instead (typed
+    // 'creation-in-progress', P2 test). Held inside prepare with NOTHING
+    // persisted: the foreign intent must have created nothing and awaited
+    // nothing.
     expect(h.client.createProject).not.toHaveBeenCalled();
     releasePreparation();
     await started;
@@ -678,6 +753,177 @@ describe('materialização da organização', () => {
     await expect(third).rejects.toThrow('operation-in-progress');
     expect(h.client.createProject).toHaveBeenCalledTimes(2);
     expect(otherClient.createProject).not.toHaveBeenCalled();
+  });
+  test('P2: start com nome diferente durante uma criação em andamento recusa com creation-in-progress — nunca join silencioso', async () => {
+    const h = harnessMulti();
+    let soltarPreparo!: () => void;
+    let entrouNoPreparo!: () => void;
+    const solto = new Promise<void>(resolve => {
+      soltarPreparo = resolve;
+    });
+    const entrou = new Promise<void>(resolve => {
+      entrouNoPreparo = resolve;
+    });
+    h.templates.prepare.mockImplementation(async () => {
+      entrouNoPreparo();
+      await solto;
+      return {
+        monitoramento: {ref: {versao: '1', hash: 'm'}, filePath: '/local/m'},
+        alertas: {ref: {versao: '1', hash: 'a'}, filePath: '/local/a'},
+      };
+    });
+    const emAndamento = h.service.start('Órgão Um');
+    await entrou;
+
+    // (1) The SAME wrapper with the name edited between taps — a join would
+    // resolve 'Órgão Dois' with the organization 'Órgão Um' provisioned.
+    const nomeEditado = h.service.start('Órgão Dois');
+    // (2) A genuinely different client: the refusal must also come through
+    // the repository-keyed registry, not only the client-keyed one.
+    const outroClient = {
+      listProjects: jest.fn(async () => []),
+      createProject: jest.fn(async () => 'never-created'),
+      getDeviceInfo: jest.fn(async () => ({
+        deviceId: 'device',
+        name: 'Meu aparelho',
+        deviceType: 'mobile' as const,
+      })),
+      setDeviceInfo: jest.fn(async () => {}),
+      getProject: jest.fn(),
+    };
+    const outro = createMaterializer({
+      client: outroClient,
+      templates: h.templates,
+      repository: h.repository,
+      generateId: () => '2222222222222222',
+    });
+    const estranho = outro.start('Órgão Dois');
+
+    // Neither call may resolve with the in-flight operation (a join would
+    // make CreateOrganization navigate as if 'Órgão Dois' existed).
+    expect(nomeEditado).not.toBe(emAndamento);
+    await expect(nomeEditado).rejects.toThrow(OrganizationOperationError);
+    await expect(nomeEditado).rejects.toMatchObject({
+      code: 'creation-in-progress',
+    });
+    expect(estranho).not.toBe(emAndamento);
+    await expect(estranho).rejects.toThrow(OrganizationOperationError);
+    await expect(estranho).rejects.toMatchObject({
+      code: 'creation-in-progress',
+    });
+    // The refused intents prepared and created nothing of their own.
+    expect(h.templates.prepare).toHaveBeenCalledTimes(1);
+    expect(h.client.createProject).not.toHaveBeenCalled();
+    expect(outroClient.createProject).not.toHaveBeenCalled();
+
+    soltarPreparo();
+    await emAndamento;
+    // Only the name that WON the race exists: the refused submission never
+    // became an organization.
+    expect(h.document.organizacoes).toHaveLength(1);
+    expect(h.document.organizacoes[0]).toMatchObject({
+      nome: 'Órgão Um',
+      estado: 'pronta',
+    });
+  });
+  test('P2: com DOIS registros divergentes em voo (client→A, repository→B) a recusa de creation-in-progress independe do registro consultado primeiro', async () => {
+    // The P2 test above pairs a foreign client with the SAME repository, so
+    // only ONE lock entry is ever in flight. Here TWO genuine creations run
+    // concurrently (clientA+repoA 'Água'; clientB+repoB 'Batata') and a
+    // wrapper pairs clientA with repoB: its client-keyed registry points at
+    // 'Água' and its repository-keyed one at 'Batata' — two distinct
+    // operations, no dedup. A submission must be refused when EITHER entry
+    // carries a different name, whichever registry is consulted first:
+    // reading only the client-keyed one would JOIN the submission into
+    // 'Água' while 'Batata' is still mid-flight on this repository.
+    const ha = harnessMulti();
+    const hb = harnessMulti();
+    // Gate BOTH genuine creations inside their first createProject: when the
+    // divergent submissions are judged, both intents are already persisted.
+    const portao = (h: ReturnType<typeof harnessMulti>) => {
+      let soltar!: () => void;
+      let entrar!: () => void;
+      const solto = new Promise<void>(resolve => {
+        soltar = resolve;
+      });
+      const entrou = new Promise<void>(resolve => {
+        entrar = resolve;
+      });
+      void entrou;
+      h.client.createProject.mockImplementation(
+        async ({name, projectDescription}) => {
+          if (h.client.createProject.mock.calls.length === 1) {
+            entrar();
+            await solto;
+          }
+          const id = `id-${h.projects.length}`;
+          h.projects.push(id);
+          h.settings.set(id, {name, sendStats: false, projectDescription});
+          return id;
+        },
+      );
+      return {soltar, entrar};
+    };
+    const portaoA = portao(ha);
+    const portaoB = portao(hb);
+    const emVooA = ha.service.start('Água');
+    await portaoA.entrar;
+    const emVooB = hb.service.start('Batata');
+    await portaoB.entrar;
+
+    // (1) client entry 'Água' (matches), repository entry 'Batata'
+    // (diverges — consulted SECOND): the refusal must still come.
+    const divergenteAB = createMaterializer({
+      client: ha.client,
+      templates: hb.templates,
+      repository: hb.repository,
+      generateId: () => '2222222222222222',
+    });
+    // (2) The mirrored wrapper: client entry 'Batata' (diverges — consulted
+    // FIRST), repository entry 'Água' (matches). Same refusal, other order.
+    const divergenteBA = createMaterializer({
+      client: hb.client,
+      templates: ha.templates,
+      repository: ha.repository,
+      generateId: () => '3333333333333333',
+    });
+    const peloCliente = divergenteAB.start('Água');
+    const peloRepositorio = divergenteBA.start('Água');
+
+    for (const recusado of [peloCliente, peloRepositorio]) {
+      expect(recusado).not.toBe(emVooA);
+      expect(recusado).not.toBe(emVooB);
+      await expect(recusado).rejects.toThrow(OrganizationOperationError);
+      await expect(recusado).rejects.toMatchObject({
+        code: 'creation-in-progress',
+      });
+    }
+    // The refused intents prepared and created nothing of their own (each
+    // wrapper would have hit the OTHER harness's prepare if it had run) —
+    // while the gates are closed each genuine creation sits inside its own
+    // single createProject call and nothing else may have reached Core.
+    expect(ha.templates.prepare).toHaveBeenCalledTimes(1);
+    expect(hb.templates.prepare).toHaveBeenCalledTimes(1);
+    expect(ha.client.createProject).toHaveBeenCalledTimes(1);
+    expect(hb.client.createProject).toHaveBeenCalledTimes(1);
+
+    portaoA.soltar();
+    portaoB.soltar();
+    await Promise.all([emVooA, emVooB]);
+    // Each in-flight creation settled on its own document; the refused
+    // submissions became NO organization anywhere.
+    expect(ha.document.organizacoes).toHaveLength(1);
+    expect(ha.document.organizacoes[0]).toMatchObject({
+      nome: 'Água',
+      estado: 'pronta',
+    });
+    expect(hb.document.organizacoes).toHaveLength(1);
+    expect(hb.document.organizacoes[0]).toMatchObject({
+      nome: 'Batata',
+      estado: 'pronta',
+    });
+    expect(ha.client.createProject).toHaveBeenCalledTimes(2);
+    expect(hb.client.createProject).toHaveBeenCalledTimes(2);
   });
   test.each([
     '',
@@ -1109,7 +1355,8 @@ describe('materialização da organização', () => {
     });
 
     // The journal is replaced externally. The in-flight callback must leave
-    // the replacement intact, and another client must wait for it to settle.
+    // the replacement intact; a differently named start from another client
+    // is REFUSED (cross-name rule) — it must not join the in-flight start.
     const replacement = documentoAmbosVerificados();
     replacement.organizacoes[0]!.id = '5555555555555555';
     repository.write(replacement);
@@ -1134,10 +1381,16 @@ describe('materialização da organização', () => {
       generateId: () => '6666666666666666',
     });
     const waiting = serviceB.start('Órgão Dois');
-    expect(waiting).toBe(operacao1);
+    // Cross-name: refused instead of joined — the old assertion
+    // (`waiting).toBe(operacao1)` pinned the silent-join bug this rule
+    // removes. The late-callback guarantees below are unchanged.
+    expect(waiting).not.toBe(operacao1);
+    await expect(waiting).rejects.toMatchObject({
+      code: 'creation-in-progress',
+    });
     const antes = JSON.stringify(document);
     resolverCriacao!('id-late');
-    await Promise.all([operacao1, waiting]);
+    await operacao1;
     expect(JSON.stringify(document)).toBe(antes);
     expect(JSON.stringify(document)).not.toContain('id-late');
     expect(clientA.getProject).not.toHaveBeenCalled();
@@ -1261,6 +1514,208 @@ describe('materialização da organização', () => {
         alertas: {etapa: 'verificado', projectId: '2222222222222222-a'},
       },
     });
+  });
+
+  test.each(['resume', 'retry'] as const)(
+    'multi-org: start durante %s em andamento recusa com erro tipado — nunca join silencioso',
+    async via => {
+      const h = harnessMulti();
+      const area = (etapa: 'ausente' | 'criado'): EtapaArea => ({
+        etapa,
+        projectId: null,
+        template: {versao: '1', hash: 'm'},
+        idsAntesDaCriacao: null,
+      });
+      // Interrupted journal of A: `preparando` (resume) or `falha_recuperavel`
+      // (retry), both areas still without a project — the recovery creates
+      // the two of it when it settles.
+      h.repository.write({
+        versao: 1,
+        organizacoes: [
+          organizacaoProntaReconhecida({
+            estado: via === 'retry' ? 'falha_recuperavel' : 'preparando',
+            ultimoErro:
+              via === 'retry'
+                ? {
+                    codigo: 'preparation-failed',
+                    area: null,
+                    ocorridoEm: '2026-01-01T00:00:00.000Z',
+                  }
+                : null,
+            materializacao: {
+              monitoramento: area('ausente'),
+              alertas: area('ausente'),
+            },
+          }),
+        ],
+        ativa: null,
+      });
+      h.repository.write.mockClear();
+      let soltar!: () => void;
+      let entradaNoPrepare!: () => void;
+      const solto = new Promise<void>(resolve => {
+        soltar = resolve;
+      });
+      const entrou = new Promise<void>(resolve => {
+        entradaNoPrepare = resolve;
+      });
+      h.templates.prepare.mockImplementation(async () => {
+        entradaNoPrepare();
+        await solto;
+        return {
+          monitoramento: {ref: {versao: '1', hash: 'm'}, filePath: '/local/m'},
+          alertas: {ref: {versao: '1', hash: 'a'}, filePath: '/local/a'},
+        };
+      });
+      const recuperando =
+        via === 'retry' ? h.service.retry() : h.service.resume();
+      await entrou;
+
+      const segunda = h.service.start('Segunda');
+      // A recusa é IMEDIATA: um join silencioso ficaria pendente para sempre
+      // enquanto a recuperação segue retida no prepare — observe a promessa
+      // assentar em tempo hábil, para a asserção tipada abaixo falhar por
+      // conta própria e nunca no timeout da suíte.
+      let assentou = false;
+      segunda.then(
+        () => {
+          assentou = true;
+        },
+        () => {
+          assentou = true;
+        },
+      );
+      // The refusal is a synchronous Promise.reject from exclusive(): its
+      // reaction job is already queued below this await — one microtask
+      // turn observes the settlement deterministically, no timer needed.
+      await Promise.resolve();
+      expect(assentou).toBe(true);
+      await expect(segunda).rejects.toThrow(OrganizationOperationError);
+      await expect(segunda).rejects.toMatchObject({
+        code: 'creation-in-progress',
+      });
+      // The refused intent never prepared or created anything of its own.
+      expect(h.templates.prepare).toHaveBeenCalledTimes(1);
+
+      soltar();
+      await recuperando;
+      // The recovery settles ONLY its own journal: A reaches pronta and no
+      // 'Segunda' organization ever exists.
+      expect(h.projects).toEqual(['id-0', 'id-1']);
+      expect(h.document.organizacoes).toHaveLength(1);
+      expect(h.document.organizacoes[0]).toMatchObject({
+        nome: 'Primeira',
+        estado: 'pronta',
+        confirmacaoPendente: true,
+      });
+    },
+  );
+
+  test('multi-org: callback tardio da operação de A não escreve no diário de B nem de C', async () => {
+    // The 'operation identity' pin, over a genuine N-organization document:
+    // A (4444) is GONE from the journal when its hung createProject finally
+    // resolves, and the replacement holds TWO organizations (B `preparando`
+    // with a verified journal, C `pronta`). A stale callback must touch
+    // NEITHER entry — under an index-keyed or array-replacing journal the
+    // write would land on organizacoes[0] (B) and clobber the document.
+    let document = documentoInicial();
+    const repository = {
+      read: () => document,
+      write: jest.fn((next: EstadoOrganizacoes) => {
+        document = next;
+      }),
+    };
+    const templates = {
+      prepare: jest.fn(async () => ({
+        monitoramento: {ref: {versao: '1', hash: 'm'}, filePath: '/local/m'},
+        alertas: {ref: {versao: '1', hash: 'a'}, filePath: '/local/a'},
+      })),
+      verify: jest.fn(async () => false),
+    };
+    const device = {
+      deviceId: 'device',
+      name: 'Meu aparelho',
+      deviceType: 'mobile' as const,
+    };
+    let resolverCriacao: ((id: string) => void) | undefined;
+    const clientA = {
+      listProjects: jest.fn(async () => [] as Array<{projectId: string}>),
+      createProject: jest.fn(
+        () =>
+          new Promise<string>(resolve => {
+            resolverCriacao = resolve;
+          }),
+      ),
+      getDeviceInfo: jest.fn(async () => device),
+      setDeviceInfo: jest.fn(async () => {}),
+      getProject: jest.fn(async () => {
+        throw new Error('the superseded operation must never reopen projects');
+      }),
+    };
+    const serviceA = createMaterializer({
+      client: clientA,
+      templates,
+      repository,
+      generateId: () => '4444444444444444',
+    });
+    const operacao1 = serviceA.start('Órgão Um');
+    const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+    for (let tick = 0; tick < 50 && !resolverCriacao; tick += 1) {
+      await flush();
+    }
+    expect(resolverCriacao).toBeDefined();
+
+    // The journal is externally replaced by a TWO-organization document.
+    const entradaB = {
+      ...documentoAmbosVerificados().organizacoes[0]!,
+      id: '5555555555555555',
+      nome: 'Órgão Dois',
+    };
+    const entradaC = organizacaoProntaReconhecida({
+      id: '9999999999999999',
+      nome: 'Terceira',
+    });
+    repository.write({
+      versao: 1,
+      organizacoes: [entradaB, entradaC],
+      ativa: null,
+    });
+    const clientB = {
+      listProjects: jest.fn(async () => [] as Array<{projectId: string}>),
+      createProject: jest.fn(async () => 'never-created'),
+      getDeviceInfo: jest.fn(async () => device),
+      setDeviceInfo: jest.fn(async () => {}),
+      getProject: jest.fn(),
+    };
+    const serviceB = createMaterializer({
+      client: clientB,
+      templates,
+      repository,
+      generateId: () => '6666666666666666',
+    });
+    const waiting = serviceB.start('Órgão Dois');
+    // Cross-name: refused instead of joined — the old assertion
+    // (`waiting).toBe(operacao1)` pinned the silent-join bug this rule
+    // removes (intentional behavior change). The late-callback guarantees
+    // below are unchanged: the superseded operation still exits through its
+    // own expired-identity path.
+    expect(waiting).not.toBe(operacao1);
+    await expect(waiting).rejects.toMatchObject({
+      code: 'creation-in-progress',
+    });
+    const antes = JSON.stringify(document);
+    resolverCriacao!('id-late');
+    await operacao1;
+
+    // BYTE-for-byte preservation, by REFERENCE: the late callback of the
+    // superseded operation rewrote neither B's journal nor C's entry.
+    expect(document.organizacoes[0]).toBe(entradaB);
+    expect(document.organizacoes[1]).toBe(entradaC);
+    expect(JSON.stringify(document)).toBe(antes);
+    expect(JSON.stringify(document)).not.toContain('id-late');
+    expect(clientA.getProject).not.toHaveBeenCalled();
+    expect(clientA.setDeviceInfo).not.toHaveBeenCalled();
+    expect(clientB.createProject).not.toHaveBeenCalled();
   });
 });
 
