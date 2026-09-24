@@ -370,8 +370,14 @@
   "$1screens.IntroToCoMapeo.ownData": {
     "message": "Sempre possuir e controlar seus dados"
   },
+  "$1screens.InviteReceived.decline": {
+    "message": "Recusar"
+  },
   "$1screens.InviteReceived.declineInvite": {
     "message": "Recusar convite"
+  },
+  "$1screens.InviteReceived.join": {
+    "message": "Aceitar"
   },
   "$1screens.InviteReceived.joinAsRole": {
     "message": "Participar como{role}?"
@@ -571,6 +577,36 @@
   "$1screens.OnboardingPrivacyPolicy.shareDiagnostics": {
     "message": "Compartilhar Informações de Diagnóstico"
   },
+  "$1screens.OrganizationInviteReceived.close": {
+    "message": "Fechar"
+  },
+  "$1screens.OrganizationInviteReceived.coordinatorRole": {
+    "message": "coordenador(a)"
+  },
+  "$1screens.OrganizationInviteReceived.decline": {
+    "message": "Recusar"
+  },
+  "$1screens.OrganizationInviteReceived.incompleteDefinitive": {
+    "message": "Este convite está incompleto. Peça para quem enviou convidar você novamente."
+  },
+  "$1screens.OrganizationInviteReceived.invitedToJoin": {
+    "message": "Você foi convidado para..."
+  },
+  "$1screens.OrganizationInviteReceived.joinAsRole": {
+    "message": "Entrar como {role}?"
+  },
+  "$1screens.OrganizationInviteReceived.joinOrganization": {
+    "message": "Entrar na organização"
+  },
+  "$1screens.OrganizationInviteReceived.organizationName": {
+    "message": "Organização"
+  },
+  "$1screens.OrganizationInviteReceived.participantRole": {
+    "message": "participante"
+  },
+  "$1screens.OrganizationInviteReceived.preparing": {
+    "message": "Preparando convite…"
+  },
   "$1screens.OrganizationProvisioning.discardConfirmBody": {
     "message": "Este dispositivo sairá dos projetos desta configuração. Os outros membros verão que este dispositivo saiu dos projetos. Se este dispositivo for o único coordenador de um projeto, nenhum outro dispositivo poderá adicionar ou remover dispositivos, ajustar as informações do projeto ou atualizar o conjunto de categorias. As observações deste dispositivo que ainda não foram sincronizadas não estarão mais disponíveis aqui; exporte primeiro todos os dados importantes. Os outros membros manterão os projetos e suas cópias."
   },
@@ -757,6 +793,9 @@
   "$1screens.Setting.ProjectSettings.YourTeam.InviteAccepted.done": {
     "message": "Concluído"
   },
+  "$1screens.Setting.ProjectSettings.YourTeam.InviteAccepted.partOfOrganization": {
+    "message": "<bold>{deviceName}</bold> agora faz parte da sua organização."
+  },
   "$1screens.Setting.ProjectSettings.YourTeam.InviteAccepted.partOfProject": {
     "message": "<bold>{deviceName}</bold> agora faz parte do seu projeto."
   },
@@ -889,6 +928,9 @@
   "$1screens.Settings.YourTeam.close": {
     "message": "Fechar"
   },
+  "$1screens.Settings.YourTeam.inviteDeclinedOrganizationDes": {
+    "message": "Este dispositivo recusou seu convite. Ele não entrou na organização."
+  },
   "$1screens.ShareProjectStats.shareProjectStats": {
     "message": "Compartilhar Estatísticas do Projeto"
   },
@@ -949,6 +991,36 @@
   },
   "$1screens.YourTeam.RemoveDevice.title": {
     "message": "Remover o dispositivo"
+  },
+  "$1screens.YourTeam.ReviewOrganizationInvite.couldNotReach": {
+    "message": "Não foi possível alcançar {name} para {project}."
+  },
+  "$1screens.YourTeam.ReviewOrganizationInvite.genericError": {
+    "message": "Algo deu errado ao convidar {name} para {project}."
+  },
+  "$1screens.YourTeam.ReviewOrganizationInvite.goBack": {
+    "message": "Voltar"
+  },
+  "$1screens.YourTeam.ReviewOrganizationInvite.noOrganization": {
+    "message": "Nenhuma organização encontrada"
+  },
+  "$1screens.YourTeam.ReviewOrganizationInvite.retry": {
+    "message": "Convidar novamente"
+  },
+  "$1screens.YourTeam.ReviewOrganizationInvite.sendInvite": {
+    "message": "Convidar para a organização"
+  },
+  "$1screens.YourTeam.ReviewOrganizationInvite.timer": {
+    "message": "Convite enviado há {seconds}s"
+  },
+  "$1screens.YourTeam.ReviewOrganizationInvite.title": {
+    "message": "Revisar convite"
+  },
+  "$1screens.YourTeam.ReviewOrganizationInvite.waiting": {
+    "message": "Aguardando o dispositivo aceitar o convite"
+  },
+  "$1screens.YourTeam.ReviewOrganizationInvite.youAreInviting": {
+    "message": "Você está convidando:"
   },
   "$1sharedComponents.ErrorBottomSheet.close": {
     "message": "Fechar"
