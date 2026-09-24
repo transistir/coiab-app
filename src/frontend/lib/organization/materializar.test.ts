@@ -1262,6 +1262,197 @@ describe('materialização da organização', () => {
       },
     });
   });
+
+  test.each(['resume', 'retry'] as const)(
+    'multi-org: start durante %s em andamento recusa com erro tipado — nunca join silencioso',
+    async via => {
+      const h = harnessMulti();
+      const area = (etapa: 'ausente' | 'criado'): EtapaArea => ({
+        etapa,
+        projectId: null,
+        template: {versao: '1', hash: 'm'},
+        idsAntesDaCriacao: null,
+      });
+      // Interrupted journal of A: `preparando` (resume) or `falha_recuperavel`
+      // (retry), both areas still without a project — the recovery creates
+      // the two of it when it settles.
+      h.repository.write({
+        versao: 1,
+        organizacoes: [
+          organizacaoProntaReconhecida({
+            estado: via === 'retry' ? 'falha_recuperavel' : 'preparando',
+            ultimoErro:
+              via === 'retry'
+                ? {
+                    codigo: 'preparation-failed',
+                    area: null,
+                    ocorridoEm: '2026-01-01T00:00:00.000Z',
+                  }
+                : null,
+            materializacao: {
+              monitoramento: area('ausente'),
+              alertas: area('ausente'),
+            },
+          }),
+        ],
+        ativa: null,
+      });
+      h.repository.write.mockClear();
+      let soltar!: () => void;
+      let entradaNoPrepare!: () => void;
+      const solto = new Promise<void>(resolve => {
+        soltar = resolve;
+      });
+      const entrou = new Promise<void>(resolve => {
+        entradaNoPrepare = resolve;
+      });
+      h.templates.prepare.mockImplementation(async () => {
+        entradaNoPrepare();
+        await solto;
+        return {
+          monitoramento: {ref: {versao: '1', hash: 'm'}, filePath: '/local/m'},
+          alertas: {ref: {versao: '1', hash: 'a'}, filePath: '/local/a'},
+        };
+      });
+      const recuperando =
+        via === 'retry' ? h.service.retry() : h.service.resume();
+      await entrou;
+
+      const segunda = h.service.start('Segunda');
+      // A recusa é IMEDIATA: um join silencioso ficaria pendente para sempre
+      // enquanto a recuperação segue retida no prepare — observe a promessa
+      // assentar em tempo hábil, para a asserção tipada abaixo falhar por
+      // conta própria e nunca no timeout da suíte.
+      let assentou = false;
+      segunda.then(
+        () => {
+          assentou = true;
+        },
+        () => {
+          assentou = true;
+        },
+      );
+      await new Promise(resolve => setTimeout(resolve, 25));
+      expect(assentou).toBe(true);
+      await expect(segunda).rejects.toThrow(OrganizationOperationError);
+      await expect(segunda).rejects.toMatchObject({
+        code: 'creation-in-progress',
+      });
+      // The refused intent never prepared or created anything of its own.
+      expect(h.templates.prepare).toHaveBeenCalledTimes(1);
+
+      soltar();
+      await recuperando;
+      // The recovery settles ONLY its own journal: A reaches pronta and no
+      // 'Segunda' organization ever exists.
+      expect(h.projects).toEqual(['id-0', 'id-1']);
+      expect(h.document.organizacoes).toHaveLength(1);
+      expect(h.document.organizacoes[0]).toMatchObject({
+        nome: 'Primeira',
+        estado: 'pronta',
+        confirmacaoPendente: true,
+      });
+    },
+  );
+
+  test('multi-org: callback tardio da operação de A não escreve no diário de B nem de C', async () => {
+    // The 'operation identity' pin, over a genuine N-organization document:
+    // A (4444) is GONE from the journal when its hung createProject finally
+    // resolves, and the replacement holds TWO organizations (B `preparando`
+    // with a verified journal, C `pronta`). A stale callback must touch
+    // NEITHER entry — under an index-keyed or array-replacing journal the
+    // write would land on organizacoes[0] (B) and clobber the document.
+    let document = documentoInicial();
+    const repository = {
+      read: () => document,
+      write: jest.fn((next: EstadoOrganizacoes) => {
+        document = next;
+      }),
+    };
+    const templates = {
+      prepare: jest.fn(async () => ({
+        monitoramento: {ref: {versao: '1', hash: 'm'}, filePath: '/local/m'},
+        alertas: {ref: {versao: '1', hash: 'a'}, filePath: '/local/a'},
+      })),
+      verify: jest.fn(async () => false),
+    };
+    const device = {
+      deviceId: 'device',
+      name: 'Meu aparelho',
+      deviceType: 'mobile' as const,
+    };
+    let resolverCriacao: ((id: string) => void) | undefined;
+    const clientA = {
+      listProjects: jest.fn(async () => [] as Array<{projectId: string}>),
+      createProject: jest.fn(
+        () =>
+          new Promise<string>(resolve => {
+            resolverCriacao = resolve;
+          }),
+      ),
+      getDeviceInfo: jest.fn(async () => device),
+      setDeviceInfo: jest.fn(async () => {}),
+      getProject: jest.fn(async () => {
+        throw new Error('the superseded operation must never reopen projects');
+      }),
+    };
+    const serviceA = createMaterializer({
+      client: clientA,
+      templates,
+      repository,
+      generateId: () => '4444444444444444',
+    });
+    const operacao1 = serviceA.start('Órgão Um');
+    const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+    for (let tick = 0; tick < 50 && !resolverCriacao; tick += 1) {
+      await flush();
+    }
+    expect(resolverCriacao).toBeDefined();
+
+    // The journal is externally replaced by a TWO-organization document.
+    const entradaB = {
+      ...documentoAmbosVerificados().organizacoes[0]!,
+      id: '5555555555555555',
+      nome: 'Órgão Dois',
+    };
+    const entradaC = organizacaoProntaReconhecida({
+      id: '9999999999999999',
+      nome: 'Terceira',
+    });
+    repository.write({
+      versao: 1,
+      organizacoes: [entradaB, entradaC],
+      ativa: null,
+    });
+    const clientB = {
+      listProjects: jest.fn(async () => [] as Array<{projectId: string}>),
+      createProject: jest.fn(async () => 'never-created'),
+      getDeviceInfo: jest.fn(async () => device),
+      setDeviceInfo: jest.fn(async () => {}),
+      getProject: jest.fn(),
+    };
+    const serviceB = createMaterializer({
+      client: clientB,
+      templates,
+      repository,
+      generateId: () => '6666666666666666',
+    });
+    const waiting = serviceB.start('Órgão Dois');
+    expect(waiting).toBe(operacao1);
+    const antes = JSON.stringify(document);
+    resolverCriacao!('id-late');
+    await Promise.all([operacao1, waiting]);
+
+    // BYTE-for-byte preservation, by REFERENCE: the late callback of the
+    // superseded operation rewrote neither B's journal nor C's entry.
+    expect(document.organizacoes[0]).toBe(entradaB);
+    expect(document.organizacoes[1]).toBe(entradaC);
+    expect(JSON.stringify(document)).toBe(antes);
+    expect(JSON.stringify(document)).not.toContain('id-late');
+    expect(clientA.getProject).not.toHaveBeenCalled();
+    expect(clientA.setDeviceInfo).not.toHaveBeenCalled();
+    expect(clientB.createProject).not.toHaveBeenCalled();
+  });
 });
 
 describe('validação real dos pacotes (#30 / SPEC B §5.2 CA5)', () => {

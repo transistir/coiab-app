@@ -70,8 +70,17 @@ const marcador = (org: OrganizacaoLocal, area: Area) =>
   markerFor(org.id, SLOT_POR_AREA[area], org.nome);
 
 // Shared across hook instances/remounts, scoped to the native client process.
-const running = new WeakMap<object, Promise<void>>();
-const runningRepositories = new WeakMap<object, Promise<void>>();
+// The registry value carries the INTENT of the in-flight operation so the
+// cross-lock rule in `exclusive()` can tell a creation from a recovery.
+type Intencao = 'start' | 'resume' | 'retry';
+const running = new WeakMap<
+  object,
+  {intencao: Intencao; operation: Promise<void>}
+>();
+const runningRepositories = new WeakMap<
+  object,
+  {intencao: Intencao; operation: Promise<void>}
+>();
 
 /**
  * Identity of a creation operation (SPEC B §5.4): every operation started
@@ -463,9 +472,29 @@ export function createMaterializer<
     }
     await resume(op);
   }
-  function exclusive(work: (op: Operacao) => Promise<void>) {
+  function exclusive(
+    intencao: Intencao,
+    work: (op: Operacao) => Promise<void>,
+  ) {
     const existing = running.get(client) ?? runningRepositories.get(repository);
     if (existing) {
+      // Cross-lock: a creation intent NEVER joins an in-flight resume/retry
+      // — joining would resolve the start as if ITS organization had been
+      // provisioned when only the other journal was settled: a mute success
+      // that creates nothing. The reverse joins stay: a recovery waits for
+      // an in-flight creation (M-1) and a start joins a start (double
+      // submit, CA11/CA12).
+      if (
+        intencao === 'start' &&
+        (existing.intencao === 'resume' || existing.intencao === 'retry')
+      ) {
+        return Promise.reject(
+          new OrganizationOperationError(
+            'creation-in-progress',
+            'a creation cannot start while an organization recovery is in progress; wait for it to settle',
+          ),
+        );
+      }
       // Discriminating rule for a join against an in-flight operation:
       // (1) the SAME client instance always shares its wrapper's own
       // operation (double submit, remount); (2) any other client joins
@@ -477,7 +506,7 @@ export function createMaterializer<
       // NEW intent in flight: it must reject instead of joining and
       // resolving as success (M-2, M-3).
       if (running.get(client) === existing || condicaoDeRecusaDeCriacao()) {
-        return existing;
+        return existing.operation;
       }
       return Promise.reject(new Error('operation-in-progress'));
     }
@@ -485,20 +514,21 @@ export function createMaterializer<
     const operation = Promise.resolve()
       .then(() => work(op))
       .finally(() => {
-        if (running.get(client) === operation) running.delete(client);
-        if (runningRepositories.get(repository) === operation) {
+        if (running.get(client)?.operation === operation)
+          running.delete(client);
+        if (runningRepositories.get(repository)?.operation === operation) {
           runningRepositories.delete(repository);
         }
         if (operacoes.get(repository) === op) operacoes.delete(repository);
       });
-    running.set(client, operation);
-    runningRepositories.set(repository, operation);
+    running.set(client, {intencao, operation});
+    runningRepositories.set(repository, {intencao, operation});
     operacoes.set(repository, op);
     return operation;
   }
   return {
-    start: (name: string) => exclusive(op => start(name, op)),
-    resume: () => exclusive(op => resume(op)),
-    retry: () => exclusive(op => retry(op)),
+    start: (name: string) => exclusive('start', op => start(name, op)),
+    resume: () => exclusive('resume', op => resume(op)),
+    retry: () => exclusive('retry', op => retry(op)),
   };
 }
