@@ -488,7 +488,7 @@ describe('materialização da organização', () => {
       expect(h.projects).toEqual(['id-0', 'id-1']);
     },
   );
-  test('CA11/CA12: double submit, remount and start with an existing organization share one operation', async () => {
+  test('CA11/CA12: double submit and remount with the SAME name share one operation', async () => {
     const h = harness();
     const other = createMaterializer({
       client: h.client,
@@ -496,10 +496,12 @@ describe('materialização da organização', () => {
       repository: h.repository,
       generateId: () => '2222222222222222',
     });
+    // Double tap and remount submit the SAME name: all three calls resolve
+    // with the ONE operation — none of them is refused.
     await Promise.all([
       h.service.start('Original'),
-      h.service.start('Double'),
-      other.start('Remount'),
+      h.service.start('Original'),
+      other.start('Original'),
     ]);
     expect(h.client.createProject).toHaveBeenCalledTimes(2);
     expect(h.document.organizacoes[0]?.nome).toBe('Original');
@@ -602,7 +604,11 @@ describe('materialização da organização', () => {
       repository: h.repository,
       generateId: () => '2222222222222222',
     });
-    const second = other.start('Segunda');
+    // The SAME name: a differently named foreign start is judged by the
+    // cross-name rule instead (typed 'creation-in-progress', P2 test). This
+    // pin keeps the generic judgment for an equal-named NEW intent with
+    // nothing persisted: it may not join and resolve as success.
+    const second = other.start('Primeira');
     // Still blocked inside prepare: the second intent must have created
     // nothing and awaited nothing.
     expect(h.client.createProject).not.toHaveBeenCalled();
@@ -667,9 +673,12 @@ describe('materialização da organização', () => {
       repository: h.repository,
       generateId: () => '2222222222222222',
     });
-    const third = other.start('Terceira');
-    // Still held inside prepare with NOTHING persisted: the foreign intent
-    // must have created nothing and awaited nothing.
+    const third = other.start('Segunda');
+    // The SAME name as the in-flight start: a differently named foreign
+    // start is judged by the cross-name rule instead (typed
+    // 'creation-in-progress', P2 test). Held inside prepare with NOTHING
+    // persisted: the foreign intent must have created nothing and awaited
+    // nothing.
     expect(h.client.createProject).not.toHaveBeenCalled();
     releasePreparation();
     await started;
@@ -678,6 +687,78 @@ describe('materialização da organização', () => {
     await expect(third).rejects.toThrow('operation-in-progress');
     expect(h.client.createProject).toHaveBeenCalledTimes(2);
     expect(otherClient.createProject).not.toHaveBeenCalled();
+  });
+  test('P2: start com nome diferente durante uma criação em andamento recusa com creation-in-progress — nunca join silencioso', async () => {
+    const h = harnessMulti();
+    let soltarPreparo!: () => void;
+    let entrouNoPreparo!: () => void;
+    const solto = new Promise<void>(resolve => {
+      soltarPreparo = resolve;
+    });
+    const entrou = new Promise<void>(resolve => {
+      entrouNoPreparo = resolve;
+    });
+    h.templates.prepare.mockImplementation(async () => {
+      entrouNoPreparo();
+      await solto;
+      return {
+        monitoramento: {ref: {versao: '1', hash: 'm'}, filePath: '/local/m'},
+        alertas: {ref: {versao: '1', hash: 'a'}, filePath: '/local/a'},
+      };
+    });
+    const emAndamento = h.service.start('Órgão Um');
+    await entrou;
+
+    // (1) The SAME wrapper with the name edited between taps — a join would
+    // resolve 'Órgão Dois' with the organization 'Órgão Um' provisioned.
+    const nomeEditado = h.service.start('Órgão Dois');
+    // (2) A genuinely different client: the refusal must also come through
+    // the repository-keyed registry, not only the client-keyed one.
+    const outroClient = {
+      listProjects: jest.fn(async () => []),
+      createProject: jest.fn(async () => 'never-created'),
+      getDeviceInfo: jest.fn(async () => ({
+        deviceId: 'device',
+        name: 'Meu aparelho',
+        deviceType: 'mobile' as const,
+      })),
+      setDeviceInfo: jest.fn(async () => {}),
+      getProject: jest.fn(),
+    };
+    const outro = createMaterializer({
+      client: outroClient,
+      templates: h.templates,
+      repository: h.repository,
+      generateId: () => '2222222222222222',
+    });
+    const estranho = outro.start('Órgão Dois');
+
+    // Neither call may resolve with the in-flight operation (a join would
+    // make CreateOrganization navigate as if 'Órgão Dois' existed).
+    expect(nomeEditado).not.toBe(emAndamento);
+    await expect(nomeEditado).rejects.toThrow(OrganizationOperationError);
+    await expect(nomeEditado).rejects.toMatchObject({
+      code: 'creation-in-progress',
+    });
+    expect(estranho).not.toBe(emAndamento);
+    await expect(estranho).rejects.toThrow(OrganizationOperationError);
+    await expect(estranho).rejects.toMatchObject({
+      code: 'creation-in-progress',
+    });
+    // The refused intents prepared and created nothing of their own.
+    expect(h.templates.prepare).toHaveBeenCalledTimes(1);
+    expect(h.client.createProject).not.toHaveBeenCalled();
+    expect(outroClient.createProject).not.toHaveBeenCalled();
+
+    soltarPreparo();
+    await emAndamento;
+    // Only the name that WON the race exists: the refused submission never
+    // became an organization.
+    expect(h.document.organizacoes).toHaveLength(1);
+    expect(h.document.organizacoes[0]).toMatchObject({
+      nome: 'Órgão Um',
+      estado: 'pronta',
+    });
   });
   test.each([
     '',
@@ -1109,7 +1190,8 @@ describe('materialização da organização', () => {
     });
 
     // The journal is replaced externally. The in-flight callback must leave
-    // the replacement intact, and another client must wait for it to settle.
+    // the replacement intact; a differently named start from another client
+    // is REFUSED (cross-name rule) — it must not join the in-flight start.
     const replacement = documentoAmbosVerificados();
     replacement.organizacoes[0]!.id = '5555555555555555';
     repository.write(replacement);
@@ -1134,10 +1216,16 @@ describe('materialização da organização', () => {
       generateId: () => '6666666666666666',
     });
     const waiting = serviceB.start('Órgão Dois');
-    expect(waiting).toBe(operacao1);
+    // Cross-name: refused instead of joined — the old assertion
+    // (`waiting).toBe(operacao1)` pinned the silent-join bug this rule
+    // removes. The late-callback guarantees below are unchanged.
+    expect(waiting).not.toBe(operacao1);
+    await expect(waiting).rejects.toMatchObject({
+      code: 'creation-in-progress',
+    });
     const antes = JSON.stringify(document);
     resolverCriacao!('id-late');
-    await Promise.all([operacao1, waiting]);
+    await operacao1;
     expect(JSON.stringify(document)).toBe(antes);
     expect(JSON.stringify(document)).not.toContain('id-late');
     expect(clientA.getProject).not.toHaveBeenCalled();
@@ -1332,7 +1420,10 @@ describe('materialização da organização', () => {
           assentou = true;
         },
       );
-      await new Promise(resolve => setTimeout(resolve, 25));
+      // The refusal is a synchronous Promise.reject from exclusive(): its
+      // reaction job is already queued below this await — one microtask
+      // turn observes the settlement deterministically, no timer needed.
+      await Promise.resolve();
       expect(assentou).toBe(true);
       await expect(segunda).rejects.toThrow(OrganizationOperationError);
       await expect(segunda).rejects.toMatchObject({
@@ -1438,10 +1529,18 @@ describe('materialização da organização', () => {
       generateId: () => '6666666666666666',
     });
     const waiting = serviceB.start('Órgão Dois');
-    expect(waiting).toBe(operacao1);
+    // Cross-name: refused instead of joined — the old assertion
+    // (`waiting).toBe(operacao1)` pinned the silent-join bug this rule
+    // removes (intentional behavior change). The late-callback guarantees
+    // below are unchanged: the superseded operation still exits through its
+    // own expired-identity path.
+    expect(waiting).not.toBe(operacao1);
+    await expect(waiting).rejects.toMatchObject({
+      code: 'creation-in-progress',
+    });
     const antes = JSON.stringify(document);
     resolverCriacao!('id-late');
-    await Promise.all([operacao1, waiting]);
+    await operacao1;
 
     // BYTE-for-byte preservation, by REFERENCE: the late callback of the
     // superseded operation rewrote neither B's journal nor C's entry.

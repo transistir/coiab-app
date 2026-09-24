@@ -71,16 +71,20 @@ const marcador = (org: OrganizacaoLocal, area: Area) =>
 
 // Shared across hook instances/remounts, scoped to the native client process.
 // The registry value carries the INTENT of the in-flight operation so the
-// cross-lock rule in `exclusive()` can tell a creation from a recovery.
+// cross-lock rule in `exclusive()` can tell a creation from a recovery — and,
+// for a creation, the NORMALIZED name it is creating, so a start only ever
+// joins a start that is creating the SAME organization (double tap/remount):
+// joining a differently-named start would resolve this submission with an
+// organization it did not create.
 type Intencao = 'start' | 'resume' | 'retry';
-const running = new WeakMap<
-  object,
-  {intencao: Intencao; operation: Promise<void>}
->();
-const runningRepositories = new WeakMap<
-  object,
-  {intencao: Intencao; operation: Promise<void>}
->();
+type Registro = {
+  intencao: Intencao;
+  /** Trimmed name — set iff `intencao === 'start'`. */
+  nome?: string;
+  operation: Promise<void>;
+};
+const running = new WeakMap<object, Registro>();
+const runningRepositories = new WeakMap<object, Registro>();
 
 /**
  * Identity of a creation operation (SPEC B §5.4): every operation started
@@ -475,25 +479,50 @@ export function createMaterializer<
   function exclusive(
     intencao: Intencao,
     work: (op: Operacao) => Promise<void>,
+    nome?: string,
   ) {
-    const existing = running.get(client) ?? runningRepositories.get(repository);
-    if (existing) {
-      // Cross-lock: a creation intent NEVER joins an in-flight resume/retry
-      // — joining would resolve the start as if ITS organization had been
+    // BOTH registries are consulted: the client-keyed and the
+    // repository-keyed entries can diverge (a wrapper pairing this client
+    // with another repository object while a second operation runs on this
+    // repository), and a conflict visible through EITHER of them must
+    // refuse — reading only one could join an operation this submission
+    // never intended.
+    const existentes = new Map<Promise<void>, Registro>();
+    const peloCliente = running.get(client);
+    const peloRepositorio = runningRepositories.get(repository);
+    if (peloCliente) existentes.set(peloCliente.operation, peloCliente);
+    if (peloRepositorio)
+      existentes.set(peloRepositorio.operation, peloRepositorio);
+    if (existentes.size > 0) {
+      // Cross-lock rules, judged against EVERY in-flight entry visible from
+      // here: a creation intent NEVER joins an in-flight resume/retry —
+      // joining would resolve the start as if ITS organization had been
       // provisioned when only the other journal was settled: a mute success
-      // that creates nothing. The reverse joins stay: a recovery waits for
-      // an in-flight creation (M-1) and a start joins a start (double
-      // submit, CA11/CA12).
-      if (
-        intencao === 'start' &&
-        (existing.intencao === 'resume' || existing.intencao === 'retry')
-      ) {
-        return Promise.reject(
-          new OrganizationOperationError(
-            'creation-in-progress',
-            'a creation cannot start while an organization recovery is in progress; wait for it to settle',
-          ),
-        );
+      // that creates nothing. And a creation NEVER joins a differently
+      // named creation: `start` mints the id internally, so the join would
+      // resolve 'B' with the organization 'A' provisioned — a silent
+      // success that creates nothing under B's name. Same normalized name
+      // stays a join: that IS the double tap/remount (CA11/CA12). The
+      // reverse joins stay: a recovery waits for an in-flight creation
+      // (M-1).
+      for (const existing of existentes.values()) {
+        if (intencao !== 'start') break;
+        if (existing.intencao === 'resume' || existing.intencao === 'retry') {
+          return Promise.reject(
+            new OrganizationOperationError(
+              'creation-in-progress',
+              'a creation cannot start while an organization recovery is in progress; wait for it to settle',
+            ),
+          );
+        }
+        if (existing.nome !== nome) {
+          return Promise.reject(
+            new OrganizationOperationError(
+              'creation-in-progress',
+              'another creation with a different name is in progress; wait for it to settle',
+            ),
+          );
+        }
       }
       // Discriminating rule for a join against an in-flight operation:
       // (1) the SAME client instance always shares its wrapper's own
@@ -505,6 +534,7 @@ export function createMaterializer<
       // while the owner is still inside prepare, nothing persisted — is a
       // NEW intent in flight: it must reject instead of joining and
       // resolving as success (M-2, M-3).
+      const existing = peloCliente ?? peloRepositorio!;
       if (running.get(client) === existing || condicaoDeRecusaDeCriacao()) {
         return existing.operation;
       }
@@ -521,13 +551,14 @@ export function createMaterializer<
         }
         if (operacoes.get(repository) === op) operacoes.delete(repository);
       });
-    running.set(client, {intencao, operation});
-    runningRepositories.set(repository, {intencao, operation});
+    running.set(client, {intencao, nome, operation});
+    runningRepositories.set(repository, {intencao, nome, operation});
     operacoes.set(repository, op);
     return operation;
   }
   return {
-    start: (name: string) => exclusive('start', op => start(name, op)),
+    start: (name: string) =>
+      exclusive('start', op => start(name, op), name.trim()),
     resume: () => exclusive('resume', op => resume(op)),
     retry: () => exclusive('retry', op => retry(op)),
   };
