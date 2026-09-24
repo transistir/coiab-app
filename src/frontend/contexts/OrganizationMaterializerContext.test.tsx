@@ -39,7 +39,7 @@ jest.mock('../lib/organization/materializar', () => {
   const actual = jest.requireActual('../lib/organization/materializar') as {
     createMaterializer: (options: unknown) => {
       start: (name: string) => Promise<void>;
-      resume: () => Promise<void>;
+      resume: (id?: string) => Promise<void>;
     };
   };
   return {

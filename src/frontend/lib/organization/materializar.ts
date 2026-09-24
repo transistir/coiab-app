@@ -441,16 +441,19 @@ export function createMaterializer<
   /**
    * With an id, targets the `preparando` journal of THAT organization only —
    * a second `preparando` entry in the same document is never shadowed (#85).
-   * No id: the first `preparando` entry, as before. A missing id/estado pair
-   * is a no-op: nothing matches, nothing is written.
+   * An id that matches nothing is a no-op — the empty string included, so
+   * `resume('')` is an id that matches nothing, never the id-less search.
+   * Only `undefined` resumes the first `preparando` entry, as before. A
+   * missing id/estado pair is a no-op: nothing matches, nothing is written.
    */
   async function resume(op: Operacao, organizacaoId?: string) {
     const organizacoes = repository.read().organizacoes;
-    const preparando = organizacaoId
-      ? organizacoes.find(
-          o => o.id === organizacaoId && o.estado === 'preparando',
-        )
-      : organizacoes.find(o => o.estado === 'preparando');
+    const preparando =
+      organizacaoId !== undefined
+        ? organizacoes.find(
+            o => o.id === organizacaoId && o.estado === 'preparando',
+          )
+        : organizacoes.find(o => o.estado === 'preparando');
 
     if (!preparando) return;
     op.organizacaoId = preparando.id;
@@ -483,7 +486,9 @@ export function createMaterializer<
       if (error instanceof OperacaoExpirada) return;
       fail(op);
     }
-    await resume(op);
+    // Resume the organization this retry owns — never the first `preparando`
+    // entry, which may be another organization's own interrupted journal (#85).
+    await resume(op, falha.id);
   }
   function exclusive(
     intencao: Intencao,

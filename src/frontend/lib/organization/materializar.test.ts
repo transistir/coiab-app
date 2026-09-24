@@ -1677,6 +1677,130 @@ describe('materialização da organização', () => {
     expect(h.client.getProject).not.toHaveBeenCalled();
   });
 
+  test("#85: resume('') trata id vazio como id — no-op contra preparando", async () => {
+    // Regression pin: an empty-string id is an id, not the ABSENCE of one —
+    // it must never fall back to the id-less "first `preparando`" search.
+    const h = harnessMulti();
+    h.repository.write(documentoAmbosVerificados());
+    h.repository.write.mockClear();
+    h.imported.add('id-0');
+    h.imported.add('id-1');
+    const base = h.client.getProject.getMockImplementation()!;
+    h.client.getProject.mockImplementation(async (id: string) => {
+      const project = await base(id);
+      return {
+        ...project,
+        $getProjectSettings: jest.fn(async () => ({
+          name: id === 'id-0' ? 'Monitoramento' : 'Alertas',
+          sendStats: false,
+          projectDescription: markerFor(
+            ORG_ID,
+            id === 'id-0' ? 'm' : 'a',
+            'Associação',
+          ),
+        })),
+      };
+    });
+    const antes = JSON.stringify(h.document);
+
+    await h.service.resume('');
+
+    // No-op: nothing matches an empty id, so the `preparando` journal stays
+    // untouched and no Core activity happens.
+    expect(JSON.stringify(h.document)).toBe(antes);
+    expect(h.templates.prepare).not.toHaveBeenCalled();
+    expect(h.client.createProject).not.toHaveBeenCalled();
+    expect(h.client.getProject).not.toHaveBeenCalled();
+  });
+
+  test('#85: retry() com [A preparando, B falha_recuperavel] retoma B e não toca A', async () => {
+    // retry() converts the failed journal to `preparando` and must resume
+    // THAT organization — not the first `preparando` entry, which can be
+    // another organization's own interrupted journal (same bug as #85).
+    const h = harnessMulti();
+    const ORG_ID_A = '1111111111111111';
+    const ORG_ID_B = '2222222222222222';
+    const area = (orgId: string, hash: string): EtapaArea => ({
+      etapa: 'verificado',
+      projectId: `${orgId}-${hash}`,
+      template: {versao: '1', hash},
+      idsAntesDaCriacao: null,
+    });
+    const journal = (id: string, nome: string): OrganizacaoLocal => ({
+      id,
+      nome,
+      estado: 'preparando',
+      confirmacaoPendente: false,
+      materializacao: {
+        monitoramento: area(id, 'm'),
+        alertas: area(id, 'a'),
+      },
+      areaEmExecucao: null,
+      ultimoErro: null,
+    });
+    const primeira = journal(ORG_ID_A, 'Primeira');
+    const segunda: OrganizacaoLocal = {
+      ...journal(ORG_ID_B, 'Segunda'),
+      estado: 'falha_recuperavel',
+      ultimoErro: {
+        codigo: 'preparation-failed',
+        area: null,
+        ocorridoEm: '2026-01-01T00:00:00.000Z',
+      },
+    };
+    h.repository.write({
+      versao: 1,
+      organizacoes: [primeira, segunda],
+      ativa: null,
+    });
+    h.repository.write.mockClear();
+    // Both journals are resumable: their projects pre-exist in Core, already
+    // imported, with the canonical settings the conferência reads back.
+    for (const org of [primeira, segunda]) {
+      h.imported.add(`${org.id}-m`);
+      h.imported.add(`${org.id}-a`);
+    }
+    const base = h.client.getProject.getMockImplementation()!;
+    h.client.getProject.mockImplementation(async (id: string) => {
+      const project = await base(id);
+      const orgId = id.slice(0, 16);
+      const nome = orgId === ORG_ID_A ? 'Primeira' : 'Segunda';
+      return {
+        ...project,
+        $getProjectSettings: jest.fn(async () => ({
+          name: id.endsWith('-m') ? 'Monitoramento' : 'Alertas',
+          sendStats: false,
+          projectDescription: markerFor(
+            orgId,
+            id.endsWith('-m') ? 'm' : 'a',
+            nome,
+          ),
+        })),
+      };
+    });
+
+    await h.service.retry();
+
+    // B (the failed journal) resumed to `pronta`; A stays EXACTLY as it was —
+    // same entry object, still `preparando`, never rewritten by B's retry.
+    expect(h.document.organizacoes).toHaveLength(2);
+    expect(h.document.organizacoes[0]).toBe(primeira);
+    expect(h.document.organizacoes[0]).toMatchObject({
+      id: ORG_ID_A,
+      estado: 'preparando',
+    });
+    expect(h.document.organizacoes[1]).toMatchObject({
+      id: ORG_ID_B,
+      nome: 'Segunda',
+      estado: 'pronta',
+      confirmacaoPendente: true,
+      materializacao: {
+        monitoramento: {etapa: 'verificado', projectId: `${ORG_ID_B}-m`},
+        alertas: {etapa: 'verificado', projectId: `${ORG_ID_B}-a`},
+      },
+    });
+  });
+
   test.each(['resume', 'retry'] as const)(
     'multi-org: start durante %s em andamento recusa com erro tipado — nunca join silencioso',
     async via => {
