@@ -60,6 +60,11 @@ export type OrganizationActivationHandle = Pick<
  * store the engine holds and disarms them on cleanup. Disarm/rearm stays
  * inside the effect pair, so StrictMode's synchronous cleanup → re-run
  * sequence never blocks a live engine.
+ *
+ * #88: the gate also refuses STARTS of the materializer. The background
+ * resume writes through the ORIGINAL store (`repositorioDoStore`), not the
+ * gated `engineStore` wrapper, so disarming writes alone would still let a
+ * post-unmount release record B's materialization durably.
  */
 const engineWriteGates = new WeakMap<
   OrganizationActivation,
@@ -161,11 +166,21 @@ export function useOrganizationActivation(): OrganizationActivationHandle {
         ),
       },
     };
+    const retomar = materializador?.retomar;
     const activation = createOrganizationActivation({
       store: engineStore,
       getProject: async id =>
         toActivationProject(await clientApi.getProject(id)),
-      resumePreparation: materializador?.retomar,
+      // #88: like the writes above, the START of a background resume is
+      // refused while disarmed — post-unmount, nothing consumes its report
+      // and the materializer writes through the original store, invisible
+      // to the gated wrapper.
+      resumePreparation: retomar
+        ? id =>
+            gate.armed
+              ? retomar(id)
+              : Promise.reject(new Error('activation-disarmed'))
+        : undefined,
       // Fase 8a: o guard deixa de ser inerte. Trabalho pendente no app —
       // rascunho, trilha, mutações em voo e convites — bloqueia TODA mudança
       // de contexto, inclusive troca de área (SPEC A §5.2:172/§5.3:180).

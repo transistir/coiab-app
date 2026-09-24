@@ -21,7 +21,10 @@ import {
   organizationDocument,
   readyOrganization,
 } from '../../lib/organization/fixtures';
-import type {EstadoOrganizacoes} from '../../lib/organization/coiabOrganizations';
+import type {
+  EstadoOrganizacoes,
+  OrganizacaoLocal,
+} from '../../lib/organization/coiabOrganizations';
 import type {
   CreationProject,
   TemplatePackage,
@@ -612,5 +615,186 @@ describe('useOrganizationActivation', () => {
     });
 
     await hook.unmount();
+  });
+
+  // ---- Retomada após o unmount (#88, R1/M2, CA9) --------------------------
+
+  /** The #88 document: A settled and selected on Alertas, B interrupted in
+   * `preparando` (16-hex id, so a resumed journal materializes for real). */
+  function documentoOitentaEOito(): EstadoOrganizacoes {
+    return {
+      versao: 1,
+      organizacoes: [
+        readyOrganization('A'),
+        {
+          ...readyOrganization(ORG_ID),
+          estado: 'preparando',
+          areaEmExecucao: 'alertas',
+        },
+      ],
+      ativa: {organizacaoId: 'A', area: 'alertas'},
+    };
+  }
+
+  /** The store hydrates from the seeded MMKV raw (persist: true, as in the
+   * unmount test above). */
+  function criarStorePersistidoOitentaEOito() {
+    MMKVStoreInitializer.setItem(
+      COIAB_ORGANIZATIONS_STORAGE_KEY,
+      JSON.stringify({state: documentoOitentaEOito(), version: 1}),
+    );
+    return createCoiabOrganizationsStore({persist: true});
+  }
+
+  /** Dispatch by id: A's pair goes to the role fakes the engine validates
+   * against; B's pair goes to per-id creation fakes the materializer's
+   * resume client reaches (no role API — the engine never validates B). */
+  function despacharProjetos(
+    origemPresa?: Promise<FakeProject>,
+    aoConsultarOrigem?: () => void,
+  ) {
+    const criacaoPorId = new Map<string, unknown>();
+    clientApi.getProject.mockImplementation(async (id: string) => {
+      if (id === 'A-m') {
+        aoConsultarOrigem?.();
+        return origemPresa ?? projects['A-m'];
+      }
+      if (id === 'A-a') return projects['A-a'];
+      let projeto = criacaoPorId.get(id);
+      if (!projeto) {
+        projeto = fakeCreationProject();
+        criacaoPorId.set(id, projeto);
+      }
+      return projeto;
+    });
+  }
+
+  /** The materializer announces itself by invalidating the projects query —
+   * `retomar` always does when it settles, and nothing else in the hook
+   * touches that key. A resume that must never start has to stay absent
+   * through this window. */
+  async function janelaNegativaDeRetomada(invalidateQueries: jest.SpyInstance) {
+    await expect(
+      waitFor(
+        () =>
+          expect(invalidateQueries).toHaveBeenCalledWith({
+            queryKey: projectsQueryKey,
+          }),
+        {timeout: 2000},
+      ),
+    ).rejects.toThrow();
+  }
+
+  function estadoCru(): EstadoOrganizacoes {
+    return JSON.parse(
+      MMKVStoreInitializer.getItem(COIAB_ORGANIZATIONS_STORAGE_KEY) as string,
+    ).state;
+  }
+
+  function sementeDeB(): OrganizacaoLocal {
+    return documentoOitentaEOito().organizacoes.find(
+      item => item.id === ORG_ID,
+    )!;
+  }
+
+  async function assercoesSemRetomada(store: CoiabOrganizationsStore) {
+    const sementeB = sementeDeB();
+    expect(
+      store.instance.getState().organizacoes.find(item => item.id === ORG_ID),
+    ).toEqual(sementeB);
+    expect(estadoCru().organizacoes.find(item => item.id === ORG_ID)).toEqual(
+      sementeB,
+    );
+    // A seleção crua nunca saiu de A/alertas.
+    expect(estadoCru().ativa).toEqual({organizacaoId: 'A', area: 'alertas'});
+  }
+
+  test('recuperação estacionada, unmount e liberação: nenhuma retomada nem escrita durável (#88)', async () => {
+    const store = criarStorePersistidoOitentaEOito();
+    try {
+      // A trilha com `projectId` já é trabalho pendente (pendingWork.ts): a
+      // origem (A/monitoramento) difere da seleção (A/alertas) — boot
+      // bloqueado, e só recoverPendingWork() pode liberá-lo.
+      trackStore.instance.setState({projectId: 'A-m'});
+      // A validação da recuperação fica estacionada no projeto de origem.
+      const {promise: origemPresa, resolve: liberarOrigem} =
+        withResolvers<FakeProject>();
+      let marcarEntrada!: () => void;
+      const entrada = new Promise<void>(resolve => {
+        marcarEntrada = resolve;
+      });
+      despacharProjetos(origemPresa, marcarEntrada);
+      const {wrapper, invalidateQueries} = createMaterializerWrapper(store);
+
+      const hook = await renderHook(() => useOrganizationActivation(), {
+        wrapper,
+      });
+      await waitFor(() => {
+        expect(hook.result.current.status).toBe('unavailable');
+        expect(hook.result.current.error).toBe('pending-work');
+      });
+
+      let recuperando!: Promise<boolean>;
+      await act(async () => {
+        recuperando = hook.result.current.recoverPendingWork();
+      });
+      await entrada;
+      // A recuperação continua em voo quando o hook desmonta.
+      await hook.unmount();
+      liberarOrigem(projects['A-m']);
+      await act(async () => {
+        await recuperando;
+        // Uma macrotask: os efeitos colaterais da continuação do motor
+        // (incluída qualquer retomada liberada) rodam antes das asserções.
+        const settle = withResolvers<void>();
+        setTimeout(settle.resolve, 0);
+        await settle.promise;
+      });
+
+      // Nada pode retomar B nem escrever o documento depois do unmount.
+      await janelaNegativaDeRetomada(invalidateQueries);
+      await assercoesSemRetomada(store);
+    } finally {
+      trackStore.actions.clearCurrentTrack();
+      MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
+    }
+  });
+
+  test('boot que assenta após o unmount não retoma B (mesmo gate, #88)', async () => {
+    // Sem trilha: o boot NÃO bloqueia — restaura A/alertas. A validação
+    // fica estacionada e o hook desmonta antes da liberação: o finally do
+    // initialize roda sobre um hook morto.
+    const store = criarStorePersistidoOitentaEOito();
+    try {
+      const {promise: origemPresa, resolve: liberarOrigem} =
+        withResolvers<FakeProject>();
+      let marcarEntrada!: () => void;
+      const entrada = new Promise<void>(resolve => {
+        marcarEntrada = resolve;
+      });
+      despacharProjetos(origemPresa, marcarEntrada);
+      const {wrapper, invalidateQueries} = createMaterializerWrapper(store);
+
+      const hook = await renderHook(() => useOrganizationActivation(), {
+        wrapper,
+      });
+      // O boot chegou à validação e está estacionado; nada escreveu ainda.
+      await entrada;
+      expect(estadoCru().ativa).toEqual({organizacaoId: 'A', area: 'alertas'});
+      await hook.unmount();
+      liberarOrigem(projects['A-m']);
+      await act(async () => {
+        const settle = withResolvers<void>();
+        setTimeout(settle.resolve, 0);
+        await settle.promise;
+      });
+
+      // O mesmo gate fecha o buraco pré-existente do finally do initialize.
+      await janelaNegativaDeRetomada(invalidateQueries);
+      await assercoesSemRetomada(store);
+    } finally {
+      trackStore.actions.clearCurrentTrack();
+      MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
+    }
   });
 });
