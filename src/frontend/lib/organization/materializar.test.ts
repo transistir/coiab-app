@@ -1516,6 +1516,167 @@ describe('materialização da organização', () => {
     });
   });
 
+  test('#85: resume(id) com DUAS preparando retoma a org do id e não toca a outra', async () => {
+    const h = harnessMulti();
+    const ORG_ID_A = '1111111111111111';
+    const ORG_ID_B = '2222222222222222';
+    const area = (orgId: string, hash: string): EtapaArea => ({
+      etapa: 'verificado',
+      projectId: `${orgId}-${hash}`,
+      template: {versao: '1', hash},
+      idsAntesDaCriacao: null,
+    });
+    const preparando = (id: string, nome: string): OrganizacaoLocal => ({
+      id,
+      nome,
+      estado: 'preparando',
+      confirmacaoPendente: false,
+      materializacao: {
+        monitoramento: area(id, 'm'),
+        alertas: area(id, 'a'),
+      },
+      areaEmExecucao: null,
+      ultimoErro: null,
+    });
+    const primeira = preparando(ORG_ID_A, 'Primeira');
+    const segunda = preparando(ORG_ID_B, 'Segunda');
+    h.repository.write({
+      versao: 1,
+      organizacoes: [primeira, segunda],
+      ativa: null,
+    });
+    h.repository.write.mockClear();
+    // Both journals are resumable: their projects pre-exist in Core, already
+    // imported, with the canonical settings the conferência reads back.
+    for (const org of [primeira, segunda]) {
+      h.imported.add(`${org.id}-m`);
+      h.imported.add(`${org.id}-a`);
+    }
+    const base = h.client.getProject.getMockImplementation()!;
+    h.client.getProject.mockImplementation(async (id: string) => {
+      const project = await base(id);
+      const orgId = id.slice(0, 16);
+      const nome = orgId === ORG_ID_A ? 'Primeira' : 'Segunda';
+      return {
+        ...project,
+        $getProjectSettings: jest.fn(async () => ({
+          name: id.endsWith('-m') ? 'Monitoramento' : 'Alertas',
+          sendStats: false,
+          projectDescription: markerFor(
+            orgId,
+            id.endsWith('-m') ? 'm' : 'a',
+            nome,
+          ),
+        })),
+      };
+    });
+
+    await h.service.resume(ORG_ID_B);
+
+    // B resumed; A stays EXACTLY as it was — same entry object, still
+    // `preparando`, never rewritten by B's operation.
+    expect(h.document.organizacoes).toHaveLength(2);
+    expect(h.document.organizacoes[0]).toBe(primeira);
+    expect(h.document.organizacoes[0]).toMatchObject({
+      id: ORG_ID_A,
+      estado: 'preparando',
+    });
+    expect(h.document.organizacoes[1]).toMatchObject({
+      id: ORG_ID_B,
+      nome: 'Segunda',
+      estado: 'pronta',
+      confirmacaoPendente: true,
+      materializacao: {
+        monitoramento: {etapa: 'verificado', projectId: `${ORG_ID_B}-m`},
+        alertas: {etapa: 'verificado', projectId: `${ORG_ID_B}-a`},
+      },
+    });
+  });
+
+  test('#85: resume() sem id mantém o comportamento atual com uma única preparando', async () => {
+    // Regression pin: the optional id must not disturb the id-less resume —
+    // a single `preparando` journal is still picked up with no argument.
+    const h = harnessMulti();
+    h.repository.write(documentoAmbosVerificados());
+    h.repository.write.mockClear();
+    h.imported.add('id-0');
+    h.imported.add('id-1');
+    const base = h.client.getProject.getMockImplementation()!;
+    h.client.getProject.mockImplementation(async (id: string) => {
+      const project = await base(id);
+      return {
+        ...project,
+        $getProjectSettings: jest.fn(async () => ({
+          name: id === 'id-0' ? 'Monitoramento' : 'Alertas',
+          sendStats: false,
+          projectDescription: markerFor(
+            ORG_ID,
+            id === 'id-0' ? 'm' : 'a',
+            'Associação',
+          ),
+        })),
+      };
+    });
+
+    await h.service.resume();
+
+    expect(h.document.organizacoes).toHaveLength(1);
+    expect(h.document.organizacoes[0]).toMatchObject({
+      id: ORG_ID,
+      nome: 'Associação',
+      estado: 'pronta',
+      confirmacaoPendente: true,
+      materializacao: {
+        monitoramento: {etapa: 'verificado', projectId: 'id-0'},
+        alertas: {etapa: 'verificado', projectId: 'id-1'},
+      },
+    });
+  });
+
+  test('#85: resume(id) com id que não está preparando é no-op — nada muda', async () => {
+    const h = harnessMulti();
+    const ORG_ID_B = '2222222222222222';
+    // A is the only `preparando` journal; B is settled `pronta`. Resuming B's
+    // id must NOT fall back to A (or to anything else).
+    h.repository.write({
+      versao: 1,
+      organizacoes: [
+        organizacaoProntaReconhecida({
+          estado: 'preparando',
+          materializacao: {
+            monitoramento: {
+              etapa: 'ausente',
+              projectId: null,
+              template: null,
+              idsAntesDaCriacao: null,
+            },
+            alertas: {
+              etapa: 'ausente',
+              projectId: null,
+              template: null,
+              idsAntesDaCriacao: null,
+            },
+          },
+        }),
+        organizacaoProntaReconhecida({
+          id: ORG_ID_B,
+          nome: 'Segunda',
+        }),
+      ],
+      ativa: null,
+    });
+    const antes = JSON.stringify(h.document);
+
+    await h.service.resume(ORG_ID_B);
+
+    // No-op: B is not `preparando`, so nothing matches — the document is
+    // byte-identical and no Core activity happened.
+    expect(JSON.stringify(h.document)).toBe(antes);
+    expect(h.templates.prepare).not.toHaveBeenCalled();
+    expect(h.client.createProject).not.toHaveBeenCalled();
+    expect(h.client.getProject).not.toHaveBeenCalled();
+  });
+
   test.each(['resume', 'retry'] as const)(
     'multi-org: start durante %s em andamento recusa com erro tipado — nunca join silencioso',
     async via => {

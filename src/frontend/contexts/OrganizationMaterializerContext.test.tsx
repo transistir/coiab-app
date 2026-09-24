@@ -312,6 +312,54 @@ describe('OrganizationMaterializerContext', () => {
     });
   });
 
+  test('#85: retomar(B.id) com DUAS preparando retoma B e não toca A', async () => {
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState(
+      {
+        versao: 1,
+        organizacoes: [
+          {
+            ...readyOrganization(ORG_ID),
+            estado: 'preparando',
+            confirmacaoPendente: false,
+          },
+          {
+            ...readyOrganization(ORG_ID_B),
+            estado: 'preparando',
+            confirmacaoPendente: false,
+          },
+        ],
+        ativa: null,
+      },
+      true,
+    );
+    const {hook} = await renderMaterializador(store);
+
+    await act(async () => {
+      await hook.result.current!.retomar(ORG_ID_B);
+    });
+
+    // The id rides to the materializer: resume must target B, not the first
+    // `preparando` entry in the array.
+    const materializer = createMaterializerMock.mock.results[0]!.value;
+    expect(materializer.resume).toHaveBeenCalledWith(ORG_ID_B);
+    const [primeira, segunda] = store.instance.getState().organizacoes;
+    expect(primeira).toMatchObject({
+      id: ORG_ID,
+      estado: 'preparando',
+      confirmacaoPendente: false,
+    });
+    expect(segunda).toMatchObject({
+      id: ORG_ID_B,
+      estado: 'pronta',
+      confirmacaoPendente: true,
+    });
+
+    await act(async () => {
+      await hook.unmount();
+    });
+  });
+
   test('retomar continua recusando um id que não existe no documento', async () => {
     const store = createCoiabOrganizationsStore();
     store.instance.setState(twoOrganizationsDocument(), true);

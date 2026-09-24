@@ -25,10 +25,10 @@ import {useCoiabOrganizationsStoreContext} from './CoiabOrganizationsStoreContex
  * root next to the activation driver: `iniciar` registers a new organization
  * (never used to resume) and `retomar` continues the persisted `preparando`
  * journal — the resume adapter `useOrganizationActivation` injects into the
- * activation engine. `retomar` locates the organization by id ANYWHERE in
- * the document — a settled `pronta` first entry never shadows a later
- * `preparando` one — and refuses any id absent from it, so a stale caller
- * can never resume a journal that no longer belongs to it.
+ * activation engine. `retomar` refuses any id absent from the document, and
+ * forwards the id to the materializer, which resumes the `preparando` journal
+ * of THAT organization — never the first `preparando` entry (#85). An id that
+ * exists but is not `preparando` settles as a no-op resume.
  */
 export type OrganizationMaterializerHandle = {
   iniciar(nome: string): Promise<void>;
@@ -100,7 +100,7 @@ export function OrganizationMaterializerProvider({
         );
       } else {
         await materializer
-          .resume()
+          .resume(organizacaoId)
           .finally(() =>
             queryClient.invalidateQueries({queryKey: projectsQueryKey}),
           );
