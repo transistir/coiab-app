@@ -501,13 +501,24 @@ export function createOrganizationActivation({
       try {
         return await performInitialization();
       } finally {
-        // FIX-B's startup block holds ALL startup work until the persisted
-        // work is recovered — a background resume included.
-        const {status, error} = instance.getState();
-        if (status !== 'unavailable' || error !== 'pending-work')
-          retomarInterrompida();
+        liberarInicioAdiado();
       }
     });
+  }
+
+  // FIX-B's startup block holds ALL startup work until the persisted work is
+  // recovered — a background resume included. #88: recoverPendingWork reopens
+  // that same pending-work origin, so its release must liberate the deferred
+  // work too. The block stands while a recovery is still in flight, and a
+  // refused recovery returns before the release — it is only lifted when a
+  // recovery actually ran to settlement. The release itself is fire-and-forget
+  // on the preparation lock: `prepararEmSegundoPlano` publishes nothing, and
+  // post-unmount starts are refused by the hook's gate (see
+  // useOrganizationActivation).
+  function liberarInicioAdiado() {
+    const {status, error} = instance.getState();
+    if (status !== 'unavailable' || error !== 'pending-work')
+      retomarInterrompida();
   }
 
   // Review fronteira P1: an organization interrupted in `preparando` that is
@@ -613,7 +624,17 @@ export function createOrganizationActivation({
         origin.projectId !== state.pendingWorkOrigin?.projectId
       )
         return false;
-      return performActivation(origin.organizacaoId, {area: origin.area}, true);
+      try {
+        return await performActivation(
+          origin.organizacaoId,
+          {area: origin.area},
+          true,
+        );
+      } finally {
+        // #88: the guard refusal above returns before this try — the release
+        // only runs for a recovery that actually ran to settlement.
+        liberarInicioAdiado();
+      }
     });
   }
   const captureContext = () => ({

@@ -8,7 +8,11 @@ import {
   createOrganizationActivation,
   type ActivationProject,
 } from './activation';
-import {parseEstadoOrganizacoes, type Area} from './coiabOrganizations';
+import {
+  parseEstadoOrganizacoes,
+  type Area,
+  type OrganizacaoLocal,
+} from './coiabOrganizations';
 import {MEMBER_ROLE_ID} from '../../sharedTypes';
 
 function setup() {
@@ -866,6 +870,384 @@ describe('segunda organização em preparo com A operando (review fronteira)', (
     expect(
       store.instance.getState().organizacoes.find(item => item.id === 'B'),
     ).toMatchObject({estado: 'preparando', areaEmExecucao: 'alertas'});
+  });
+
+  // #88: the blocked boot (FIX-B) and its delayed release. The pending work
+  // sits on A/monitoramento while the persisted selection is A/alertas, so
+  // the cold start blocks — and only `recoverPendingWork()` can end the
+  // block. The tests below pin what that release must and must not do.
+  function bloqueioSetup() {
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState(
+      {
+        versao: 1,
+        organizacoes: [
+          readyOrganization('A'),
+          {
+            ...readyOrganization('B'),
+            estado: 'preparando',
+            areaEmExecucao: 'alertas',
+          },
+        ],
+        ativa: {organizacaoId: 'A', area: 'alertas'},
+      },
+      true,
+    );
+    const getProject = jest.fn<Promise<ActivationProject>, [id: string]>(
+      async () => ({$getOwnRole: async () => ({roleId: MEMBER_ROLE_ID})}),
+    );
+    const resume = jest.fn((id: string) => concluir(id, store));
+    // Mutáveis do teste: o guard e a origem capturada leem o estado ATUAL.
+    let pendente = true;
+    let origem: string | null = 'A-m';
+    const activation = createOrganizationActivation({
+      store,
+      getProject,
+      resumePreparation: resume,
+      hasPendingWork: () => pendente,
+      getPendingWorkProjectId: () => origem,
+    });
+    return {
+      store,
+      activation,
+      resume,
+      getProject,
+      setPendente: (valor: boolean) => {
+        pendente = valor;
+      },
+      setOrigem: (valor: string | null) => {
+        origem = valor;
+      },
+    };
+  }
+  const BIntacta = (store: CoiabStore) =>
+    expect(
+      store.instance.getState().organizacoes.find(item => item.id === 'B'),
+    ).toMatchObject({estado: 'preparando', areaEmExecucao: 'alertas'});
+
+  test('recoverPendingWork libera o boot bloqueado e retoma B em segundo plano só depois do commit de A (#88)', async () => {
+    const {store, activation, resume, getProject} = bloqueioSetup();
+    await expect(activation.initialize()).resolves.toBe(false);
+    const statuses: string[] = [];
+    activation.instance.subscribe(state => statuses.push(state.status));
+
+    // A recuperação fica estacionada na validação do papel: enquanto ela
+    // está em voo, B NÃO pode ser retomada (CA1).
+    let liberarValidacao!: () => void;
+    const validacaoPresa = new Promise<void>(resolve => {
+      liberarValidacao = resolve;
+    });
+    let marcarEntrada!: () => void;
+    const entrada = new Promise<void>(resolve => {
+      marcarEntrada = resolve;
+    });
+    let primeira = true;
+    getProject.mockImplementation(async () => {
+      if (primeira) {
+        primeira = false;
+        marcarEntrada();
+      }
+      await validacaoPresa;
+      return {$getOwnRole: async () => ({roleId: MEMBER_ROLE_ID})};
+    });
+
+    const recuperacao = activation.recoverPendingWork();
+    await entrada;
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(resume).not.toHaveBeenCalled();
+
+    liberarValidacao();
+    await expect(recuperacao).resolves.toBe(true);
+    await waitForResume(resume);
+
+    expect(resume).toHaveBeenCalledTimes(1);
+    expect(resume).toHaveBeenCalledWith('B');
+    expect(
+      store.instance.getState().organizacoes.find(item => item.id === 'B'),
+    ).toMatchObject({estado: 'pronta', confirmacaoPendente: true});
+    // Reabrir a origem é o que conclui o trabalho: o commit reabre
+    // A/monitoramento, não a seleção bloqueada (CA2).
+    expect(store.instance.getState().ativa).toEqual({
+      organizacaoId: 'A',
+      area: 'monitoramento',
+    });
+    // A retomada de B não publicou nada sobre o contexto de A (CA4).
+    expect(statuses).toEqual(['opening', 'ready']);
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'ready',
+      projectId: 'A-m',
+      generation: 1,
+    });
+  });
+
+  test('com B já em preparo, nova recuperação, initialize ou retry não iniciam outra (#88)', async () => {
+    const {store, activation, resume} = bloqueioSetup();
+    // A retomada de B fica estacionada: a preparação permanece viva.
+    let liberarResume!: () => void;
+    const resumePresa = new Promise<void>(resolve => {
+      liberarResume = resolve;
+    });
+    resume.mockImplementation(async (id: string) => {
+      await resumePresa;
+      await concluir(id, store);
+    });
+    await expect(activation.initialize()).resolves.toBe(false);
+    await expect(activation.recoverPendingWork()).resolves.toBe(true);
+    // Barreira: B começou ANTES das chamadas seguintes — sem ela a base
+    // mascara o RED (o 2º initialize cairia no curto-circuito e o seu
+    // finally retomaria B, produzindo 1 chamada).
+    await waitForSettled(() => resume.mock.calls.length === 1);
+
+    await expect(activation.recoverPendingWork()).resolves.toBe(false);
+    await activation.initialize();
+    const retry = activation.retryPreparation('B');
+    liberarResume();
+    await expect(retry).resolves.toBe(true);
+
+    // Uma única chamada ao adaptador: retry junta-se à preparação viva (CA3).
+    expect(resume).toHaveBeenCalledTimes(1);
+    expect(
+      store.instance.getState().organizacoes.find(item => item.id === 'B'),
+    ).toMatchObject({estado: 'pronta', confirmacaoPendente: true});
+  });
+
+  test('recoverPendingWork que falha ainda libera o trabalho adiado, como o initialize (#88)', async () => {
+    const {activation, resume, getProject} = bloqueioSetup();
+    await expect(activation.initialize()).resolves.toBe(false);
+    // Papel inválido na área de Monitoramento de A: a validação 2/2 falha.
+    getProject.mockImplementation(async (id: string) => ({
+      $getOwnRole: async () => ({
+        roleId: id === 'A-m' ? 'blocked' : MEMBER_ROLE_ID,
+      }),
+    }));
+
+    await expect(activation.recoverPendingWork()).resolves.toBe(false);
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'recovery',
+      error: 'unavailable',
+    });
+    await waitForResume(resume);
+
+    // CA6: o desfecho em recovery TAMBÉM assenta fora do par bloqueado —
+    // a liberação acontece como no finally do initialize.
+    expect(resume).toHaveBeenCalledTimes(1);
+    expect(resume).toHaveBeenCalledWith('B');
+  });
+
+  test.each([
+    [
+      'hasPendingWork false',
+      (s: ReturnType<typeof bloqueioSetup>) => s.setPendente(false),
+    ],
+    [
+      'origem trocada de área',
+      (s: ReturnType<typeof bloqueioSetup>) => s.setOrigem('A-a'),
+    ],
+    [
+      'origem em outra organização',
+      (s: ReturnType<typeof bloqueioSetup>) => s.setOrigem('B-m'),
+    ],
+    ['origem nula', (s: ReturnType<typeof bloqueioSetup>) => s.setOrigem(null)],
+    [
+      'origem fora do documento',
+      (s: ReturnType<typeof bloqueioSetup>) => s.setOrigem('X-m'),
+    ],
+  ])(
+    'recoverPendingWork recusada pelo guard (%s) não libera nada (FIX-B)',
+    async (_nome, mutar) => {
+      const setup = bloqueioSetup();
+      await expect(setup.activation.initialize()).resolves.toBe(false);
+      mutar(setup);
+
+      await expect(setup.activation.recoverPendingWork()).resolves.toBe(false);
+      expect(setup.activation.instance.getState()).toMatchObject({
+        status: 'unavailable',
+        error: 'pending-work',
+      });
+      // Recusa sem liberação: o boot segue bloqueado e o trabalho adiado,
+      // retido (CA7).
+      expect(setup.resume).not.toHaveBeenCalled();
+      expect(setup.getProject).not.toHaveBeenCalled();
+      BIntacta(setup.store);
+    },
+  );
+
+  const semRetomada: Array<[string, OrganizacaoLocal[]]> = [
+    [
+      'B em confirmacaoPendente',
+      [
+        readyOrganization('A'),
+        {...readyOrganization('B'), confirmacaoPendente: true},
+      ],
+    ],
+    [
+      'B em falha_recuperavel',
+      [
+        readyOrganization('A'),
+        {
+          ...readyOrganization('B'),
+          estado: 'falha_recuperavel',
+          areaEmExecucao: null,
+          ultimoErro: {
+            codigo: 'preparation-failed',
+            area: 'alertas',
+            ocorridoEm: new Date().toISOString(),
+          },
+        },
+      ],
+    ],
+    ['organização única', [readyOrganization('A')]],
+  ];
+  test.each(semRetomada)(
+    'com %s, a recuperação não chama resumePreparation (CA8)',
+    async (_nome, organizacoes) => {
+      const {store, activation, resume} = bloqueioSetup();
+      store.instance.setState({organizacoes});
+      await expect(activation.initialize()).resolves.toBe(false);
+      expect(activation.instance.getState()).toMatchObject({
+        status: 'unavailable',
+        error: 'pending-work',
+      });
+
+      await expect(activation.recoverPendingWork()).resolves.toBe(true);
+      await new Promise(resolve => setTimeout(resolve, 0));
+      // Sem não-sujeito em `preparando`, nada a retomar (single-org incluso).
+      expect(resume).not.toHaveBeenCalled();
+    },
+  );
+
+  test('recuperação recusada pelo lock de outra intenção não libera nada (U6a, CA7)', async () => {
+    const {store, activation, resume} = bloqueioSetup();
+    await expect(activation.initialize()).resolves.toBe(false);
+
+    // A ativação é outra intenção no MESMO lock: pedida sincronamente em
+    // seguida, a recuperação encontra o lock ocupado e é recusada (:111-121).
+    const outra = activation.activate('A', {area: 'monitoramento'});
+    const recuperacao = activation.recoverPendingWork();
+    await expect(recuperacao).resolves.toBe(false);
+    await expect(outra).resolves.toBe(false);
+
+    // Sem asserir `error`: a ativação publica `pending-work` antes de
+    // settle, a recusa do lock sobrescreve com `operation-in-progress` e
+    // ninguém reescreve depois (F5, fora do fluxo do #88).
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(activation.instance.getState().status).toBe('unavailable');
+    expect(resume).not.toHaveBeenCalled();
+    BIntacta(store);
+  });
+
+  test('duas recuperações simultâneas se juntam numa única liberação (U6b, CA3)', async () => {
+    const {store, activation, resume} = bloqueioSetup();
+    await expect(activation.initialize()).resolves.toBe(false);
+
+    // Mesma chave de intenção: a segunda JOGA-SE na operação em voo (:112) —
+    // e a liberação correspondente acontece uma única vez.
+    const r1 = activation.recoverPendingWork();
+    const r2 = activation.recoverPendingWork();
+    expect(r2).toBe(r1);
+    await expect(r1).resolves.toBe(true);
+    await waitForResume(resume);
+
+    expect(resume).toHaveBeenCalledTimes(1);
+    expect(resume).toHaveBeenCalledWith('B');
+    expect(
+      store.instance.getState().organizacoes.find(item => item.id === 'B'),
+    ).toMatchObject({estado: 'pronta', confirmacaoPendente: true});
+  });
+
+  test('materialização de B já viva antes da liberação automática: a liberação se junta a ela', async () => {
+    const {store, activation, resume, getProject} = bloqueioSetup();
+    await expect(activation.initialize()).resolves.toBe(false);
+
+    // A recuperação fica estacionada na validação do papel...
+    let liberarValidacao!: () => void;
+    const validacaoPresa = new Promise<void>(resolve => {
+      liberarValidacao = resolve;
+    });
+    let marcarEntrada!: () => void;
+    const entrada = new Promise<void>(resolve => {
+      marcarEntrada = resolve;
+    });
+    let primeira = true;
+    getProject.mockImplementation(async () => {
+      if (primeira) {
+        primeira = false;
+        marcarEntrada();
+      }
+      await validacaoPresa;
+      return {$getOwnRole: async () => ({roleId: MEMBER_ROLE_ID})};
+    });
+    // ...e a retomada de B fica estacionada no adaptador.
+    let liberarResume!: () => void;
+    const resumePresa = new Promise<void>(resolve => {
+      liberarResume = resolve;
+    });
+    resume.mockImplementation(async (id: string) => {
+      await resumePresa;
+      await concluir(id, store);
+    });
+
+    const recuperacao = activation.recoverPendingWork();
+    await entrada;
+    // B entra em preparo ANTES da liberação automática.
+    const retry = activation.retryPreparation('B');
+    expect(resume).toHaveBeenCalledTimes(1);
+
+    liberarValidacao();
+    await recuperacao;
+    // O desfecho da recuperação NÃO é asserido: a escrita síncrona do retry
+    // troca o documento e a recuperação cai em `document-changed` — corrida
+    // pré-existente (§5), e piná-la travaria uma correção futura. O que o
+    // teste pina: a liberação não abre uma SEGUNDA materialização.
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(resume).toHaveBeenCalledTimes(1);
+
+    liberarResume();
+    await retry;
+    await waitForResume(resume);
+    expect(resume).toHaveBeenCalledTimes(1);
+    expect(
+      store.instance.getState().organizacoes.find(item => item.id === 'B'),
+    ).toMatchObject({estado: 'pronta', confirmacaoPendente: true});
+  });
+
+  test('depois de uma retomada que falha, só o Try again tenta de novo (#88)', async () => {
+    const {store, activation, resume} = bloqueioSetup();
+    let tentativas = 0;
+    resume.mockImplementation(async (id: string) => {
+      tentativas += 1;
+      if (tentativas === 1) throw new Error('core failed');
+      await concluir(id, store);
+    });
+    await expect(activation.initialize()).resolves.toBe(false);
+    const statuses: string[] = [];
+    activation.instance.subscribe(state => statuses.push(state.status));
+
+    await expect(activation.recoverPendingWork()).resolves.toBe(true);
+    await waitForSettled(
+      () =>
+        store.instance.getState().organizacoes.find(item => item.id === 'B')
+          ?.estado === 'falha_recuperavel',
+    );
+    expect(resume).toHaveBeenCalledTimes(1);
+
+    // `falha_recuperavel` nunca é retomada por entrada automática...
+    await expect(activation.recoverPendingWork()).resolves.toBe(false);
+    await activation.initialize();
+    expect(resume).toHaveBeenCalledTimes(1);
+
+    // ...o "Try again" é uma NOVA tentativa, por desenho (M3/CA3).
+    await expect(activation.retryPreparation('B')).resolves.toBe(true);
+    await waitForSettled(
+      () =>
+        store.instance.getState().organizacoes.find(item => item.id === 'B')
+          ?.estado === 'pronta',
+    );
+    expect(resume).toHaveBeenCalledTimes(2);
+    expect(
+      store.instance.getState().organizacoes.find(item => item.id === 'B'),
+    ).toMatchObject({estado: 'pronta', confirmacaoPendente: true});
+    expect(statuses).toEqual(['opening', 'ready']);
   });
 });
 

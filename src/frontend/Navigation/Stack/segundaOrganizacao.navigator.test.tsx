@@ -284,6 +284,8 @@ describe('segunda organização (navigator real)', () => {
 
   afterEach(() => {
     MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
+    // A trilha semeada por um teste bloquearia o boot dos seguintes (#88).
+    MMKVStoreInitializer.removeItem('MapeoTrack');
   });
 
   beforeEach(() => {
@@ -291,6 +293,7 @@ describe('segunda organização (navigator real)', () => {
     // next device state must hydrate empty (same ledger discipline as
     // index.navigator.test.tsx).
     MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
+    MMKVStoreInitializer.removeItem('MapeoTrack');
   });
 
   const SEGUNDA_ID = 'fedcba9876543210';
@@ -626,4 +629,190 @@ describe('segunda organização (navigator real)', () => {
       area: 'monitoramento',
     });
   }, 30_000);
+
+  test('boot bloqueado por trilha pendente: recuperar o pendente retoma B sem reinício e o banner leva à confirmação de B (#88)', async () => {
+    // O processo morreu com uma trilha de A em Monitoramento pendente E a
+    // segunda organização em `preparando`: a seleção persistida é
+    // A/alertas, o boot bloqueia (FIX-B) e segura TODO o trabalho de início
+    // — a retomada de B inclusa — até a recuperação reabrir a origem.
+    const documento = documentoComSegunda(
+      orgSetup.projectId,
+      orgSetup.alertasProjectId,
+      orgSetup.orgId,
+      orgSetup.orgName,
+      {
+        id: SEGUNDA_ID,
+        nome: SEGUNDA_NOME,
+        estado: 'preparando',
+        confirmacaoPendente: false,
+      },
+    );
+    documento.ativa = {organizacaoId: orgSetup.orgId, area: 'alertas'};
+    MMKVStoreInitializer.setItem(
+      COIAB_ORGANIZATIONS_STORAGE_KEY,
+      JSON.stringify({state: documento, version: 1}),
+    );
+    // A semeadura da trilha vem ANTES do render: a store persistida da
+    // trilha é criada pelo wrapper de providers no render (react.tsx:132).
+    MMKVStoreInitializer.setItem(
+      'MapeoTrack',
+      JSON.stringify({
+        state: {
+          description: 'trilha pendente',
+          projectId: orgSetup.projectId,
+        },
+        version: 2,
+      }),
+    );
+
+    // Dois gates na leitura de PAPEL do projeto de Monitoramento de A (o
+    // padrão de index.navigator.test.tsx): o espião vai na instância REAL
+    // no manager, instalada ANTES do render, porque a recuperação dispara
+    // na montagem do Provisioning (OrganizationProvisioning.tsx:219-222). A
+    // leitura é classificada pela fase do documento CRU — o número de
+    // leituras de A-m antes da recuperação não é fixo:
+    // - com `ativa.area === 'alertas'` (antes do commit) é a validação 2/2
+    //   da recuperação: fica presa no validationGate;
+    // - com 'monitoramento' (depois do commit) é o refresh de query do
+    //   contexto novo: fica presa no refreshGate.
+    const monitoramentoApi = await orgSetup.manager.getProject(
+      orgSetup.projectId,
+    );
+    const getOwnRoleReal = monitoramentoApi.$getOwnRole.bind(monitoramentoApi);
+    let validacaoEsperando = false;
+    let refreshWaiting = false;
+    let releaseValidation!: () => void;
+    const validationGate = new Promise<void>(resolve => {
+      releaseValidation = resolve;
+    });
+    let releaseRefresh!: () => void;
+    const refreshGate = new Promise<void>(resolve => {
+      releaseRefresh = resolve;
+    });
+    const spy = jest
+      .spyOn(monitoramentoApi, '$getOwnRole')
+      .mockImplementation(async () => {
+        if (documentoPersistido().ativa?.area === 'alertas') {
+          validacaoEsperando = true;
+          await validationGate;
+        } else {
+          refreshWaiting = true;
+          await refreshGate;
+        }
+        return getOwnRoleReal();
+      });
+    try {
+      await orgSetup.renderNavigation();
+
+      // Janela da validação (CA1): o loader na tela prova `opening` na
+      // geração 0 — ou seja, a recuperação está em voo (o boot bloqueado
+      // não valida papel). B segue intacta e nenhum projeto novo existe.
+      expect(
+        await screen.findByText('Loading organization…', undefined, {
+          timeout: 15_000,
+        }),
+      ).toBeOnTheScreen();
+      await waitFor(() => expect(validacaoEsperando).toBe(true));
+      const cru = documentoPersistido();
+      expect(cru.ativa).toEqual({
+        organizacaoId: orgSetup.orgId,
+        area: 'alertas',
+      });
+      const segunda = cru.organizacoes.find(org => org.id === SEGUNDA_ID);
+      expect(segunda).toMatchObject({estado: 'preparando'});
+      expect(segunda?.materializacao.monitoramento.etapa).toBe('ausente');
+      expect(segunda?.materializacao.alertas.etapa).toBe('ausente');
+      expect(await orgSetup.client.listProjects()).toHaveLength(2);
+
+      // Libera a validação: `ativa` crua passa a {A, monitoramento}, o que
+      // prova o caminho recoverPendingWork (CA2).
+      await act(async () => {
+        releaseValidation();
+      });
+      await waitFor(() =>
+        expect(documentoPersistido().ativa).toEqual({
+          organizacaoId: orgSetup.orgId,
+          area: 'monitoramento',
+        }),
+      );
+
+      // Janela do refresh (CA2, CA4): com o refresh de A preso, B
+      // materializa em segundo plano até a confirmação pendente, a rota
+      // corrente segue Home (a Home vem da rota inicial do navigator
+      // remontado — sem voltar ao Provisioning) e os checkpoints de B não
+      // derrubam o contexto de A.
+      await waitFor(() => expect(refreshWaiting).toBe(true));
+      await waitFor(
+        () => {
+          const confirmada = documentoPersistido().organizacoes.find(
+            org => org.id === SEGUNDA_ID,
+          );
+          expect(confirmada?.estado).toBe('pronta');
+          expect(confirmada?.confirmacaoPendente).toBe(true);
+        },
+        {timeout: 30_000},
+      );
+      const estado = mockNavigation.getRootState();
+      expect(estado.routes[estado.index]?.name).toBe('Home');
+      expect(documentoPersistido().ativa).toEqual({
+        organizacaoId: orgSetup.orgId,
+        area: 'monitoramento',
+      });
+
+      // Libera o refresh: Home opera A, com o banner de reparo visível.
+      await act(async () => {
+        releaseRefresh();
+      });
+      expect(
+        await screen.findByTestId('MAIN.map-screen', {}, {timeout: 15_000}),
+      ).toBeOnTheScreen();
+      expect(
+        await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
+      ).toHaveTextContent(orgSetup.orgName);
+      expect(screen.getByTestId('HOME.org-repair-btn')).toBeOnTheScreen();
+
+      // Banner (M1, CA5): é assim que a superfície de B é alcançada sem
+      // reinício — e ela mostra a CONFIRMAÇÃO de B, não o estado
+      // interrompido com "Try again".
+      await fireEvent.press(screen.getByTestId('HOME.org-repair-btn'));
+      await waitFor(
+        () => {
+          const atual = mockNavigation.getRootState();
+          expect(atual.routes[atual.index]?.name).toBe(
+            'OrganizationProvisioning',
+          );
+        },
+        {timeout: 15_000},
+      );
+      expect(
+        await screen.findByText(
+          `${SEGUNDA_NOME} is ready. Monitoring and Alerts are already available.`,
+          undefined,
+          {timeout: 15_000},
+        ),
+      ).toBeOnTheScreen();
+      expect(
+        screen.getByTestId('ORG.provisioning-open-organization-btn'),
+      ).toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('ORG.provisioning-retry-preparation-btn'),
+      ).not.toBeOnTheScreen();
+
+      // Uma só materialização (CA3, CA4): o par de A e o par de B.
+      expect(await orgSetup.client.listProjects()).toHaveLength(4);
+      expect(
+        documentoPersistido().organizacoes.find(org => org.id === SEGUNDA_ID)
+          ?.estado,
+      ).toBe('pronta');
+      expect(documentoPersistido().ativa).toEqual({
+        organizacaoId: orgSetup.orgId,
+        area: 'monitoramento',
+      });
+    } finally {
+      releaseValidation();
+      releaseRefresh();
+      spy.mockRestore();
+      MMKVStoreInitializer.removeItem('MapeoTrack');
+    }
+  }, 90_000);
 });
