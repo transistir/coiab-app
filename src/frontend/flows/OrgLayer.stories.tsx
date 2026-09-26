@@ -20,6 +20,16 @@ import {FLOW_STATES} from '../../../.rnstorybook/utils/flowState';
  * own component state, set only by tapping a row, and the capture pipeline
  * selects stories and waits — it never taps. The opening state is also
  * transient: it lasts only as long as the switch's calls into the backend.
+ *
+ * Also not coverable (89 fase 2): the recovery state — the cold-start
+ * "Could not open your organization" surface with the active organization's
+ * name and the switch/create exits. The `organizations` seed axis only ever
+ * writes documents whose active organization opens: it creates every area
+ * project in the backend and throws unless `derivarProjectIdAtivo` resolves,
+ * so the production engine boots `ready`, never `recovery`/`unavailable`.
+ * A deterministic capture would need a new harness axis that makes the
+ * active organization unopenable (a blocked role, or document ids pointing
+ * at absent projects) before activation — deliberately not simulated here.
  */
 const NoStoryComponent = () => null;
 

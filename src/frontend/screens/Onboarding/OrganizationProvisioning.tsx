@@ -11,6 +11,7 @@ import {AppStackParamsList} from '../../sharedTypes/navigation';
 import {useCoiabOrganizationsState} from '../../contexts/CoiabOrganizationsStoreContext';
 import {useOrganizationActivationContext} from '../../contexts/OrganizationActivationContext';
 import {useActiveProjectId} from '../../contexts/ActiveProjectIdStoreContext';
+import {useEarlyAccessState} from '../../contexts/EarlyAccessContext';
 import {
   AREAS,
   derivarProjectIdAtivo,
@@ -126,6 +127,21 @@ const m = defineMessages({
     description:
       'Shown when a back attempt is prevented (SPEC B §3.2:64/:68, Fase 5)',
   },
+  switchOrganization: {
+    id: '$1Navigation.Menu.switchOrganization',
+    defaultMessage: 'Switch organization',
+    // SPEC A §6.1:201 — opens the modal Organizations selector (§7:226).
+    // pt-BR ships the verbatim §6.1 string "Trocar de organização".
+    description: 'Drawer menu entry that opens the organization selector',
+  },
+  // Same intl id + byte-identical defaultMessage as
+  // CreateOrganization.tsx / Success.tsx / DrawerMenu.tsx (identical
+  // duplicates pass the extraction gate); the recovery reuses the
+  // onboarding title.
+  createOrganization: {
+    id: '$1screens.OrganizationSetup.createOrganization',
+    defaultMessage: 'Create Organization',
+  },
 });
 
 /** The row status an area's journal etapa displays (SPEC B §4.4). */
@@ -188,6 +204,8 @@ function DocumentDrivenProvisioning({
   avisoBack,
   preparacaoEmVoo,
   voltarParaAtiva,
+  trocarOrganizacao,
+  criarOrganizacao,
 }: {
   organizacao: OrganizacaoLocal;
   ativa: EstadoOrganizacoes['ativa'];
@@ -199,6 +217,10 @@ function DocumentDrivenProvisioning({
   preparacaoEmVoo: boolean;
   /** Returns to the operating organization; absent when there is none. */
   voltarParaAtiva: (() => void) | undefined;
+  /** Opens the Organizations selector (D2); absent when gated off. */
+  trocarOrganizacao: (() => void) | undefined;
+  /** Opens the creation intro (D2); absent when gated off. */
+  criarOrganizacao: (() => void) | undefined;
 }) {
   const {formatMessage: t} = useIntl();
   const {status, error, activate, retryPreparation, recoverPendingWork} =
@@ -302,6 +324,18 @@ function DocumentDrivenProvisioning({
           {t(m.unavailableTitle)}
         </HeaderText>
       )}
+      {indisponivel && ativa?.organizacaoId === organizacao.id && (
+        // SPEC A §6.2:214 ("Nome preservado"): the blocked organization is
+        // named — the active selection by id (§3a), never a document index.
+        // A selection the document cannot resolve (an orphaned id the parser
+        // tolerates) has no name to preserve: the body stays absent while
+        // the title and the exits keep their own predicates.
+        <BodyText
+          style={styles.bodyText}
+          testID="ORG.provisioning-unavailable-name">
+          {organizacao.nome}
+        </BodyText>
+      )}
       {trabalhoPendente && (
         <BodyText style={styles.bodyText}>{t(m.pendingWork)}</BodyText>
       )}
@@ -345,6 +379,27 @@ function DocumentDrivenProvisioning({
           onPress={() => {
             void tentarNovamente();
           }}
+        />
+      )}
+      {/* 89 fase 2 (D1/D2): the navigable exits mirror the drawer's own
+      entries and live ONLY in this branch — an organization in preparation,
+      failure or confirmation owns the surface alone (S5a). */}
+      {indisponivel && trocarOrganizacao && (
+        <SecondaryButton
+          testID="ORG.provisioning-switch-organization-btn"
+          fullSize
+          text={t(m.switchOrganization)}
+          disabled={ativando}
+          onPress={trocarOrganizacao}
+        />
+      )}
+      {indisponivel && criarOrganizacao && (
+        <SecondaryButton
+          testID="ORG.provisioning-create-organization-btn"
+          fullSize
+          text={t(m.createOrganization)}
+          disabled={ativando}
+          onPress={criarOrganizacao}
         />
       )}
       {voltarParaAtiva && !preparacaoEmVoo && (
@@ -398,11 +453,18 @@ export const OrganizationProvisioning = ({
     [navigation],
   );
   // The content authority (SPEC B §4.4): the organization still in
-  // preparation anywhere in the document, falling back to the first entry
-  // when all are `pronta` — the recovery/`unavailable` contract below keeps
-  // its authority when a ready organization cannot be opened.
+  // preparation anywhere in the document. Once every organization is
+  // settled — including the recovery/`unavailable` contract below, where
+  // the engine failed to open a ready one — the authority is the ACTIVE
+  // selection, looked up by id: showing `organizacoes[0]` would name (and
+  // retry) the wrong organization whenever the active one is not the first
+  // entry (89 fase 2, §3a).
   const emPreparo = organizacaoEmPreparo(estado);
-  const organizacaoDocument = emPreparo ?? estado.organizacoes[0];
+  const organizacaoAtiva = estado.organizacoes.find(
+    candidata => candidata.id === estado.ativa?.organizacaoId,
+  );
+  const organizacaoDocument =
+    emPreparo ?? organizacaoAtiva ?? estado.organizacoes[0];
   const {status: activationStatus, preparacaoViva} =
     useOrganizationActivationContext();
   // The document's own operational id (SPEC A §4.2 regra 5): null while the
@@ -530,6 +592,19 @@ export const OrganizationProvisioning = ({
   const voltarParaAtiva = operandoOutra
     ? () => navigation.popTo('Home', {screen: 'Map'})
     : undefined;
+  // 89 fase 2 (D1/D2): the recovery exits gate on early access and mirror
+  // the drawer's own predicates (DrawerMenu.tsx): the selector needs 2+
+  // organizations and a resolvable active selection, creation only the
+  // latter. `undefined` renders nothing — no disabled control.
+  const isEarly = useEarlyAccessState(state => state.isEarlyAccessEnabled);
+  const trocarOrganizacao =
+    isEarly && derivado !== null && estado.organizacoes.length >= 2
+      ? () => navigation.navigate('Organizations')
+      : undefined;
+  const criarOrganizacao =
+    isEarly && derivado !== null
+      ? () => navigation.navigate('CreateOrganization')
+      : undefined;
 
   if (organizacaoDocument === undefined) {
     return (
@@ -546,6 +621,8 @@ export const OrganizationProvisioning = ({
       avisoBack={avisoBack && preparandoAtiva}
       preparacaoEmVoo={preparando && preparacaoViva}
       voltarParaAtiva={voltarParaAtiva}
+      trocarOrganizacao={trocarOrganizacao}
+      criarOrganizacao={criarOrganizacao}
     />
   );
 };
