@@ -144,7 +144,11 @@ it('ram: the raced getProject lands in the createProject window', () => {
   // two instances ever existing (false green found in review). With these
   // assertions, the characterization below is only reached when both
   // instances were really constructed; the report carries any rejection in
-  // getError/settledGetError.
+  // getError/settledGetError, classified by the presence of the error key so
+  // even `Promise.reject(undefined)` lands as rejected. A state that is not
+  // comparable at all (a get rejected, or resolved without an instance) now
+  // reports sameInstance: null, which fails the sameInstance assertion below
+  // instead of reading as two distinct instances.
   expect(report.getOutcome).toBe('resolved');
   expect(report.settledGetOutcome).toBe('resolved');
 

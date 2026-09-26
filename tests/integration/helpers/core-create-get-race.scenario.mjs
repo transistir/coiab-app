@@ -77,19 +77,38 @@ function errorText(err) {
   return err instanceof Error ? err.message : String(err);
 }
 
+// A settled get carries exactly one key — `value` when it resolved, `error`
+// when it rejected. Classify by that key's PRESENCE, never by the truthiness
+// of its value: `Promise.reject(undefined)` must be reported as rejected (and
+// its reason as errorText(undefined) === "undefined") instead of masquerading
+// as a resolved get with a null error (C1 false green, round-3 review).
+function classifyResult(result) {
+  const rejected = 'error' in result;
+  return {
+    outcome: rejected ? 'rejected' : 'resolved',
+    error: rejected ? errorText(result.error) : null,
+  };
+}
+
 // Instance identity is only comparable when BOTH getProject calls actually
-// resolved: a rejected get was once conflated with a missing instance and
-// made `sameInstance: false` satisfy the ram characterization without two
-// instances ever existing (C1 false green, review of 22f19ed0). The outcome
-// fields keep any rejection explicit in the report instead.
+// resolved to real instances: a rejected get was once conflated with a
+// missing instance and made `sameInstance: false` satisfy the ram
+// characterization without two instances ever existing (C1 false green,
+// review of 22f19ed0). A non-comparable state reports `null` — never `false`
+// — so a get that rejected, or resolved without an instance, cannot read as
+// "two distinct instances"; the sameInstance assertions in the jest suite
+// demand an actual boolean and fail loudly on null instead. The outcome
+// fields keep any rejection explicit in the report as well.
 function instanceIdentity() {
-  return (
-    getOutcome === 'resolved' &&
-    settledGetOutcome === 'resolved' &&
-    racedInstance !== null &&
-    settledInstance !== null &&
-    racedInstance === settledInstance
-  );
+  if (
+    getOutcome !== 'resolved' ||
+    settledGetOutcome !== 'resolved' ||
+    racedInstance === null ||
+    settledInstance === null
+  ) {
+    return null;
+  }
+  return racedInstance === settledInstance;
 }
 
 // The blob core's ELOCKED never reaches the process as a rejection: the
@@ -294,8 +313,7 @@ if (discoveredId === null) {
     value => ({value}),
     error => ({error}),
   );
-  getOutcome = racedResult.error ? 'rejected' : 'resolved';
-  getError = racedResult.error ? errorText(racedResult.error) : null;
+  ({outcome: getOutcome, error: getError} = classifyResult(racedResult));
   racedInstance = racedResult.value ?? null;
 
   // Fixed observation window for events that must not happen; sized against
@@ -308,8 +326,10 @@ if (discoveredId === null) {
     value => ({value}),
     error => ({error}),
   );
-  settledGetOutcome = settledResult.error ? 'rejected' : 'resolved';
-  settledGetError = settledResult.error ? errorText(settledResult.error) : null;
+  ({
+    outcome: settledGetOutcome,
+    error: settledGetError,
+  } = classifyResult(settledResult));
   settledInstance = settledResult.value ?? null;
   sameInstance = instanceIdentity();
 } else {
@@ -332,8 +352,7 @@ if (discoveredId === null) {
     value => ({value}),
     error => ({error}),
   );
-  getOutcome = racedResult.error ? 'rejected' : 'resolved';
-  getError = racedResult.error ? errorText(racedResult.error) : null;
+  ({outcome: getOutcome, error: getError} = classifyResult(racedResult));
   racedInstance = racedResult.value ?? null;
 
   quiesceMs = await waitForQuiescence();
@@ -342,8 +361,10 @@ if (discoveredId === null) {
     value => ({value}),
     error => ({error}),
   );
-  settledGetOutcome = settledResult.error ? 'rejected' : 'resolved';
-  settledGetError = settledResult.error ? errorText(settledResult.error) : null;
+  ({
+    outcome: settledGetOutcome,
+    error: settledGetError,
+  } = classifyResult(settledResult));
   settledInstance = settledResult.value ?? null;
   sameInstance = instanceIdentity();
 }
