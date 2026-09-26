@@ -40,7 +40,9 @@ const require = createRequire(import.meta.url);
 
 const mode = process.argv[2];
 if (mode !== 'ram' && mode !== 'disk' && mode !== 'disk-serial') {
-  console.error('usage: node core-create-get-race.scenario.mjs <ram|disk|disk-serial>');
+  console.error(
+    'usage: node core-create-get-race.scenario.mjs <ram|disk|disk-serial>',
+  );
   process.exit(2);
 }
 
@@ -59,7 +61,8 @@ function normalizeError(err, origin) {
       break;
     }
     if (code === null && node.code !== undefined) code = node.code;
-    if (lockPath === null && typeof node.path === 'string') lockPath = node.path;
+    if (lockPath === null && typeof node.path === 'string')
+      lockPath = node.path;
     node = node.cause;
   }
   return {
@@ -68,6 +71,25 @@ function normalizeError(err, origin) {
     message: err instanceof Error ? err.message : String(err),
     path: lockPath,
   };
+}
+
+function errorText(err) {
+  return err instanceof Error ? err.message : String(err);
+}
+
+// Instance identity is only comparable when BOTH getProject calls actually
+// resolved: a rejected get was once conflated with a missing instance and
+// made `sameInstance: false` satisfy the ram characterization without two
+// instances ever existing (C1 false green, review of 22f19ed0). The outcome
+// fields keep any rejection explicit in the report instead.
+function instanceIdentity() {
+  return (
+    getOutcome === 'resolved' &&
+    settledGetOutcome === 'resolved' &&
+    racedInstance !== null &&
+    settledInstance !== null &&
+    racedInstance === settledInstance
+  );
 }
 
 // The blob core's ELOCKED never reaches the process as a rejection: the
@@ -127,7 +149,8 @@ const bundledNodejsProjectPkg = JSON.parse(
     'utf8',
   ),
 );
-const bundledCoreVersion = bundledNodejsProjectPkg.dependencies['@comapeo/core'];
+const bundledCoreVersion =
+  bundledNodejsProjectPkg.dependencies['@comapeo/core'];
 
 const {MapeoManager} = await import('@comapeo/core');
 const {KeyManager} = await import('@mapeo/crypto');
@@ -236,6 +259,9 @@ let statusAtDiscovery = null;
 let discoveredId = null;
 let createOutcome = null;
 let getOutcome = null;
+let getError = null;
+let settledGetOutcome = null;
+let settledGetError = null;
 let sameInstance = null;
 let waitOutcome = null;
 let quiesceMs = null;
@@ -269,6 +295,7 @@ if (discoveredId === null) {
     error => ({error}),
   );
   getOutcome = racedResult.error ? 'rejected' : 'resolved';
+  getError = racedResult.error ? errorText(racedResult.error) : null;
   racedInstance = racedResult.value ?? null;
 
   // Fixed observation window for events that must not happen; sized against
@@ -281,11 +308,10 @@ if (discoveredId === null) {
     value => ({value}),
     error => ({error}),
   );
+  settledGetOutcome = settledResult.error ? 'rejected' : 'resolved';
+  settledGetError = settledResult.error ? errorText(settledResult.error) : null;
   settledInstance = settledResult.value ?? null;
-  sameInstance =
-    racedInstance !== null &&
-    settledInstance !== null &&
-    racedInstance === settledInstance;
+  sameInstance = instanceIdentity();
 } else {
   // The race: get the project in the same tick the id is discovered, before
   // createProject has registered its instance.
@@ -294,9 +320,9 @@ if (discoveredId === null) {
 
   const predicate =
     mode === 'ram'
-      // In RAM nothing locks, so the only settle worth waiting for is the
-      // create itself.
-      ? () => createSettled
+      ? // In RAM nothing locks, so the only settle worth waiting for is the
+        // create itself.
+        () => createSettled
       : () => events.some(event => event.code === 'ELOCKED');
 
   waitOutcome = await waitUntil(predicate, WAIT_UNTIL_MS);
@@ -307,6 +333,7 @@ if (discoveredId === null) {
     error => ({error}),
   );
   getOutcome = racedResult.error ? 'rejected' : 'resolved';
+  getError = racedResult.error ? errorText(racedResult.error) : null;
   racedInstance = racedResult.value ?? null;
 
   quiesceMs = await waitForQuiescence();
@@ -315,18 +342,15 @@ if (discoveredId === null) {
     value => ({value}),
     error => ({error}),
   );
+  settledGetOutcome = settledResult.error ? 'rejected' : 'resolved';
+  settledGetError = settledResult.error ? errorText(settledResult.error) : null;
   settledInstance = settledResult.value ?? null;
-  sameInstance =
-    racedInstance !== null &&
-    settledInstance !== null &&
-    racedInstance === settledInstance;
+  sameInstance = instanceIdentity();
 }
 
 const firstElockedIndex = events.findIndex(event => event.code === 'ELOCKED');
 const msToFirstElocked =
-  firstElockedIndex === -1
-    ? null
-    : Math.round(eventTimes[firstElockedIndex]);
+  firstElockedIndex === -1 ? null : Math.round(eventTimes[firstElockedIndex]);
 
 const report = {
   mode,
@@ -339,6 +363,9 @@ const report = {
   createPendingAtGet,
   createOutcome,
   getOutcome,
+  getError,
+  settledGetOutcome,
+  settledGetError,
   sameInstance,
   waitOutcome,
   msToFirstElocked,

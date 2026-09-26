@@ -191,7 +191,8 @@ node scripts/storybook-report.mjs /tmp/storybook-captures
 
 The full-manifest wrapper performs and records the acceptance cold start before
 selecting any story. It waits for the device, force-stops the package, clears
-logcat, launches `MainActivity`, and waits for fresh `Running "main"` evidence.
+logcat, cold-starts `MainActivity` straight into the first manifest story's
+deep link, and waits for fresh `Running "main"` evidence.
 The exact commands, outcomes, evidence line, relevant React Native log snapshot,
 and timestamps are retained as
 `/tmp/storybook-captures/cold-start-provenance.txt`. Keep that file with the

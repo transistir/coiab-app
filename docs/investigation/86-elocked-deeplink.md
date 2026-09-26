@@ -1,6 +1,10 @@
 # #86: `ELOCKED` no deep link do frame 001 (captura Storybook)
 
-**Status:** investigação por leitura de código e logcat. Nada foi aplicado, nada foi commitado.
+**Status:** aplicado nesta branch (`fix/issue-86-elocked-coldstart`): mitigação A — cold start
+direto no deep link da 1ª story do manifest — implementada em `e10dee12`; caracterização RED/GREEN
+do core em Node (`tests/integration/core-create-get-race.test.ts`) implementada em `22f19ed0`. O
+passo 0 em disco reproduziu a janela: 8 `ELOCKED` em 1 projeto, primeiro em ~1066 ms. A issue
+upstream (§9) continua **não aberta**.
 **Base:** `investigate/86-elocked-deeplink` @ `df7d128b`. Stack: `@comapeo/core` 7.4.0 (a mesma versão
 dentro do backend empacotado, `nodejs-project/package.json`) e `@comapeo/core-react-native` 1.0.0-pre.12.
 **Evidência de runtime:** run com falha `storybook-captures-21` (`/tmp/oc-cap-artifact/storybook-captures-21`,
