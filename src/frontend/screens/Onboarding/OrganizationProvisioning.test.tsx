@@ -28,6 +28,11 @@ import {
   type CoiabOrganizationsStore,
 } from '../../contexts/CoiabOrganizationsStoreContext';
 import {
+  createEarlyAccessStore,
+  EarlyAccessStoreProvider,
+  type EarlyAccessStore,
+} from '../../contexts/EarlyAccessContext';
+import {
   criarEtapaAreaAusente,
   type EstadoOrganizacoes,
   type EtapaArea,
@@ -81,9 +86,12 @@ const navigationAddListener: jest.Mock = jest.fn(
     return subscription.unsubscribe;
   },
 );
+/** The recovery exits (89 fase 2, D2): selector and creation intro. */
+const navigationNavigate = jest.fn();
 const navigationMock = {
   reset: navigationReset,
   popTo: navigationPopTo,
+  navigate: navigationNavigate,
   addListener: navigationAddListener,
   // The Home-reset hold (P2-3) reads the stack: this screen alone.
   getState: () => ({
@@ -163,6 +171,8 @@ const activationMock = jest.requireMock(
 ) as {__setActivation(activation: unknown): void};
 
 let store: CoiabOrganizationsStore;
+/** The early-access gate the new recovery exits read (89 fase 2, D1). */
+let earlyAccess: EarlyAccessStore;
 
 /**
  * The screen reads the document and the activation handle; nothing else.
@@ -172,13 +182,15 @@ let store: CoiabOrganizationsStore;
 function renderScreen() {
   return render(
     <IntlProvider locale="en" messages={{}}>
-      <CoiabOrganizationsStoreProvider store={store}>
-        <NavigationContext.Provider value={navigationMock}>
-          <NavigationRouteContext.Provider value={screenProps.route}>
-            <OrganizationProvisioning {...screenProps} />
-          </NavigationRouteContext.Provider>
-        </NavigationContext.Provider>
-      </CoiabOrganizationsStoreProvider>
+      <EarlyAccessStoreProvider value={earlyAccess}>
+        <CoiabOrganizationsStoreProvider store={store}>
+          <NavigationContext.Provider value={navigationMock}>
+            <NavigationRouteContext.Provider value={screenProps.route}>
+              <OrganizationProvisioning {...screenProps} />
+            </NavigationRouteContext.Provider>
+          </NavigationContext.Provider>
+        </CoiabOrganizationsStoreProvider>
+      </EarlyAccessStoreProvider>
     </IntlProvider>,
   );
 }
@@ -196,6 +208,20 @@ const PAR_PRONTA: OrganizacaoLocal['materializacao'] = {
   alertas: etapa({
     etapa: 'verificado',
     projectId: 'proj-a-1',
+    template: {versao: '1', hash: 'a'},
+  }),
+};
+
+/** A second ready pair: the §4.2 parser rejects duplicate projectIds. */
+const PAR_PRONTA_B: OrganizacaoLocal['materializacao'] = {
+  monitoramento: etapa({
+    etapa: 'verificado',
+    projectId: 'proj-m-2',
+    template: {versao: '1', hash: 'm'},
+  }),
+  alertas: etapa({
+    etapa: 'verificado',
+    projectId: 'proj-a-2',
     template: {versao: '1', hash: 'a'},
   }),
 };
@@ -248,6 +274,10 @@ const BACK_BLOCKED =
 beforeEach(() => {
   jest.clearAllMocks();
   store = createCoiabOrganizationsStore({persist: false});
+  // Early access on by default (89 fase 2): the exits it gates are asserted
+  // per test; S4 turns it off in its own test.
+  earlyAccess = createEarlyAccessStore({persist: false});
+  earlyAccess.actions.setEarlyAccessEnabled(true);
   activate.mockResolvedValue(true);
   retryPreparation.mockResolvedValue(true);
   recoverPendingWork.mockResolvedValue(false);
@@ -531,6 +561,378 @@ describe('OrganizationProvisioning', () => {
 
       expect(activate).toHaveBeenCalledTimes(1);
       expect(activate).toHaveBeenCalledWith('org-1', {area: 'monitoramento'});
+    });
+
+    // ——— 89 fase 2: the navigable recovery exit (plan v2 §4, D1/D2) ———
+
+    const segundaPronta = () =>
+      organizacao({
+        id: 'org-2',
+        nome: 'Segunda',
+        estado: 'pronta',
+        confirmacaoPendente: false,
+        materializacao: PAR_PRONTA_B,
+      });
+    const segundaProntaComConfirmacao = () =>
+      organizacao({
+        id: 'org-2',
+        nome: 'Segunda',
+        estado: 'pronta',
+        confirmacaoPendente: true,
+        materializacao: PAR_PRONTA_B,
+      });
+    const ativaA = {organizacaoId: 'org-1', area: 'monitoramento'} as const;
+    /** Recovery over a settled document: the estado base for the exits. */
+    function ativarRecovery(
+      status: 'recovery' | 'unavailable' | 'ready',
+      error?: string,
+    ) {
+      activationMock.__setActivation({
+        status,
+        error,
+        activate,
+        retryPreparation,
+        recoverPendingWork,
+      });
+    }
+
+    test('S1: shows the ACTIVE organization name, not index 0', async () => {
+      seedDocument([segundaPronta(), prontaAtiva.organizacao], ativaA);
+      ativarRecovery('recovery', 'unavailable');
+      await renderScreen();
+
+      // RED: no name is rendered today (SPEC A §6.2:214 "Nome preservado").
+      // GREEN: A's name — never B's (the naive `organizacoes[0]` fallback
+      // would show B here).
+      expect(
+        screen.getByTestId('ORG.provisioning-unavailable-name'),
+      ).toHaveTextContent('Primeira');
+      expect(screen.queryByText('Segunda')).not.toBeOnTheScreen();
+    });
+
+    test('S2: early access + 1 organization — Criar yes, Trocar no; Criar navigates to CreateOrganization', async () => {
+      seedDocument([prontaAtiva.organizacao], ativaA);
+      ativarRecovery('recovery', 'unavailable');
+      const user = userEvent.setup();
+      await renderScreen();
+
+      // (AC2) One organization: no switch entry.
+      expect(
+        screen.queryByTestId('ORG.provisioning-switch-organization-btn'),
+      ).not.toBeOnTheScreen();
+      // RED: the exit button does not exist today.
+      await user.press(
+        screen.getByTestId('ORG.provisioning-create-organization-btn'),
+      );
+      expect(navigationNavigate).toHaveBeenCalledTimes(1);
+      expect(navigationNavigate).toHaveBeenCalledWith('CreateOrganization');
+    });
+
+    test('S3: early access + 2 organizations — Trocar navigates to Organizations and Criar to CreateOrganization', async () => {
+      seedDocument([prontaAtiva.organizacao, segundaPronta()], ativaA);
+      ativarRecovery('recovery', 'unavailable');
+      const user = userEvent.setup();
+      await renderScreen();
+
+      // RED: the exit button does not exist today.
+      await user.press(
+        screen.getByTestId('ORG.provisioning-switch-organization-btn'),
+      );
+      expect(navigationNavigate).toHaveBeenCalledWith('Organizations');
+      await user.press(
+        screen.getByTestId('ORG.provisioning-create-organization-btn'),
+      );
+      expect(navigationNavigate).toHaveBeenCalledWith('CreateOrganization');
+    });
+
+    test('S4: early access off — name yes, neither exit button', async () => {
+      seedDocument([prontaAtiva.organizacao], ativaA);
+      ativarRecovery('recovery', 'unavailable');
+      earlyAccess.actions.setEarlyAccessEnabled(false);
+      await renderScreen();
+
+      // RED: fails on the missing name.
+      expect(
+        screen.getByTestId('ORG.provisioning-unavailable-name'),
+      ).toHaveTextContent('Primeira');
+      expect(
+        screen.queryByTestId('ORG.provisioning-switch-organization-btn'),
+      ).not.toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('ORG.provisioning-create-organization-btn'),
+      ).not.toBeOnTheScreen();
+      // Tentar novamente is the only action, and it is tappable.
+      expect(
+        screen.getByTestId('ORG.provisioning-retry-activation-btn'),
+      ).toBeEnabled();
+    });
+
+    // (T5a) Every non-`indisponivel` state of the surface must stay exactly
+    // as it is today — no name, no exits. Guard: green in the base state.
+    test.each([
+      {
+        linha: 'B preparing',
+        textoVisivel: undefined,
+        montar: () => {
+          seedDocument(
+            [
+              prontaAtiva.organizacao,
+              organizacao({id: 'org-2', nome: 'Segunda'}),
+            ],
+            ativaA,
+          );
+          // The settled engine state: what keeps the surface closed is the
+          // ORGANIZATION still un-settled (B preparing), never the status.
+          ativarRecovery('recovery', 'unavailable');
+        },
+      },
+      {
+        linha: 'B failed preparation',
+        textoVisivel: undefined,
+        montar: () => {
+          seedDocument(
+            [
+              prontaAtiva.organizacao,
+              organizacao({
+                id: 'org-2',
+                nome: 'Segunda',
+                estado: 'falha_recuperavel',
+                ultimoErro: {
+                  codigo: 'preparation-failed',
+                  area: 'alertas',
+                  ocorridoEm: '2026-09-25T00:00:00.000Z',
+                },
+              }),
+            ],
+            ativaA,
+          );
+          // Same settled engine state: B's persisted failure alone closes
+          // the surface (the document's un-settled entry, not the status).
+          ativarRecovery('recovery', 'unavailable');
+        },
+      },
+      {
+        linha: 'B ready with pending confirmation',
+        textoVisivel: 'Organization created',
+        montar: () => {
+          seedDocument(
+            [prontaAtiva.organizacao, segundaProntaComConfirmacao()],
+            ativaA,
+          );
+          // And the pending confirmation: recovery/unavailable, yet the
+          // `!confirmacaoPendente` clause — not the status — closes it.
+          ativarRecovery('recovery', 'unavailable');
+        },
+      },
+      {
+        linha: 'unavailable + pending-work',
+        textoVisivel:
+          'Finish or discard the record before switching organization',
+        montar: () => {
+          seedDocument([prontaAtiva.organizacao, segundaPronta()], ativaA);
+          ativarRecovery('unavailable', 'pending-work');
+        },
+      },
+      {
+        linha: 'ready (A operating)',
+        textoVisivel: undefined,
+        montar: () => {
+          seedDocument([prontaAtiva.organizacao, segundaPronta()], ativaA);
+          ativarRecovery('ready');
+        },
+      },
+    ] as Array<{linha: string; textoVisivel?: string; montar: () => void}>)(
+      'outside indisponivel: no name, no exits ($linha)',
+      async ({montar, textoVisivel}) => {
+        montar();
+        // TL-RN's render is async: the module-level `screen` binds only
+        // after the act() promise settles.
+        await renderScreen();
+
+        // Unconditional on purpose (jest/no-conditional-expect): the row's
+        // canonical text is on screen exactly when the row declares one.
+        const textoNaTela = textoVisivel
+          ? screen.queryByText(textoVisivel)
+          : null;
+        expect(textoNaTela !== null).toBe(textoVisivel !== undefined);
+        expect(
+          screen.queryByTestId('ORG.provisioning-unavailable-name'),
+        ).not.toBeOnTheScreen();
+        expect(
+          screen.queryByTestId('ORG.provisioning-switch-organization-btn'),
+        ).not.toBeOnTheScreen();
+        expect(
+          screen.queryByTestId('ORG.provisioning-create-organization-btn'),
+        ).not.toBeOnTheScreen();
+      },
+    );
+
+    // (T5b) The refusal keeps `recovery/pending-work` — `trabalhoPendente`
+    // needs `unavailable`, so this still counts as `indisponivel`: the exits
+    // must be offered.
+    test('S5b: recovery/pending-work stays indisponivel — exits present', async () => {
+      seedDocument([prontaAtiva.organizacao, segundaPronta()], ativaA);
+      ativarRecovery('recovery', 'pending-work');
+      await renderScreen();
+
+      expect(
+        screen.getByTestId('ORG.provisioning-unavailable-name'),
+      ).toHaveTextContent('Primeira');
+      // RED: the exit buttons do not exist today.
+      expect(
+        screen.getByTestId('ORG.provisioning-switch-organization-btn'),
+      ).toBeOnTheScreen();
+      expect(
+        screen.getByTestId('ORG.provisioning-create-organization-btn'),
+      ).toBeOnTheScreen();
+      expect(
+        screen.getByTestId('ORG.provisioning-retry-activation-btn'),
+      ).toBeOnTheScreen();
+    });
+
+    // (R3) With the removal sheet above and A ready-and-operating, the
+    // surface keeps A's rows and offers no way back: the sheet defers the
+    // Home reset, and `operandoOutra` must not fire a second route to A.
+    test('S6: removal sheet above + A ready outside index 0 — A rows, no Voltar, no reset', async () => {
+      const NavStack = createNativeStackNavigator<AppStackParamsList>();
+      const navigationRef = createNavigationContainerRef<AppStackParamsList>();
+      const HomeStub = () => <Text>HOME-REACHED</Text>;
+      const SheetStub = () => <Text>SHEET-REACHED</Text>;
+      seedDocument([segundaPronta(), prontaAtiva.organizacao], ativaA);
+      activationMock.__setActivation({
+        status: 'ready',
+        activate,
+        retryPreparation,
+        recoverPendingWork,
+      });
+      activeProjectIdMock.__projetarProjectIdAtivo('proj-m-1');
+      await render(
+        <IntlProvider locale="en" messages={{}}>
+          <EarlyAccessStoreProvider value={earlyAccess}>
+            <CoiabOrganizationsStoreProvider store={store}>
+              <NavigationContainer
+                ref={navigationRef}
+                initialState={{
+                  index: 1,
+                  routes: [
+                    {name: 'OrganizationProvisioning'},
+                    {
+                      name: 'RemovedFromProjectBottomSheet',
+                      params: {projectId: 'proj-m-1'},
+                    },
+                  ],
+                }}>
+                <NavStack.Navigator>
+                  {/* Home is REGISTERED so a reset fired during the hold
+                  would land somewhere real instead of silently warning —
+                  the routes assertion below is what pins the hold. */}
+                  <NavStack.Screen name="Home" component={HomeStub} />
+                  <NavStack.Screen
+                    name="OrganizationProvisioning"
+                    component={OrganizationProvisioning}
+                  />
+                  <NavStack.Screen
+                    name="RemovedFromProjectBottomSheet"
+                    component={SheetStub}
+                    options={{presentation: 'transparentModal'}}
+                  />
+                </NavStack.Navigator>
+              </NavigationContainer>
+            </CoiabOrganizationsStoreProvider>
+          </EarlyAccessStoreProvider>
+        </IntlProvider>,
+      );
+      await screen.findByText('SHEET-REACHED');
+
+      // RED today: the content authority is B (index 0), so the screen
+      // reads A's rows as "operating another organization" and offers
+      // Voltar para a ativa. The sheet makes the screen below aria-hidden,
+      // so the query must opt into hidden elements to see it at all.
+      expect(
+        screen.queryByTestId('ORG.provisioning-back-to-active-btn', {
+          includeHiddenElements: true,
+        }),
+      ).not.toBeOnTheScreen();
+      // The hold: with Home a real destination, the stack the sheet sits
+      // over is exactly the stack that stays — no Home reset fires while
+      // the explanation is up.
+      expect(
+        navigationRef.getRootState().routes.map(item => item.name),
+      ).toEqual(['OrganizationProvisioning', 'RemovedFromProjectBottomSheet']);
+    }, 30_000);
+
+    // (T3) A retry in flight disables the exits together with Tentar
+    // novamente — the surface is single-threaded while `ativando`.
+    test('S7: a retry in flight disables Trocar and Criar', async () => {
+      // Two organizations: the switch exit (D2) needs 2+, and the retry
+      // disables BOTH exits together with Tentar novamente.
+      seedDocument([prontaAtiva.organizacao, segundaPronta()], ativaA);
+      let releaseActivate: (value: boolean) => void = () => {};
+      activate.mockImplementation(
+        () =>
+          new Promise<boolean>(resolve => {
+            releaseActivate = resolve;
+          }),
+      );
+      ativarRecovery('recovery', 'unavailable');
+      const user = userEvent.setup();
+      await renderScreen();
+
+      await user.press(
+        screen.getByTestId('ORG.provisioning-retry-activation-btn'),
+      );
+      // RED: the exit buttons do not exist today.
+      expect(
+        screen.getByTestId('ORG.provisioning-switch-organization-btn'),
+      ).toBeDisabled();
+      expect(
+        screen.getByTestId('ORG.provisioning-create-organization-btn'),
+      ).toBeDisabled();
+      releaseActivate(true);
+      await waitFor(() => {
+        expect(
+          screen.getByTestId('ORG.provisioning-switch-organization-btn'),
+        ).toBeEnabled();
+      });
+      expect(
+        screen.getByTestId('ORG.provisioning-create-organization-btn'),
+      ).toBeEnabled();
+    });
+
+    // (S8) SPEC A §6.2:214 names the organization the SELECTION points to;
+    // a selection orphaned from the document (an id no entry holds, which
+    // the parser tolerates) has no name to preserve. MEASURED, not assumed:
+    // on this state the exits are ALSO absent — their gates read the
+    // document's own derivation (`derivarProjectIdAtivo` → null for an
+    // orphan selection, OrganizationProvisioning.tsx `derivado !== null`),
+    // never the name. The surface stays title + rows + Tentar novamente.
+    test('S8: an orphan ativa (id not in the document) shows no name and no exits', async () => {
+      seedDocument([prontaAtiva.organizacao, segundaPronta()], {
+        organizacaoId: 'org-fantasma',
+        area: 'monitoramento',
+      });
+      ativarRecovery('recovery', 'unavailable');
+      await renderScreen();
+
+      // The fallback entry owns the rows and the title, but the name is the
+      // SELECTION's — and 'org-fantasma' resolves to nothing.
+      expect(
+        screen.getByText('Could not open your organization'),
+      ).toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('ORG.provisioning-unavailable-name'),
+      ).not.toBeOnTheScreen();
+      // The derivation gate turns both exits off with it; Tentar novamente
+      // remains (the selection itself is non-null).
+      expect(
+        screen.queryByTestId('ORG.provisioning-switch-organization-btn'),
+      ).not.toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('ORG.provisioning-create-organization-btn'),
+      ).not.toBeOnTheScreen();
+      expect(
+        screen.getByTestId('ORG.provisioning-retry-activation-btn'),
+      ).toBeEnabled();
     });
   });
 
@@ -849,17 +1251,19 @@ describe('OrganizationProvisioning', () => {
       seedDocument([organizacao({estado: 'preparando'})]);
       await render(
         <IntlProvider locale="en" messages={{}}>
-          <CoiabOrganizationsStoreProvider store={store}>
-            <NavigationContainer ref={navigationRef}>
-              <NavStack.Navigator initialRouteName="OrganizationProvisioning">
-                <NavStack.Screen name="Home" component={HomeStub} />
-                <NavStack.Screen
-                  name="OrganizationProvisioning"
-                  component={OrganizationProvisioning}
-                />
-              </NavStack.Navigator>
-            </NavigationContainer>
-          </CoiabOrganizationsStoreProvider>
+          <EarlyAccessStoreProvider value={earlyAccess}>
+            <CoiabOrganizationsStoreProvider store={store}>
+              <NavigationContainer ref={navigationRef}>
+                <NavStack.Navigator initialRouteName="OrganizationProvisioning">
+                  <NavStack.Screen name="Home" component={HomeStub} />
+                  <NavStack.Screen
+                    name="OrganizationProvisioning"
+                    component={OrganizationProvisioning}
+                  />
+                </NavStack.Navigator>
+              </NavigationContainer>
+            </CoiabOrganizationsStoreProvider>
+          </EarlyAccessStoreProvider>
         </IntlProvider>,
       );
       await screen.findByText('Preparing your organization…');
@@ -1105,33 +1509,35 @@ describe('OrganizationProvisioning', () => {
       activeProjectIdMock.__projetarProjectIdAtivo('proj-m-1');
       await render(
         <IntlProvider locale="en" messages={{}}>
-          <CoiabOrganizationsStoreProvider store={store}>
-            <NavigationContainer
-              ref={navigationRef}
-              initialState={{
-                index: 1,
-                routes: [
-                  {name: 'OrganizationProvisioning'},
-                  {
-                    name: 'RemovedFromProjectBottomSheet',
-                    params: {projectId: 'proj-m-1'},
-                  },
-                ],
-              }}>
-              <NavStack.Navigator>
-                <NavStack.Screen name="Home" component={HomeStub} />
-                <NavStack.Screen
-                  name="OrganizationProvisioning"
-                  component={OrganizationProvisioning}
-                />
-                <NavStack.Screen
-                  name="RemovedFromProjectBottomSheet"
-                  component={SheetStub}
-                  options={{presentation: 'transparentModal'}}
-                />
-              </NavStack.Navigator>
-            </NavigationContainer>
-          </CoiabOrganizationsStoreProvider>
+          <EarlyAccessStoreProvider value={earlyAccess}>
+            <CoiabOrganizationsStoreProvider store={store}>
+              <NavigationContainer
+                ref={navigationRef}
+                initialState={{
+                  index: 1,
+                  routes: [
+                    {name: 'OrganizationProvisioning'},
+                    {
+                      name: 'RemovedFromProjectBottomSheet',
+                      params: {projectId: 'proj-m-1'},
+                    },
+                  ],
+                }}>
+                <NavStack.Navigator>
+                  <NavStack.Screen name="Home" component={HomeStub} />
+                  <NavStack.Screen
+                    name="OrganizationProvisioning"
+                    component={OrganizationProvisioning}
+                  />
+                  <NavStack.Screen
+                    name="RemovedFromProjectBottomSheet"
+                    component={SheetStub}
+                    options={{presentation: 'transparentModal'}}
+                  />
+                </NavStack.Navigator>
+              </NavigationContainer>
+            </CoiabOrganizationsStoreProvider>
+          </EarlyAccessStoreProvider>
         </IntlProvider>,
       );
       await screen.findByText('SHEET-REACHED');
