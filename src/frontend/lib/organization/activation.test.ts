@@ -1107,8 +1107,9 @@ describe('segunda organização em preparo com A operando (review fronteira)', (
     });
     // Nada foi publicado como pronto: o contexto segue bloqueado.
     expect(activation.instance.getState().projectId).toBeUndefined();
-    // A tentativa validou as duas áreas antes de o recheque recusar a
-    // origem movida — a troca foi observada DENTRO da recuperação em voo.
+    // A tentativa passou do guard e validou as duas áreas (a recusa do guard
+    // nunca chega ao core); quem recusou depois foi o recheque da origem
+    // movida, em voo.
     expect(getProject.mock.calls.map(call => call[0])).toEqual(['A-m', 'A-a']);
     // O commit nunca aconteceu: a seleção persistida permanece A/alertas.
     expect(store.instance.getState().ativa).toEqual({
@@ -1118,17 +1119,32 @@ describe('segunda organização em preparo com A operando (review fronteira)', (
 
     // A liberação adiada acontece EXATAMENTE uma vez (o finally da
     // recovery), retomando B — nenhuma origem do pendente é reaberta.
+    // B fica estacionado em preparo enquanto o pino é avaliado: assim
+    // "1x" pegaria um finally duplo ou um Set de idempotência removido
+    // (com B pronto na 1ª chamada, retomarInterrompida filtra e um 2º
+    // liberar seria inofensivo — idempotência estrutural, não do pino).
+    let liberarResume!: () => void;
+    const resumePresa = new Promise<void>(resolve => {
+      liberarResume = resolve;
+    });
+    resume.mockImplementation(async (id: string) => {
+      await resumePresa;
+      await concluir(id, store);
+    });
     await waitForResume(resume);
     expect(resume).toHaveBeenCalledTimes(1);
     expect(resume).toHaveBeenCalledWith('B');
+    liberarResume();
+    await resumePresa.then(() => undefined);
     expect(
       store.instance.getState().organizacoes.find(item => item.id === 'B'),
     ).toMatchObject({estado: 'pronta', confirmacaoPendente: true});
   });
 
-  // Paridade do boot (#95): a MESMA troca em voo durante initialize() tem o
-  // MESMO desfecho do caminho de recovery — false, recovery/pending-work e
-  // uma única liberação do trabalho adiado. Aqui a origem pré-troca ('A-a')
+  // Paridade do boot (#95): uma troca equivalente em voo durante
+  // initialize() tem o MESMO desfecho do caminho de recovery — false,
+  // recovery/pending-work e uma única liberação do trabalho adiado. Aqui a
+  // origem pré-troca ('A-a')
   // COINCIDE com a seleção persistida (A/alertas): o FIX-B não bloqueia a
   // primeira leitura (reabrir essa origem concluiria o trabalho), e quem
   // apanha a movimentação é o recheque da tentativa de restauração.
