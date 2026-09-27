@@ -1089,6 +1089,21 @@ describe('segunda organização em preparo com A operando (review fronteira)', (
       error: 'pending-work',
     });
 
+    // O resume fica estacionado ANTES de a recovery rodar (Greptile P2):
+    // instalado depois, o mock default já teria processado o resume com B
+    // pronto e o pino "1x" ficaria vazio. B segue EM PREPARO quando o pino
+    // avalia a liberação — finally duplo ou Set de idempotência removido
+    // fazem o teste quebrar. A espera é pelas CALLS (não pelos results:
+    // aguardar a promise estacionada deadlockaria o pino).
+    let liberarResume!: () => void;
+    const resumePresa = new Promise<void>(resolve => {
+      liberarResume = resolve;
+    });
+    resume.mockImplementation(async (id: string) => {
+      await resumePresa;
+      await concluir(id, store);
+    });
+
     // A troca 'A-m' → 'A-a' acontece na PRIMEIRA leitura do core dentro da
     // recuperação (o guard ainda viu 'A-m', a origem capturada no bloqueio).
     let primeira = true;
@@ -1119,19 +1134,8 @@ describe('segunda organização em preparo com A operando (review fronteira)', (
 
     // A liberação adiada acontece EXATAMENTE uma vez (o finally da
     // recovery), retomando B — nenhuma origem do pendente é reaberta.
-    // B fica estacionado em preparo enquanto o pino é avaliado: assim
-    // "1x" pegaria um finally duplo ou um Set de idempotência removido
-    // (com B pronto na 1ª chamada, retomarInterrompida filtra e um 2º
-    // liberar seria inofensivo — idempotência estrutural, não do pino).
-    let liberarResume!: () => void;
-    const resumePresa = new Promise<void>(resolve => {
-      liberarResume = resolve;
-    });
-    resume.mockImplementation(async (id: string) => {
-      await resumePresa;
-      await concluir(id, store);
-    });
-    await waitForResume(resume);
+    // Espera só pela chamada: a promise do resume segue estacionada.
+    await waitForSettled(() => resume.mock.calls.length > 0);
     expect(resume).toHaveBeenCalledTimes(1);
     expect(resume).toHaveBeenCalledWith('B');
     liberarResume();
@@ -1160,6 +1164,17 @@ describe('segunda organização em preparo com A operando (review fronteira)', (
       return {$getOwnRole: async () => ({roleId: MEMBER_ROLE_ID})};
     });
 
+    // Mesma correção do P2: o resume fica estacionado ANTES de o boot
+    // rodar, para B seguir em preparo quando o pino "1x" avalia.
+    let liberarResume!: () => void;
+    const resumePresa = new Promise<void>(resolve => {
+      liberarResume = resolve;
+    });
+    resume.mockImplementation(async (id: string) => {
+      await resumePresa;
+      await concluir(id, store);
+    });
+
     await expect(activation.initialize()).resolves.toBe(false);
     expect(activation.instance.getState()).toMatchObject({
       status: 'recovery',
@@ -1172,9 +1187,12 @@ describe('segunda organização em preparo com A operando (review fronteira)', (
       area: 'alertas',
     });
 
-    await waitForResume(resume);
+    // Espera só pela chamada: a promise do resume segue estacionada.
+    await waitForSettled(() => resume.mock.calls.length > 0);
     expect(resume).toHaveBeenCalledTimes(1);
     expect(resume).toHaveBeenCalledWith('B');
+    liberarResume();
+    await resumePresa.then(() => undefined);
     expect(
       store.instance.getState().organizacoes.find(item => item.id === 'B'),
     ).toMatchObject({estado: 'pronta', confirmacaoPendente: true});
