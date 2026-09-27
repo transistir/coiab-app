@@ -688,20 +688,28 @@ export function createMaterializer<
     resume: (id?: string) =>
       exclusive('resume', op => resume(op, id), undefined, id),
     retry: () => {
-      // #93: resolved BEFORE the join/refuse decision, mirroring resume's
-      // `id` argument — retry's own target is picked from the journal
-      // (`estado === 'falha_recuperavel'`) rather than passed by the
-      // caller. This read only decides refuse-vs-join here in the wrapper;
-      // it is NOT authoritative for what retry acts on — `retry(op, id)`
-      // re-reads by this SAME id once it actually runs, a microtask later
-      // (Opus M2, #93 fase 3: the two reads are not synchronous with each
-      // other, so threading the id through, instead of re-searching
-      // "some `falha_recuperavel` entry" independently, is what keeps them
-      // from ever resolving to two DIFFERENT organizations).
-      const alvo = repository
-        .read()
-        .organizacoes.find(o => o.estado === 'falha_recuperavel');
-      return exclusive('retry', op => retry(op, alvo?.id), undefined, alvo?.id);
+      // #93: resolved at the top of the chained promise (NOT before it),
+      // mirroring resume's `id` argument — retry's own target is picked
+      // from the journal (`estado === 'falha_recuperavel'`) rather than
+      // passed by the caller. This read only decides refuse-vs-join here
+      // in the wrapper; it is NOT authoritative for what retry acts on —
+      // `retry(op, id)` re-reads by this SAME id once it actually runs,
+      // a microtask later (Opus M2, #93 fase 3: the two reads are not
+      // synchronous with each other, so threading the id through, instead
+      // of re-searching "some `falha_recuperavel` entry" independently, is
+      // what keeps them from ever resolving to two DIFFERENT
+      // organizations). Greptile P2 on #101: the read must stay INSIDE
+      // the promise chain so a repository.read() failure reaches the
+      // caller's `.catch()` instead of throwing synchronously out of
+      // retry(); the one-shot target pick rides the same task.
+      return Promise.resolve()
+        .then(() => {
+          const alvo = repository
+            .read()
+            .organizacoes.find(o => o.estado === 'falha_recuperavel');
+          return {id: alvo?.id};
+        })
+        .then(({id}) => exclusive('retry', op => retry(op, id), undefined, id));
     },
   };
 }
