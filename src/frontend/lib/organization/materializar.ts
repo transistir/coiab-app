@@ -77,15 +77,6 @@ const marcador = (org: OrganizacaoLocal, area: Area) =>
 // joining a differently-named start would resolve this submission with an
 // organization it did not create.
 type Intencao = 'start' | 'resume' | 'retry';
-type Registro = {
-  intencao: Intencao;
-  /** Trimmed name — set iff `intencao === 'start'`. */
-  nome?: string;
-  operation: Promise<void>;
-};
-const running = new WeakMap<object, Registro>();
-const runningRepositories = new WeakMap<object, Registro>();
-
 /**
  * Identity of a creation operation (SPEC B §5.4): every operation started
  * through `exclusive()` carries the organization it belongs to. The object
@@ -94,6 +85,24 @@ const runningRepositories = new WeakMap<object, Registro>();
  * an externally replaced journal can never be attributed to the new journal.
  */
 type Operacao = {organizacaoId: string | null};
+type Registro = {
+  intencao: Intencao;
+  /** Trimmed name — set iff `intencao === 'start'`. */
+  nome?: string;
+  /**
+   * The live operation token this registro belongs to. `organizacaoId`
+   * (#93) is always read straight off it rather than copied onto the
+   * registro, so the client- and repository-keyed entries can never drift
+   * out of sync with each other or with `operacoes`: `start` sets it to the
+   * organization it just created, `resume`/`retry` to the organization
+   * their id/journal lookup resolved to — the same assignment already made
+   * for `operacaoViva()`/checkpointing, nothing new to keep in step.
+   */
+  op: Operacao;
+  operation: Promise<void>;
+};
+const running = new WeakMap<object, Registro>();
+const runningRepositories = new WeakMap<object, Registro>();
 const operacoes = new WeakMap<object, Operacao>();
 
 /** Internal signal: the operation was superseded — exit without writing. */
@@ -494,6 +503,20 @@ export function createMaterializer<
     intencao: Intencao,
     work: (op: Operacao) => Promise<void>,
     nome?: string,
+    /**
+     * #93: the organization the CALLER already knows it targets —
+     * `resume`'s own `id` argument, or the `falha_recuperavel` entry
+     * `retry()` resolves before entering here (its target is never passed
+     * by the caller, so it is looked up at the same point `resume`'s id
+     * would already be in hand). `undefined` means the target is not
+     * knowable from the caller's side yet — resume's id-less "first
+     * pending" contract (#85) — and the cross-organization refusal below
+     * never fires on that alone; it also requires the LIVE operation's own
+     * target to be known (`existing.op.organizacaoId`), so two operations
+     * that both don't know their target yet still fall through to the
+     * existing join rule below instead of refusing blind.
+     */
+    organizacaoAlvo?: string,
   ) {
     // BOTH registries are consulted: the client-keyed and the
     // repository-keyed entries can diverge (a wrapper pairing this client
@@ -518,24 +541,39 @@ export function createMaterializer<
       // success that creates nothing under B's name. Same normalized name
       // stays a join: that IS the double tap/remount (CA11/CA12). The
       // reverse joins stay: a recovery waits for an in-flight creation
-      // (M-1).
+      // (M-1). And #93: a resume/retry NEVER joins a live operation already
+      // committed to a DIFFERENT organization — the same shape as the
+      // cross-name rule just above, keyed by id instead of name since
+      // resume/retry never mint an id of their own.
       for (const existing of existentes.values()) {
-        if (intencao !== 'start') break;
-        if (existing.intencao === 'resume' || existing.intencao === 'retry') {
-          return Promise.reject(
-            new OrganizationOperationError(
-              'creation-in-progress',
-              'a creation cannot start while an organization recovery is in progress; wait for it to settle',
-            ),
-          );
+        if (intencao === 'start') {
+          if (
+            existing.intencao === 'resume' ||
+            existing.intencao === 'retry'
+          ) {
+            return Promise.reject(
+              new OrganizationOperationError(
+                'creation-in-progress',
+                'a creation cannot start while an organization recovery is in progress; wait for it to settle',
+              ),
+            );
+          }
+          if (existing.nome !== nome) {
+            return Promise.reject(
+              new OrganizationOperationError(
+                'creation-in-progress',
+                'another creation with a different name is in progress; wait for it to settle',
+              ),
+            );
+          }
+          continue;
         }
-        if (existing.nome !== nome) {
-          return Promise.reject(
-            new OrganizationOperationError(
-              'creation-in-progress',
-              'another creation with a different name is in progress; wait for it to settle',
-            ),
-          );
+        if (
+          organizacaoAlvo !== undefined &&
+          existing.op.organizacaoId !== null &&
+          existing.op.organizacaoId !== organizacaoAlvo
+        ) {
+          return Promise.reject(new Error('operation-in-progress'));
         }
       }
       // Discriminating rule for a join against an in-flight operation:
@@ -565,15 +603,28 @@ export function createMaterializer<
         }
         if (operacoes.get(repository) === op) operacoes.delete(repository);
       });
-    running.set(client, {intencao, nome, operation});
-    runningRepositories.set(repository, {intencao, nome, operation});
+    running.set(client, {intencao, nome, op, operation});
+    runningRepositories.set(repository, {intencao, nome, op, operation});
     operacoes.set(repository, op);
     return operation;
   }
   return {
     start: (name: string) =>
       exclusive('start', op => start(name, op), name.trim()),
-    resume: (id?: string) => exclusive('resume', op => resume(op, id)),
-    retry: () => exclusive('retry', op => retry(op)),
+    resume: (id?: string) =>
+      exclusive('resume', op => resume(op, id), undefined, id),
+    retry: () => {
+      // #93: resolved BEFORE the join/refuse decision, mirroring resume's
+      // `id` argument — retry's own target is picked from the journal
+      // (`estado === 'falha_recuperavel'`) rather than passed by the
+      // caller. `retry(op)` re-reads the same entry once it actually runs;
+      // reading it twice is cheap and race-free, since both reads happen
+      // synchronously, before either this function or `retry()` awaits
+      // anything.
+      const alvo = repository
+        .read()
+        .organizacoes.find(o => o.estado === 'falha_recuperavel');
+      return exclusive('retry', op => retry(op), undefined, alvo?.id);
+    },
   };
 }

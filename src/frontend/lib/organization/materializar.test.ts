@@ -1896,6 +1896,304 @@ describe('materialização da organização', () => {
     },
   );
 
+  test('#93: resume(B) durante resume(A) suspenso recusa — nunca join silencioso entre organizações diferentes', async () => {
+    const h = harnessMulti();
+    const ORG_A = '1111111111111111';
+    const ORG_B = '2222222222222222';
+    const area = (id: string, hash: string): EtapaArea => ({
+      etapa: 'verificado',
+      projectId: `${id}-${hash}`,
+      template: {versao: '1', hash},
+      idsAntesDaCriacao: null,
+    });
+    const preparando = (id: string, nome: string): OrganizacaoLocal => ({
+      id,
+      nome,
+      estado: 'preparando',
+      confirmacaoPendente: false,
+      materializacao: {monitoramento: area(id, 'm'), alertas: area(id, 'a')},
+      areaEmExecucao: null,
+      ultimoErro: null,
+    });
+    const orgA = preparando(ORG_A, 'Primeira');
+    const orgB = preparando(ORG_B, 'Segunda');
+    h.repository.write({versao: 1, organizacoes: [orgA, orgB], ativa: null});
+    h.repository.write.mockClear();
+    for (const id of [ORG_A, ORG_B]) {
+      h.imported.add(`${id}-m`);
+      h.imported.add(`${id}-a`);
+    }
+    const base = h.client.getProject.getMockImplementation()!;
+    h.client.getProject.mockImplementation(async (id: string) => {
+      const project = await base(id);
+      const orgId = id.slice(0, 16);
+      const nome = orgId === ORG_A ? 'Primeira' : 'Segunda';
+      return {
+        ...project,
+        $getProjectSettings: jest.fn(async () => ({
+          name: id.endsWith('-m') ? 'Monitoramento' : 'Alertas',
+          sendStats: false,
+          projectDescription: markerFor(
+            orgId,
+            id.endsWith('-m') ? 'm' : 'a',
+            nome,
+          ),
+        })),
+      };
+    });
+    let soltar!: () => void;
+    let entrou!: () => void;
+    const solto = new Promise<void>(resolve => {
+      soltar = resolve;
+    });
+    const entrada = new Promise<void>(resolve => {
+      entrou = resolve;
+    });
+    h.templates.prepare.mockImplementation(async () => {
+      entrou();
+      await solto;
+      return {
+        monitoramento: {ref: {versao: '1', hash: 'm'}, filePath: '/local/m'},
+        alertas: {ref: {versao: '1', hash: 'a'}, filePath: '/local/a'},
+      };
+    });
+
+    const resumindoA = h.service.resume(ORG_A);
+    await entrada;
+
+    const resumindoB = h.service.resume(ORG_B);
+    expect(resumindoB).not.toBe(resumindoA);
+    await expect(resumindoB).rejects.toThrow('operation-in-progress');
+    // The refused intent never prepared or touched Core on B's behalf.
+    expect(h.templates.prepare).toHaveBeenCalledTimes(1);
+
+    soltar();
+    await resumindoA;
+    // A resumed to `pronta`; B stays EXACTLY as it was — the refused
+    // submission never became a silent success for B's caller.
+    expect(h.document.organizacoes).toHaveLength(2);
+    expect(h.document.organizacoes[0]).toMatchObject({
+      id: ORG_A,
+      estado: 'pronta',
+      confirmacaoPendente: true,
+    });
+    expect(h.document.organizacoes[1]).toBe(orgB);
+    expect(h.document.organizacoes[1]).toMatchObject({
+      id: ORG_B,
+      estado: 'preparando',
+    });
+  });
+
+  test('#93: resume() sem id durante resume(A) suspenso mantém o join (contrato "primeiro pendente")', async () => {
+    const h = harnessMulti();
+    h.repository.write(documentoAmbosVerificados());
+    h.repository.write.mockClear();
+    h.imported.add('id-0');
+    h.imported.add('id-1');
+    const base = h.client.getProject.getMockImplementation()!;
+    h.client.getProject.mockImplementation(async (id: string) => {
+      const project = await base(id);
+      return {
+        ...project,
+        $getProjectSettings: jest.fn(async () => ({
+          name: id === 'id-0' ? 'Monitoramento' : 'Alertas',
+          sendStats: false,
+          projectDescription: markerFor(
+            ORG_ID,
+            id === 'id-0' ? 'm' : 'a',
+            'Associação',
+          ),
+        })),
+      };
+    });
+    let soltar!: () => void;
+    let entrou!: () => void;
+    const solto = new Promise<void>(resolve => {
+      soltar = resolve;
+    });
+    const entrada = new Promise<void>(resolve => {
+      entrou = resolve;
+    });
+    h.templates.prepare.mockImplementation(async () => {
+      entrou();
+      await solto;
+      return {
+        monitoramento: {ref: {versao: '1', hash: 'm'}, filePath: '/local/m'},
+        alertas: {ref: {versao: '1', hash: 'a'}, filePath: '/local/a'},
+      };
+    });
+
+    const resumindoComId = h.service.resume(ORG_ID);
+    await entrada;
+
+    // No id: the "first pending" contract (#85) — still joins, unchanged.
+    const resumindoSemId = h.service.resume();
+    expect(resumindoSemId).toBe(resumindoComId);
+
+    soltar();
+    await resumindoSemId;
+    expect(h.document.organizacoes[0]).toMatchObject({
+      id: ORG_ID,
+      estado: 'pronta',
+      confirmacaoPendente: true,
+    });
+    expect(h.templates.prepare).toHaveBeenCalledTimes(1);
+  });
+
+  test('#93: resume(A) durante resume(A) suspenso (mesmo id) mantém o join (double tap)', async () => {
+    const h = harnessMulti();
+    h.repository.write(documentoAmbosVerificados());
+    h.repository.write.mockClear();
+    h.imported.add('id-0');
+    h.imported.add('id-1');
+    const base = h.client.getProject.getMockImplementation()!;
+    h.client.getProject.mockImplementation(async (id: string) => {
+      const project = await base(id);
+      return {
+        ...project,
+        $getProjectSettings: jest.fn(async () => ({
+          name: id === 'id-0' ? 'Monitoramento' : 'Alertas',
+          sendStats: false,
+          projectDescription: markerFor(
+            ORG_ID,
+            id === 'id-0' ? 'm' : 'a',
+            'Associação',
+          ),
+        })),
+      };
+    });
+    let soltar!: () => void;
+    let entrou!: () => void;
+    const solto = new Promise<void>(resolve => {
+      soltar = resolve;
+    });
+    const entrada = new Promise<void>(resolve => {
+      entrou = resolve;
+    });
+    h.templates.prepare.mockImplementation(async () => {
+      entrou();
+      await solto;
+      return {
+        monitoramento: {ref: {versao: '1', hash: 'm'}, filePath: '/local/m'},
+        alertas: {ref: {versao: '1', hash: 'a'}, filePath: '/local/a'},
+      };
+    });
+
+    const primeiro = h.service.resume(ORG_ID);
+    await entrada;
+
+    const segundo = h.service.resume(ORG_ID);
+    expect(segundo).toBe(primeiro);
+
+    soltar();
+    await segundo;
+    expect(h.document.organizacoes[0]).toMatchObject({
+      id: ORG_ID,
+      estado: 'pronta',
+      confirmacaoPendente: true,
+    });
+    expect(h.templates.prepare).toHaveBeenCalledTimes(1);
+  });
+
+  test('#93: retry() durante resume(A) suspenso de outra organização recusa — retry mira falha_recuperavel do repositório', async () => {
+    const h = harnessMulti();
+    const ORG_A = '1111111111111111';
+    const ORG_C = '3333333333333333';
+    const area = (id: string, hash: string): EtapaArea => ({
+      etapa: 'verificado',
+      projectId: `${id}-${hash}`,
+      template: {versao: '1', hash},
+      idsAntesDaCriacao: null,
+    });
+    const orgA: OrganizacaoLocal = {
+      id: ORG_A,
+      nome: 'Primeira',
+      estado: 'preparando',
+      confirmacaoPendente: false,
+      materializacao: {
+        monitoramento: area(ORG_A, 'm'),
+        alertas: area(ORG_A, 'a'),
+      },
+      areaEmExecucao: null,
+      ultimoErro: null,
+    };
+    const orgC: OrganizacaoLocal = {
+      ...orgA,
+      id: ORG_C,
+      nome: 'Terceira',
+      estado: 'falha_recuperavel',
+      materializacao: {
+        monitoramento: area(ORG_C, 'm'),
+        alertas: area(ORG_C, 'a'),
+      },
+      ultimoErro: {
+        codigo: 'preparation-failed',
+        area: null,
+        ocorridoEm: '2026-01-01T00:00:00.000Z',
+      },
+    };
+    h.repository.write({versao: 1, organizacoes: [orgA, orgC], ativa: null});
+    h.repository.write.mockClear();
+    for (const id of [ORG_A, ORG_C]) {
+      h.imported.add(`${id}-m`);
+      h.imported.add(`${id}-a`);
+    }
+    const base = h.client.getProject.getMockImplementation()!;
+    h.client.getProject.mockImplementation(async (id: string) => {
+      const project = await base(id);
+      const orgId = id.slice(0, 16);
+      const nome = orgId === ORG_A ? 'Primeira' : 'Terceira';
+      return {
+        ...project,
+        $getProjectSettings: jest.fn(async () => ({
+          name: id.endsWith('-m') ? 'Monitoramento' : 'Alertas',
+          sendStats: false,
+          projectDescription: markerFor(
+            orgId,
+            id.endsWith('-m') ? 'm' : 'a',
+            nome,
+          ),
+        })),
+      };
+    });
+    let soltar!: () => void;
+    let entrou!: () => void;
+    const solto = new Promise<void>(resolve => {
+      soltar = resolve;
+    });
+    const entrada = new Promise<void>(resolve => {
+      entrou = resolve;
+    });
+    h.templates.prepare.mockImplementation(async () => {
+      entrou();
+      await solto;
+      return {
+        monitoramento: {ref: {versao: '1', hash: 'm'}, filePath: '/local/m'},
+        alertas: {ref: {versao: '1', hash: 'a'}, filePath: '/local/a'},
+      };
+    });
+
+    const resumindoA = h.service.resume(ORG_A);
+    await entrada;
+
+    const retryC = h.service.retry();
+    await expect(retryC).rejects.toThrow('operation-in-progress');
+    // The refused retry never flipped C's journal to `preparando`.
+    expect(
+      h.document.organizacoes.find(o => o.id === ORG_C),
+    ).toMatchObject({estado: 'falha_recuperavel'});
+    expect(h.templates.prepare).toHaveBeenCalledTimes(1);
+
+    soltar();
+    await resumindoA;
+    expect(
+      h.document.organizacoes.find(o => o.id === ORG_A),
+    ).toMatchObject({estado: 'pronta'});
+    expect(
+      h.document.organizacoes.find(o => o.id === ORG_C),
+    ).toMatchObject({estado: 'falha_recuperavel'});
+  });
+
   test('multi-org: callback tardio da operação de A não escreve no diário de B nem de C', async () => {
     // The 'operation identity' pin, over a genuine N-organization document:
     // A (4444) is GONE from the journal when its hung createProject finally
