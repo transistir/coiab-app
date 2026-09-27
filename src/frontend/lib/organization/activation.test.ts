@@ -1072,6 +1072,98 @@ describe('segunda organização em preparo com A operando (review fronteira)', (
     },
   );
 
+  // U3b (#95): a origem do pendente pode se mover no MEIO da recuperação —
+  // a leitura do core que valida o papel devolve um rascunho já trocado. O
+  // pin: a recuperação NÃO come a troca. O recheque da tentativa recusa a
+  // origem movida antes de qualquer commit, o bloqueio vira
+  // recovery/pending-work (nunca ready) e a liberação do trabalho adiado
+  // acontece EXATAMENTE uma vez — distinto da recusa no guard (acima), que
+  // nem chega a consultar o core nem libera nada.
+  test('troca da origem durante a recuperação não é comida: resolve false mantendo o bloqueio e libera o adiado uma única vez (U3b)', async () => {
+    const {store, activation, resume, getProject, setOrigem} = bloqueioSetup();
+    await expect(activation.initialize()).resolves.toBe(false);
+    // Padrão #88 do bloqueio de boot: unavailable/pending-work — recovery
+    // só existe depois de uma tentativa que falhou.
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'unavailable',
+      error: 'pending-work',
+    });
+
+    // A troca 'A-m' → 'A-a' acontece na PRIMEIRA leitura do core dentro da
+    // recuperação (o guard ainda viu 'A-m', a origem capturada no bloqueio).
+    let primeira = true;
+    getProject.mockImplementation(async () => {
+      if (primeira) {
+        primeira = false;
+        setOrigem('A-a');
+      }
+      return {$getOwnRole: async () => ({roleId: MEMBER_ROLE_ID})};
+    });
+
+    await expect(activation.recoverPendingWork()).resolves.toBe(false);
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'recovery',
+      error: 'pending-work',
+    });
+    // Nada foi publicado como pronto: o contexto segue bloqueado.
+    expect(activation.instance.getState().projectId).toBeUndefined();
+    // A tentativa validou as duas áreas antes de o recheque recusar a
+    // origem movida — a troca foi observada DENTRO da recuperação em voo.
+    expect(getProject.mock.calls.map(call => call[0])).toEqual(['A-m', 'A-a']);
+    // O commit nunca aconteceu: a seleção persistida permanece A/alertas.
+    expect(store.instance.getState().ativa).toEqual({
+      organizacaoId: 'A',
+      area: 'alertas',
+    });
+
+    // A liberação adiada acontece EXATAMENTE uma vez (o finally da
+    // recovery), retomando B — nenhuma origem do pendente é reaberta.
+    await waitForResume(resume);
+    expect(resume).toHaveBeenCalledTimes(1);
+    expect(resume).toHaveBeenCalledWith('B');
+    expect(
+      store.instance.getState().organizacoes.find(item => item.id === 'B'),
+    ).toMatchObject({estado: 'pronta', confirmacaoPendente: true});
+  });
+
+  // Paridade do boot (#95): a MESMA troca em voo durante initialize() tem o
+  // MESMO desfecho do caminho de recovery — false, recovery/pending-work e
+  // uma única liberação do trabalho adiado. Aqui a origem pré-troca ('A-a')
+  // COINCIDE com a seleção persistida (A/alertas): o FIX-B não bloqueia a
+  // primeira leitura (reabrir essa origem concluiria o trabalho), e quem
+  // apanha a movimentação é o recheque da tentativa de restauração.
+  test('initialize com a origem trocada em voo tem o mesmo desfecho da recuperação (U3b, paridade)', async () => {
+    const {store, activation, resume, getProject, setOrigem} = bloqueioSetup();
+    setOrigem('A-a');
+    let primeira = true;
+    getProject.mockImplementation(async () => {
+      if (primeira) {
+        primeira = false;
+        setOrigem('A-m');
+      }
+      return {$getOwnRole: async () => ({roleId: MEMBER_ROLE_ID})};
+    });
+
+    await expect(activation.initialize()).resolves.toBe(false);
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'recovery',
+      error: 'pending-work',
+    });
+    expect(activation.instance.getState().projectId).toBeUndefined();
+    expect(getProject.mock.calls.map(call => call[0])).toEqual(['A-m', 'A-a']);
+    expect(store.instance.getState().ativa).toEqual({
+      organizacaoId: 'A',
+      area: 'alertas',
+    });
+
+    await waitForResume(resume);
+    expect(resume).toHaveBeenCalledTimes(1);
+    expect(resume).toHaveBeenCalledWith('B');
+    expect(
+      store.instance.getState().organizacoes.find(item => item.id === 'B'),
+    ).toMatchObject({estado: 'pronta', confirmacaoPendente: true});
+  });
+
   const semRetomada: Array<[string, OrganizacaoLocal[]]> = [
     [
       'B em confirmacaoPendente',
