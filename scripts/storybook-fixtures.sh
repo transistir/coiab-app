@@ -87,6 +87,18 @@ if [[ ${1:-} == logcat && ${2:-} == -c ]]; then exit 0; fi
 if [[ ${1:-} == logcat && ${2:-} == -d && ${4:-} == raw ]]; then
   story_id=$FAKE_STORY_ID
   if [[ -n ${FAKE_ADB_BAD_IDENTITY:-} ]]; then story_id=wrong-story; fi
+  # #86: after the deep-link cold start, the app's first boot logs the
+  # *selection* line ("Setting initial story from Linking event"), which is
+  # not the runtime identity line. FAKE_IDENTITY_FROM_SELECT=N returns that
+  # selection line until the Nth `am start` — the harness's 5s resend — and
+  # the identity line only from then on.
+  if [[ -n ${FAKE_IDENTITY_FROM_SELECT:-} ]]; then
+    select_count=$(grep -c '^shell am start ' "$FAKE_ADB_CALLS" || true)
+    if (( select_count < FAKE_IDENTITY_FROM_SELECT )); then
+      printf 'STORYBOOK: Setting initial story from Linking event, storyId: %s\n' "$story_id"
+      exit 0
+    fi
+  fi
   printf 'STORYBOOK: Linking event received, navigating to story: %s\n' "$story_id"
   exit 0
 fi
@@ -348,6 +360,40 @@ expect_failure 1 'timed out waiting for story selection' \
   run_capture ready-wrong-identity FAKE_ADB_BAD_IDENTITY=1
 assert_no_frame_written
 
+# #86: with the deep-link cold start, row 1's first boot logs the story
+# *selection* line (from getInitialURL), not the runtime identity line — so
+# the capture must resend the deep link (the 5s retry) and only trust the
+# identity line after it. Nothing may be probed or shot before that resend:
+# readiness markers without the identity line mean the app is still on the
+# boot-time story.
+identity_resend_output="$capture_root/identity-resend-output.txt"
+set +e
+run_capture identity-after-resend FAKE_IDENTITY_FROM_SELECT=2 STORYBOOK_READY_TIMEOUT=10 \
+  >"$identity_resend_output" 2>&1
+identity_resend_status=$?
+set -e
+if (( identity_resend_status != 0 )); then
+  echo "identity-after-resend: expected success, got $identity_resend_status" >&2
+  cat "$identity_resend_output" >&2
+  exit 1
+fi
+assert_frame_written
+identity_select='shell am start -n com.comapeo.dev/.MainActivity -a android.intent.action.VIEW -d storybook://x?STORYBOOK_STORY_ID=flows-onboarding--intro'
+assert_call_count "$identity_select" 2
+second_select_line=$(grep -nFx -- "$identity_select" "$capture_calls" | sed -n '2p' | cut -d: -f1)
+probes_before_resend=$(head -n $((second_select_line - 1)) "$capture_calls" |
+  grep -cE '^exec-out uiautomator dump|^shell screencap ' || true)
+if [[ $probes_before_resend -ne 0 ]]; then
+  echo "identity-after-resend: $probes_before_resend probe(s) ran before the identity resend" >&2
+  cat "$capture_calls" >&2
+  exit 1
+fi
+grep -Fq 'retrying unobserved story selection' "$identity_resend_output" || {
+  echo 'identity-after-resend: the 5s resend was not logged' >&2
+  cat "$identity_resend_output" >&2
+  exit 1
+}
+
 # The route changes between the readiness wait and the screenshot. Nothing
 # else in the pipeline re-checks this, so the frame must never be taken.
 expect_failure 1 'current native readiness check failed immediately before screenshot' \
@@ -602,15 +648,20 @@ set -euo pipefail
 story_id=$1
 output_path=$2
 printf "%s\t%s\t%s\t%s\n" "$story_id" "$STORYBOOK_SETTLE_DELAY" "$STORYBOOK_READY_TARGET" "$output_path" >>"$FAKE_CAPTURE_CALLS"
+printf "capture %s\n" "$story_id" >>"$FAKE_ADB_ALL_CALLS"
 if [[ ${FAKE_CAPTURE_FAIL_ID:-} == "$story_id" ]]; then exit 23; fi
 printf "fake-png:%s\n" "$story_id" >"$output_path"
 printf "%s\t%s\n" "$story_id" "$STORYBOOK_READY_TARGET" >"$FAKE_ADB_STORY_FILE"
 FAKE_CAPTURE
 
+# The fake adb records every invocation to $FAKE_ADB_ALL_CALLS so the cold
+# start's command and the ordering of the device-facing steps are assertable
+# from a single ledger; the fake capture appends its own `capture` line.
 fake_adb="$capture_all_bin/adb"
 cat >"$fake_adb" <<'FAKE_ADB_ALL'
 #!/usr/bin/env bash
 set -euo pipefail
+printf '%s\n' "$*" >>"$FAKE_ADB_ALL_CALLS"
 if [[ ${1:-} == wait-for-device ]]; then exit 0; fi
 if [[ ${1:-} == shell && ${2:-} == am && ${3:-} == force-stop ]]; then
   : >"$FAKE_ADB_STORY_FILE"
@@ -630,6 +681,15 @@ if [[ ${1:-} == shell && ${2:-} == pm && ${3:-} == grant ]]; then exit 0; fi
 if [[ ${1:-} == logcat && ${2:-} == -d ]]; then
   IFS=$'\t' read -r story_id ready_target <"$FAKE_ADB_STORY_FILE" || true
   if [[ $story_id == __startup__ ]]; then
+    # Startup-readiness knobs: NEVER keeps Running "main" unobservable for the
+    # whole budget; FROM_POLL=N makes only the Nth-or-later startup read show
+    # it, counting this call's own ledger line. Both gate the __startup__
+    # branch only, so per-row identity reads are unaffected.
+    if [[ -n ${FAKE_RUNNING_MAIN_NEVER:-} ]]; then exit 0; fi
+    if [[ -n ${FAKE_RUNNING_MAIN_FROM_POLL:-} ]]; then
+      startup_poll_count=$(grep -c '^logcat -d ' "$FAKE_ADB_ALL_CALLS" || true)
+      if (( startup_poll_count < FAKE_RUNNING_MAIN_FROM_POLL )); then exit 0; fi
+    fi
     printf 'Running "main" with {"rootTag":1}\n'
     exit 0
   fi
@@ -643,9 +703,26 @@ FAKE_ADB_ALL
 chmod +x "$fake_capture" "$fake_adb"
 
 calls_file="$capture_all_root/calls.tsv"
+adb_calls_file="$capture_all_root/adb-calls.tsv"
 story_file="$capture_all_root/current-story"
 : >"$calls_file"
+: >"$adb_calls_file"
 : >"$story_file"
+
+# A fake `node` records the orchestrator's index-preflight invocation into the
+# same ledger and then execs the real node, so the preflight stays real (the
+# missing-story case below depends on it) while "the empty-manifest failure
+# happens before the preflight" is assertable from the ledger. Resolved before
+# the capture bin ever shadows PATH.
+real_node=$(command -v node)
+fake_node="$capture_all_bin/node"
+cat >"$fake_node" <<'FAKE_NODE'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'node %s\n' "$*" >>"$FAKE_ADB_ALL_CALLS"
+exec "$FAKE_REAL_NODE" "$@"
+FAKE_NODE
+chmod +x "$fake_node"
 
 run_capture_all() {
   local manifest=$1
@@ -658,6 +735,8 @@ run_capture_all() {
       STORYBOOK_CAPTURE_MANIFEST="$manifest" \
       STORYBOOK_CAPTURE_COMMAND="$fake_capture" \
       FAKE_CAPTURE_CALLS="$calls_file" \
+      FAKE_ADB_ALL_CALLS="$adb_calls_file" \
+      FAKE_REAL_NODE="$real_node" \
       FAKE_ADB_STORY_FILE="$story_file" \
       "$@" \
       "$capture_all" "$output"
@@ -679,10 +758,79 @@ grep -Fq 'launcher_status=passed' "$output_with_spaces/cold-start-provenance.txt
 grep -Fq 'running_main_status=passed' "$output_with_spaces/cold-start-provenance.txt"
 grep -Fq 'Running "main"' "$output_with_spaces/cold-start-provenance.txt"
 grep -Fq 'permission_grants_failed=0' "$output_with_spaces/cold-start-provenance.txt"
+# #86: the provenance must record the deep-link cold start this run used, and
+# the no-HMR basis must describe it. Exact lines, not substrings: the whole
+# point is that a reader can tell launcher starts and deep-link starts apart.
+grep -Fqx 'launcher_command=adb shell am start -n com.comapeo.dev/.MainActivity -a android.intent.action.VIEW -d storybook://x?STORYBOOK_STORY_ID=flows-onboarding--intro' "$output_with_spaces/cold-start-provenance.txt" || {
+  echo 'provenance does not record the deep-link launcher command' >&2
+  grep -F 'launcher_command=' "$output_with_spaces/cold-start-provenance.txt" >&2 || true
+  exit 1
+}
+grep -Fqx 'no_hmr_basis=force-stop and a deep-link cold start' "$output_with_spaces/cold-start-provenance.txt" || {
+  echo 'provenance does not record the deep-link no-HMR basis' >&2
+  grep -F 'no_hmr_basis=' "$output_with_spaces/cold-start-provenance.txt" >&2 || true
+  exit 1
+}
 grep -Fq $'flows-onboarding--intro\t0\t' "$calls_file"
 grep -Fq $'flows-onboarding--success\t1.5\t' "$calls_file"
 
+# #86: the cold start must go straight into the first manifest story's deep
+# link. A bare MAIN/LAUNCHER start leaves Storybook on its index-default story,
+# whose flow state seeds projects; the row-1 deep link then switched stories
+# mid-seed and a getProject in core's createProject window opened a second
+# instance of the same project — ELOCKED on its oplogs, fatal backend. The
+# launcher `am start` is the only `am start` of the whole run: the fake capture
+# makes no adb calls.
+assert_call_count_file() {
+  local file=$1
+  local pattern=$2
+  local expected=$3
+  local actual
+  actual=$(grep -cE -- "$pattern" "$file" || true)
+  if [[ $actual -ne $expected ]]; then
+    echo "expected $expected /$pattern/ line(s) in $file, got $actual" >&2
+    cat "$file" >&2
+    exit 1
+  fi
+}
+assert_call_count_file "$adb_calls_file" '^shell am start ' 1
+expected_launcher='shell am start -n com.comapeo.dev/.MainActivity -a android.intent.action.VIEW -d storybook://x?STORYBOOK_STORY_ID=flows-onboarding--intro'
+if ! grep -Fqx -- "$expected_launcher" "$adb_calls_file"; then
+  echo "the cold start was not the row-1 story deep link; got:" >&2
+  grep -E '^shell am start ' "$adb_calls_file" >&2 || true
+  exit 1
+fi
+if grep -Eq 'android\.intent\.action\.MAIN|android\.intent\.category\.LAUNCHER' "$adb_calls_file"; then
+  echo 'the cold start regressed to a bare launcher start (#86):' >&2
+  grep -E 'android\.intent\.action\.MAIN|android\.intent\.category\.LAUNCHER' "$adb_calls_file" >&2
+  exit 1
+fi
+# The device-facing steps must keep their order: the force-stop makes the boot
+# cold, the log clear makes the startup evidence trustworthy, the deep link is
+# the boot itself, "Running main" is only believed from logcat, and no capture
+# happens before that belief.
+ledger_line_of() {
+  grep -nE -- "$2" "$1" | head -n1 | cut -d: -f1
+}
+force_stop_line=$(ledger_line_of "$adb_calls_file" '^shell am force-stop com\.comapeo\.dev$')
+first_log_clear_line=$(ledger_line_of "$adb_calls_file" '^logcat -c$')
+am_start_line=$(ledger_line_of "$adb_calls_file" '^shell am start ')
+first_logcat_dump_line=$(ledger_line_of "$adb_calls_file" '^logcat -d ')
+first_capture_line=$(ledger_line_of "$adb_calls_file" '^capture ')
+if [[ -z $force_stop_line || -z $first_log_clear_line || -z $am_start_line ||
+  -z $first_logcat_dump_line || -z $first_capture_line ]] ||
+  (( !(force_stop_line < first_log_clear_line && first_log_clear_line < am_start_line &&
+    am_start_line < first_logcat_dump_line && first_logcat_dump_line < first_capture_line) )); then
+  echo 'unexpected cold-start call order in the ledger:' >&2
+  printf 'force-stop=%s log_clear=%s am_start=%s logcat_dump=%s capture=%s\n' \
+    "$force_stop_line" "$first_log_clear_line" "$am_start_line" \
+    "$first_logcat_dump_line" "$first_capture_line" >&2
+  cat "$adb_calls_file" >&2
+  exit 1
+fi
+
 : >"$calls_file"
+: >"$adb_calls_file"
 default_manifest_output="$capture_all_root/default manifest output"
 default_manifest_row_count=$(awk '
   /^[[:space:]]*$/ || /^[[:space:]]*#/ { next }
@@ -695,6 +843,8 @@ default_manifest_row_count=$(awk '
   PATH="$capture_all_bin:$PATH" \
     STORYBOOK_CAPTURE_COMMAND="$fake_capture" \
     FAKE_CAPTURE_CALLS="$calls_file" \
+    FAKE_ADB_ALL_CALLS="$adb_calls_file" \
+    FAKE_REAL_NODE="$real_node" \
     FAKE_ADB_STORY_FILE="$story_file" \
     "$capture_all" "$default_manifest_output" >/dev/null
 )
@@ -702,6 +852,7 @@ default_manifest_row_count=$(awk '
 [[ $(wc -l <"$calls_file") -eq $default_manifest_row_count ]]
 
 : >"$calls_file"
+: >"$adb_calls_file"
 malformed_manifest="$capture_all_root/malformed.tsv"
 printf 'onboarding\tflows-onboarding--intro\troute:IntroToCoMapeo\t2\n' >"$malformed_manifest"
 expect_failure 1 'must contain exactly five tab-separated columns' \
@@ -732,6 +883,76 @@ expect_failure 1 'manifest stories missing from source index: not-in-source-inde
   run_capture_all "$missing_story_manifest" "$capture_all_root/missing-story-output"
 [[ ! -s $calls_file ]]
 
+# A manifest of only comments and blank lines has no stories: fail with a
+# diagnosis instead of cold-starting into `${story_ids[0]}`, which with an
+# empty array is an unbound-variable crash — and by then the index preflight
+# has already run and the output directory already exists.
+: >"$calls_file"
+: >"$adb_calls_file"
+empty_manifest="$capture_all_root/empty.tsv"
+printf '# fixture manifest\n\n   # space-indented comment\n\t# tab-indented comment\n' >"$empty_manifest"
+expect_failure 1 'manifest has no stories' \
+  run_capture_all "$empty_manifest" "$capture_all_root/empty-output"
+if [[ -s $calls_file || -s $adb_calls_file ]]; then
+  echo 'the empty manifest ran captures, node or adb calls before failing' >&2
+  cat "$calls_file" "$adb_calls_file" >&2
+  exit 1
+fi
+if [[ -e "$capture_all_root/empty-output" ]]; then
+  echo 'the empty manifest created an output directory before failing' >&2
+  exit 1
+fi
+
+# Startup readiness must be earned from logcat: if Running "main" never shows
+# up, the run fails inside the cold-start budget, records the failure in the
+# provenance, and never captures a frame.
+: >"$calls_file"
+: >"$adb_calls_file"
+running_never_output="$capture_all_root/running-never-output"
+expect_failure 1 'timed out waiting for Running "main"' \
+  run_capture_all "$manifest" "$running_never_output" \
+  FAKE_RUNNING_MAIN_NEVER=1 STORYBOOK_COLD_START_TIMEOUT=1
+grep -Fq 'running_main_status=failed' "$running_never_output/cold-start-provenance.txt" || {
+  echo 'the startup timeout was not recorded in the provenance' >&2
+  exit 1
+}
+if [[ -s $calls_file ]] || grep -q '^capture ' "$adb_calls_file"; then
+  echo 'a frame was captured despite the startup timeout' >&2
+  cat "$calls_file" "$adb_calls_file" >&2
+  exit 1
+fi
+if [[ -e "$running_never_output/captures.tsv" ]]; then
+  echo 'the startup timeout left a captures ledger behind' >&2
+  exit 1
+fi
+
+# The poll loop keeps reading until the evidence appears, not once per boot:
+# with Running "main" only observable from the third startup read, the run
+# still succeeds, and exactly three reads happened before the first capture.
+: >"$calls_file"
+: >"$adb_calls_file"
+poll_manifest="$capture_all_root/poll.tsv"
+printf 'onboarding\tflows-onboarding--intro\troute:IntroToCoMapeo\t0\tIntro\n' >"$poll_manifest"
+from_poll_output="$capture_all_root/running-from-poll-output"
+run_capture_all "$poll_manifest" "$from_poll_output" FAKE_RUNNING_MAIN_FROM_POLL=3 >/dev/null
+[[ -s "$from_poll_output/onboarding/001-flows-onboarding--intro.png" ]]
+first_capture_line=$(ledger_line_of "$adb_calls_file" '^capture ')
+if [[ -z $first_capture_line ]]; then
+  echo 'expected a capture in the ledger' >&2
+  cat "$adb_calls_file" >&2
+  exit 1
+fi
+startup_polls_before_capture=$(head -n $((first_capture_line - 1)) "$adb_calls_file" | grep -cE '^logcat -d ' || true)
+if [[ $startup_polls_before_capture -ne 3 ]]; then
+  echo "expected exactly 3 startup logcat reads before the first capture, got $startup_polls_before_capture" >&2
+  cat "$adb_calls_file" >&2
+  exit 1
+fi
+
+# The cases below count ledger rows from their own run, so they cannot rely on
+# the previous case having left the ledgers empty anymore.
+: >"$calls_file"
+: >"$adb_calls_file"
 failure_manifest="$capture_all_root/capture-failure.tsv"
 printf 'onboarding\tflows-onboarding--intro\troute:IntroToCoMapeo\t0\tIntro\nonboarding\tflows-onboarding--success\troute:Success\t0\tSuccess\n' >"$failure_manifest"
 failure_output="$capture_all_root/capture-failure-output"
@@ -746,6 +967,7 @@ if grep -Fq $'002\tonboarding\tflows-onboarding--success' "$failure_output/captu
 fi
 
 : >"$calls_file"
+: >"$adb_calls_file"
 identity_output="$capture_all_root/identity-failure-output"
 expect_failure 1 'runtime identity check failed at position 1 for story: flows-onboarding--intro' \
   run_capture_all "$failure_manifest" "$identity_output" FAKE_ADB_BAD_IDENTITY=1
@@ -754,14 +976,24 @@ expect_failure 1 'runtime identity check failed at position 1 for story: flows-o
 [[ -s "$identity_output/onboarding/001-flows-onboarding--intro.failure-reactnative-logcat.txt" ]]
 
 : >"$calls_file"
+: >"$adb_calls_file"
 test_id_manifest="$capture_all_root/test-id.tsv"
 printf 'create-observation\tflows-createobservation--home\ttestID:MAIN.map-screen\t0\tHome\n' >"$test_id_manifest"
 test_id_output="$capture_all_root/test-id-output"
 run_capture_all "$test_id_manifest" "$test_id_output" >/dev/null
 [[ $(wc -l <"$test_id_output/captures.tsv") -eq 2 ]]
 grep -Fq $'flows-createobservation--home\t0\ttestID:MAIN.map-screen\t' "$calls_file"
+# #86: the cold start carries THIS manifest's first story, not a hardcoded id.
+assert_call_count_file "$adb_calls_file" '^shell am start ' 1
+expected_test_id_launcher='shell am start -n com.comapeo.dev/.MainActivity -a android.intent.action.VIEW -d storybook://x?STORYBOOK_STORY_ID=flows-createobservation--home'
+if ! grep -Fqx -- "$expected_test_id_launcher" "$adb_calls_file"; then
+  echo "the test-id manifest's cold start was not its own first story; got:" >&2
+  grep -E '^shell am start ' "$adb_calls_file" >&2 || true
+  exit 1
+fi
 
 : >"$calls_file"
+: >"$adb_calls_file"
 nonempty_output="$capture_all_root/nonempty-output"
 mkdir -p -- "$nonempty_output"
 printf 'keep\n' >"$nonempty_output/existing.txt"

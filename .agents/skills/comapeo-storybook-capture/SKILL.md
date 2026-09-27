@@ -32,8 +32,9 @@ Read `AGENTS.md` first. COIAB implementation and capture runs belong only in
    ```
 
 3. Capture into a new, empty directory. The wrapper performs its own
-   force-stop, log clear, launcher start, `Running "main"` check, and native
-   readiness checks:
+   force-stop, log clear, cold start of `MainActivity` straight into the first
+   manifest story's deep link, `Running "main"` check, and native readiness
+   checks:
 
    ```sh
    STORYBOOK_PACKAGE_ID=org.coiab.dev \

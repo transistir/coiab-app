@@ -122,6 +122,15 @@ while IFS= read -r line || [[ -n $line ]]; do
 done <"$manifest_path"
 
 cd -- "$repo_root"
+
+# A manifest of only comments and blank lines would otherwise cold-start into
+# an unbound `${story_ids[0]}` (#86) — after the index preflight ran and after
+# the output directory was created. Fail first, with a diagnosis, and touch
+# nothing.
+if (( ${#story_ids[@]} == 0 )); then
+  fail "manifest has no stories: $manifest_path"
+fi
+
 node - "$repo_root/.rnstorybook" "${story_ids[@]}" <<'NODE'
 const {buildIndex} = require('@storybook/react-native/node');
 
@@ -158,7 +167,7 @@ printf '%s\n' \
   "package_id=$package_id" \
   "force_stop_command=adb shell am force-stop $package_id" \
   "log_clear_command=adb logcat -c" \
-  "launcher_command=adb shell am start -n $package_id/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER" \
+  "launcher_command=adb shell am start -n $package_id/.MainActivity -a android.intent.action.VIEW -d storybook://x?STORYBOOK_STORY_ID=${story_ids[0]}" \
   >"$provenance_path"
 
 adb wait-for-device
@@ -215,11 +224,18 @@ if ! log_clear_output=$(adb logcat -c 2>&1); then
 fi
 printf 'log_clear_status=passed\n%s\n' "$log_clear_output" >>"$provenance_path"
 
+# Cold-start straight into the first manifest story (#86). A bare
+# MAIN/LAUNCHER start leaves Storybook on its index-default story ("*" with
+# empty AsyncStorage), and that story's flow state seeds projects. The first
+# row's deep link then switched stories while the seed was still inside core's
+# createProject, and a getProject in that window opened a second instance of
+# the same project: ELOCKED on its oplogs, fatal backend. Launching with the
+# URL lets Storybook pick the row through Linking.getInitialURL() instead.
 if ! launcher_output=$(
   adb shell am start \
     -n "$package_id/.MainActivity" \
-    -a android.intent.action.MAIN \
-    -c android.intent.category.LAUNCHER 2>&1
+    -a android.intent.action.VIEW \
+    -d "storybook://x?STORYBOOK_STORY_ID=${story_ids[0]}" 2>&1
 ); then
   printf 'launcher_status=failed\n%s\n' "$launcher_output" >>"$provenance_path"
   fail "could not cold-start Storybook; see $provenance_path"
@@ -247,7 +263,7 @@ fi
 printf '%s\n' \
   'running_main_status=passed' \
   "running_main_evidence=$running_main_evidence" \
-  'no_hmr_basis=force-stop and launcher cold start reached Running "main" before deep-link story selection' \
+  'no_hmr_basis=force-stop and a deep-link cold start' \
   '--- startup ReactNativeJS log snapshot ---' \
   "$startup_logs" \
   "ready_utc=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
