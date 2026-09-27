@@ -2179,19 +2179,310 @@ describe('materialização da organização', () => {
     const retryC = h.service.retry();
     await expect(retryC).rejects.toThrow('operation-in-progress');
     // The refused retry never flipped C's journal to `preparando`.
-    expect(
-      h.document.organizacoes.find(o => o.id === ORG_C),
-    ).toMatchObject({estado: 'falha_recuperavel'});
+    expect(h.document.organizacoes.find(o => o.id === ORG_C)).toMatchObject({
+      estado: 'falha_recuperavel',
+    });
     expect(h.templates.prepare).toHaveBeenCalledTimes(1);
 
     soltar();
     await resumindoA;
-    expect(
-      h.document.organizacoes.find(o => o.id === ORG_A),
-    ).toMatchObject({estado: 'pronta'});
-    expect(
-      h.document.organizacoes.find(o => o.id === ORG_C),
-    ).toMatchObject({estado: 'falha_recuperavel'});
+    expect(h.document.organizacoes.find(o => o.id === ORG_A)).toMatchObject({
+      estado: 'pronta',
+    });
+    expect(h.document.organizacoes.find(o => o.id === ORG_C)).toMatchObject({
+      estado: 'falha_recuperavel',
+    });
+  });
+
+  test('#93 fase 3 same-tick: resume(A); resume(B) sem await entre elas recusa B — o token só é setado dentro de work, um microtask depois do registro', async () => {
+    const h = harnessMulti();
+    const ORG_A = '1111111111111111';
+    const ORG_B = '2222222222222222';
+    const area = (id: string, hash: string): EtapaArea => ({
+      etapa: 'verificado',
+      projectId: `${id}-${hash}`,
+      template: {versao: '1', hash},
+      idsAntesDaCriacao: null,
+    });
+    const preparando = (id: string, nome: string): OrganizacaoLocal => ({
+      id,
+      nome,
+      estado: 'preparando',
+      confirmacaoPendente: false,
+      materializacao: {monitoramento: area(id, 'm'), alertas: area(id, 'a')},
+      areaEmExecucao: null,
+      ultimoErro: null,
+    });
+    const orgA = preparando(ORG_A, 'Primeira');
+    const orgB = preparando(ORG_B, 'Segunda');
+    h.repository.write({versao: 1, organizacoes: [orgA, orgB], ativa: null});
+    h.repository.write.mockClear();
+    for (const id of [ORG_A, ORG_B]) {
+      h.imported.add(`${id}-m`);
+      h.imported.add(`${id}-a`);
+    }
+    const base = h.client.getProject.getMockImplementation()!;
+    h.client.getProject.mockImplementation(async (id: string) => {
+      const project = await base(id);
+      const orgId = id.slice(0, 16);
+      const nome = orgId === ORG_A ? 'Primeira' : 'Segunda';
+      return {
+        ...project,
+        $getProjectSettings: jest.fn(async () => ({
+          name: id.endsWith('-m') ? 'Monitoramento' : 'Alertas',
+          sendStats: false,
+          projectDescription: markerFor(
+            orgId,
+            id.endsWith('-m') ? 'm' : 'a',
+            nome,
+          ),
+        })),
+      };
+    });
+
+    // NO await between the two calls: resume(B) is issued in the SAME tick
+    // as resume(A) — before resume(A)'s own `work` has even started, since
+    // exclusive() only schedules it via `Promise.resolve().then(...)`, a
+    // microtask later. Before fase 3 this window let B join A silently.
+    const resumindoA = h.service.resume(ORG_A);
+    const resumindoB = h.service.resume(ORG_B);
+
+    expect(resumindoB).not.toBe(resumindoA);
+    await expect(resumindoB).rejects.toThrow('operation-in-progress');
+
+    await resumindoA;
+    expect(h.document.organizacoes.find(o => o.id === ORG_A)).toMatchObject({
+      estado: 'pronta',
+      confirmacaoPendente: true,
+    });
+    // B was never touched by the refused submission.
+    expect(h.document.organizacoes.find(o => o.id === ORG_B)).toBe(orgB);
+    expect(h.document.organizacoes.find(o => o.id === ORG_B)).toMatchObject({
+      estado: 'preparando',
+    });
+
+    // After A settles, the registries are cleared: B is free to be resumed
+    // on its own, exactly as if the refused call had never happened.
+    await h.service.resume(ORG_B);
+    expect(h.document.organizacoes.find(o => o.id === ORG_B)).toMatchObject({
+      estado: 'pronta',
+      confirmacaoPendente: true,
+    });
+  });
+
+  test('#93 fase 3 same-tick: resume(A) por um client e resume(B) por OUTRO client (mesmo repository) sem await recusa B pelo registro do repositório', async () => {
+    // The test above only exercises the client-keyed registry (both calls
+    // share `h.service`). A genuinely different client wrapper leaves
+    // `running` unset for it, so the refusal must come from
+    // `runningRepositories` instead — same same-tick window, other entry.
+    const h = harnessMulti();
+    const ORG_A = '1111111111111111';
+    const ORG_B = '2222222222222222';
+    const area = (id: string, hash: string): EtapaArea => ({
+      etapa: 'verificado',
+      projectId: `${id}-${hash}`,
+      template: {versao: '1', hash},
+      idsAntesDaCriacao: null,
+    });
+    const preparando = (id: string, nome: string): OrganizacaoLocal => ({
+      id,
+      nome,
+      estado: 'preparando',
+      confirmacaoPendente: false,
+      materializacao: {monitoramento: area(id, 'm'), alertas: area(id, 'a')},
+      areaEmExecucao: null,
+      ultimoErro: null,
+    });
+    const orgA = preparando(ORG_A, 'Primeira');
+    const orgB = preparando(ORG_B, 'Segunda');
+    h.repository.write({versao: 1, organizacoes: [orgA, orgB], ativa: null});
+    h.repository.write.mockClear();
+    for (const id of [ORG_A, ORG_B]) {
+      h.imported.add(`${id}-m`);
+      h.imported.add(`${id}-a`);
+    }
+    const base = h.client.getProject.getMockImplementation()!;
+    h.client.getProject.mockImplementation(async (id: string) => {
+      const project = await base(id);
+      const orgId = id.slice(0, 16);
+      const nome = orgId === ORG_A ? 'Primeira' : 'Segunda';
+      return {
+        ...project,
+        $getProjectSettings: jest.fn(async () => ({
+          name: id.endsWith('-m') ? 'Monitoramento' : 'Alertas',
+          sendStats: false,
+          projectDescription: markerFor(
+            orgId,
+            id.endsWith('-m') ? 'm' : 'a',
+            nome,
+          ),
+        })),
+      };
+    });
+    const other = createMaterializer({
+      client: {...h.client},
+      templates: h.templates,
+      repository: h.repository,
+      generateId: () => '4444444444444444',
+    });
+
+    const resumindoA = h.service.resume(ORG_A);
+    const resumindoB = other.resume(ORG_B);
+
+    expect(resumindoB).not.toBe(resumindoA);
+    await expect(resumindoB).rejects.toThrow('operation-in-progress');
+
+    await resumindoA;
+    expect(h.document.organizacoes.find(o => o.id === ORG_A)).toMatchObject({
+      estado: 'pronta',
+    });
+    expect(h.document.organizacoes.find(o => o.id === ORG_B)).toMatchObject({
+      estado: 'preparando',
+    });
+  });
+
+  test('#93 fase 3 same-tick: resume(A); retry() sem await entre elas recusa o retry — mesma janela same-tick, caminho retry', async () => {
+    const h = harnessMulti();
+    const ORG_A = '1111111111111111';
+    const ORG_C = '3333333333333333';
+    const area = (id: string, hash: string): EtapaArea => ({
+      etapa: 'verificado',
+      projectId: `${id}-${hash}`,
+      template: {versao: '1', hash},
+      idsAntesDaCriacao: null,
+    });
+    const orgA: OrganizacaoLocal = {
+      id: ORG_A,
+      nome: 'Primeira',
+      estado: 'preparando',
+      confirmacaoPendente: false,
+      materializacao: {
+        monitoramento: area(ORG_A, 'm'),
+        alertas: area(ORG_A, 'a'),
+      },
+      areaEmExecucao: null,
+      ultimoErro: null,
+    };
+    const orgC: OrganizacaoLocal = {
+      ...orgA,
+      id: ORG_C,
+      nome: 'Terceira',
+      estado: 'falha_recuperavel',
+      materializacao: {
+        monitoramento: area(ORG_C, 'm'),
+        alertas: area(ORG_C, 'a'),
+      },
+      ultimoErro: {
+        codigo: 'preparation-failed',
+        area: null,
+        ocorridoEm: '2026-01-01T00:00:00.000Z',
+      },
+    };
+    h.repository.write({versao: 1, organizacoes: [orgA, orgC], ativa: null});
+    h.repository.write.mockClear();
+    for (const id of [ORG_A, ORG_C]) {
+      h.imported.add(`${id}-m`);
+      h.imported.add(`${id}-a`);
+    }
+    const base = h.client.getProject.getMockImplementation()!;
+    h.client.getProject.mockImplementation(async (id: string) => {
+      const project = await base(id);
+      const orgId = id.slice(0, 16);
+      const nome = orgId === ORG_A ? 'Primeira' : 'Terceira';
+      return {
+        ...project,
+        $getProjectSettings: jest.fn(async () => ({
+          name: id.endsWith('-m') ? 'Monitoramento' : 'Alertas',
+          sendStats: false,
+          projectDescription: markerFor(
+            orgId,
+            id.endsWith('-m') ? 'm' : 'a',
+            nome,
+          ),
+        })),
+      };
+    });
+
+    // NO await between the two calls: retry()'s wrapper-level lookup of the
+    // falha_recuperavel entry runs synchronously (it just reads the current
+    // document, unaffected by A's pending work), but retry's own
+    // `op.organizacaoId` assignment — like resume's — only happens a
+    // microtask later, inside `work`.
+    const resumindoA = h.service.resume(ORG_A);
+    const retryC = h.service.retry();
+
+    expect(retryC).not.toBe(resumindoA);
+    await expect(retryC).rejects.toThrow('operation-in-progress');
+    // The refused retry never flipped C's journal to `preparando`.
+    expect(h.document.organizacoes.find(o => o.id === ORG_C)).toMatchObject({
+      estado: 'falha_recuperavel',
+    });
+
+    await resumindoA;
+    expect(h.document.organizacoes.find(o => o.id === ORG_A)).toMatchObject({
+      estado: 'pronta',
+    });
+    expect(h.document.organizacoes.find(o => o.id === ORG_C)).toMatchObject({
+      estado: 'falha_recuperavel',
+    });
+  });
+
+  test('#93 fase 3 — Opus M3: resume(B) durante start(A) já persistido (fora do same-tick) recusa; resume(A) mantém o join — exceção ao contrato "recovery aguarda criação em voo"', async () => {
+    const h = harnessMulti();
+    let releaseCreation!: () => void;
+    let creationEntered!: () => void;
+    const blocked = new Promise<void>(resolve => {
+      releaseCreation = resolve;
+    });
+    const entered = new Promise<void>(resolve => {
+      creationEntered = resolve;
+    });
+    h.client.createProject.mockImplementation(
+      async ({name, projectDescription}) => {
+        if (h.client.createProject.mock.calls.length === 1) {
+          creationEntered();
+          await blocked;
+        }
+        const id = `id-${h.projects.length}`;
+        h.projects.push(id);
+        h.settings.set(id, {name, sendStats: false, projectDescription});
+        return id;
+      },
+    );
+
+    const started = h.service.start('Primeira');
+    await entered;
+    // Past the same-tick window this fase closes: the intent is already
+    // persisted and the token already committed to ORG_ID — start() sets
+    // both `save()` and `op.organizacaoId` in the same synchronous
+    // continuation, right after `prepare()` resolves.
+    expect(h.document.organizacoes.find(o => o.id === ORG_ID)).toMatchObject({
+      estado: 'preparando',
+    });
+
+    // A resume aimed at a DIFFERENT organization — here, one the document
+    // has no entry for at all — must refuse. The M-1 rule ("a recovery
+    // waits for an in-flight creation") is a same-organization contract: it
+    // never licenses joining ANY creation just because one happens to be in
+    // flight (Opus M3).
+    const resumindoOutra = h.service.resume('9999999999999999');
+    expect(resumindoOutra).not.toBe(started);
+    await expect(resumindoOutra).rejects.toThrow('operation-in-progress');
+
+    // A resume for the SAME organization as the live start still joins
+    // (double tap/remount) — unchanged by this fase.
+    const resumindoA = h.service.resume(ORG_ID);
+    expect(resumindoA).toBe(started);
+
+    releaseCreation();
+    await started;
+
+    expect(h.document.organizacoes).toHaveLength(1);
+    expect(h.document.organizacoes[0]).toMatchObject({
+      id: ORG_ID,
+      estado: 'pronta',
+      confirmacaoPendente: true,
+    });
   });
 
   test('multi-org: callback tardio da operação de A não escreve no diário de B nem de C', async () => {

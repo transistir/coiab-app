@@ -90,13 +90,28 @@ type Registro = {
   /** Trimmed name — set iff `intencao === 'start'`. */
   nome?: string;
   /**
+   * The target the CALLER already knew when THIS registro was published —
+   * resume's own `id` argument, or retry's `falha_recuperavel` lookup, both
+   * resolved synchronously in `exclusive()` BEFORE `running.set`/
+   * `runningRepositories.set` (#93 fase 3). `undefined` for `start` (judged
+   * by `nome` instead) and for the id-less "first pending" resume (#85),
+   * whose target is not knowable from the caller's side yet.
+   */
+  alvo?: string;
+  /**
    * The live operation token this registro belongs to. `organizacaoId`
    * (#93) is always read straight off it rather than copied onto the
    * registro, so the client- and repository-keyed entries can never drift
    * out of sync with each other or with `operacoes`: `start` sets it to the
    * organization it just created, `resume`/`retry` to the organization
    * their id/journal lookup resolved to — the same assignment already made
-   * for `operacaoViva()`/checkpointing, nothing new to keep in step.
+   * for `operacaoViva()`/checkpointing, nothing new to keep in step. That
+   * assignment happens INSIDE `work`, a microtask after this registro is
+   * published (`exclusive()` schedules `work` via `Promise.resolve().then`)
+   * — so a second `exclusive()` call in the SAME tick, before that microtask
+   * runs, would see it still `null` and join silently. `alvo` above is the
+   * synchronous stand-in for exactly that window: wherever this registro's
+   * target is judged, read `alvo ?? op.organizacaoId`, never the token alone.
    */
   op: Operacao;
   operation: Promise<void>;
@@ -454,6 +469,11 @@ export function createMaterializer<
    * `resume('')` is an id that matches nothing, never the id-less search.
    * Only `undefined` resumes the first `preparando` entry, as before. A
    * missing id/estado pair is a no-op: nothing matches, nothing is written.
+   * That no-op is only reached when no OTHER operation is alive: `exclusive`
+   * refuses first (`operation-in-progress`, #93) when a live operation is
+   * already committed to a different organization, even for an id this
+   * document has no entry for at all — a nonexistent id is not a
+   * safe-by-default bypass of that refusal.
    */
   async function resume(op: Operacao, organizacaoId?: string) {
     const organizacoes = repository.read().organizacoes;
@@ -479,10 +499,23 @@ export function createMaterializer<
       fail(op);
     }
   }
-  async function retry(op: Operacao) {
-    const falha = repository
-      .read()
-      .organizacoes.find(o => o.estado === 'falha_recuperavel');
+  /**
+   * `organizacaoId`, when given, is the wrapper's own `falha_recuperavel`
+   * lookup (#93 fase 3) — the SAME read already used to decide refuse-vs-
+   * join in `exclusive()`, threaded through so this function never re-picks
+   * a DIFFERENT organization than the one that lookup named. Omitted only
+   * when the wrapper found none; the id-less search below then mirrors
+   * `resume`'s own "first pending" fallback and is expected to also find
+   * none.
+   */
+  async function retry(op: Operacao, organizacaoId?: string) {
+    const organizacoes = repository.read().organizacoes;
+    const falha =
+      organizacaoId !== undefined
+        ? organizacoes.find(
+            o => o.id === organizacaoId && o.estado === 'falha_recuperavel',
+          )
+        : organizacoes.find(o => o.estado === 'falha_recuperavel');
     if (!falha) return;
     op.organizacaoId = falha.id;
     // Mirrors resume(): a superseded operation exits silently and a failed
@@ -512,9 +545,10 @@ export function createMaterializer<
      * knowable from the caller's side yet — resume's id-less "first
      * pending" contract (#85) — and the cross-organization refusal below
      * never fires on that alone; it also requires the LIVE operation's own
-     * target to be known (`existing.op.organizacaoId`), so two operations
-     * that both don't know their target yet still fall through to the
-     * existing join rule below instead of refusing blind.
+     * target to be known (`existing.alvo ?? existing.op.organizacaoId` —
+     * #93 fase 3), so two operations that both don't know their target yet
+     * still fall through to the existing join rule below instead of
+     * refusing blind.
      */
     organizacaoAlvo?: string,
   ) {
@@ -540,17 +574,25 @@ export function createMaterializer<
       // resolve 'B' with the organization 'A' provisioned — a silent
       // success that creates nothing under B's name. Same normalized name
       // stays a join: that IS the double tap/remount (CA11/CA12). The
-      // reverse joins stay: a recovery waits for an in-flight creation
-      // (M-1). And #93: a resume/retry NEVER joins a live operation already
-      // committed to a DIFFERENT organization — the same shape as the
-      // cross-name rule just above, keyed by id instead of name since
-      // resume/retry never mint an id of their own.
+      // reverse joins stay ONLY while the resume/retry's own target is not
+      // yet knowable (the id-less "first pending" contract, #85) or matches
+      // the live creation's organization: a recovery of THAT organization
+      // waits for its in-flight creation (M-1) — double tap/remount, same as
+      // above. A resume/retry that NAMES a different, already-persisted
+      // organization is refused instead (Opus M3, #93 fase 3) — but only
+      // once the creation has passed its `save()`: before that, both
+      // `alvo` and `op.organizacaoId` are still `null`, and an id-less
+      // resume of the very document being prepared joins as a no-op
+      // (harmless: nothing is persisted to reopen under another name).
+      // "Recovery waits for creation" is a same-organization contract,
+      // never a blanket license to join ANY creation. And #93: a
+      // resume/retry NEVER joins a live operation already committed to a
+      // DIFFERENT organization — the same shape as the cross-name rule
+      // just above, keyed by id instead of name since resume/retry never
+      // mint an id of their own.
       for (const existing of existentes.values()) {
         if (intencao === 'start') {
-          if (
-            existing.intencao === 'resume' ||
-            existing.intencao === 'retry'
-          ) {
+          if (existing.intencao === 'resume' || existing.intencao === 'retry') {
             return Promise.reject(
               new OrganizationOperationError(
                 'creation-in-progress',
@@ -568,10 +610,26 @@ export function createMaterializer<
           }
           continue;
         }
+        // #93 fase 3: `existing.alvo` is available the INSTANT `existing`
+        // was published (set synchronously in `exclusive()`, never inside
+        // `work`); `existing.op.organizacaoId` only becomes non-null a
+        // microtask later, once `work` actually runs. Reading
+        // `op.organizacaoId` alone left a same-tick window open —
+        // `resume(A); resume(B)` or `resume(A); retry()` with NO `await`
+        // between the two calls — where the second call still saw `null`
+        // and joined A's operation silently. Falling back to
+        // `op.organizacaoId` only when `alvo` is `undefined` keeps covering
+        // a target that became known AFTER publication (an id-less resume
+        // whose own lookup, inside its own `work`, resolved a real
+        // organization). It does NOT cover the id-less-vs-id-less pair:
+        // `resume(); resume(B)` in one tick joins (both targets unknown),
+        // latent-only in production because every caller passes an id
+        // (Opus review, #93 fase 3).
+        const alvoExistente = existing.alvo ?? existing.op.organizacaoId;
         if (
           organizacaoAlvo !== undefined &&
-          existing.op.organizacaoId !== null &&
-          existing.op.organizacaoId !== organizacaoAlvo
+          alvoExistente !== null &&
+          alvoExistente !== organizacaoAlvo
         ) {
           return Promise.reject(new Error('operation-in-progress'));
         }
@@ -603,8 +661,24 @@ export function createMaterializer<
         }
         if (operacoes.get(repository) === op) operacoes.delete(repository);
       });
-    running.set(client, {intencao, nome, op, operation});
-    runningRepositories.set(repository, {intencao, nome, op, operation});
+    // `alvo: organizacaoAlvo` is set HERE, synchronously — never inside
+    // `work` — so the cross-organization refusal above can read a caller's
+    // known target immediately, without waiting for the microtask that
+    // actually runs `work` (#93 fase 3; see the `Registro.alvo` doc comment).
+    running.set(client, {
+      intencao,
+      nome,
+      op,
+      operation,
+      alvo: organizacaoAlvo,
+    });
+    runningRepositories.set(repository, {
+      intencao,
+      nome,
+      op,
+      operation,
+      alvo: organizacaoAlvo,
+    });
     operacoes.set(repository, op);
     return operation;
   }
@@ -617,14 +691,17 @@ export function createMaterializer<
       // #93: resolved BEFORE the join/refuse decision, mirroring resume's
       // `id` argument — retry's own target is picked from the journal
       // (`estado === 'falha_recuperavel'`) rather than passed by the
-      // caller. `retry(op)` re-reads the same entry once it actually runs;
-      // reading it twice is cheap and race-free, since both reads happen
-      // synchronously, before either this function or `retry()` awaits
-      // anything.
+      // caller. This read only decides refuse-vs-join here in the wrapper;
+      // it is NOT authoritative for what retry acts on — `retry(op, id)`
+      // re-reads by this SAME id once it actually runs, a microtask later
+      // (Opus M2, #93 fase 3: the two reads are not synchronous with each
+      // other, so threading the id through, instead of re-searching
+      // "some `falha_recuperavel` entry" independently, is what keeps them
+      // from ever resolving to two DIFFERENT organizations).
       const alvo = repository
         .read()
         .organizacoes.find(o => o.estado === 'falha_recuperavel');
-      return exclusive('retry', op => retry(op), undefined, alvo?.id);
+      return exclusive('retry', op => retry(op, alvo?.id), undefined, alvo?.id);
     },
   };
 }
