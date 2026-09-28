@@ -722,13 +722,22 @@ export function createMaterializer<
       // is never caller-supplied, so it reaches `exclusive` one microtask
       // LATER than resume's would already be in hand — which is exactly
       // why a live non-retry refuses it outright (fase 4, Greptile P1)
-      // instead of racing its journal lookup against it.
-      return Promise.resolve().then(() => {
-        const id = repository
-          .read()
-          .organizacoes.find(o => o.estado === 'falha_recuperavel')?.id;
-        return exclusive('retry', op => retry(op, id), undefined, id);
-      });
+      // instead of racing its journal lookup against it. The lookup and
+      // the dispatch ride SEPARATE microtasks on purpose (Astra MAJOR on
+      // #101 polimento): collapsing them into one `.then` would let retry
+      // publish one tick earlier, and in `retry(); await tick;
+      // resume(A)` the resume would then JOIN the freshly-published retry
+      // (same target) instead of the retry seeing the live resume and
+      // refusing — an observable behaviour change in a comment-only
+      // polish commit. The pinned test 'Astra MAJOR on #101' guards it.
+      return Promise.resolve()
+        .then(() => {
+          const alvo = repository
+            .read()
+            .organizacoes.find(o => o.estado === 'falha_recuperavel');
+          return {id: alvo?.id};
+        })
+        .then(({id}) => exclusive('retry', op => retry(op, id), undefined, id));
     },
   };
 }

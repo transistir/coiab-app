@@ -2406,8 +2406,11 @@ describe('materialização da organização', () => {
     // NO await between the two calls: resume publishes synchronously with
     // its caller-known id; retry()'s journal lookup rides a microtask, so
     // by the time it reaches `exclusive` resume's operation is already
-    // live. It refuses via the fase-4 guard (a retry never joins a live
-    // non-retry), independently of the target the lookup resolved —
+    // live. A targets ORG_A but retry's journal lookup resolves ORG_C, so
+    // the refusal fires at the different-organizations guard FIRST
+    // (materializar's cross-org check), before the fase-4 "retry never
+    // joins a live non-retry" guard could — either guard refusing is
+    // correct here; this test pins the outcome, not which guard fires.
     // `retry(op, id)` re-reads by this SAME id once it actually runs, a
     // microtask later (Opus M2).
     const resumindoA = h.service.resume(ORG_A);
@@ -2467,6 +2470,52 @@ describe('materialização da organização', () => {
     ).toContain('operation-in-progress');
     expect(results[1].status).toBe('fulfilled');
     expect(h.document.organizacoes[0]?.estado).toBe('falha_recuperavel');
+  });
+
+  test('#93 fase 5 — Astra MAJOR on #101: retry(); tick; resume(A) com A recuperável — retry publica e o resume que chega DEPOIS recusa (nunca joina o retry)', async () => {
+    const h = harness();
+    const base = h.client.getProject.getMockImplementation()!;
+    h.client.getProject.mockImplementation(async id => ({
+      ...(await base(id)),
+      $getProjectSettings: jest.fn(async () => ({
+        name: h.projects.indexOf(id) === 0 ? 'Monitoramento' : 'Alertas',
+        sendStats: false,
+        projectDescription: markerFor('ffffffffffffffff', 'm', 'Outra'),
+      })),
+    }));
+    await h.service.start('Associação');
+    expect(h.document.organizacoes[0]?.estado).toBe('falha_recuperavel');
+    h.client.getProject.mockImplementation(base);
+
+    const retryP = h.service.retry();
+    // ONE tick of gap (not same-tick): with retry's two-microtask
+    // pipeline (lookup `.then` → dispatch `.then`), one await leaves the
+    // retry's journal lookup done but NOT yet published; the resume then
+    // publishes synchronously and becomes the live operation. When the
+    // retry's dispatch runs, it must see that live resume and refuse —
+    // never the reverse. Astra reproduced the regression where a single
+    // `.then` pipeline let the retry publish FIRST (one tick earlier),
+    // after which the same-target resume JOINED it and both fulfilled
+    // with A `pronta` — an observable behaviour change smuggled in by a
+    // comment-only polish commit. These assertions pin the correct
+    // orderings: the retry is the one refused, A stays failed, and a
+    // later retry still recovers.
+    await Promise.resolve();
+    const resumeP = h.service.resume(ORG_ID);
+    const results = await Promise.allSettled([retryP, resumeP]);
+
+    expect(results[0].status).toBe('rejected');
+    expect(
+      String(
+        (results[0] as PromiseRejectedResult).reason?.message ??
+          (results[0] as PromiseRejectedResult).reason,
+      ),
+    ).toContain('operation-in-progress');
+    expect(results[1].status).toBe('fulfilled');
+    expect(h.document.organizacoes[0]?.estado).toBe('falha_recuperavel');
+
+    await h.service.retry();
+    expect(h.document.organizacoes[0]?.estado).toBe('pronta');
   });
 
   test('#93 fase 4 — the retry refused by a same-tick resume recovers on the next call', async () => {
