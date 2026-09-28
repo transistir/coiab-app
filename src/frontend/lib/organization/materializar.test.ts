@@ -2403,15 +2403,16 @@ describe('materialização da organização', () => {
       };
     });
 
-    // NO await between the two calls: retry()'s wrapper-level lookup of the
-    // falha_recuperavel entry runs synchronously (it just reads the current
-    // document, unaffected by A's pending work), but retry's own
-    // `op.organizacaoId` assignment — like resume's — only happens a
-    // microtask later, inside `work`.
+    // NO await between the two calls: resume publishes synchronously with
+    // its caller-known id; retry()'s journal lookup rides a microtask, so
+    // by the time it reaches `exclusive` resume's operation is already
+    // live. It refuses via the fase-4 guard (a retry never joins a live
+    // non-retry), independently of the target the lookup resolved —
+    // `retry(op, id)` re-reads by this SAME id once it actually runs, a
+    // microtask later (Opus M2).
     const resumindoA = h.service.resume(ORG_A);
     const retryC = h.service.retry();
 
-    expect(retryC).not.toBe(resumindoA);
     await expect(retryC).rejects.toThrow('operation-in-progress');
     // The refused retry never flipped C's journal to `preparando`.
     expect(h.document.organizacoes.find(o => o.id === ORG_C)).toMatchObject({
@@ -2448,17 +2449,24 @@ describe('materialização da organização', () => {
     const resumeP = h.service.resume(ORG_ID);
     const results = await Promise.allSettled([retryP, resumeP]);
 
-    const recovered = h.document.organizacoes[0]?.estado === 'pronta';
-    const refused =
-      results[0].status === 'rejected' &&
+    // Deterministic on purpose: resume's contract (#85) is to carry an
+    // interrupted `preparando` journal, so against a `falha_recuperavel`
+    // entry it is a designed no-op that resolves fulfilled; the retry,
+    // published a microtask later, sees the live resume and refuses. The
+    // bug shape this pins: BOTH promises fulfilled while A stayed failed
+    // — a fulfilled no-op that reported a recovery it never did. Assert
+    // the exact outcome, not the weaker `recovered || refused` (Opus
+    // NIT on #101: a weaker assertion would let a different, unintended
+    // fix pass).
+    expect(results[0].status).toBe('rejected');
+    expect(
       String(
         (results[0] as PromiseRejectedResult).reason?.message ??
           (results[0] as PromiseRejectedResult).reason,
-      ).includes('operation-in-progress');
-    // The bug shape this pins against: BOTH promises fulfilled while A
-    // stayed failed — a fulfilled no-op. A retry that neither recovered
-    // nor refused is the silent-success failure mode.
-    expect(recovered || refused).toBe(true);
+      ),
+    ).toContain('operation-in-progress');
+    expect(results[1].status).toBe('fulfilled');
+    expect(h.document.organizacoes[0]?.estado).toBe('falha_recuperavel');
   });
 
   test('#93 fase 4 — the retry refused by a same-tick resume recovers on the next call', async () => {
@@ -2477,7 +2485,18 @@ describe('materialização da organização', () => {
 
     const retryP = h.service.retry();
     const resumeP = h.service.resume(ORG_ID);
-    await Promise.allSettled([retryP, resumeP]);
+    const results = await Promise.allSettled([retryP, resumeP]);
+    // Pin the refusal and the still-failed journal here (Astra/Opus MINOR
+    // on #101: without this the test passed with or without the guard —
+    // it was only checking the later recovery), THEN the recovery.
+    expect(results[0].status).toBe('rejected');
+    expect(
+      String(
+        (results[0] as PromiseRejectedResult).reason?.message ??
+          (results[0] as PromiseRejectedResult).reason,
+      ),
+    ).toContain('operation-in-progress');
+    expect(h.document.organizacoes[0]?.estado).toBe('falha_recuperavel');
 
     await h.service.retry();
     expect(h.document.organizacoes[0]?.estado).toBe('pronta');

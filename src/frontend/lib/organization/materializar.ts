@@ -539,9 +539,11 @@ export function createMaterializer<
     /**
      * #93: the organization the CALLER already knows it targets —
      * `resume`'s own `id` argument, or the `falha_recuperavel` entry
-     * `retry()` resolves before entering here (its target is never passed
-     * by the caller, so it is looked up at the same point `resume`'s id
-     * would already be in hand). `undefined` means the target is not
+     * `retry()` resolves from the journal before entering here (its
+     * target is never caller-supplied, so for retry it arrives one
+     * microtask later than resume's, which is why retry refuses against
+     * any live non-retry instead of joining — fase 4, Greptile P1).
+     * `undefined` means the target is not
      * knowable from the caller's side yet — resume's id-less "first
      * pending" contract (#85) — and the cross-organization refusal below
      * never fires on that alone; it also requires the LIVE operation's own
@@ -574,11 +576,14 @@ export function createMaterializer<
       // resolve 'B' with the organization 'A' provisioned — a silent
       // success that creates nothing under B's name. Same normalized name
       // stays a join: that IS the double tap/remount (CA11/CA12). The
-      // reverse joins stay ONLY while the resume/retry's own target is not
-      // yet knowable (the id-less "first pending" contract, #85) or matches
-      // the live creation's organization: a recovery of THAT organization
-      // waits for its in-flight creation (M-1) — double tap/remount, same as
-      // above. A resume/retry that NAMES a different, already-persisted
+      // reverse joins stay ONLY for a resume whose own target is not
+      // yet knowable (the id-less "first pending" contract, #85) or
+      // matches the live creation's organization: a recovery of THAT
+      // organization waits for its in-flight creation (M-1) — double
+      // tap/remount, same as above. A retry never joins a live creation
+      // at all (fase 4, Greptile P1: its target rides a microtask, so it
+      // cannot prove it is recovery OF that creation). A resume that
+      // NAMES a different, already-persisted
       // organization is refused instead (Opus M3, #93 fase 3) — but only
       // once the creation has passed its `save()`: before that, both
       // `alvo` and `op.organizacaoId` are still `null`, and an id-less
@@ -705,27 +710,25 @@ export function createMaterializer<
       exclusive('resume', op => resume(op, id), undefined, id),
     retry: () => {
       // #93: resolved at the top of the chained promise (NOT before it),
-      // mirroring resume's `id` argument — retry's own target is picked
-      // from the journal (`estado === 'falha_recuperavel'`) rather than
-      // passed by the caller. This read only decides refuse-vs-join here
-      // in the wrapper; it is NOT authoritative for what retry acts on —
-      // `retry(op, id)` re-reads by this SAME id once it actually runs,
-      // a microtask later (Opus M2, #93 fase 3: the two reads are not
-      // synchronous with each other, so threading the id through, instead
-      // of re-searching "some `falha_recuperavel` entry" independently, is
-      // what keeps them from ever resolving to two DIFFERENT
-      // organizations). Greptile P2 on #101: the read must stay INSIDE
-      // the promise chain so a repository.read() failure reaches the
-      // caller's `.catch()` instead of throwing synchronously out of
-      // retry(); the one-shot target pick rides the same task.
-      return Promise.resolve()
-        .then(() => {
-          const alvo = repository
-            .read()
-            .organizacoes.find(o => o.estado === 'falha_recuperavel');
-          return {id: alvo?.id};
-        })
-        .then(({id}) => exclusive('retry', op => retry(op, id), undefined, id));
+      // so a repository.read() failure reaches the caller's `.catch()`
+      // instead of throwing synchronously out of retry() (Greptile P2 on
+      // #101) — the one-shot target pick rides the same microtask as the
+      // dispatch. The read is NOT authoritative for what retry acts on:
+      // `retry(op, id)` re-reads by this SAME id once it actually runs
+      // (Opus M2, #93 fase 3: threading the id through, instead of
+      // re-searching "some `falha_recuperavel` entry" independently, is
+      // what keeps the two reads from ever resolving to two DIFFERENT
+      // organizations). Unlike `resume`'s `id` argument, retry's target
+      // is never caller-supplied, so it reaches `exclusive` one microtask
+      // LATER than resume's would already be in hand — which is exactly
+      // why a live non-retry refuses it outright (fase 4, Greptile P1)
+      // instead of racing its journal lookup against it.
+      return Promise.resolve().then(() => {
+        const id = repository
+          .read()
+          .organizacoes.find(o => o.estado === 'falha_recuperavel')?.id;
+        return exclusive('retry', op => retry(op, id), undefined, id);
+      });
     },
   };
 }
