@@ -77,15 +77,6 @@ const marcador = (org: OrganizacaoLocal, area: Area) =>
 // joining a differently-named start would resolve this submission with an
 // organization it did not create.
 type Intencao = 'start' | 'resume' | 'retry';
-type Registro = {
-  intencao: Intencao;
-  /** Trimmed name — set iff `intencao === 'start'`. */
-  nome?: string;
-  operation: Promise<void>;
-};
-const running = new WeakMap<object, Registro>();
-const runningRepositories = new WeakMap<object, Registro>();
-
 /**
  * Identity of a creation operation (SPEC B §5.4): every operation started
  * through `exclusive()` carries the organization it belongs to. The object
@@ -94,6 +85,39 @@ const runningRepositories = new WeakMap<object, Registro>();
  * an externally replaced journal can never be attributed to the new journal.
  */
 type Operacao = {organizacaoId: string | null};
+type Registro = {
+  intencao: Intencao;
+  /** Trimmed name — set iff `intencao === 'start'`. */
+  nome?: string;
+  /**
+   * The target the CALLER already knew when THIS registro was published —
+   * resume's own `id` argument, or retry's `falha_recuperavel` lookup, both
+   * resolved synchronously in `exclusive()` BEFORE `running.set`/
+   * `runningRepositories.set` (#93 fase 3). `undefined` for `start` (judged
+   * by `nome` instead) and for the id-less "first pending" resume (#85),
+   * whose target is not knowable from the caller's side yet.
+   */
+  alvo?: string;
+  /**
+   * The live operation token this registro belongs to. `organizacaoId`
+   * (#93) is always read straight off it rather than copied onto the
+   * registro, so the client- and repository-keyed entries can never drift
+   * out of sync with each other or with `operacoes`: `start` sets it to the
+   * organization it just created, `resume`/`retry` to the organization
+   * their id/journal lookup resolved to — the same assignment already made
+   * for `operacaoViva()`/checkpointing, nothing new to keep in step. That
+   * assignment happens INSIDE `work`, a microtask after this registro is
+   * published (`exclusive()` schedules `work` via `Promise.resolve().then`)
+   * — so a second `exclusive()` call in the SAME tick, before that microtask
+   * runs, would see it still `null` and join silently. `alvo` above is the
+   * synchronous stand-in for exactly that window: wherever this registro's
+   * target is judged, read `alvo ?? op.organizacaoId`, never the token alone.
+   */
+  op: Operacao;
+  operation: Promise<void>;
+};
+const running = new WeakMap<object, Registro>();
+const runningRepositories = new WeakMap<object, Registro>();
 const operacoes = new WeakMap<object, Operacao>();
 
 /** Internal signal: the operation was superseded — exit without writing. */
@@ -445,6 +469,11 @@ export function createMaterializer<
    * `resume('')` is an id that matches nothing, never the id-less search.
    * Only `undefined` resumes the first `preparando` entry, as before. A
    * missing id/estado pair is a no-op: nothing matches, nothing is written.
+   * That no-op is only reached when no OTHER operation is alive: `exclusive`
+   * refuses first (`operation-in-progress`, #93) when a live operation is
+   * already committed to a different organization, even for an id this
+   * document has no entry for at all — a nonexistent id is not a
+   * safe-by-default bypass of that refusal.
    */
   async function resume(op: Operacao, organizacaoId?: string) {
     const organizacoes = repository.read().organizacoes;
@@ -470,10 +499,23 @@ export function createMaterializer<
       fail(op);
     }
   }
-  async function retry(op: Operacao) {
-    const falha = repository
-      .read()
-      .organizacoes.find(o => o.estado === 'falha_recuperavel');
+  /**
+   * `organizacaoId`, when given, is the wrapper's own `falha_recuperavel`
+   * lookup (#93 fase 3) — the SAME read already used to decide refuse-vs-
+   * join in `exclusive()`, threaded through so this function never re-picks
+   * a DIFFERENT organization than the one that lookup named. Omitted only
+   * when the wrapper found none; the id-less search below then mirrors
+   * `resume`'s own "first pending" fallback and is expected to also find
+   * none.
+   */
+  async function retry(op: Operacao, organizacaoId?: string) {
+    const organizacoes = repository.read().organizacoes;
+    const falha =
+      organizacaoId !== undefined
+        ? organizacoes.find(
+            o => o.id === organizacaoId && o.estado === 'falha_recuperavel',
+          )
+        : organizacoes.find(o => o.estado === 'falha_recuperavel');
     if (!falha) return;
     op.organizacaoId = falha.id;
     // Mirrors resume(): a superseded operation exits silently and a failed
@@ -494,6 +536,23 @@ export function createMaterializer<
     intencao: Intencao,
     work: (op: Operacao) => Promise<void>,
     nome?: string,
+    /**
+     * #93: the organization the CALLER already knows it targets —
+     * `resume`'s own `id` argument, or the `falha_recuperavel` entry
+     * `retry()` resolves from the journal before entering here (its
+     * target is never caller-supplied, so for retry it arrives one
+     * microtask later than resume's, which is why retry refuses against
+     * any live non-retry instead of joining — fase 4, Greptile P1).
+     * `undefined` means the target is not
+     * knowable from the caller's side yet — resume's id-less "first
+     * pending" contract (#85) — and the cross-organization refusal below
+     * never fires on that alone; it also requires the LIVE operation's own
+     * target to be known (`existing.alvo ?? existing.op.organizacaoId` —
+     * #93 fase 3), so two operations that both don't know their target yet
+     * still fall through to the existing join rule below instead of
+     * refusing blind.
+     */
+    organizacaoAlvo?: string,
   ) {
     // BOTH registries are consulted: the client-keyed and the
     // repository-keyed entries can diverge (a wrapper pairing this client
@@ -517,25 +576,83 @@ export function createMaterializer<
       // resolve 'B' with the organization 'A' provisioned — a silent
       // success that creates nothing under B's name. Same normalized name
       // stays a join: that IS the double tap/remount (CA11/CA12). The
-      // reverse joins stay: a recovery waits for an in-flight creation
-      // (M-1).
+      // reverse joins stay ONLY for a resume whose own target is not
+      // yet knowable (the id-less "first pending" contract, #85) or
+      // matches the live creation's organization: a recovery of THAT
+      // organization waits for its in-flight creation (M-1) — double
+      // tap/remount, same as above. A retry never joins a live creation
+      // at all (fase 4, Greptile P1: its target rides a microtask, so it
+      // cannot prove it is recovery OF that creation). A resume that
+      // NAMES a different, already-persisted
+      // organization is refused instead (Opus M3, #93 fase 3) — but only
+      // once the creation has passed its `save()`: before that, both
+      // `alvo` and `op.organizacaoId` are still `null`, and an id-less
+      // resume of the very document being prepared joins as a no-op
+      // (harmless: nothing is persisted to reopen under another name).
+      // "Recovery waits for creation" is a same-organization contract,
+      // never a blanket license to join ANY creation. And #93: a
+      // resume/retry NEVER joins a live operation already committed to a
+      // DIFFERENT organization — the same shape as the cross-name rule
+      // just above, keyed by id instead of name since resume/retry never
+      // mint an id of their own.
       for (const existing of existentes.values()) {
-        if (intencao !== 'start') break;
-        if (existing.intencao === 'resume' || existing.intencao === 'retry') {
-          return Promise.reject(
-            new OrganizationOperationError(
-              'creation-in-progress',
-              'a creation cannot start while an organization recovery is in progress; wait for it to settle',
-            ),
-          );
+        if (intencao === 'start') {
+          if (existing.intencao === 'resume' || existing.intencao === 'retry') {
+            return Promise.reject(
+              new OrganizationOperationError(
+                'creation-in-progress',
+                'a creation cannot start while an organization recovery is in progress; wait for it to settle',
+              ),
+            );
+          }
+          if (existing.nome !== nome) {
+            return Promise.reject(
+              new OrganizationOperationError(
+                'creation-in-progress',
+                'another creation with a different name is in progress; wait for it to settle',
+              ),
+            );
+          }
+          continue;
         }
-        if (existing.nome !== nome) {
-          return Promise.reject(
-            new OrganizationOperationError(
-              'creation-in-progress',
-              'another creation with a different name is in progress; wait for it to settle',
-            ),
-          );
+        // #93 fase 3: `existing.alvo` is available the INSTANT `existing`
+        // was published (set synchronously in `exclusive()`, never inside
+        // `work`); `existing.op.organizacaoId` only becomes non-null a
+        // microtask later, once `work` actually runs. Reading
+        // `op.organizacaoId` alone left a same-tick window open —
+        // `resume(A); resume(B)` or `resume(A); retry()` with NO `await`
+        // between the two calls — where the second call still saw `null`
+        // and joined A's operation silently. Falling back to
+        // `op.organizacaoId` only when `alvo` is `undefined` keeps covering
+        // a target that became known AFTER publication (an id-less resume
+        // whose own lookup, inside its own `work`, resolved a real
+        // organization). It does NOT cover the id-less-vs-id-less pair:
+        // `resume(); resume(B)` in one tick joins (both targets unknown),
+        // latent-only in production because every caller passes an id
+        // (Opus review, #93 fase 3).
+        const alvoExistente = existing.alvo ?? existing.op.organizacaoId;
+        if (
+          organizacaoAlvo !== undefined &&
+          alvoExistente !== null &&
+          alvoExistente !== organizacaoAlvo
+        ) {
+          return Promise.reject(new Error('operation-in-progress'));
+        }
+        // #93 fase 4 (Greptile P1 on #101, verified by execution, and
+        // reproduced in greptile-p1-repro.test.ts): a RETRY may only ever
+        // join a live RETRY — never a live resume or start. A resume
+        // cannot recover a `falha_recuperavel` entry (its contract, #85,
+        // is to carry an interrupted `preparando` journal), so joining
+        // one — as the same-target fallback did in `retry(); resume(A)`
+        // with no `await` between them: retry's journal lookup rides a
+        // microtask, resume publishes first, and the same-target join
+        // rule handed retry a fulfilled NO-OP while A stayed failed —
+        // resolves the recovery as success without doing it. Refusing is
+        // safe and truthful: retry is user-paced; the caller re-invokes
+        // once the live operation settles. (Same-client double-taps of
+        // retry keep joining: both are retries of the same journal.)
+        if (intencao === 'retry' && existing.intencao !== 'retry') {
+          return Promise.reject(new Error('operation-in-progress'));
         }
       }
       // Discriminating rule for a join against an in-flight operation:
@@ -565,15 +682,66 @@ export function createMaterializer<
         }
         if (operacoes.get(repository) === op) operacoes.delete(repository);
       });
-    running.set(client, {intencao, nome, operation});
-    runningRepositories.set(repository, {intencao, nome, operation});
+    // `alvo: organizacaoAlvo` is set HERE, synchronously — never inside
+    // `work` — so the cross-organization refusal above can read a caller's
+    // known target immediately, without waiting for the microtask that
+    // actually runs `work` (#93 fase 3; see the `Registro.alvo` doc comment).
+    running.set(client, {
+      intencao,
+      nome,
+      op,
+      operation,
+      alvo: organizacaoAlvo,
+    });
+    runningRepositories.set(repository, {
+      intencao,
+      nome,
+      op,
+      operation,
+      alvo: organizacaoAlvo,
+    });
     operacoes.set(repository, op);
     return operation;
   }
   return {
     start: (name: string) =>
       exclusive('start', op => start(name, op), name.trim()),
-    resume: (id?: string) => exclusive('resume', op => resume(op, id)),
-    retry: () => exclusive('retry', op => retry(op)),
+    resume: (id?: string) =>
+      exclusive('resume', op => resume(op, id), undefined, id),
+    retry: () => {
+      // #93: resolved at the top of the chained promise (NOT before it),
+      // so a repository.read() failure reaches the caller's `.catch()`
+      // instead of throwing synchronously out of retry() (Greptile P2 on
+      // #101) — the one-shot target pick rides the same microtask as the
+      // dispatch. The read is NOT authoritative for what retry acts on:
+      // `retry(op, id)` re-reads by this SAME id once it actually runs
+      // (Opus M2, #93 fase 3: threading the id through, instead of
+      // re-searching "some `falha_recuperavel` entry" independently, is
+      // what keeps the two reads from ever resolving to two DIFFERENT
+      // organizations). Unlike `resume`'s `id` argument, retry's target
+      // is never caller-supplied, so it reaches `exclusive` one microtask
+      // LATER than resume's would already be in hand — which is exactly
+      // why a live non-retry refuses it outright (fase 4, Greptile P1)
+      // instead of racing its journal lookup against it. The lookup and
+      // the dispatch ride SEPARATE microtasks, and that is load-bearing
+      // for the TIMING, not for correctness: both orderings of
+      // `retry()` vs a later same-target `resume(A)` are VALID, but they
+      // differ — refusal when the resume published first (A stays
+      // failed; a LATER retry() call recovers it), join when the retry
+      // published first (A recovered by that very operation). The two ticks keep the one-tick interleave
+      // EXACTLY as it was before the polish commit 7dc36bb7 briefly
+      // collapsed retry() to a single `.then` — an observable behaviour
+      // change that a comment-only commit must not smuggle in, and that
+      // the pinned test 'Astra MAJOR on #101' alarms on. Do not "fix"
+      // the resume-joins-retry ordering either: it is correct.
+      return Promise.resolve()
+        .then(() => {
+          const alvo = repository
+            .read()
+            .organizacoes.find(o => o.estado === 'falha_recuperavel');
+          return {id: alvo?.id};
+        })
+        .then(({id}) => exclusive('retry', op => retry(op, id), undefined, id));
+    },
   };
 }
