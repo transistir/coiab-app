@@ -2472,7 +2472,7 @@ describe('materialização da organização', () => {
     expect(h.document.organizacoes[0]?.estado).toBe('falha_recuperavel');
   });
 
-  test('#93 fase 5 — Astra MAJOR on #101: retry(); tick; resume(A) com A recuperável — retry publica e o resume que chega DEPOIS recusa (nunca joina o retry)', async () => {
+  test('#93 fase 5 — Astra MAJOR on #101: retry(); UM tick; resume(A) — o resume publica primeiro e o RETRY recusa (pino do tamanho do pipeline do retry, não contrato semântico)', async () => {
     const h = harness();
     const base = h.client.getProject.getMockImplementation()!;
     h.client.getProject.mockImplementation(async id => ({
@@ -2488,18 +2488,19 @@ describe('materialização da organização', () => {
     h.client.getProject.mockImplementation(base);
 
     const retryP = h.service.retry();
-    // ONE tick of gap (not same-tick): with retry's two-microtask
-    // pipeline (lookup `.then` → dispatch `.then`), one await leaves the
-    // retry's journal lookup done but NOT yet published; the resume then
-    // publishes synchronously and becomes the live operation. When the
-    // retry's dispatch runs, it must see that live resume and refuse —
-    // never the reverse. Astra reproduced the regression where a single
-    // `.then` pipeline let the retry publish FIRST (one tick earlier),
-    // after which the same-target resume JOINED it and both fulfilled
-    // with A `pronta` — an observable behaviour change smuggled in by a
-    // comment-only polish commit. These assertions pin the correct
-    // orderings: the retry is the one refused, A stays failed, and a
-    // later retry still recovers.
+    // EXACTLY ONE tick of gap: with retry's two-microtask pipeline
+    // (lookup `.then` → dispatch `.then`), one await leaves the retry's
+    // journal lookup done but NOT yet published; the resume then
+    // publishes synchronously and becomes the live operation, and when
+    // the retry's dispatch runs it refuses. The reverse — the resume
+    // joining an already-published same-target retry — is ALSO correct
+    // (A really is recovered); it is just a different interleave. This
+    // test is an ALARM on the pipeline's size, not a semantic contract:
+    // Astra reproduced the polish commit 7dc36bb7 collapsing retry() to
+    // a single `.then`, which publishes one tick earlier and flips THIS
+    // test's outcome (retry fulfilled, resume joined, A pronta). That is
+    // not a correctness bug in itself — but a behaviour change smuggled
+    // into a comment-only commit is exactly what must not pass silently.
     await Promise.resolve();
     const resumeP = h.service.resume(ORG_ID);
     const results = await Promise.allSettled([retryP, resumeP]);

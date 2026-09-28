@@ -723,13 +723,16 @@ export function createMaterializer<
       // LATER than resume's would already be in hand — which is exactly
       // why a live non-retry refuses it outright (fase 4, Greptile P1)
       // instead of racing its journal lookup against it. The lookup and
-      // the dispatch ride SEPARATE microtasks on purpose (Astra MAJOR on
-      // #101 polimento): collapsing them into one `.then` would let retry
-      // publish one tick earlier, and in `retry(); await tick;
-      // resume(A)` the resume would then JOIN the freshly-published retry
-      // (same target) instead of the retry seeing the live resume and
-      // refusing — an observable behaviour change in a comment-only
-      // polish commit. The pinned test 'Astra MAJOR on #101' guards it.
+      // the dispatch ride SEPARATE microtasks, and that is load-bearing
+      // for the TIMING, not for correctness: both orderings of
+      // `retry()` vs a later same-target `resume(A)` recover A
+      // legitimately (refusal when the resume published first, join when
+      // the retry did). The two ticks keep the one-tick interleave
+      // EXACTLY as it was before the polish commit 7dc36bb7 briefly
+      // collapsed retry() to a single `.then` — an observable behaviour
+      // change that a comment-only commit must not smuggle in, and that
+      // the pinned test 'Astra MAJOR on #101' alarms on. Do not "fix"
+      // the resume-joins-retry ordering either: it is correct.
       return Promise.resolve()
         .then(() => {
           const alvo = repository
