@@ -725,9 +725,10 @@ export function createMaterializer<
       // instead of racing its journal lookup against it. The lookup and
       // the dispatch ride SEPARATE microtasks, and that is load-bearing
       // for the TIMING, not for correctness: both orderings of
-      // `retry()` vs a later same-target `resume(A)` recover A
-      // legitimately (refusal when the resume published first, join when
-      // the retry did). The two ticks keep the one-tick interleave
+      // `retry()` vs a later same-target `resume(A)` are VALID, but they
+      // differ — refusal when the resume published first (A stays
+      // failed; a LATER retry() call recovers it), join when the retry
+      // published first (A recovered by that very operation). The two ticks keep the one-tick interleave
       // EXACTLY as it was before the polish commit 7dc36bb7 briefly
       // collapsed retry() to a single `.then` — an observable behaviour
       // change that a comment-only commit must not smuggle in, and that
