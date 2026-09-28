@@ -2427,6 +2427,62 @@ describe('materialização da organização', () => {
     });
   });
 
+  test('#93 fase 4 — Greptile P1 on #101: retry(); resume(A) same-tick com A em falha_recuperavel — o retry NUNCA é um no-op silencioso (recupera ou recusa)', async () => {
+    const h = harness();
+    const base = h.client.getProject.getMockImplementation()!;
+    h.client.getProject.mockImplementation(async id => ({
+      ...(await base(id)),
+      $getProjectSettings: jest.fn(async () => ({
+        name: h.projects.indexOf(id) === 0 ? 'Monitoramento' : 'Alertas',
+        sendStats: false,
+        projectDescription: markerFor('ffffffffffffffff', 'm', 'Outra'),
+      })),
+    }));
+    await h.service.start('Associação');
+    expect(h.document.organizacoes[0]?.estado).toBe('falha_recuperavel');
+
+    // Reset the divergence so a real recovery CAN succeed.
+    h.client.getProject.mockImplementation(base);
+
+    const retryP = h.service.retry();
+    const resumeP = h.service.resume(ORG_ID);
+    const results = await Promise.allSettled([retryP, resumeP]);
+
+    const recovered = h.document.organizacoes[0]?.estado === 'pronta';
+    const refused =
+      results[0].status === 'rejected' &&
+      String(
+        (results[0] as PromiseRejectedResult).reason?.message ??
+          (results[0] as PromiseRejectedResult).reason,
+      ).includes('operation-in-progress');
+    // The bug shape this pins against: BOTH promises fulfilled while A
+    // stayed failed — a fulfilled no-op. A retry that neither recovered
+    // nor refused is the silent-success failure mode.
+    expect(recovered || refused).toBe(true);
+  });
+
+  test('#93 fase 4 — the retry refused by a same-tick resume recovers on the next call', async () => {
+    const h = harness();
+    const base = h.client.getProject.getMockImplementation()!;
+    h.client.getProject.mockImplementation(async id => ({
+      ...(await base(id)),
+      $getProjectSettings: jest.fn(async () => ({
+        name: h.projects.indexOf(id) === 0 ? 'Monitoramento' : 'Alertas',
+        sendStats: false,
+        projectDescription: markerFor('ffffffffffffffff', 'm', 'Outra'),
+      })),
+    }));
+    await h.service.start('Associação');
+    h.client.getProject.mockImplementation(base);
+
+    const retryP = h.service.retry();
+    const resumeP = h.service.resume(ORG_ID);
+    await Promise.allSettled([retryP, resumeP]);
+
+    await h.service.retry();
+    expect(h.document.organizacoes[0]?.estado).toBe('pronta');
+  });
+
   test('#93 fase 3 — Opus M3: resume(B) durante start(A) já persistido (fora do same-tick) recusa; resume(A) mantém o join — exceção ao contrato "recovery aguarda criação em voo"', async () => {
     const h = harnessMulti();
     let releaseCreation!: () => void;

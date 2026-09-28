@@ -633,6 +633,22 @@ export function createMaterializer<
         ) {
           return Promise.reject(new Error('operation-in-progress'));
         }
+        // #93 fase 4 (Greptile P1 on #101, verified by execution, and
+        // reproduced in greptile-p1-repro.test.ts): a RETRY may only ever
+        // join a live RETRY — never a live resume or start. A resume
+        // cannot recover a `falha_recuperavel` entry (its contract, #85,
+        // is to carry an interrupted `preparando` journal), so joining
+        // one — as the same-target fallback did in `retry(); resume(A)`
+        // with no `await` between them: retry's journal lookup rides a
+        // microtask, resume publishes first, and the same-target join
+        // rule handed retry a fulfilled NO-OP while A stayed failed —
+        // resolves the recovery as success without doing it. Refusing is
+        // safe and truthful: retry is user-paced; the caller re-invokes
+        // once the live operation settles. (Same-client double-taps of
+        // retry keep joining: both are retries of the same journal.)
+        if (intencao === 'retry' && existing.intencao !== 'retry') {
+          return Promise.reject(new Error('operation-in-progress'));
+        }
       }
       // Discriminating rule for a join against an in-flight operation:
       // (1) the SAME client instance always shares its wrapper's own
