@@ -50,14 +50,18 @@ jest.mock('expo/fetch', () => ({
   fetch: globalThis.fetch,
 }));
 
-export function createMinimalWrapper() {
+export function createMinimalWrapper({
+  queryClient: providedQueryClient,
+}: {queryClient?: QueryClient} = {}) {
   const localeStore = createLocaleStore({persist: false});
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: {gcTime: Infinity},
-      mutations: {gcTime: Infinity},
-    },
-  });
+  const queryClient =
+    providedQueryClient ??
+    new QueryClient({
+      defaultOptions: {
+        queries: {gcTime: Infinity},
+        mutations: {gcTime: Infinity},
+      },
+    });
 
   return ({children}: {children: ReactNode}) => {
     return (
@@ -185,7 +189,12 @@ export function createAppProvidersWrapper({
     });
   }
 
-  const OuterWrapper = createMinimalWrapper();
+  // One client for the whole tree, as in production: `ComapeoCoreProvider`
+  // installs no `QueryClientProvider`, so every `useQuery` reads the client
+  // the outer wrapper provides, while AppProviders' `queryClient` prop only
+  // reaches the map-shares store. Two instances would leave the real cache
+  // out of `teardown()`'s reach.
+  const OuterWrapper = createMinimalWrapper({queryClient});
   const wrapper = ({children}: {children: ReactNode}) => {
     return (
       <OuterWrapper>
@@ -216,6 +225,10 @@ export function createAppProvidersWrapper({
   };
 
   const teardown = () => {
+    // Destroys every query (in-flight fetches are cancelled silently) and
+    // drops the mutations, so no query outlives the test and refetches
+    // against a closing IPC channel.
+    queryClient.clear();
     localDiscoveryController.stop();
     appDiagnosticMetrics.setEnabled(false);
     deviceDiagnosticMetrics.setEnabled(false);
@@ -224,6 +237,7 @@ export function createAppProvidersWrapper({
   return {
     wrapper,
     teardown,
+    queryClient,
     activeProjectIdStore: persistedActiveProjectIdStore,
   };
 }
