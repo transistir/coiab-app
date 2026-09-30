@@ -117,11 +117,11 @@ describe('MapScreen low-storage banner', () => {
     manager = mgr;
 
     await fastifyController.start();
-    onTeardown.push(() => fastifyController.stop());
 
     const ipc = setUpIPC({manager});
     client = ipc.client;
     onTeardown.push(ipc.stop);
+    onTeardown.push(() => fastifyController.stop());
 
     mockTotalBytes = 64 * 1024 * 1024 * 1024;
     mockFreeBytes = null;

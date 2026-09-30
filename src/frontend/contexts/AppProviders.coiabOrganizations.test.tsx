@@ -43,11 +43,11 @@ describe('CoiabOrganizationsStore sob AppProviders', () => {
     const setup = await createManager({name: 'test', deviceType: 'mobile'});
     manager = setup.manager;
     await setup.fastifyController.start();
-    onTeardown.push(() => setup.fastifyController.stop());
 
     const ipc = setUpIPC({manager});
     client = ipc.client;
     onTeardown.push(ipc.stop);
+    onTeardown.push(() => setup.fastifyController.stop());
   });
 
   afterEach(async () => {
