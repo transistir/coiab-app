@@ -61,7 +61,14 @@ describe('setUpIPC stop: drenagem determinística', () => {
     // Limpeza tolerante: nos testes de prazo a promise memoizada de stop()
     // já rejeitou (rejeição essa assertada pelo teste) — o `.catch` só a
     // desarma aqui, e o `race` garante que a limpeza nunca pendura a suíte.
-    await Promise.race([ipc.stop().catch(() => {}), sleep(2_000)]);
+    // O limite é abortado assim que o `race` decide, para o timer de 2s não
+    // ficar como handle aberto.
+    const limite = new AbortController();
+    await Promise.race([
+      ipc.stop().catch(() => {}),
+      sleep(2_000, {signal: limite.signal}).catch(() => {}),
+    ]);
+    limite.abort();
   });
 
   test('stop() waits for an in-flight manager RPC', async () => {
@@ -215,7 +222,10 @@ describe('setUpIPC stop: drenagem determinística', () => {
       /listProjects ×2/,
     );
     const decorrido = Date.now() - inicio;
-    expect(decorrido).toBeGreaterThanOrEqual(50);
+    // Tolerância de 5ms: os timers do Node medem pelo relógio do loop (em
+    // cache, ms inteiros), então o prazo pode disparar um pouco antes do que
+    // `Date.now()` registra.
+    expect(decorrido).toBeGreaterThanOrEqual(45);
     // Muito abaixo do timeout de 30s da própria RPC: o prazo é do drain.
     expect(decorrido).toBeLessThan(4_000);
 
@@ -242,7 +252,8 @@ describe('setUpIPC stop: drenagem determinística', () => {
     const inicio = Date.now();
     await expect(ipc.stop({drainTimeoutMs: 100})).rejects.toThrow(/getProject/);
     const decorrido = Date.now() - inicio;
-    expect(decorrido).toBeGreaterThanOrEqual(100);
+    // Mesma tolerância de 5ms do teste anterior.
+    expect(decorrido).toBeGreaterThanOrEqual(95);
     expect(decorrido).toBeLessThan(5_000);
 
     // Canal fechado: novas RPCs rejeitam.

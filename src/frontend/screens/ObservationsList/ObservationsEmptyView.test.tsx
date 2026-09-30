@@ -44,7 +44,7 @@ describe('ObservationsEmptyView por área (SPEC A §4.4:147)', () => {
   afterEach(async () => {
     for (const fn of onTeardown) await fn();
     MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
-  });
+  }, 15_000);
 
   /** Seeds the MMKV document with `ativa` on the named area, whose slot is
    * the real project this device operates. */

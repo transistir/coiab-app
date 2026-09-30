@@ -108,12 +108,15 @@ function criarEncerramentoDoCiclo() {
     },
     /** The cycle's `afterEach`; memoized until the next `reiniciar`. */
     encerrar() {
+      // Captured now: if this teardown outlives its test, the next cycle's
+      // `reiniciar()` must not point these steps at the new core.
+      const c = core;
       return (encerramento ??= executarEmOrdem([
         ...[...renders].reverse().flatMap(passosDoRender),
-        () => core.restaurarFetch?.(),
-        () => core.pararIpc?.(),
-        () => core.pararDescoberta?.(),
-        () => core.pararFastify?.(),
+        () => c.restaurarFetch?.(),
+        () => c.pararIpc?.(),
+        () => c.pararDescoberta?.(),
+        () => c.pararFastify?.(),
       ]));
     },
   };

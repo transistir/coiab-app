@@ -207,7 +207,9 @@ export function setUpIPC({manager}: {manager: MapeoManager}) {
       );
     }
     if (erroFechamento) throw erroFechamento;
-    if (prazoEstourou) {
+    // O prazo pode estourar no mesmo turno do último settle: sem RPC presa,
+    // a drenagem concluiu e não há o que reportar.
+    if (prazoEstourou && totalPresas > 0) {
       throw new Error(
         `setUpIPC: ${totalPresas} RPC(s) presas após ${drainTimeoutMs}ms: ${resumoPresas} (fase: drenagem)`,
       );

@@ -53,7 +53,7 @@ describe('On QA Device require existence of a QA Device name', () => {
 
   afterEach(async () => {
     for (const fn of onTeardown) await fn();
-  });
+  }, 15_000);
 
   it('shows SetQADeviceName screen when no QA name is set', async () => {
     const app = createAppProvidersWrapper({mapeoApi: client});

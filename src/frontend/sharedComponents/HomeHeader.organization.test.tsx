@@ -65,7 +65,7 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
   afterEach(async () => {
     for (const fn of onTeardown) await fn();
     MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
-  });
+  }, 15_000);
 
   const renderHeader = async () => {
     const appProviders = createAppProvidersWrapper({

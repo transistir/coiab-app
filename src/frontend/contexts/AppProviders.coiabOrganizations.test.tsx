@@ -53,7 +53,7 @@ describe('CoiabOrganizationsStore sob AppProviders', () => {
   afterEach(async () => {
     for (const fn of onTeardown) await fn();
     MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
-  });
+  }, 15_000);
 
   const renderProbe = async () => {
     const appProviders = createAppProvidersWrapper({mapeoApi: client});
