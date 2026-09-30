@@ -13,6 +13,7 @@ import type {ComapeoCoreClientApi} from '@comapeo/ipc';
 
 import {createManager, setUpIPC} from '../../../tests/integration/helpers/core';
 import {createAppProvidersWrapper} from '../../../tests/integration/helpers/react';
+import {executarEmOrdem} from '../../../tests/integration/helpers/setupIntegrationTest';
 import {MMKVStoreInitializer} from '../hooks/persistedState/createPersistedState';
 import {sleep} from '../lib/sleep';
 import {readyOrganization} from '../lib/organization/fixtures';
@@ -131,8 +132,10 @@ describe('OrganizationActivationContext sob AppProviders', () => {
   });
 
   afterEach(async () => {
-    for (const fn of onTeardown) await fn();
-    MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
+    await executarEmOrdem([
+      ...onTeardown,
+      () => MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY),
+    ]);
   }, 15_000);
   const renderProbe = async ({
     activeProjectId,

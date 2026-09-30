@@ -6,6 +6,7 @@ import type {ComapeoCoreClientApi} from '@comapeo/ipc';
 
 import {createManager, setUpIPC} from '../../../tests/integration/helpers/core';
 import {createAppProvidersWrapper} from '../../../tests/integration/helpers/react';
+import {executarEmOrdem} from '../../../tests/integration/helpers/setupIntegrationTest';
 import {ActiveProjectProvider} from '../contexts/ActiveProjectContext';
 import {COIAB_ORGANIZATIONS_STORAGE_KEY} from '../contexts/CoiabOrganizationsStoreContext';
 import {MMKVStoreInitializer} from '../hooks/persistedState/createPersistedState';
@@ -63,8 +64,10 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
   });
 
   afterEach(async () => {
-    for (const fn of onTeardown) await fn();
-    MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
+    await executarEmOrdem([
+      ...onTeardown,
+      () => MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY),
+    ]);
   }, 15_000);
 
   const renderHeader = async () => {

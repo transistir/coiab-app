@@ -17,6 +17,7 @@ import {
   setUpIPC,
 } from '../../../../tests/integration/helpers/core';
 import {createAppProvidersWrapper} from '../../../../tests/integration/helpers/react';
+import {executarEmOrdem} from '../../../../tests/integration/helpers/setupIntegrationTest';
 
 jest.mock('@maplibre/maplibre-react-native', () => {
   const React = require('react');
@@ -128,7 +129,7 @@ describe('MapScreen low-storage banner', () => {
   });
 
   afterEach(async () => {
-    for (const fn of onTeardown) await fn();
+    await executarEmOrdem(onTeardown);
   }, 15_000);
 
   const renderMap = async ({

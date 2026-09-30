@@ -12,6 +12,7 @@ import type {ComapeoCoreClientApi} from '@comapeo/ipc';
 
 import {createManager, setUpIPC} from '../../../tests/integration/helpers/core';
 import {createAppProvidersWrapper} from '../../../tests/integration/helpers/react';
+import {executarEmOrdem} from '../../../tests/integration/helpers/setupIntegrationTest';
 import {ActiveProjectProvider} from '../contexts/ActiveProjectContext';
 
 import {HomeHeader} from './HomeHeader';
@@ -85,7 +86,7 @@ describe('HomeHeader low storage badge (navigator + AppProviders)', () => {
   });
 
   afterEach(async () => {
-    for (const fn of onTeardown) await fn();
+    await executarEmOrdem(onTeardown);
   }, 15_000);
 
   const renderHeader = async ({
