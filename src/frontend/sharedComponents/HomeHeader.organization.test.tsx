@@ -6,6 +6,7 @@ import type {ComapeoCoreClientApi} from '@comapeo/ipc';
 
 import {createManager, setUpIPC} from '../../../tests/integration/helpers/core';
 import {createAppProvidersWrapper} from '../../../tests/integration/helpers/react';
+import {executarEmOrdem} from '../../../tests/integration/helpers/setupIntegrationTest';
 import {ActiveProjectProvider} from '../contexts/ActiveProjectContext';
 import {COIAB_ORGANIZATIONS_STORAGE_KEY} from '../contexts/CoiabOrganizationsStoreContext';
 import {MMKVStoreInitializer} from '../hooks/persistedState/createPersistedState';
@@ -45,27 +46,35 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
   let manager: MapeoManager;
   let client: ComapeoCoreClientApi;
   let onTeardown: Array<() => unknown> = [];
+  let coreTeardown: Array<() => unknown> = [];
   let projectId: string;
 
   beforeEach(async () => {
     onTeardown = [];
+    coreTeardown = [];
 
     const setup = await createManager({name: 'test', deviceType: 'mobile'});
     manager = setup.manager;
     await setup.fastifyController.start();
-    onTeardown.push(() => setup.fastifyController.stop());
 
     const ipc = setUpIPC({manager});
     client = ipc.client;
-    onTeardown.push(ipc.stop);
+    coreTeardown.push(ipc.stop);
+    coreTeardown.push(() => setup.fastifyController.stop());
 
     projectId = await client.createProject({name: 'Projeto Monitorado'});
   });
 
   afterEach(async () => {
-    for (const fn of onTeardown) await fn();
-    MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
-  });
+    // Tree and providers first: their teardown clears the QueryClient, so
+    // in-flight queries are cancelled before `ipc.stop` drains the RPCs and
+    // closes the channel.
+    await executarEmOrdem([
+      ...onTeardown,
+      ...coreTeardown,
+      () => MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY),
+    ]);
+  }, 15_000);
 
   const renderHeader = async () => {
     const appProviders = createAppProvidersWrapper({

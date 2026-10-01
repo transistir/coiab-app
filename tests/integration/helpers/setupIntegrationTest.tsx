@@ -18,34 +18,140 @@ import React from 'react';
 const ORG_ID = '0123456789abcdef';
 const ORG_NAME = 'Test Org';
 
+/**
+ * Runs the teardown steps in order, one at a time, and keeps going after a
+ * failure: a failed unmount must not leave the IPC channel, the discovery
+ * server or fastify open. The failures still fail the test — a single one is
+ * rethrown as is, two or more as an `AggregateError`, in step order.
+ */
+export async function executarEmOrdem(
+  passos: ReadonlyArray<() => unknown>,
+): Promise<void> {
+  const erros: Array<unknown> = [];
+  for (const passo of passos) {
+    try {
+      await passo();
+    } catch (erro) {
+      erros.push(erro);
+    }
+  }
+  if (erros.length === 1) throw erros[0];
+  if (erros.length > 1) {
+    throw new AggregateError(
+      erros,
+      `integration teardown: ${erros.length} steps failed`,
+    );
+  }
+}
+
+/** A mounted navigator: its tree and the providers wrapping it. */
+type RenderMontado = {
+  // Absent until `render` resolves.
+  unmount?: () => Promise<void>;
+  providersTeardown: () => void;
+};
+
+/**
+ * The per-cycle teardown shared by both setups. Its order is fixed rather
+ * than derived from registration order:
+ *
+ * 1. mounted navigators, newest first — `unmount`, then the providers'
+ *    teardown, which clears the QueryClient so nothing refetches;
+ * 2. the real `fetch` swap, before the drain: work still settling after the
+ *    unmount (e.g. the icon check's `fetch(url).ok`, which never reads the
+ *    body) must not open undici sockets to fastify — a response left
+ *    unconsumed keeps fastify's `close()` waiting ~70s;
+ * 3. `ipc.stop()`, which drains the RPCs still in flight;
+ * 4. the local peer discovery server (a no-op when it never started);
+ * 5. fastify — after the drain, since drained RPCs may need its HTTP routes.
+ *
+ * The core steps are filled in by `beforeEach` as each resource comes up, so
+ * a `beforeEach` that fails midway still tears down what it created.
+ */
+function criarEncerramentoDoCiclo() {
+  let renders: Array<RenderMontado> = [];
+  let core: {
+    restaurarFetch?: () => void;
+    pararIpc?: () => Promise<void>;
+    pararDescoberta?: () => Promise<void>;
+    pararFastify?: () => Promise<void>;
+  } = {};
+  let encerramento: Promise<void> | null = null;
+
+  const passosDoRender = (montado: RenderMontado) => [
+    () => montado.unmount?.(),
+    () => montado.providersTeardown(),
+  ];
+
+  return {
+    /** Starts a new cycle; call it first thing in `beforeEach`. */
+    reiniciar() {
+      renders = [];
+      core = {};
+      encerramento = null;
+    },
+    get core() {
+      return core;
+    },
+    /**
+     * Registers a navigator and returns its manual teardown, which runs its
+     * steps once and takes it off the stack, so `encerrar` does not repeat
+     * them.
+     */
+    registrarRender(montado: RenderMontado): () => Promise<void> {
+      renders.push(montado);
+      let desmontagem: Promise<void> | null = null;
+      return () => {
+        renders = renders.filter(outro => outro !== montado);
+        return (desmontagem ??= executarEmOrdem(passosDoRender(montado)));
+      };
+    },
+    /** The cycle's `afterEach`; memoized until the next `reiniciar`. */
+    encerrar() {
+      // Captured now: if this teardown outlives its test, the next cycle's
+      // `reiniciar()` must not point these steps at the new core.
+      const c = core;
+      return (encerramento ??= executarEmOrdem([
+        ...[...renders].reverse().flatMap(passosDoRender),
+        () => c.restaurarFetch?.(),
+        () => c.pararIpc?.(),
+        () => c.pararDescoberta?.(),
+        () => c.pararFastify?.(),
+      ]));
+    },
+  };
+}
+
 export function setupIntegrationTest() {
   let manager: MapeoManager;
   let client: ComapeoCoreClientApi;
-  let onTeardown: Array<() => unknown> = [];
+  const ciclo = criarEncerramentoDoCiclo();
   let projectId: string;
   let alertasProjectId: string;
 
   beforeEach(async () => {
-    onTeardown = [];
+    ciclo.reiniciar();
+    const {core} = ciclo;
 
     // jest-expo replaces `fetch` with a non-working stub; the icon
     // verification resolves the real HTTP route (`$icons.getIconUrl` +
     // `fetch().ok`), so the suite needs undici's real fetch.
-    onTeardown.push(useRealFetch());
+    core.restaurarFetch = useRealFetch();
     const managerSetup = await createManager({
       name: 'test',
       deviceType: 'mobile',
     });
     ({manager} = managerSetup);
     const {fastifyController} = managerSetup;
+    core.pararDescoberta = () =>
+      managerSetup.manager.stopLocalPeerDiscoveryServer({force: true});
 
     const ipcSetup = setUpIPC({manager});
     ({client} = ipcSetup);
-    const {stop} = ipcSetup;
-    onTeardown.push(stop);
+    core.pararIpc = ipcSetup.stop;
 
     await fastifyController.start();
-    onTeardown.push(() => fastifyController.stop());
+    core.pararFastify = () => fastifyController.stop();
     projectId = await client.createProject({
       name: 'Monitoramento',
       projectDescription: markerFor(ORG_ID, 'm', ORG_NAME),
@@ -56,9 +162,7 @@ export function setupIntegrationTest() {
     });
   });
 
-  afterEach(async () => {
-    for (const fn of onTeardown) await fn();
-  });
+  afterEach(() => ciclo.encerrar(), 30_000);
 
   const renderNavigation = async ({
     isOnline = true,
@@ -69,23 +173,20 @@ export function setupIntegrationTest() {
       isOnline,
       activeProjectId,
     });
-    onTeardown.push(appProviders.teardown);
+    // Registered before `render`: if mounting throws, the providers are
+    // still torn down.
+    const montado: RenderMontado = {providersTeardown: appProviders.teardown};
+    const desmontar = ciclo.registrarRender(montado);
 
     const {unmount} = await render(<MockedAppNavigator />, {
       wrapper: appProviders.wrapper,
     });
-    const actualTeardown = async () => {
+    montado.unmount = async () => {
       await unmount();
       await sleep(0);
     };
 
-    onTeardown.unshift(actualTeardown);
-
-    return () => {
-      const result = actualTeardown();
-      onTeardown = onTeardown.filter(fn => fn !== actualTeardown);
-      return result;
-    };
+    return desmontar;
   };
 
   return {
@@ -114,34 +215,34 @@ export function setupIntegrationTest() {
 export function setupIntegrationTestWithoutProject() {
   let manager: MapeoManager;
   let client: ComapeoCoreClientApi;
-  let onTeardown: Array<() => unknown> = [];
+  const ciclo = criarEncerramentoDoCiclo();
   let activeProjectIdStore: ActiveProjectIdStore;
 
   beforeEach(async () => {
-    onTeardown = [];
+    ciclo.reiniciar();
+    const {core} = ciclo;
 
     // Same reason as in `setupIntegrationTest`: real fetch for the icon
     // verification HTTP route.
-    onTeardown.push(useRealFetch());
+    core.restaurarFetch = useRealFetch();
     const managerSetup = await createManager({
       name: 'test',
       deviceType: 'mobile',
     });
     ({manager} = managerSetup);
     const {fastifyController} = managerSetup;
+    core.pararDescoberta = () =>
+      managerSetup.manager.stopLocalPeerDiscoveryServer({force: true});
 
     const ipcSetup = setUpIPC({manager});
     ({client} = ipcSetup);
-    const {stop} = ipcSetup;
-    onTeardown.push(stop);
+    core.pararIpc = ipcSetup.stop;
 
     await fastifyController.start();
-    onTeardown.push(() => fastifyController.stop());
+    core.pararFastify = () => fastifyController.stop();
   });
 
-  afterEach(async () => {
-    for (const fn of onTeardown) await fn();
-  });
+  afterEach(() => ciclo.encerrar(), 30_000);
 
   const renderNavigationAsync = async ({
     isOnline = true,
@@ -153,22 +254,17 @@ export function setupIntegrationTestWithoutProject() {
       activeProjectId,
     });
     activeProjectIdStore = appProviders.activeProjectIdStore;
-    onTeardown.push(appProviders.teardown);
+    // Registered before `render`: if mounting throws, the providers are
+    // still torn down.
+    const montado: RenderMontado = {providersTeardown: appProviders.teardown};
+    const desmontar = ciclo.registrarRender(montado);
 
     const {unmount} = await render(<MockedAppNavigator />, {
       wrapper: appProviders.wrapper,
     });
-    const actualTeardown = async () => {
-      await unmount();
-    };
+    montado.unmount = unmount;
 
-    onTeardown.unshift(actualTeardown);
-
-    return async () => {
-      const result = await actualTeardown();
-      onTeardown = onTeardown.filter(fn => fn !== actualTeardown);
-      return result;
-    };
+    return desmontar;
   };
 
   return {

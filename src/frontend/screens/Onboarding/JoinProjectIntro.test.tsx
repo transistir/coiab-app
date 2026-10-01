@@ -1,4 +1,5 @@
 import {userEvent, screen} from '@testing-library/react-native';
+import {QueryClient} from '@tanstack/react-query';
 import {
   setupIntegrationTest,
   setupIntegrationTestWithoutProject,
@@ -10,6 +11,55 @@ import {parseMarker} from '../../lib/organization/marker';
 import {MMKVStoreInitializer} from '../../hooks/persistedState/createPersistedState';
 import {COIAB_ORGANIZATIONS_STORAGE_KEY} from '../../contexts/CoiabOrganizationsStoreContext';
 import type {EstadoOrganizacoes} from '../../lib/organization/coiabOrganizations';
+
+/**
+ * The harness teardown (#97) cycled for real: what these tests pin is
+ * checked by the afterEach hooks that run after each body returns. Kept
+ * cheap on purpose — no peers, no seeded MMKV.
+ */
+describe('teardown determinístico (#97)', () => {
+  const setup = setupIntegrationTest();
+  // Set by the test that counts the providers' teardowns.
+  let clearSpy: jest.SpyInstance | undefined;
+
+  // Declared after the harness: jest-circus runs a describe's afterEach
+  // hooks in declaration order, so this check sees the automatic teardown
+  // already done. A throw here fails the test like a failed expect would.
+  afterEach(() => {
+    const spy = clearSpy;
+    clearSpy = undefined;
+    if (!spy) return;
+    const chamadas = spy.mock.calls.length;
+    spy.mockRestore();
+    if (chamadas !== 1) {
+      throw new Error(
+        `QueryClient.clear() ran ${chamadas}× across the manual and automatic teardowns; expected 1×`,
+      );
+    }
+  });
+
+  test('harness stop() drains a project RPC started near teardown', async () => {
+    const projeto = await setup.client.getProject(setup.projectId);
+    // Fired without await as the body ends, so both are still in flight
+    // when the harness afterEach stops the IPC — one on the project's
+    // channel, one on the manager's. Without the drain, the close rejects
+    // them (ChannelClosed) and the unhandled rejection fails this test.
+    void projeto.$getProjectSettings();
+    void setup.client.listProjects();
+    // Guarda: o afterEach com drenagem é a asserção.
+    expect(true).toBe(true);
+  });
+
+  test('stop manual + afterEach automático não executam o teardown duas vezes', async () => {
+    clearSpy = jest.spyOn(QueryClient.prototype, 'clear');
+    const fim = await setup.renderNavigation();
+    await fim();
+    // The manual teardown ran the providers' teardown, which clears the
+    // QueryClient; the afterEach above checks the automatic teardown did
+    // not run it again.
+    expect(clearSpy).toHaveBeenCalledTimes(1);
+  });
+});
 
 /**
  * The RAW persisted document, exactly as the store writes it: the durable
@@ -59,18 +109,25 @@ describe('Onboarding Screens', () => {
 
     const inviteId = randomBytes(32);
 
-    // Don't await — resolves only when invitee accepts/rejects, which happens via the UI being tested below.
-    void invitorProject.$member.invite(inviteeSetup.manager.deviceId, {
-      roleId: MEMBER_ROLE_ID,
-      __testOnlyInviteId: inviteId,
-    });
-    // P5 (SPEC 7.4): the two slots travel as separate invites — while only
-    // one has arrived the surface stays on "Preparing invitation…", so BOTH
-    // slots are invited before the single organization surface can offer the
-    // one "Join Organization" action (SPEC 7.3/8.1).
-    void invitorAlertas.$member.invite(inviteeSetup.manager.deviceId, {
-      roleId: MEMBER_ROLE_ID,
-    });
+    // Created here but awaited only after the UI accept below: each invite
+    // resolves 'ACCEPT' once the invitee accepts and core finishes its
+    // post-accept work (join details, role, initial sync with the invitee,
+    // capped by core's 5000ms default). Awaiting both there, while the two
+    // peers are still connected, is what keeps them out of the teardown
+    // drain (no RPC left in flight) — it replaces the old fixed sleep(500).
+    const convites = [
+      invitorProject.$member.invite(inviteeSetup.manager.deviceId, {
+        roleId: MEMBER_ROLE_ID,
+        __testOnlyInviteId: inviteId,
+      }),
+      // P5 (SPEC 7.4): the two slots travel as separate invites — while only
+      // one has arrived the surface stays on "Preparing invitation…", so
+      // BOTH slots are invited before the single organization surface can
+      // offer the one "Join Organization" action (SPEC 7.3/8.1).
+      invitorAlertas.$member.invite(inviteeSetup.manager.deviceId, {
+        roleId: MEMBER_ROLE_ID,
+      }),
+    ];
 
     // The single Organization surface — never one invite per project.
     expect(await screen.findByText('Test Org')).toBeVisible();
@@ -106,10 +163,8 @@ describe('Onboarding Screens', () => {
       screen.queryByText('You have joined Test Org'),
     ).not.toBeOnTheScreen();
 
-    // Accepting invalidates the project/invite queries; let those refetches
-    // settle so teardown doesn't close the IPC channel under an in-flight
-    // call (RpcChannelClosed).
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // The invites created before the accept settle here, before teardown.
+    expect(await Promise.all(convites)).toEqual(['ACCEPT', 'ACCEPT']);
 
     // P5 O6: the accept must leave the device holding EXACTLY the two
     // internal projects of the organization — Monitoramento (slot m) and

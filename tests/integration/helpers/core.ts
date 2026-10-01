@@ -14,6 +14,7 @@ import {randomBytes} from 'node:crypto';
 import {pEvent} from 'p-event';
 import pEvery from 'p-every';
 import RAM from 'random-access-memory';
+import {sleep} from '../../../src/frontend/lib/sleep';
 import {MEMBER_ROLE_ID} from '../../../src/frontend/sharedTypes';
 
 const COMAPEO_CORE_PKG_FOLDER = path.dirname(
@@ -54,6 +55,29 @@ export async function createManager(
   };
 }
 
+// Prazo padrão da drenagem do `stop()` do setUpIPC.
+const PRAZO_DRENAGEM_MS = 4_000;
+// Prazo do FECHAMENTO (segunda fase do stop): `closeComapeoCoreClient`
+// aguarda `Promise.allSettled(pendingProjectClients.values())` ANTES de
+// fechar os clients de projeto e o canal de roteamento
+// (@comapeo/ipc/dist/client.js:115-133), então um `getProject()` preso
+// seguraria o fechamento até o timeout de 30s da própria RPC. O fechamento
+// corre contra prazo próprio; no estouro, as portas são fechadas direto.
+const PRAZO_FECHAMENTO_MS = 500;
+
+/**
+ * Nome legível de uma RPC emitida pelo cliente, para os diagnósticos de
+ * drenagem. `assertProjectExists` é o método wire do canal de roteamento que
+ * implementa `client.getProject(...)` — o cliente nunca emite "getProject" no
+ * fio, ele resolve o projeto por este RPC (@comapeo/ipc/dist/client.js,
+ * `resolveProjectClient`) — então o diagnóstico nomeia a operação que o
+ * chamador emitiu, não o método interno de roteamento.
+ */
+function nomeDaOperacao(metodo: ReadonlyArray<string>): string {
+  const nome = metodo.join('.');
+  return nome === 'assertProjectExists' ? 'getProject (routing)' : nome;
+}
+
 export function setUpIPC({manager}: {manager: MapeoManager}) {
   const {port1, port2} = new MessageChannel();
 
@@ -63,10 +87,134 @@ export function setUpIPC({manager}: {manager: MapeoManager}) {
     manager,
     port1 as unknown as Parameters<typeof createComapeoCoreServer>[1],
   );
+
+  // A drenagem observa TODA RPC emitida pelo cliente — o hook é repassado ao
+  // `createClient` de cada canal interno (manager, roteamento e projetos).
+  const emVoo = new Map<Promise<unknown>, string>();
+  let drenando = false;
+
+  const soltar = (p: Promise<unknown>) => {
+    emVoo.delete(p);
+  };
+  // NUNCA `.finally()`: ele cria uma promise derivada sem handler de
+  // rejeição, e cada rejeição de drenagem viraria unhandledRejection.
+  // `then(del, del)` observa os dois desfechos sem derivar promise
+  // rejeitável.
+  const acompanhar = (p: Promise<unknown>) => {
+    p.then(
+      () => soltar(p),
+      () => soltar(p),
+    );
+  };
+
   const client = createComapeoCoreClient(
     port2 as unknown as Parameters<typeof createComapeoCoreClient>[0],
-    {timeout: 30_000},
+    {
+      timeout: 30_000,
+      onRequestHook: (request, next) => {
+        // `next` EXATAMENTE uma vez, síncrono, sem alterar o request. NADA
+        // pode lançar daqui para baixo: o catch do rpc-reflector
+        // (client.js:103-114) trataria o hook como falho e REENVIARIA a RPC.
+        const p = next(request);
+        emVoo.set(p, nomeDaOperacao(request.method));
+        // Handlers de drenagem só quando `stop()` começou (flag acima);
+        // antes disso, `void rpc()` no corpo de um teste precisa continuar
+        // falhando como unhandledRejection (jest-circus falha o teste em
+        // execução).
+        if (drenando) acompanhar(p);
+      },
+    },
   );
+
+  let parada: Promise<void> | null = null;
+
+  const parar = async ({drainTimeoutMs}: {drainTimeoutMs: number}) => {
+    drenando = true;
+    // Handlers só agora, nunca no registro (ver comentário no hook).
+    for (const p of emVoo.keys()) acompanhar(p);
+
+    // — Fase 1: drenagem, contra prazo —
+    let prazoEstourou = false;
+    let liberarPrazoDrenagem!: () => void;
+    const prazoDrenagemDisparou = new Promise<void>(resolve => {
+      liberarPrazoDrenagem = resolve;
+    });
+    const prazoDrenagem = setTimeout(() => {
+      prazoEstourou = true;
+      liberarPrazoDrenagem();
+    }, drainTimeoutMs);
+    try {
+      while (emVoo.size > 0) {
+        await Promise.race([
+          Promise.allSettled([...emVoo.keys()]),
+          prazoDrenagemDisparou,
+        ]);
+        if (prazoEstourou) break;
+        // Espaço para RPCs emitidas durante a drenagem entrarem em `emVoo`.
+        await sleep(0);
+      }
+    } finally {
+      clearTimeout(prazoDrenagem);
+    }
+    // Contagem por método no instante do estouro (o fechamento abaixo pode
+    // rejeitar e soltar entradas, o que não mudaria o diagnóstico da
+    // drenagem).
+    const contagemPorMetodo = new Map<string, number>();
+    for (const nome of emVoo.values()) {
+      contagemPorMetodo.set(nome, (contagemPorMetodo.get(nome) ?? 0) + 1);
+    }
+    const totalPresas = [...contagemPorMetodo.values()].reduce(
+      (total, n) => total + n,
+      0,
+    );
+    const resumoPresas = [...contagemPorMetodo]
+      .map(([nome, n]) => `${nome} ×${n}`)
+      .join(', ');
+
+    // — Fase 2: fechamento, também contra prazo próprio —
+    server.close();
+    let erroFechamento: unknown = null;
+    // Sem await direto: o início do CLOSE é síncrono (fecha o client do
+    // manager e rejeita as RPCs dele); o resto corre contra o prazo abaixo.
+    const fechado = closeComapeoCoreClient(client).catch(err => {
+      erroFechamento = err;
+    });
+    let fechamentoEstourou = false;
+    let liberarPrazoFechamento!: () => void;
+    const prazoFechamentoDisparou = new Promise<void>(resolve => {
+      liberarPrazoFechamento = resolve;
+    });
+    const prazoFechamento = setTimeout(() => {
+      fechamentoEstourou = true;
+      liberarPrazoFechamento();
+    }, PRAZO_FECHAMENTO_MS);
+    try {
+      await Promise.race([fechado, prazoFechamentoDisparou]);
+    } finally {
+      clearTimeout(prazoFechamento);
+    }
+
+    if (fechamentoEstourou) {
+      // Fecha o que der: as portas direto. A cauda suspensa do CLOSE (a
+      // criação de projeto presa) segue com handlers ligados e se resolve no
+      // timeout de 30s da própria RPC — sem unhandledRejection.
+      port1.close();
+      port2.close();
+      throw new Error(
+        `setUpIPC: fechamento do canal IPC não concluiu após ${PRAZO_FECHAMENTO_MS}ms (fase: fechamento)${
+          resumoPresas ? `; RPC(s) presa(s): ${resumoPresas}` : ''
+        }`,
+      );
+    }
+    if (erroFechamento) throw erroFechamento;
+    // O prazo pode estourar no mesmo turno do último settle: sem RPC presa,
+    // a drenagem concluiu e não há o que reportar.
+    if (prazoEstourou && totalPresas > 0) {
+      throw new Error(
+        `setUpIPC: ${totalPresas} RPC(s) presas após ${drainTimeoutMs}ms: ${resumoPresas} (fase: drenagem)`,
+      );
+    }
+  };
 
   return {
     client,
@@ -77,12 +225,16 @@ export function setUpIPC({manager}: {manager: MapeoManager}) {
       port1.start();
       port2.start();
     },
-    stop: async () => {
-      server.close();
-      await closeComapeoCoreClient(client);
-      port1.close();
-      port2.close();
-    },
+    /**
+     * Drena as RPCs em voo antes de fechar o canal, contra prazos. Memoizada:
+     * chamadas repetidas retornam a mesma promise (inclusive rejeitada).
+     *
+     * Contrato de ordem: chame antes de `fastifyController.stop()` — RPCs
+     * drenadas aqui podem depender das rotas HTTP que o fastify serve
+     * (ícones, blobs, importação).
+     */
+    stop: ({drainTimeoutMs = PRAZO_DRENAGEM_MS} = {}) =>
+      (parada ??= parar({drainTimeoutMs})),
   };
 }
 

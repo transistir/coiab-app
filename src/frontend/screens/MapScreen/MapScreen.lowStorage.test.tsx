@@ -17,6 +17,7 @@ import {
   setUpIPC,
 } from '../../../../tests/integration/helpers/core';
 import {createAppProvidersWrapper} from '../../../../tests/integration/helpers/react';
+import {executarEmOrdem} from '../../../../tests/integration/helpers/setupIntegrationTest';
 
 jest.mock('@maplibre/maplibre-react-native', () => {
   const React = require('react');
@@ -106,9 +107,11 @@ describe('MapScreen low-storage banner', () => {
   let manager: MapeoManager;
   let client: ComapeoCoreClientApi;
   let onTeardown: Array<() => unknown> = [];
+  let coreTeardown: Array<() => unknown> = [];
 
   beforeEach(async () => {
     onTeardown = [];
+    coreTeardown = [];
 
     const {manager: mgr, fastifyController} = await createManager({
       name: 'test-device',
@@ -117,19 +120,22 @@ describe('MapScreen low-storage banner', () => {
     manager = mgr;
 
     await fastifyController.start();
-    onTeardown.push(() => fastifyController.stop());
 
     const ipc = setUpIPC({manager});
     client = ipc.client;
-    onTeardown.push(ipc.stop);
+    coreTeardown.push(ipc.stop);
+    coreTeardown.push(() => fastifyController.stop());
 
     mockTotalBytes = 64 * 1024 * 1024 * 1024;
     mockFreeBytes = null;
   });
 
   afterEach(async () => {
-    for (const fn of onTeardown) await fn();
-  });
+    // Tree and providers first: their teardown clears the QueryClient, so
+    // in-flight queries are cancelled before `ipc.stop` drains the RPCs and
+    // closes the channel.
+    await executarEmOrdem([...onTeardown, ...coreTeardown]);
+  }, 15_000);
 
   const renderMap = async ({
     isOnline = true,

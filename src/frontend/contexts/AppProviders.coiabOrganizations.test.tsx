@@ -6,6 +6,7 @@ import type {ComapeoCoreClientApi} from '@comapeo/ipc';
 
 import {createManager, setUpIPC} from '../../../tests/integration/helpers/core';
 import {createAppProvidersWrapper} from '../../../tests/integration/helpers/react';
+import {executarEmOrdem} from '../../../tests/integration/helpers/setupIntegrationTest';
 import {MMKVStoreInitializer} from '../hooks/persistedState/createPersistedState';
 import {sleep} from '../lib/sleep';
 import {organizationDocument} from '../lib/organization/fixtures';
@@ -36,24 +37,32 @@ describe('CoiabOrganizationsStore sob AppProviders', () => {
   let manager: MapeoManager;
   let client: ComapeoCoreClientApi;
   let onTeardown: Array<() => unknown> = [];
+  let coreTeardown: Array<() => unknown> = [];
 
   beforeEach(async () => {
     onTeardown = [];
+    coreTeardown = [];
 
     const setup = await createManager({name: 'test', deviceType: 'mobile'});
     manager = setup.manager;
     await setup.fastifyController.start();
-    onTeardown.push(() => setup.fastifyController.stop());
 
     const ipc = setUpIPC({manager});
     client = ipc.client;
-    onTeardown.push(ipc.stop);
+    coreTeardown.push(ipc.stop);
+    coreTeardown.push(() => setup.fastifyController.stop());
   });
 
   afterEach(async () => {
-    for (const fn of onTeardown) await fn();
-    MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
-  });
+    // Tree and providers first: their teardown clears the QueryClient, so
+    // in-flight queries are cancelled before `ipc.stop` drains the RPCs and
+    // closes the channel.
+    await executarEmOrdem([
+      ...onTeardown,
+      ...coreTeardown,
+      () => MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY),
+    ]);
+  }, 15_000);
 
   const renderProbe = async () => {
     const appProviders = createAppProvidersWrapper({mapeoApi: client});

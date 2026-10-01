@@ -12,6 +12,7 @@ import type {ComapeoCoreClientApi} from '@comapeo/ipc';
 
 import {createManager, setUpIPC} from '../../../tests/integration/helpers/core';
 import {createAppProvidersWrapper} from '../../../tests/integration/helpers/react';
+import {executarEmOrdem} from '../../../tests/integration/helpers/setupIntegrationTest';
 import {ActiveProjectProvider} from '../contexts/ActiveProjectContext';
 
 import {HomeHeader} from './HomeHeader';
@@ -65,19 +66,21 @@ describe('HomeHeader low storage badge (navigator + AppProviders)', () => {
   let manager: MapeoManager;
   let client: ComapeoCoreClientApi;
   let onTeardown: Array<() => unknown> = [];
+  let coreTeardown: Array<() => unknown> = [];
   let projectId: string;
 
   beforeEach(async () => {
     onTeardown = [];
+    coreTeardown = [];
 
     const setup = await createManager({name: 'test', deviceType: 'mobile'});
     manager = setup.manager;
     await setup.fastifyController.start();
-    onTeardown.push(() => setup.fastifyController.stop());
 
     const ipc = setUpIPC({manager});
     client = ipc.client;
-    onTeardown.push(ipc.stop);
+    coreTeardown.push(ipc.stop);
+    coreTeardown.push(() => setup.fastifyController.stop());
 
     mockTotalBytes = 64 * 1024 * 1024 * 1024;
     mockFreeBytes = null;
@@ -85,8 +88,11 @@ describe('HomeHeader low storage badge (navigator + AppProviders)', () => {
   });
 
   afterEach(async () => {
-    for (const fn of onTeardown) await fn();
-  });
+    // Tree and providers first: their teardown clears the QueryClient, so
+    // in-flight queries are cancelled before `ipc.stop` drains the RPCs and
+    // closes the channel.
+    await executarEmOrdem([...onTeardown, ...coreTeardown]);
+  }, 15_000);
 
   const renderHeader = async ({
     isOnline = true,
