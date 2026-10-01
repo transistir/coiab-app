@@ -8,6 +8,7 @@
 import {Text} from 'react-native';
 import {render, screen, waitFor} from '@testing-library/react-native';
 import {
+  CancelledError,
   type QueryClient,
   useQuery,
   useQueryClient,
@@ -15,21 +16,34 @@ import {
 import type {ComapeoCoreClientApi} from '@comapeo/ipc';
 
 import * as AppProvidersModule from '../../../src/frontend/contexts/AppProviders';
+import {sleep} from '../../../src/frontend/lib/sleep';
 import {createManager, setUpIPC} from './core';
 import {createAppProvidersWrapper} from './react';
 
 // Instância que a sonda enxerga pelo contexto do React Query.
 let sondaClient: QueryClient | undefined;
+// A operação da sonda: quantas vezes a queryFn rodou e como rejeitá-la.
+let sondaOperacao: {chamadas: number; rejeitar?: (erro: Error) => void} = {
+  chamadas: 0,
+};
 
 /**
- * Captura o client do contexto e monta uma query que nunca resolve — o
- * equivalente de uma query ainda em voo quando o teste termina.
+ * Captura o client do contexto e monta uma query cuja operação só termina
+ * quando o teste a rejeita — o equivalente de uma RPC ainda em voo quando o
+ * teste termina. Como as queries do @comapeo/core-react, a queryFn não lê
+ * `signal`: lido, o próprio unmount cancelaria o fetch
+ * (`cancel({revert: true})`) e o teste não isolaria o teardown.
  */
 function Sonda() {
   sondaClient = useQueryClient();
   useQuery({
     queryKey: ['sonda-presa'],
-    queryFn: () => new Promise<never>(() => {}),
+    queryFn: () => {
+      sondaOperacao.chamadas++;
+      return new Promise<never>((_resolver, rejeitar) => {
+        sondaOperacao.rejeitar = rejeitar;
+      });
+    },
   });
   return <Text>sonda</Text>;
 }
@@ -41,6 +55,7 @@ describe('createAppProvidersWrapper: um único QueryClient', () => {
   beforeEach(async () => {
     onTeardown = [];
     sondaClient = undefined;
+    sondaOperacao = {chamadas: 0};
 
     const {manager, fastifyController} = await createManager({
       name: 'test',
@@ -74,14 +89,39 @@ describe('createAppProvidersWrapper: um único QueryClient', () => {
     return {appProviders, unmount};
   };
 
-  test('teardown() cancels and clears the query living in the context client', async () => {
+  test('teardown() cancels the in-flight fetch and clears the context client', async () => {
     const {appProviders, unmount} = await renderSonda();
     const client = sondaClient!;
     await waitFor(() => expect(client.isFetching()).toBe(1));
+    const query = client.getQueryCache().find({queryKey: ['sonda-presa']})!;
+    let desfecho: unknown = 'em voo';
+    query.promise!.catch((erro: unknown) => {
+      desfecho = erro;
+    });
 
+    // Sozinho, o unmount só cancela as retentativas: o fetch segue em voo.
     await unmount();
-    appProviders.teardown();
+    await sleep(0);
+    expect(desfecho).toBe('em voo');
 
+    appProviders.teardown();
+    await sleep(0);
+
+    // Semântica observada (@tanstack/query-core 5.100.11): `clear()` →
+    // `Query.destroy()` → `cancel({silent: true})` rejeita a promise do fetch
+    // em voo com `CancelledError {silent: true}`. Por ser silencioso, o
+    // cancelamento não despacha nada: a query destruída fica com
+    // `status: 'pending'`, `fetchStatus: 'fetching'` (não `idle`) e
+    // `error: null` — `isFetching()` dá 0 só porque o cache ficou vazio.
+    expect(desfecho).toBeInstanceOf(CancelledError);
+    expect(desfecho).toMatchObject({silent: true});
+
+    // A rejeição tardia da operação — o canal fechando — é descartada: nenhum
+    // erro chega à query e nada chama a queryFn de novo.
+    sondaOperacao.rejeitar!(new Error('RpcChannelClosed'));
+    await sleep(0);
+    expect(query.state.error).toBeNull();
+    expect(sondaOperacao.chamadas).toBe(1);
     expect(client.isFetching()).toBe(0);
     expect(client.getQueryCache().getAll()).toEqual([]);
   });

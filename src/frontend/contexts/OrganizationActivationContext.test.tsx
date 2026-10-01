@@ -116,10 +116,12 @@ describe('OrganizationActivationContext sob AppProviders', () => {
   let manager: MapeoManager;
   let client: ComapeoCoreClientApi;
   let onTeardown: Array<() => unknown> = [];
+  let coreTeardown: Array<() => unknown> = [];
 
   beforeEach(async () => {
     jest.clearAllMocks();
     onTeardown = [];
+    coreTeardown = [];
 
     const setup = await createManager({name: 'test', deviceType: 'mobile'});
     manager = setup.manager;
@@ -127,13 +129,17 @@ describe('OrganizationActivationContext sob AppProviders', () => {
 
     const ipc = setUpIPC({manager});
     client = ipc.client;
-    onTeardown.push(ipc.stop);
-    onTeardown.push(() => setup.fastifyController.stop());
+    coreTeardown.push(ipc.stop);
+    coreTeardown.push(() => setup.fastifyController.stop());
   });
 
   afterEach(async () => {
+    // Tree and providers first: their teardown clears the QueryClient, so
+    // in-flight queries are cancelled before `ipc.stop` drains the RPCs and
+    // closes the channel.
     await executarEmOrdem([
       ...onTeardown,
+      ...coreTeardown,
       () => MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY),
     ]);
   }, 15_000);

@@ -107,9 +107,11 @@ describe('MapScreen low-storage banner', () => {
   let manager: MapeoManager;
   let client: ComapeoCoreClientApi;
   let onTeardown: Array<() => unknown> = [];
+  let coreTeardown: Array<() => unknown> = [];
 
   beforeEach(async () => {
     onTeardown = [];
+    coreTeardown = [];
 
     const {manager: mgr, fastifyController} = await createManager({
       name: 'test-device',
@@ -121,15 +123,18 @@ describe('MapScreen low-storage banner', () => {
 
     const ipc = setUpIPC({manager});
     client = ipc.client;
-    onTeardown.push(ipc.stop);
-    onTeardown.push(() => fastifyController.stop());
+    coreTeardown.push(ipc.stop);
+    coreTeardown.push(() => fastifyController.stop());
 
     mockTotalBytes = 64 * 1024 * 1024 * 1024;
     mockFreeBytes = null;
   });
 
   afterEach(async () => {
-    await executarEmOrdem(onTeardown);
+    // Tree and providers first: their teardown clears the QueryClient, so
+    // in-flight queries are cancelled before `ipc.stop` drains the RPCs and
+    // closes the channel.
+    await executarEmOrdem([...onTeardown, ...coreTeardown]);
   }, 15_000);
 
   const renderMap = async ({
