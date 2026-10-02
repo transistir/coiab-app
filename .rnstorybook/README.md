@@ -59,28 +59,71 @@ fresh app boot when a flow must visibly start at `AuthScreen`.
 ## Story-scoped app stores
 
 Most `FlowStateSpec` axes are applied to the running backend or session and
-outlive the story. Two belong to persisted app stores and are never written
-there: `organizations` (the COIAB organization document that the startup gate,
-the drawer and the Organizations selector read) and `earlyAccess`. Both
-decorators provide them through `FlowStateScope` as fresh, non-persisted stores
-around the story that sets them, so a seeded document or flag cannot leak into
-later stories or the next app boot. `organizations` still creates each
-organization's two area projects in the backend and makes the active
-organization's Monitoramento the active project.
+outlive the story. `earlyAccess` belongs to a persisted app store and is never
+written there: both decorators provide it through `FlowStateScope` as a fresh,
+non-persisted store around the story that sets it, so a seeded flag cannot
+leak into later stories or the next app boot.
 
-The organization scope mounts its own activation engine, which opens the seeded
-selection the way a cold start does; the story stays on `FlowStatePlaceholder`
-until it has. A leftover draft counts as pending work and blocks that opening,
-which is why `twoOrganizationsEarlyAccess` clears it.
+The organization axes are not scoped. `organizations` and the complete
+two-slot `organization` both write the app's own persisted COIAB document (the
+one the startup gate, the drawer and the Organizations selector read), because
+the root activation engine reads that store and no other — the same path
+production hydrates. Each organization's two area projects are created in
+the backend, and the story stays on `FlowStatePlaceholder` until the root
+engine has opened the active organization's Monitoramento. A leftover draft
+counts as pending work and blocks that opening, which is why the
+`organizations` presets clear it (`draftObservation: 'none'`).
 
-The `organization` axis (singular) is the exception: it seeds the app's own
-persisted document, because the root activation engine reads that store and no
-other. A story whose spec does not seed a persisted organization writes the
-initial document back before it resolves — but nothing returns the root engine,
-which keeps the organization it opened. Capture rows therefore depend on their
+A story whose spec does not seed a persisted organization writes the initial
+document back before it resolves — but nothing returns the root engine, which
+keeps the organization it opened. Capture rows therefore depend on their
 order: a row that needs an open organization must follow one that opened it.
 `utils/flowStateCleanup.test.tsx` pins that contract, and explains why closing
 the engine between stories would break the rows that seed a draft.
+
+### Unopenable organizations (recovery rows)
+
+`organizations.unopenable` seeds the recovery surface: the unavailable branch
+of `OrganizationProvisioning` ("Could not open your organization"). The fault
+touches only the copy written to the persisted store: the organizations' area
+projects are seeded as for any other `organizations` story, and nothing is
+created for the fault itself. It takes one of two values:
+
+- `'missing-project'`: the active organization's Alertas link names a project
+  the backend never had (`MISSING_PROJECT_ID`). Monitoramento stays real, so
+  the derived project is still a real one and the surface names the
+  organization.
+- `'orphan-selection'`: the selection names an organization the document does
+  not hold (`ORPHANED_ORGANIZATION_ID`), the one orphaned selection the
+  document parser tolerates. Nothing is derived, so the surface names no
+  organization and offers no action but "Try again".
+
+The seed persists that document with its selection and settles on the root
+engine's refusal to open it: `revalidate()` while the engine still holds a
+previous row's organization (`activate()` would roll back to it), `activate()`
+otherwise. Either way the engine publishes `recovery` and the story resolves
+with no project. The cold start itself is not reproduced: the root engine
+boots once, before any story, so boot-only effects such as the degraded-boot
+report never happen in a capture.
+
+Recovery rows go last in `capture-manifest.tsv`. They leave the root engine in
+`recovery`, and only the next row that seeds an organization takes it out,
+through a fresh `activate()` that pending work refuses. A row added after them
+inherits that engine; if it seeds an organization it must clear the draft
+first (`draftObservation: 'none'`). `utils/flowStateCleanup.test.tsx` pins
+this half of the order too.
+
+Their readiness targets are `testID:` markers rather than
+`route:OrganizationProvisioning`, because that route also certifies the
+preparing branch of the provisioning rows. The three markers render only in
+the unavailable branch, so a story that lands on another branch fails
+readiness instead of producing a plausible frame. They do not tell the
+recovery variants apart, though: the name renders on both named recovery rows,
+and "Try again", the orphaned-selection row's target, on all three; only the
+switch exit belongs to the two-organizations row alone. Readiness therefore
+proves the recovery branch, not which recovery. The variant is proven by the
+document assertions in `utils/flowStateCleanup.test.tsx`, which chains the
+three rows in manifest order, and by reviewing the captured frames.
 
 ## withFlowState (non-route flow stories)
 
