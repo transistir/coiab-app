@@ -25,14 +25,19 @@ import {FLOW_STATES} from '../../../.rnstorybook/utils/flowState';
  * organization's name and the switch/create exits — is seeded through the
  * `organizations` axis's `unopenable` fault: the persisted document links the
  * active organization's Alertas to a project the backend never had (or
- * selects an organization the document does not hold), and the production
- * engine refuses to open it. What is not coverable is the cold start itself:
- * the root engine boots once, before any story, so the stories reach the same
- * `recovery` publication through its public API (`revalidate()` over an open
- * organization, `activate()` otherwise) and render no boot-time side effect
- * such as the degraded-boot report. They leave that engine in recovery, so
- * they run last in a capture (see `flowStateCleanup.test.tsx`). A blocked
- * role is deliberately not used: it cannot be undone in the shared backend.
+ * selects an organization the document does not hold). What is not coverable
+ * is the cold start itself: the root engine boots once, before any story, and
+ * no story renders a boot-time side effect such as the degraded-boot report.
+ * In capture order only `OrganizationUnavailable` makes the production engine
+ * refuse its document, through the engine's public API (`revalidate()` over
+ * an open organization, `activate()` otherwise). The two stories after it
+ * find the engine already in `recovery` and settle on it without calling it,
+ * so the engine never evaluates their documents. Their frames are still their
+ * own: the surface renders from the persisted document and the engine status,
+ * never from the reason for the refusal. The stories leave that engine in
+ * recovery, so they run last in a capture (see `flowStateCleanup.test.tsx`).
+ * A blocked role is deliberately not used: it cannot be undone in the shared
+ * backend.
  */
 const NoStoryComponent = () => null;
 

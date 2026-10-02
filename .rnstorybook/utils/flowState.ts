@@ -547,8 +547,12 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
         if (cancelled) return;
 
         if (persistedOrganizationSeed.unopenable) {
-          // Persisted WITH its selection, never staged: the story renders
-          // the engine's refusal to open exactly that selection.
+          // Persisted WITH its selection, never staged. The engine is asked
+          // once below and refuses it, unless it already refused one
+          // (recovery, or unavailable other than pending work): then nothing
+          // asks it, the story inherits that refusal, and the engine never
+          // evaluates this document. The surface renders from the document
+          // and the status, so the frame is still this selection's.
           const unopenable = unopenableDocument(
             document,
             persistedOrganizationSeed.unopenable,

@@ -91,11 +91,18 @@ async function findReadyOnProvisioning(storyId: string) {
 }
 
 /**
- * The unopenable rows end to end, the way a capture run plays them: the real
- * `withRealNavigator` and `RootStackNavigator` over the app's providers and a
- * real core, one story after another on the same root engine. The decorator
- * may only publish its readiness marker on the recovery surface each story
- * declares.
+ * The unopenable rows end to end: the real `withRealNavigator` and
+ * `RootStackNavigator` over the app's providers and a real core, one story
+ * after another on the same root engine. The decorator may only publish its
+ * readiness marker on the recovery surface each story declares.
+ *
+ * This is not the engine state a capture starts from. Here the engine never
+ * opened an organization, so the first row enters recovery through
+ * `activate()` and the other two inherit it. In a capture the first row
+ * follows a `ready` engine and enters through `revalidate()`, at a generation
+ * above 0. That entry is proven at the flow-state level, by the revalidate
+ * test in `utils/flowStateCleanup.test.tsx`. This test proves the decorator →
+ * navigator → screen chain starting from `absent`.
  */
 describe('withRealNavigator over an unopenable organization seed', () => {
   const orgSetup = setupIntegrationTest();

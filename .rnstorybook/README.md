@@ -99,19 +99,38 @@ created for the fault itself. It takes one of two values:
   organization and offers no action but "Try again".
 
 The seed persists that document with its selection and settles on the root
-engine's refusal to open it: `revalidate()` while the engine still holds a
-previous row's organization (`activate()` would roll back to it), `activate()`
-otherwise. Either way the engine publishes `recovery` and the story resolves
-with no project. The cold start itself is not reproduced: the root engine
-boots once, before any story, so boot-only effects such as the degraded-boot
-report never happen in a capture.
+engine's refusal to open it. How it gets there depends on the engine it
+finds:
+
+- `ready` on a previous row's organization: `revalidate()` (`activate()` would
+  roll back to that organization), and the failed re-check publishes
+  `recovery`.
+- Never opened one: `activate()`, which publishes `recovery`.
+- Already in `recovery` (or `unavailable`, except the pending-work block): no
+  call at all, the seed settles on the recovery it inherits. The engine never
+  re-reads the document on its own, so it does not evaluate what the new row
+  wrote. In manifest order this is how the second and third recovery rows get
+  there: they inherit the first row's recovery, and the engine never sees B's
+  broken link or the orphaned selection.
+
+The inherited frame is still the row's own. The surface is a function of the
+persisted document and the engine status (`recovery` and `unavailable` alike),
+and it never renders why the engine refused. The name and exits on screen
+therefore come from the row's own document and early-access flag. In all
+three cases the story resolves with no project. The cold start itself is not
+reproduced: the root engine boots once, before any story, so boot-only
+effects such as the degraded-boot report never happen in a capture.
 
 Recovery rows go last in `capture-manifest.tsv`. They leave the root engine in
-`recovery`, and only the next row that seeds an organization takes it out,
-through a fresh `activate()` that pending work refuses. A row added after them
-inherits that engine; if it seeds an organization it must clear the draft
+`recovery`, and only the next row that seeds a healthy organization takes it
+out, through a fresh `activate()` that pending work refuses. A row added after
+them inherits that engine; if it seeds an organization it must clear the draft
 first (`draftObservation: 'none'`). `utils/flowStateCleanup.test.tsx` pins
-this half of the order too.
+this half of the order too. A later row that seeds no organization inherits
+the recovery as well, and with a named device the navigator's
+`GenerationTransitionGate` (`src/frontend/Navigation/Stack/index.tsx`) resets
+any stack holding a route outside `ROTAS_SEM_PROJETO` to
+`OrganizationProvisioning`.
 
 Their readiness targets are `testID:` markers rather than
 `route:OrganizationProvisioning`, because that route also certifies the

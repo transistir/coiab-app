@@ -57,10 +57,11 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
  *
  * The unopenable rows (`organizations.unopenable`) add the other half of the
  * order: they leave the engine in RECOVERY, and nothing in the harness takes
- * it out of there but the next row that seeds an organization, which opens it
- * through a fresh `activate()`. That activation is refused while pending work
- * exists, so a recovery row is only followed by rows that clear the draft
- * first (`draftObservation: 'none'`) — and the manifest keeps them last.
+ * it out of there but the next row that seeds a healthy organization, which
+ * opens it through a fresh `activate()`. That activation is refused while
+ * pending work exists, so a recovery row is only followed by rows that clear
+ * the draft first (`draftObservation: 'none'`) — and the manifest keeps them
+ * last.
  */
 
 type Probe = {
