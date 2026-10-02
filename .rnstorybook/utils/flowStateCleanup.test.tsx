@@ -6,14 +6,23 @@ import {
   semearDocumentoPronta,
   setupIntegrationTest,
 } from '../../tests/integration/helpers/setupIntegrationTest';
-import {useCoiabOrganizationsState} from '../../src/frontend/contexts/CoiabOrganizationsStoreContext';
+import {
+  COIAB_ORGANIZATIONS_STORAGE_KEY,
+  useCoiabOrganizationsState,
+} from '../../src/frontend/contexts/CoiabOrganizationsStoreContext';
 import {useOrganizationActivationContext} from '../../src/frontend/contexts/OrganizationActivationContext';
+import {MMKVStoreInitializer} from '../../src/frontend/hooks/persistedState/createPersistedState';
+import {
+  criarEstadoInicialOrganizacoes,
+  type EstadoOrganizacoes,
+} from '../../src/frontend/lib/organization/coiabOrganizations';
 import {
   FLOW_STATES,
   useFlowState,
   type FlowStateSpec,
   type ResolvedFlowState,
 } from './flowState';
+import {MISSING_PROJECT_ID, ORPHANED_ORGANIZATION_ID} from './seedData';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -45,6 +54,13 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
  * makes that explicit — it fails if the engine ever starts being reset
  * between stories, so whoever changes it has to revisit the draft rows and
  * the manifest order with it.
+ *
+ * The unopenable rows (`organizations.unopenable`) add the other half of the
+ * order: they leave the engine in RECOVERY, and nothing in the harness takes
+ * it out of there but the next row that seeds an organization, which opens it
+ * through a fresh `activate()`. That activation is refused while pending work
+ * exists, so a recovery row is only followed by rows that clear the draft
+ * first (`draftObservation: 'none'`) — and the manifest keeps them last.
  */
 
 type Probe = {
@@ -54,9 +70,12 @@ type Probe = {
   generation: number;
   organizationCount: number;
   ativa: unknown;
+  document: EstadoOrganizacoes;
 };
 
 let probe: Probe | undefined;
+/** Every engine status the probe rendered, consecutive repeats collapsed. */
+let statuses: string[] = [];
 
 function FlowStateProbe({spec}: {spec: FlowStateSpec}) {
   const ready = useFlowState(spec);
@@ -69,7 +88,9 @@ function FlowStateProbe({spec}: {spec: FlowStateSpec}) {
     generation,
     organizationCount: document.organizacoes.length,
     ativa: document.ativa,
+    document,
   };
+  if (statuses.at(-1) !== status) statuses.push(status);
   return null;
 }
 
@@ -78,11 +99,32 @@ function currentProbe(): Probe {
   return probe;
 }
 
+const ORGANIZATION_A_ID = 'aaaaaaaaaaaaaaaa';
+const ORGANIZATION_B_ID = 'bbbbbbbbbbbbbbbb';
+
+/**
+ * The persisted document a fresh install hydrates. The MMKV mock outlives
+ * each test's providers, so without it the engine would boot on whatever
+ * document the previous test left.
+ */
+function semearDocumentoInicial() {
+  MMKVStoreInitializer.setItem(
+    COIAB_ORGANIZATIONS_STORAGE_KEY,
+    JSON.stringify({state: criarEstadoInicialOrganizacoes(), version: 1}),
+  );
+}
+
+function alertasProjectId(document: EstadoOrganizacoes, organizacaoId: string) {
+  return document.organizacoes.find(({id}) => id === organizacaoId)
+    ?.materializacao.alertas.projectId;
+}
+
 describe('flow-state cleanup between stories', () => {
   const orgSetup = setupIntegrationTest();
 
   beforeEach(() => {
     probe = undefined;
+    statuses = [];
   });
 
   test('the cleanup returns the document to its initial state and leaves the root engine holding the organization', async () => {
@@ -293,4 +335,223 @@ describe('flow-state cleanup between stories', () => {
       await appProviders.teardown();
     }
   }, 120_000);
+
+  test('an unopenable seed over an open organization lands the root engine in recovery through revalidate()', async () => {
+    semearDocumentoInicial();
+    const appProviders = createAppProvidersWrapper({
+      mapeoApi: orgSetup.client,
+    });
+    const view = await render(
+      <FlowStateProbe spec={FLOW_STATES.namedWithOrganization} />,
+      {wrapper: appProviders.wrapper},
+    );
+
+    try {
+      await waitFor(() => expect(currentProbe().ready).not.toBeNull(), {
+        timeout: 30_000,
+      });
+      const opened = currentProbe();
+      expect(opened.status).toBe('ready');
+      expect(opened.generation).toBeGreaterThan(0);
+
+      await view.rerender(
+        <FlowStateProbe spec={FLOW_STATES.oneOrganizationUnavailable} />,
+      );
+      await waitFor(
+        () => {
+          const current = currentProbe();
+          expect(current.ready).not.toBeNull();
+          expect(current.ready!.key).not.toBe(opened.ready!.key);
+        },
+        {timeout: 30_000},
+      );
+
+      const unavailable = currentProbe();
+      // The engine re-checked the selection it held open and lost it: the
+      // recovery publication keeps the open context's generation and
+      // projectId — no activation ran.
+      expect(unavailable.status).toBe('recovery');
+      expect(unavailable.generation).toBe(opened.generation);
+      expect(unavailable.projectId).toBe(opened.projectId);
+      expect(unavailable.document.ativa).toEqual({
+        organizacaoId: ORGANIZATION_A_ID,
+        area: 'monitoramento',
+      });
+      expect(alertasProjectId(unavailable.document, ORGANIZATION_A_ID)).toBe(
+        MISSING_PROJECT_ID,
+      );
+      expect(unavailable.ready!.projectId).toBeUndefined();
+      expect(unavailable.ready!.earlyAccess).toBe(false);
+    } finally {
+      await view.unmount();
+      await appProviders.teardown();
+    }
+  }, 120_000);
+
+  test('an unopenable seed on an engine that never opened one lands it in recovery through activate()', async () => {
+    // A fresh install's empty document: the engine boots `absent`, so only
+    // an activation can take it to recovery.
+    semearDocumentoInicial();
+    const appProviders = createAppProvidersWrapper({
+      mapeoApi: orgSetup.client,
+    });
+    const view = await render(
+      <FlowStateProbe spec={FLOW_STATES.twoOrganizationsUnavailable} />,
+      {wrapper: appProviders.wrapper},
+    );
+
+    try {
+      await waitFor(() => expect(currentProbe().ready).not.toBeNull(), {
+        timeout: 30_000,
+      });
+
+      const unavailable = currentProbe();
+      expect(unavailable.status).toBe('recovery');
+      // `opening` is activate()'s own publication: a revalidation never
+      // publishes it.
+      expect(statuses.slice(-3)).toEqual(['absent', 'opening', 'recovery']);
+      expect(unavailable.generation).toBe(0);
+      expect(unavailable.projectId).toBeUndefined();
+      expect(unavailable.document.ativa).toEqual({
+        organizacaoId: ORGANIZATION_B_ID,
+        area: 'monitoramento',
+      });
+      // Only the active organization is broken.
+      expect(alertasProjectId(unavailable.document, ORGANIZATION_B_ID)).toBe(
+        MISSING_PROJECT_ID,
+      );
+      expect(
+        alertasProjectId(unavailable.document, ORGANIZATION_A_ID),
+      ).not.toBe(MISSING_PROJECT_ID);
+      expect(unavailable.ready!.projectId).toBeUndefined();
+    } finally {
+      await view.unmount();
+      await appProviders.teardown();
+    }
+  }, 120_000);
+
+  test('recovery rows follow one another on the engine in recovery, and the next healthy row reopens it', async () => {
+    semearDocumentoInicial();
+    const appProviders = createAppProvidersWrapper({
+      mapeoApi: orgSetup.client,
+    });
+    const view = await render(
+      <FlowStateProbe spec={FLOW_STATES.oneOrganizationUnavailable} />,
+      {wrapper: appProviders.wrapper},
+    );
+
+    try {
+      await waitFor(() => expect(currentProbe().ready).not.toBeNull(), {
+        timeout: 30_000,
+      });
+      const one = currentProbe();
+      expect(one.status).toBe('recovery');
+      expect(one.document.organizacoes.map(({id}) => id)).toEqual([
+        ORGANIZATION_A_ID,
+      ]);
+      expect(one.document.ativa).toEqual({
+        organizacaoId: ORGANIZATION_A_ID,
+        area: 'monitoramento',
+      });
+      expect(alertasProjectId(one.document, ORGANIZATION_A_ID)).toBe(
+        MISSING_PROJECT_ID,
+      );
+
+      await view.rerender(
+        <FlowStateProbe spec={FLOW_STATES.twoOrganizationsUnavailable} />,
+      );
+      await waitFor(
+        () => {
+          const current = currentProbe();
+          expect(current.ready).not.toBeNull();
+          expect(current.ready!.key).not.toBe(one.ready!.key);
+        },
+        {timeout: 30_000},
+      );
+      const two = currentProbe();
+      expect(two.status).toBe('recovery');
+      expect(two.generation).toBe(one.generation);
+      expect(two.document.organizacoes.map(({id}) => id)).toEqual([
+        ORGANIZATION_A_ID,
+        ORGANIZATION_B_ID,
+      ]);
+      expect(two.document.ativa).toEqual({
+        organizacaoId: ORGANIZATION_B_ID,
+        area: 'monitoramento',
+      });
+      // The previous row's fault does not survive into this one.
+      expect(alertasProjectId(two.document, ORGANIZATION_A_ID)).not.toBe(
+        MISSING_PROJECT_ID,
+      );
+      expect(alertasProjectId(two.document, ORGANIZATION_B_ID)).toBe(
+        MISSING_PROJECT_ID,
+      );
+
+      await view.rerender(
+        <FlowStateProbe spec={FLOW_STATES.orphanedOrganizationSelection} />,
+      );
+      await waitFor(
+        () => {
+          const current = currentProbe();
+          expect(current.ready).not.toBeNull();
+          expect(current.ready!.key).not.toBe(two.ready!.key);
+        },
+        {timeout: 30_000},
+      );
+      const orphan = currentProbe();
+      expect(orphan.status).toBe('recovery');
+      expect(orphan.generation).toBe(one.generation);
+      expect(orphan.document.organizacoes.map(({id}) => id)).toEqual([
+        ORGANIZATION_A_ID,
+        ORGANIZATION_B_ID,
+      ]);
+      expect(orphan.document.ativa).toEqual({
+        organizacaoId: ORPHANED_ORGANIZATION_ID,
+        area: 'monitoramento',
+      });
+      expect(
+        orphan.document.organizacoes.map(({id}) =>
+          alertasProjectId(orphan.document, id),
+        ),
+      ).not.toContain(MISSING_PROJECT_ID);
+
+      // A healthy row after the recovery rows reopens the engine with a
+      // fresh activation.
+      await view.rerender(
+        <FlowStateProbe spec={FLOW_STATES.oneOrganizationEarlyAccess} />,
+      );
+      await waitFor(
+        () => {
+          const current = currentProbe();
+          expect(current.ready).not.toBeNull();
+          expect(current.ready!.key).not.toBe(orphan.ready!.key);
+        },
+        {timeout: 30_000},
+      );
+      const reopened = currentProbe();
+      expect(reopened.status).toBe('ready');
+      expect(reopened.generation).toBeGreaterThan(orphan.generation);
+      expect(reopened.projectId).toBe(reopened.ready!.projectId);
+      expect(reopened.document.ativa).toEqual({
+        organizacaoId: ORGANIZATION_A_ID,
+        area: 'monitoramento',
+      });
+
+      await view.rerender(<FlowStateProbe spec={FLOW_STATES.namedNoProject} />);
+      await waitFor(
+        () => {
+          const current = currentProbe();
+          expect(current.ready).not.toBeNull();
+          expect(current.ready!.key).not.toBe(reopened.ready!.key);
+        },
+        {timeout: 30_000},
+      );
+      const cleaned = currentProbe();
+      expect(cleaned.organizationCount).toBe(0);
+      expect(cleaned.ativa).toBeNull();
+    } finally {
+      await view.unmount();
+      await appProviders.teardown();
+    }
+  }, 180_000);
 });

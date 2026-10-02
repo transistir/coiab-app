@@ -35,6 +35,7 @@ import {
 } from '../../src/frontend/lib/organization/coiabOrganizations';
 import {repositorioDoStore} from '../../src/frontend/lib/organization/repositorio';
 import {
+  unopenableDocument,
   useSeedObservations,
   useSeedOrganization,
   useSeedOrganizationDocument,
@@ -74,8 +75,10 @@ export type FlowStateSpec = {
    * document is written through the app's persisted organization repository
    * — the store production hydrates — and the root activation engine opens
    * the active one's Monitoramento, as the complete `organization` axis does.
-   * Alternative to `project` and `organization` — presets that use it set
-   * `project: 'none'`.
+   * With `unopenable`, the persisted copy is one that engine refuses to open:
+   * the flow settles on its recovery instead (see `flowStateCleanup.test.tsx`
+   * for the order that leaves). Alternative to `project` and `organization` —
+   * presets that use it set `project: 'none'`.
    */
   organizations?: SeedOrganizations;
   /**
@@ -192,6 +195,58 @@ export const FLOW_STATES = {
     earlyAccess: true,
     draftObservation: 'none',
   },
+  /**
+   * One ready organization the root engine cannot open: A's Alertas link
+   * names a project the backend never had. OrganizationProvisioning shows
+   * the recovery surface with A's name. Early access off — production's
+   * default — so it offers no creation exit.
+   */
+  oneOrganizationUnavailable: {
+    auth: 'authenticated',
+    deviceName: 'Test Device',
+    project: 'none',
+    organizations: {
+      list: [ORGANIZATION_A],
+      activeId: ORGANIZATION_A.id,
+      unopenable: 'missing-project',
+    },
+    earlyAccess: false,
+    draftObservation: 'none',
+  },
+  /**
+   * Two ready organizations, the active one (B) unopenable the same way. B
+   * sorts after A by name, so the surface naming B is a lookup by id, not
+   * the document's first entry.
+   */
+  twoOrganizationsUnavailable: {
+    auth: 'authenticated',
+    deviceName: 'Test Device',
+    project: 'none',
+    organizations: {
+      list: [ORGANIZATION_A, ORGANIZATION_B],
+      activeId: ORGANIZATION_B.id,
+      unopenable: 'missing-project',
+    },
+    earlyAccess: true,
+    draftObservation: 'none',
+  },
+  /**
+   * Two ready organizations and a selection naming neither: the one orphaned
+   * selection the document parser tolerates. Nothing is derived, so the
+   * surface names no organization and offers no exit.
+   */
+  orphanedOrganizationSelection: {
+    auth: 'authenticated',
+    deviceName: 'Test Device',
+    project: 'none',
+    organizations: {
+      list: [ORGANIZATION_A, ORGANIZATION_B],
+      activeId: ORGANIZATION_B.id,
+      unopenable: 'orphan-selection',
+    },
+    earlyAccess: true,
+    draftObservation: 'none',
+  },
 } satisfies Record<string, FlowStateSpec>;
 
 // 5 digits, not the reserved obscure code — see PasscodeInputSchema in
@@ -284,6 +339,7 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
     activate: activateOrganization,
     revalidate: revalidateOrganization,
     status: organizationActivationStatus,
+    error: organizationActivationError,
     projectId: activatedOrganizationProjectId,
   } = useOrganizationActivationContext();
 
@@ -489,68 +545,119 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
         setReady(null);
         const document = await ensureOrganizationDocument();
         if (cancelled) return;
-        // The seed only returns documents that derive an active project.
-        const monitoramentoId = derivarProjectIdAtivo(document)!;
-        const engineHoldsSeed =
-          organizationActivationStatus === 'ready' &&
-          activatedOrganizationProjectId === monitoramentoId;
-        // In production only the engine writes `ativa`, when it opens an
-        // organization, and it reads `ativa` as "already open". Writing the
-        // seed's selection while the engine holds another organization (a
-        // prior story's) makes activate() return without opening it, and
-        // the flow never settles. Until the engine holds the seed's
-        // organization, persist the document with no selection and let the
-        // activation below write it.
-        const staged: EstadoOrganizacoes = engineHoldsSeed
-          ? document
-          : {...document, ativa: null};
-        if (!sameOrganizationDocument(persistedDocument, staged)) {
-          organizationRepository.write(staged);
-          return;
-        }
 
-        // The harness does not project this id. The production activation
-        // engine is initialized only once, before this async seed finishes,
-        // so request opening through its public API. It validates both
-        // project roles and publishes Monitoramento exactly as a real open.
-        if (engineHoldsSeed) {
-          if (monitoramentoId !== activeProjectId) {
-            // A prior no-organization story can clear the persisted
-            // document and legacy projection without remounting the root
-            // engine. Revalidate the restored document through that engine,
-            // then restore the same public projection its provider owns.
-            const revalidated = await revalidateOrganization();
-            if (cancelled) return;
-            if (!revalidated) {
-              throw new Error(
-                'Storybook could not revalidate persisted organization',
-              );
-            }
-            projetar(monitoramentoId);
+        if (persistedOrganizationSeed.unopenable) {
+          // Persisted WITH its selection, never staged: the story renders
+          // the engine's refusal to open exactly that selection.
+          const unopenable = unopenableDocument(
+            document,
+            persistedOrganizationSeed.unopenable,
+          );
+          if (!sameOrganizationDocument(persistedDocument, unopenable)) {
+            organizationRepository.write(unopenable);
             return;
           }
-        } else {
           if (
             organizationActivationStatus === 'loading' ||
             organizationActivationStatus === 'opening'
           ) {
             return;
           }
-          const activated = await activateOrganization(
-            persistedOrganizationSeed.activeId,
-            {area: 'monitoramento'},
-          );
-          if (cancelled) return;
-          if (!activated) {
-            throw new Error(
-              `Storybook could not activate persisted organization; status: ${organizationActivationStatus}`,
-            );
+          if (organizationActivationStatus === 'ready') {
+            // The engine still holds a prior story's organization, so
+            // activate() would roll back to it, or return early on the
+            // persisted selection. Revalidating re-checks the selection the
+            // document now holds, and its failure publishes recovery.
+            const revalidated = await revalidateOrganization();
+            if (cancelled) return;
+            if (revalidated) {
+              throw new Error('Storybook unopenable organization revalidated');
+            }
+            return;
           }
-          return;
+          const refused =
+            (organizationActivationStatus === 'recovery' ||
+              organizationActivationStatus === 'unavailable') &&
+            organizationActivationError !== 'pending-work';
+          if (!refused) {
+            const {organizacaoId, area} = unopenable.ativa!;
+            const activated = await activateOrganization(organizacaoId, {
+              area,
+            });
+            if (cancelled) return;
+            if (activated) {
+              throw new Error('Storybook unopenable organization opened');
+            }
+            return;
+          }
+          // Settled on the refusal: no project is open for the story.
+          projectId = undefined;
+        } else {
+          // The seed only returns documents that derive an active project.
+          const monitoramentoId = derivarProjectIdAtivo(document)!;
+          const engineHoldsSeed =
+            organizationActivationStatus === 'ready' &&
+            activatedOrganizationProjectId === monitoramentoId;
+          // In production only the engine writes `ativa`, when it opens an
+          // organization, and it reads `ativa` as "already open". Writing
+          // the seed's selection while the engine holds another
+          // organization (a prior story's) makes activate() return without
+          // opening it, and the flow never settles. Until the engine holds
+          // the seed's organization, persist the document with no selection
+          // and let the activation below write it.
+          const staged: EstadoOrganizacoes = engineHoldsSeed
+            ? document
+            : {...document, ativa: null};
+          if (!sameOrganizationDocument(persistedDocument, staged)) {
+            organizationRepository.write(staged);
+            return;
+          }
+
+          // The harness does not project this id. The production activation
+          // engine is initialized only once, before this async seed
+          // finishes, so request opening through its public API. It
+          // validates both project roles and publishes Monitoramento
+          // exactly as a real open.
+          if (engineHoldsSeed) {
+            if (monitoramentoId !== activeProjectId) {
+              // A prior no-organization story can clear the persisted
+              // document and legacy projection without remounting the root
+              // engine. Revalidate the restored document through that
+              // engine, then restore the same public projection its
+              // provider owns.
+              const revalidated = await revalidateOrganization();
+              if (cancelled) return;
+              if (!revalidated) {
+                throw new Error(
+                  'Storybook could not revalidate persisted organization',
+                );
+              }
+              projetar(monitoramentoId);
+              return;
+            }
+          } else {
+            if (
+              organizationActivationStatus === 'loading' ||
+              organizationActivationStatus === 'opening'
+            ) {
+              return;
+            }
+            const activated = await activateOrganization(
+              persistedOrganizationSeed.activeId,
+              {area: 'monitoramento'},
+            );
+            if (cancelled) return;
+            if (!activated) {
+              throw new Error(
+                `Storybook could not activate persisted organization; status: ${organizationActivationStatus}`,
+              );
+            }
+            return;
+          }
+          projectId = monitoramentoId;
+          observationIds = await ensureObservations(projectId);
+          if (cancelled) return;
         }
-        projectId = monitoramentoId;
-        observationIds = await ensureObservations(projectId);
-        if (cancelled) return;
       }
 
       const draftSpec = spec_.draftObservation;
@@ -658,6 +765,7 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
     organizationRepository,
     revalidateOrganization,
     organizationActivationStatus,
+    organizationActivationError,
     resolvePointPreset,
     setDeviceInfo,
     setPasscode,

@@ -46,3 +46,6 @@ org-layer	flows-orglayerdrawer--switch-organization-entry	testID:MENU.trocar-org
 org-layer	flows-orglayerdrawer--create-organization-entry	testID:MENU.criar-organizacao	2	07 Drawer Create Organization Entry
 org-layer	flows-orglayer--create-second-organization	route:CreateOrganization	2	08 Create Second Organization
 org-layer	flows-orglayer--second-organization-provisioning	route:OrganizationProvisioning	2	09 Second Organization Provisioning
+org-layer	flows-orglayer--organization-unavailable	testID:ORG.provisioning-unavailable-name	2	10 Organization Unavailable
+org-layer	flows-orglayer--organization-unavailable-two-organizations	testID:ORG.provisioning-switch-organization-btn	2	11 Organization Unavailable (two organizations)
+org-layer	flows-orglayer--organization-unavailable-orphaned-selection	testID:ORG.provisioning-retry-activation-btn	2	12 Organization Unavailable (orphaned selection)

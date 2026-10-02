@@ -21,15 +21,18 @@ import {FLOW_STATES} from '../../../.rnstorybook/utils/flowState';
  * selects stories and waits — it never taps. The opening state is also
  * transient: it lasts only as long as the switch's calls into the backend.
  *
- * Also not coverable (89 fase 2): the recovery state — the cold-start
- * "Could not open your organization" surface with the active organization's
- * name and the switch/create exits. The `organizations` seed axis only ever
- * writes documents whose active organization opens: it creates every area
- * project in the backend and throws unless `derivarProjectIdAtivo` resolves,
- * so the production engine boots `ready`, never `recovery`/`unavailable`.
- * A deterministic capture would need a new harness axis that makes the
- * active organization unopenable (a blocked role, or document ids pointing
- * at absent projects) before activation — deliberately not simulated here.
+ * The recovery state — "Could not open your organization", with the active
+ * organization's name and the switch/create exits — is seeded through the
+ * `organizations` axis's `unopenable` fault: the persisted document links the
+ * active organization's Alertas to a project the backend never had (or
+ * selects an organization the document does not hold), and the production
+ * engine refuses to open it. What is not coverable is the cold start itself:
+ * the root engine boots once, before any story, so the stories reach the same
+ * `recovery` publication through its public API (`revalidate()` over an open
+ * organization, `activate()` otherwise) and render no boot-time side effect
+ * such as the degraded-boot report. They leave that engine in recovery, so
+ * they run last in a capture (see `flowStateCleanup.test.tsx`). A blocked
+ * role is deliberately not used: it cannot be undone in the shared backend.
  */
 const NoStoryComponent = () => null;
 
@@ -184,6 +187,49 @@ export const SecondOrganizationProvisioning: Story = {
     flow: {
       state: FLOW_STATES.secondOrganizationPreparing,
       initialState: secondOrganizationProvisioningState,
+    },
+  },
+};
+
+/**
+ * The recovery surface over the only organization: its name and "Try
+ * again". Early access is off, so neither the switch nor the create exit.
+ */
+export const OrganizationUnavailable: Story = {
+  name: '08 Organization Unavailable',
+  parameters: {
+    flow: {
+      state: FLOW_STATES.oneOrganizationUnavailable,
+      initialState: provisioningState,
+    },
+  },
+};
+
+/**
+ * The recovery surface over B, the active one of two organizations: B's
+ * name, "Try again", and both exits — switch and create.
+ */
+export const OrganizationUnavailableTwoOrganizations: Story = {
+  name: '09 Organization Unavailable (two organizations)',
+  parameters: {
+    flow: {
+      state: FLOW_STATES.twoOrganizationsUnavailable,
+      initialState: provisioningState,
+    },
+  },
+};
+
+/**
+ * The recovery surface for a selection naming no organization in the
+ * document: no name to preserve and nothing derived, so "Try again" is the
+ * only action.
+ */
+export const OrganizationUnavailableOrphanedSelection: Story = {
+  name: '10 Organization Unavailable (orphaned selection)',
+  parameters: {
+    flow: {
+      state: FLOW_STATES.orphanedOrganizationSelection,
+      initialState: provisioningState,
     },
   },
 };
