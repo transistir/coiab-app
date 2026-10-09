@@ -152,12 +152,14 @@ describe('appConfig de ícone e splash (PR A #19, passo 4)', () => {
         [Math.floor(w / 2), h - 1],
       ] as const;
 
+    // noUncheckedIndexedAccess: canal fora do lote vira 0 (PNG válido
+    // nunca cai aqui; pngjs expande o buffer para width*height*4).
     const alfaEm = (png: PNG, x: number, y: number): number =>
-      png.data[(y * png.width + x) * 4 + 3];
+      png.data[(y * png.width + x) * 4 + 3] ?? 0;
 
     const rgbEm = (png: PNG, x: number, y: number): number[] => {
       const i = (y * png.width + x) * 4;
-      return [png.data[i], png.data[i + 1], png.data[i + 2]];
+      return [png.data[i] ?? 0, png.data[i + 1] ?? 0, png.data[i + 2] ?? 0];
     };
 
     // (b) O ícone opaco expande RGBA com alfa 255 em todas as amostras.
@@ -181,13 +183,14 @@ describe('appConfig de ícone e splash (PR A #19, passo 4)', () => {
     test.skip('(c) adaptive: bordas transparentes e conteúdo no círculo seguro de 61,1%', () => {
       const png = PNG.sync.read(fs.readFileSync('assets/adaptive-icon.png'));
       // Todas as linhas de borda transparentes.
-      const bordas: number[][] = [];
+      const bordas: [number, number][] = [];
       for (let x = 0; x < png.width; x++) {
         bordas.push([x, 0], [x, png.height - 1]);
       }
       for (let y = 0; y < png.height; y++) {
         bordas.push([0, y], [png.width - 1, y]);
       }
+      // Todas as bordas transparentes.
       for (const [x, y] of bordas) {
         expect(alfaEm(png, x, y)).toBe(0);
       }

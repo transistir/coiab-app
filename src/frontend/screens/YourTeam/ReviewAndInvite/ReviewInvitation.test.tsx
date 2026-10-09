@@ -5,7 +5,7 @@ import {IntlProvider} from 'react-intl';
 
 import {ReviewInvitation} from './ReviewInvitation';
 import {DARK_GREY, ORANGE, WHITE} from '../../../lib/styles';
-import type {DeviceType} from '../../../sharedTypes';
+import {DeviceType, MEMBER_ROLE_ID} from '../../../sharedTypes';
 
 // Issue #19 (PR A, correção pós-review). O botão "Send Invite" é o último
 // consumidor do Button legado com children custom por cima do fundo
@@ -47,8 +47,8 @@ function renderTela() {
     <IntlProvider locale="en" messages={{}}>
       <ReviewInvitation
         name="Celino"
-        role="coordinator"
         deviceId="device-1"
+        role={MEMBER_ROLE_ID}
         deviceType={'mobile' as DeviceType}
         sendInvite={() => {}}
       />
