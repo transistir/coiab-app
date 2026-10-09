@@ -52,7 +52,7 @@ export const IntroToCoMapeo = ({
         <View style={styles.logoContainer}>
           <Image
             source={require('../../images/ekanadyby-wordmark.png')}
-            style={{width: 290, aspectRatio: 76 / 33, resizeMode: 'contain'}}
+            style={{width: 290, aspectRatio: 870 / 143, resizeMode: 'contain'}}
           />
           <HeaderText variant="header3" style={styles.mainText}>
             {formatMessage(m.mapWorldTogether)}
