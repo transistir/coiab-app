@@ -178,9 +178,9 @@ describe('appConfig de ícone e splash (PR A #19, passo 4)', () => {
       }
     });
 
-    // (c) critério completo dos revisores, aguardando o PNG regenerado
-    // dentro da zona segura (raio medido hoje: 564px × limite 313px).
-    test.skip('(c) adaptive: bordas transparentes e conteúdo no círculo seguro de 61,1%', () => {
+    // (c) critério completo dos revisores — PNG regenerado dentro da zona
+    // segura (raio do sol: 288px; limite 313px).
+    test('(c) adaptive: bordas transparentes e conteúdo no círculo seguro de 61,1%', () => {
       const png = PNG.sync.read(fs.readFileSync('assets/adaptive-icon.png'));
       // Todas as linhas de borda transparentes.
       const bordas: [number, number][] = [];
