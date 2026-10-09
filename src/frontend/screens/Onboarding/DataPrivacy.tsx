@@ -5,7 +5,7 @@ import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import MaterialIcons from '@react-native-vector-icons/material-icons';
 
-import CoMapeoShield from '../../images/CoMapeoShield.svg';
+import EkanadybySun from '../../images/EkanadybySun.svg';
 import LockedWithKeyIcon from '../../images/LockedWithKey.svg';
 import HandshakeMediumMediumDarkIcon from '../../images/HandshakeMediumMediumDark.svg';
 import SafetyIcon from '../../images/Safety.svg';
@@ -57,7 +57,7 @@ export const DataPrivacy = ({
         </View>
       }>
       <View style={styles.headerArea}>
-        <CoMapeoShield width={60} height={60} />
+        <EkanadybySun width={60} height={60} />
         <HeaderText variant="header2" style={styles.title}>
           {t(m.dataPrivacyTitle)}
         </HeaderText>

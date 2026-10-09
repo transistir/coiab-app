@@ -1,6 +1,6 @@
 import * as React from 'react';
 import {View, ScrollView, StyleSheet, TouchableOpacity} from 'react-native';
-import CoMapeoShield from '../../../images/CoMapeoShield.svg';
+import EkanadybySun from '../../../images/EkanadybySun.svg';
 import {
   BLUE_GREY,
   WHITE,
@@ -88,7 +88,7 @@ export const DataAndPrivacy = ({
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.shieldContainer}>
-        <CoMapeoShield width={24} height={30} />
+        <EkanadybySun width={24} height={30} />
         <View style={styles.shieldTextContainer}>
           <HeaderText variant="header5" style={styles.respectsPrivacy}>
             {formatMessage(m.respectsPrivacy)}

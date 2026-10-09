@@ -1,12 +1,11 @@
 import * as React from 'react';
 import {defineMessages, useIntl} from 'react-intl';
-import {ScrollView, StyleSheet, View} from 'react-native';
+import {Image, ScrollView, StyleSheet, View} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useWindowDimensions} from 'react-native';
 import {LoadingIndicator} from '../sharedComponents/LoadingIndicator';
 
 import {useAuthContext} from '../contexts/AuthContext';
-import CoMapeoLogoSvg from '../images/CoMapeoLogo.svg';
 import ClockIcon from '../images/ClockOutlined.svg';
 import {RED, BLACK} from '../lib/styles';
 import {BodyText} from '../sharedComponents/Text/BodyText';
@@ -80,9 +79,12 @@ export const AuthScreen = () => {
       dockContent={
         error && <BodyText style={styles.wrongPass}>{t(m.wrongPass)}</BodyText>
       }>
-      {/* Hide SVG logo in E2E mode to reduce rendering lag on BrowserStack */}
+      {/* Hide logo image in E2E mode to reduce rendering lag on BrowserStack */}
       {process.env.EXPO_PUBLIC_E2E_TEST !== 'true' && (
-        <CoMapeoLogoSvg style={{height: window.height / 3, aspectRatio: 1}} />
+        <Image
+          source={require('../images/ekanadyby-logo.png')}
+          style={{height: window.height / 3, aspectRatio: 1}}
+        />
       )}
       {lockedOutMinutes > 0 ? (
         <View style={styles.lockoutContainer}>
