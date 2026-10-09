@@ -29,7 +29,7 @@
         "expo-splash-screen",
         {
           "image": "./assets/splash.png",
-          "backgroundColor": "#050F77",
+          "backgroundColor": "#284D45",
           "imageWidth": 300,
           "android": {
             "resizeMode": "contain"
@@ -95,8 +95,8 @@
     "android": {
       "allowBackup": false,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icon.png",
-        "backgroundColor": "#050F77"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#284D45"
       },
       "intentFilters": [
         {

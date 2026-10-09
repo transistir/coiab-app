@@ -81,7 +81,19 @@ describe('azuis fixos em arquivos (PR A #19, passo 3)', () => {
     expect(achados).toEqual([]);
   });
 
-  // O fundo do splash e do ícone adaptativo (#050F77 em app.json) sai no
-  // passo 4; a varredura passa a incluí-lo neste teste então.
-  test.todo('app.json entra na varredura depois do passo 4');
+  // Passo 4 do PR A integra app.json na mesma varredura azul-por-linha.
+  test('app.json não carrega azul do CoMapeo', () => {
+    const achados: string[] = [];
+    fs.readFileSync('app.json', 'utf8')
+      .split('\n')
+      .forEach((linha, indice) => {
+        for (const bruto of linha.match(CANDIDATO) ?? []) {
+          const hex = paraHex6(bruto);
+          if (hex !== null && AZUL_COMAPEO[hex] === true) {
+            achados.push(`app.json:${indice + 1}: ${bruto}`);
+          }
+        }
+      });
+    expect(achados).toEqual([]);
+  });
 });
