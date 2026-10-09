@@ -38,7 +38,7 @@ function paraHex6(cor: string): string | null {
     };
     return `#${canal(0) + canal(2) + canal(4)}`;
   }
-  const lista = /^rgba?\(([0-9]{1,3}(\.[0-9]+)?)\s*,/.exec(alvo);
+  const lista = /^rgba?\(\s*([0-9]{1,3}(\.[0-9]+)?)\s*,/.exec(alvo);
   if (lista === null || lista[1] === undefined) return null;
   const canais = alvo
     .replace(/^rgba?\(|\)$/g, '')
@@ -95,5 +95,13 @@ describe('azuis fixos em arquivos (PR A #19, passo 3)', () => {
         }
       });
     expect(achados).toEqual([]);
+  });
+
+  test('caça reconhece rgb() com espaços após o parêntese', () => {
+    // Nit pós-review: "rgb( 0, 102, 255 )" escapava — o regex do canal
+    // exigia dígito imediatamente após "(". 0,102,255 é #0066ff, o azul
+    // listado; a conversão e a lista juntas garantem que a caça pega.
+    expect(paraHex6('rgb( 0, 102, 255 )')).toBe('#0066ff');
+    expect(AZUL_COMAPEO['#0066ff']).toBe(true);
   });
 });

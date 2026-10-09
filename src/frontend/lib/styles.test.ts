@@ -295,7 +295,8 @@ const EXCECOES_PRE_EXISTENTES = [
   {
     fg: palette.COMAPEO_BLUE,
     bg: palette.LIGHT_ORANGE,
-    piso: 4.32,
+    // Valor real 4,329530586 — travado com >= 4.3295 (sem arredondar).
+    piso: 4.3295,
     onde: 'COMAPEO_BLUE/LIGHT_ORANGE: MenuLowStorageAlert (4.49 → 4.33)',
   },
   {

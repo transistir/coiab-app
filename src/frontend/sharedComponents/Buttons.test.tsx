@@ -4,7 +4,14 @@ import {render, screen} from '@testing-library/react-native';
 
 import {Button} from './Button';
 import {PrimaryButton} from './Buttons';
-import {BLUE_GREY, COMAPEO_BLUE, DARK_GREY, ORANGE, WHITE} from '../lib/styles';
+import {
+  BLACK,
+  BLUE_GREY,
+  COMAPEO_BLUE,
+  DARK_GREY,
+  ORANGE,
+  WHITE,
+} from '../lib/styles';
 
 // O estilo do host chega achatado em alguns componentes (TouchableOpacity) e
 // como array cru em outros (View). fundoDe acha o primeiro backgroundColor em
@@ -125,6 +132,36 @@ describe('Button legado (@deprecated) (PR A #19, passo 2)', () => {
 
     expect(screen.getByText('OUTLINED').props.style).toEqual(
       expect.arrayContaining([expect.objectContaining({color: COMAPEO_BLUE})]),
+    );
+  });
+  test('variante text herda DARK_GREY; outlined com color="dark" usa BLACK (só documentação de comportamento)', async () => {
+    // Nit pós-review: o contrato atual do Button legado — "text" ignora o
+    // color e cai no textBase DARK_GREY; "outlined"+"dark" usa BLACK.
+    // Não é decisão de desenho: a escolha definitiva fica para depois.
+    await render(
+      <Button
+        variant="text"
+        color="dark"
+        testID="LEGADO-TEXT"
+        onPress={() => {}}>
+        TEXTO
+      </Button>,
+    );
+    expect(screen.getByText('TEXTO').props.style).toEqual(
+      expect.arrayContaining([expect.objectContaining({color: DARK_GREY})]),
+    );
+
+    await render(
+      <Button
+        variant="outlined"
+        color="dark"
+        testID="LEGADO-OUT-DARK"
+        onPress={() => {}}>
+        CONTORNO
+      </Button>,
+    );
+    expect(screen.getByText('CONTORNO').props.style).toEqual(
+      expect.arrayContaining([expect.objectContaining({color: BLACK})]),
     );
   });
 });
