@@ -45,6 +45,19 @@ import {
 import type {OrganizacaoLocal} from '../lib/organization/coiabOrganizations';
 
 import {DrawerMenu} from './DrawerMenu';
+import {DARK_GREY, ORANGE, WHITE} from '../lib/styles';
+
+// Sonda: o svg real viraria um View sem cor visível no test-renderer; o
+// mock registra o color repassado pelo renderIcon do DrawerMenu.
+jest.mock('../images/Exchange.svg', () => {
+  const {createElement} = require('react');
+  const {View} = require('react-native');
+  return {
+    __esModule: true,
+    default: (props: {color?: string}) =>
+      createElement(View, {testID: 'ExchangeProbe', probeColor: props.color}),
+  };
+});
 
 const mockNavigation = {navigate: jest.fn(), popTo: jest.fn()};
 jest.mock('../hooks/useNavigationWithTypes', () => ({
@@ -377,5 +390,22 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     expect(screen.getByTestId('MENU.area-alertas')).toBeOnTheScreen();
     expect(screen.queryByText('Switch Project')).not.toBeOnTheScreen();
     expect(screen.queryByText('Collaborate')).not.toBeOnTheScreen();
+  });
+
+  test('ícone do PrimaryButton herda a cor repassada (nunca WHITE sobre ORANGE)', async () => {
+    // Issue #19 (correção pós-review): o Exchange no drawer ignorava o
+    // color que o PrimaryButton passa ao renderIcon e fixava WHITE —
+    // contraste 1.69 sobre laranja. O renderIcon repassa; o ícone fica em
+    // DARK_GREY (6.77).
+    await renderDrawer(true);
+    const botao = await screen.findByTestId('MENU.main-action-button');
+    expect(botao.props.style).toEqual(
+      expect.objectContaining({backgroundColor: ORANGE}),
+    );
+    // O renderIcon do DrawerMenu repassa a cor recebida (não fixa WHITE):
+    // o PrimaryButton entrega DARK_GREY e o Exchange carrega.
+    expect(screen.getByTestId('ExchangeProbe').props.probeColor).toBe(
+      DARK_GREY,
+    );
   });
 });

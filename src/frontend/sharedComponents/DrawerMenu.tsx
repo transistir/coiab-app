@@ -313,7 +313,7 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
           }}
           fullSize={false}
           text={formatMessage(m.exchange)}
-          renderIcon={() => <Exchange color={WHITE} />}
+          renderIcon={({color}) => <Exchange color={color} />}
         />
       </View>
     </View>

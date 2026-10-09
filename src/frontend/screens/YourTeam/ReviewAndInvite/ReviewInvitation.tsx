@@ -3,7 +3,7 @@ import {Text} from '../../../sharedComponents/Text';
 import {defineMessages, useIntl} from 'react-intl';
 import MaterialIcon from '@react-native-vector-icons/material-icons';
 import React from 'react';
-import {WHITE} from '../../../lib/styles';
+import {DARK_GREY} from '../../../lib/styles';
 import {Button} from '../../../sharedComponents/Button';
 import {DeviceNameWithIcon} from '../../../sharedComponents/DeviceNameWithIcon';
 import {RoleWithIcon} from '../../../sharedComponents/RoleWithIcon';
@@ -66,8 +66,8 @@ export const ReviewInvitation = ({
       </View>
       <Button fullWidth onPress={sendInvite}>
         <View style={styles.flexRow}>
-          <MaterialIcon name="send" size={25} color={WHITE} />
-          <Text style={{color: WHITE, fontWeight: 'bold', marginLeft: 10}}>
+          <MaterialIcon name="send" size={25} color={DARK_GREY} />
+          <Text style={{color: DARK_GREY, fontWeight: 'bold', marginLeft: 10}}>
             {t(m.sendInvite)}
           </Text>
         </View>
