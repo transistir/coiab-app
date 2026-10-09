@@ -21,8 +21,8 @@ import {
   COMAPEO_BLUE,
   DARK_GREEN,
   DARK_ORANGE,
-  LIGHT_GREY,
   MEDIUM_GREY,
+  VERY_LIGHT_GREY,
   WHITE,
 } from '../../lib/styles';
 import {
@@ -474,7 +474,7 @@ function SyncProgress({
         width={null}
         borderRadius={0}
         color={stage.name === 'complete-full' ? DARK_GREEN : COMAPEO_BLUE}
-        unfilledColor={LIGHT_GREY}
+        unfilledColor={VERY_LIGHT_GREY}
         borderColor={WHITE}
       />
 
