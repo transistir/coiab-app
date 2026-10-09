@@ -7,10 +7,18 @@ import {IntlProvider} from 'react-intl';
 
 import {Success} from './Success';
 import type {OnboardingParamsList} from '../../sharedTypes/navigation';
+import {DARK_GREY} from '../../lib/styles';
 
 jest.mock('@comapeo/core-react', () => ({
   useOwnDeviceInfo: () => ({data: {name: 'Aparelho Teste'}}),
 }));
+
+// PR A #19 (passo 2): o mock do ícone do botão principal recebe a cor
+// repassada pelo renderIcon (DARK_GREY sobre ORANGE) em vez de WHITE fixo.
+jest.mock('../../images/ProjectCoordinator.svg', () => jest.fn(() => null));
+const ProjectCoordinatorIcon = jest.requireMock(
+  '../../images/ProjectCoordinator.svg',
+) as jest.Mock;
 
 // pt-BR copied verbatim from SPEC A :142 and SPEC B :53. The copy is
 // asserted through the i18n keys (exact pt-BR text), not the English
@@ -89,5 +97,16 @@ describe('Success (the "sem organização" state, SPEC A §6.2)', () => {
     await fireEvent.press(joinButton);
 
     expect(await screen.findByText('JOIN-REACHED')).toBeOnTheScreen();
+  });
+
+  test('ícone do botão principal recebe DARK_GREY repassado pelo renderIcon (PR A #19, passo 2)', async () => {
+    await renderScreen();
+
+    await screen.findByTestId('ONBOARDING.create-org-btn');
+    expect(ProjectCoordinatorIcon).toHaveBeenCalledWith(
+      expect.objectContaining({color: DARK_GREY}),
+      // O React invoca o componente mock com (props, legacyContext).
+      undefined,
+    );
   });
 });

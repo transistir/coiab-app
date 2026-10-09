@@ -1,7 +1,14 @@
 import React from 'react';
 import {StyleSheet, TouchableOpacity, View} from 'react-native';
 import {HeaderText} from './Text/HeaderText';
-import {BLUE_GREY, COMAPEO_BLUE, WARNING_RED, WHITE} from '../lib/styles';
+import {
+  BLUE_GREY,
+  COMAPEO_BLUE,
+  DARK_GREY,
+  ORANGE,
+  WARNING_RED,
+  WHITE,
+} from '../lib/styles';
 import {ViewStyleProp} from '../sharedTypes';
 
 type ButtonProps = {
@@ -91,10 +98,10 @@ export const PrimaryButton = (props: ButtonProps) => {
     <BaseButton
       {...props}
       colors={{
-        background: COMAPEO_BLUE,
-        text: WHITE,
-        icon: WHITE,
-        border: COMAPEO_BLUE,
+        background: ORANGE,
+        text: DARK_GREY,
+        icon: DARK_GREY,
+        border: ORANGE,
       }}
     />
   );

@@ -1,7 +1,13 @@
 import * as React from 'react';
 import {GestureResponderEvent, StyleSheet, View, ViewStyle} from 'react-native';
 
-import {BLACK, COMAPEO_BLUE, VERY_LIGHT_BLUE} from '../lib/styles';
+import {
+  BLACK,
+  COMAPEO_BLUE,
+  DARK_GREY,
+  ORANGE,
+  VERY_LIGHT_BLUE,
+} from '../lib/styles';
 import {TouchableNativeFeedback} from 'react-native-gesture-handler';
 
 import {ViewStyleProp} from '../sharedTypes';
@@ -141,7 +147,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   buttonContained: {
-    backgroundColor: '#0066FF',
+    backgroundColor: ORANGE,
   },
   buttonOutlined: {
     borderColor: '#EEEEEE',
@@ -161,7 +167,7 @@ const styles = StyleSheet.create({
   },
   textBase: {
     letterSpacing: 0.5,
-    color: '#FFFFFF',
+    color: DARK_GREY,
   },
   textOutlinedLight: {
     color: '#FFFFFF',

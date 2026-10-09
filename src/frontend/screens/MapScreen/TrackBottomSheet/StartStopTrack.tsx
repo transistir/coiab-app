@@ -77,7 +77,7 @@ export const StartStopTrack = () => {
             fullSize={true}
             text={formatMessage(m.defaultButtonText)}
             onPress={handleStartTracking}
-            renderIcon={() => <StartTrackingIcon />}
+            renderIcon={({color}) => <StartTrackingIcon color={color} />}
           />
         </>
       ) : (
