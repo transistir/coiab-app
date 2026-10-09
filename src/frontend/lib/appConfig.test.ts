@@ -76,16 +76,17 @@ describe('appConfig de ícone e splash (PR A #19, passo 4)', () => {
     const android = campoDe(expo, 'android');
     const adaptiveIcon = campoDe(android, 'adaptiveIcon');
 
-    expect(campoDe(splash, 'backgroundColor')).toBe(COMAPEO_DARK_BLUE);
-    expect(campoDe(adaptiveIcon, 'backgroundColor')).toBe(COMAPEO_DARK_BLUE);
+    // Fundo bege DABA8D (paleta Ekanâdyby) no splash e no ícone adaptativo.
+    expect(campoDe(splash, 'backgroundColor')).toBe('#DABA8D');
+    expect(campoDe(adaptiveIcon, 'backgroundColor')).toBe('#DABA8D');
     expect(campoDe(adaptiveIcon, 'foregroundImage')).toBe(
       './assets/adaptive-icon.png',
     );
   });
 
   test('icon.png e adaptive-icon são 1024×1024; splash 1200×1200 RGB', () => {
-    // O ícone novo é RGB opaco (fundo bege pintado, sem canal de alfa) e o
-    // splash também; o adaptativo mantém RGBA com transparência nas bordas.
+    // O ícone é RGB opaco (fundo bege pintado, sem canal de alfa); o splash
+    // e o adaptativo mantêm RGBA com transparência nas bordas.
     expect(tamanhoCabecalho('./assets/icon.png')).toEqual({
       size: [1024, 1024],
       bitDepth: 8,
@@ -101,7 +102,7 @@ describe('appConfig de ícone e splash (PR A #19, passo 4)', () => {
     expect(tamanhoCabecalho('./assets/splash.png')).toEqual({
       size: [1200, 1200],
       bitDepth: 8,
-      colorType: 2,
+      colorType: 6,
     });
   });
 
@@ -206,12 +207,31 @@ describe('appConfig de ícone e splash (PR A #19, passo 4)', () => {
       }
     });
 
-    // (d) O fundo do splash é o bege DABA8D nos 4 cantos.
-    test('(d) splash.png: bege DABA8D nos 4 cantos', () => {
+    // (d) O fundo do splash é transparente; o bege DABA8D vem do
+    // backgroundColor do plugin expo-splash-screen (app.json).
+    test('(d) splash.png: transparente nos 4 cantos e sem halo escuro no sol', () => {
       const png = PNG.sync.read(fs.readFileSync('assets/splash.png'));
       for (const [x, y] of CANTOS_DE(png.width, png.height)) {
-        expect(rgbEm(png, x, y)).toEqual([218, 186, 141]);
+        expect(alfaEm(png, x, y)).toBe(0);
       }
+      // Nenhum pixel escuro FORA do disco solar (halo de pré-multiplicação).
+      // Os raios escuros DENTRO do disco fazem parte da arte Ekanâdyby.
+      let halo = 0;
+      const centro = (png.width - 1) / 2;
+      const raioDisco = png.width * 0.36; // sol ocupa ~72% da largura
+      for (let y = 0; y < png.height; y++) {
+        for (let x = 0; x < png.width; x++) {
+          const idx = (png.width * y + x) << 2;
+          const r = png.data[idx] ?? 0;
+          const g = png.data[idx + 1] ?? 0;
+          const b = png.data[idx + 2] ?? 0;
+          const a = png.data[idx + 3] ?? 0;
+          const foraDoDisco =
+            Math.hypot(x - centro, y - centro) > raioDisco;
+          if (a > 0 && r < 80 && g < 80 && b < 80 && foraDoDisco) halo++;
+        }
+      }
+      expect(halo).toBe(0);
     });
   });
 });
