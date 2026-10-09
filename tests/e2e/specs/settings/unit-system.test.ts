@@ -25,7 +25,7 @@ describe('Settings - Unit System Flow', () => {
     const backBtn = await $(byResourceId('MAIN.header-back-btn'));
     await backBtn.click();
 
-    await expect($(byTextMatches('CoMapeo Settings'))).toBeDisplayed();
+    await expect($(byTextMatches('Ekanâdyby Settings'))).toBeDisplayed();
   });
 
   it('should display feet abbreviation on the GPS pill on the map', async () => {
@@ -63,7 +63,7 @@ describe('Settings - Unit System Flow', () => {
     const metricOption = await $(byTextMatches('Metric'));
     await metricOption.click();
     await $(byResourceId('MAIN.header-back-btn')).click();
-    await expect($(byTextMatches('CoMapeo Settings'))).toBeDisplayed();
+    await expect($(byTextMatches('Ekanâdyby Settings'))).toBeDisplayed();
   });
 
   it('should display meters on the GPS pill after switching to Metric', async () => {

@@ -44,7 +44,7 @@ const m = defineMessages({
   },
   shareMessageFooter: {
     id: '$1screens.Observation.shareMessageFooter',
-    defaultMessage: 'Sent from CoMapeo',
+    defaultMessage: 'Sent from Ekanâdyby',
   },
   fallbackCategoryName: {
     id: '$1screens.Observation.fallbackCategoryName',
@@ -52,9 +52,9 @@ const m = defineMessages({
     description:
       'Fallback name used when category name cannot be determined for observation',
   },
-  comapeoData: {
-    id: '$1screens.Observation.comapeoAlert',
-    defaultMessage: 'CoMapeo data sent from *{projectName}*',
+  ekanadybyData: {
+    id: '$1screens.Observation.ekanadybyAlert',
+    defaultMessage: 'Ekanâdyby data sent from *{projectName}*',
   },
   defaultProjectName: {
     id: '$1screens.Observation.defaultProjectName',
@@ -174,7 +174,7 @@ export const ButtonFields = ({
       const date = formatDate(observation.createdAt, {format: 'long'});
 
       const subject =
-        `${t(m.comapeoData, {projectName: name || t(m.defaultProjectName)})}` +
+        `${t(m.ekanadybyData, {projectName: name || t(m.defaultProjectName)})}` +
         ` - _*${preset ? preset.name : t(m.fallbackCategoryName)}*_` +
         ` - ${date}`;
 

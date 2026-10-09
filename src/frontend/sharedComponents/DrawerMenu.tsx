@@ -38,7 +38,7 @@ import {displayDescription} from '../lib/organization/marker';
 const m = defineMessages({
   appSettings: {
     id: '$1Navigation.Menu.Settings',
-    defaultMessage: 'CoMapeo Settings',
+    defaultMessage: 'Ekanâdyby Settings',
   },
   bgMap: {
     id: '$1Navigation.Menu.bgMap',

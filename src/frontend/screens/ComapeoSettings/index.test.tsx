@@ -4,7 +4,7 @@ import {
   semearDocumentoPronta,
 } from '../../../../tests/integration/helpers/setupIntegrationTest';
 
-describe('CoMapeo Settings Screen', () => {
+describe('Ekanâdyby Settings Screen', () => {
   const integrationSetup = setupIntegrationTest();
 
   test('opens drawer when header button is pressed', async () => {
@@ -28,7 +28,7 @@ describe('CoMapeo Settings Screen', () => {
     await expect(headerButton).toBeVisible();
     await user.press(headerButton);
 
-    const settings = await screen.findByText('CoMapeo Settings');
+    const settings = await screen.findByText('Ekanâdyby Settings');
 
     await expect(settings).toBeVisible();
 

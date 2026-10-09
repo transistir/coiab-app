@@ -3,7 +3,7 @@ import {defineMessages} from 'react-intl';
 export const m = defineMessages({
   dataPrivacyTitle: {
     id: '$1screens.DataPrivacy.title',
-    defaultMessage: 'CoMapeo is private by default.',
+    defaultMessage: 'Ekanâdyby is private by default.',
   },
   dataPrivacyIntro: {
     id: '$1screens.DataPrivacy.intro',

@@ -23,7 +23,7 @@ import {useQADeviceName} from '../../contexts/QADeviceNameStoreContext';
 const m = defineMessages({
   title: {
     id: '$1Screens.Settings.AppSettings.title',
-    defaultMessage: 'CoMapeo Settings',
+    defaultMessage: 'Ekanâdyby Settings',
   },
   edit: {
     id: '$1Screens.Settings.AppSettings.edit',
@@ -65,9 +65,9 @@ const m = defineMessages({
     id: '$1Screens.Settings.AppSettings.turnOff',
     defaultMessage: 'Turn Off',
   },
-  aboutCoMapeo: {
-    id: '$1Screens.Settings.AppSettings.aboutCoMapeo',
-    defaultMessage: 'About CoMapeo',
+  aboutEkanadyby: {
+    id: '$1Screens.Settings.AppSettings.aboutEkanadyby',
+    defaultMessage: 'About Ekanâdyby',
   },
   createTestData: {
     id: 'Screens.Settings.AppSettings.createTestData',
@@ -319,7 +319,7 @@ export const AppSettings: NativeNavigationComponent<'AppSettings'> = ({
       <SettingsRow
         testID="aboutSettingsButton"
         onPress={() => navigation.navigate('AboutSettings')}
-        label={formatMessage(m.aboutCoMapeo)}
+        label={formatMessage(m.aboutEkanadyby)}
         Icon={
           <MaterialIcon name="info-outline" size={24} color={NEW_DARK_GREY} />
         }
