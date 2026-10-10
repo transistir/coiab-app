@@ -226,8 +226,7 @@ describe('appConfig de ícone e splash (PR A #19, passo 4)', () => {
           const g = png.data[idx + 1] ?? 0;
           const b = png.data[idx + 2] ?? 0;
           const a = png.data[idx + 3] ?? 0;
-          const foraDoDisco =
-            Math.hypot(x - centro, y - centro) > raioDisco;
+          const foraDoDisco = Math.hypot(x - centro, y - centro) > raioDisco;
           if (a > 0 && r < 80 && g < 80 && b < 80 && foraDoDisco) halo++;
         }
       }

@@ -48,8 +48,11 @@ describe('des-CoMapeo (#20): guarda de marca', () => {
       const caminho = path.join(REPO_ROOT, 'translations', arquivo);
       expect(fs.existsSync(caminho)).toBe(true);
       const conteudo = JSON.parse(fs.readFileSync(caminho, 'utf8'));
-      const comMarca = valoresString(conteudo).filter(v =>
-        v.includes('CoMapeo') || v.includes('Comapeo') || v.includes('COMAPEO'),
+      const comMarca = valoresString(conteudo).filter(
+        v =>
+          v.includes('CoMapeo') ||
+          v.includes('Comapeo') ||
+          v.includes('COMAPEO'),
       );
       expect(comMarca).toEqual([]);
     }
@@ -65,8 +68,11 @@ describe('des-CoMapeo (#20): guarda de marca', () => {
       const conteudo = JSON.parse(
         fs.readFileSync(path.join(REPO_ROOT, arquivo), 'utf8'),
       );
-      const comMarca = valoresString(conteudo).filter(v =>
-        v.includes('CoMapeo') || v.includes('Comapeo') || v.includes('COMAPEO'),
+      const comMarca = valoresString(conteudo).filter(
+        v =>
+          v.includes('CoMapeo') ||
+          v.includes('Comapeo') ||
+          v.includes('COMAPEO'),
       );
       expect(comMarca).toEqual([]);
     }
