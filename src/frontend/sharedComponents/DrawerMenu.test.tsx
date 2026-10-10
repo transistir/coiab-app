@@ -45,7 +45,7 @@ import {
 import type {OrganizacaoLocal} from '../lib/organization/coiabOrganizations';
 
 import {DrawerMenu} from './DrawerMenu';
-import {DARK_GREY, ORANGE, WHITE} from '../lib/styles';
+import {DARK_GREY, ORANGE} from '../lib/styles';
 
 // Sonda: o svg real viraria um View sem cor visível no test-renderer; o
 // mock registra o color repassado pelo renderIcon do DrawerMenu.

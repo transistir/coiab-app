@@ -9,7 +9,6 @@ import {PNG} from 'pngjs';
 //   - PIXELS: pngjs (disponível transitivamente em node_modules) decodifica
 //     os pixels — alfa do ícone, transparente nas bordas/cantos do
 //     adaptativo, círculo seguro e o bege DABA8D do splash.
-import {COMAPEO_DARK_BLUE} from './styles';
 
 function campoDe(objeto: unknown, chave: string): unknown {
   if (objeto === null || typeof objeto !== 'object' || !(chave in objeto)) {
@@ -157,11 +156,6 @@ describe('appConfig de ícone e splash (PR A #19, passo 4)', () => {
     // nunca cai aqui; pngjs expande o buffer para width*height*4).
     const alfaEm = (png: PNG, x: number, y: number): number =>
       png.data[(y * png.width + x) * 4 + 3] ?? 0;
-
-    const rgbEm = (png: PNG, x: number, y: number): number[] => {
-      const i = (y * png.width + x) * 4;
-      return [png.data[i] ?? 0, png.data[i + 1] ?? 0, png.data[i + 2] ?? 0];
-    };
 
     // (b) O ícone opaco expande RGBA com alfa 255 em todas as amostras.
     test('(b) icon.png opaco: alfa 255 em 9 amostras', () => {
