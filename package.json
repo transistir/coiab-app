@@ -197,7 +197,7 @@
     "p-event": "7.1.0",
     "p-every": "2.0.0",
     "patch-package": "8.0.1",
-    "pngjs": "^7.0.0",
+    "pngjs": "7.0.0",
     "prettier": "3.9.4",
     "random-access-memory": "6.2.1",
     "react-native-svg-transformer": "1.5.3",
