@@ -340,22 +340,22 @@
   "$1screens.ExchangeSettingsBottomSheet.save": {
     "message": "Opslaan"
   },
-  "$1screens.IntroToEkanâdyby.collaborate": {
+  "$1screens.IntroToCoMapeo.collaborate": {
     "message": "Deel veilig met medewerkers"
   },
-  "$1screens.IntroToEkanâdyby.designedFor": {
+  "$1screens.IntroToCoMapeo.designedFor": {
     "message": "Co-ontworpen met en voor inheemse grondstoffenmappers & -monitors."
   },
-  "$1screens.IntroToEkanâdyby.getStarted": {
+  "$1screens.IntroToCoMapeo.getStarted": {
     "message": "Nu inschrijven"
   },
-  "$1screens.IntroToEkanâdyby.mapAnywhere": {
+  "$1screens.IntroToCoMapeo.mapAnywhere": {
     "message": "Kaart overal en overal"
   },
-  "$1screens.IntroToEkanâdyby.mapWorldTogether": {
+  "$1screens.IntroToCoMapeo.mapWorldTogether": {
     "message": "Verbind je wereld samen."
   },
-  "$1screens.IntroToEkanâdyby.ownData": {
+  "$1screens.IntroToCoMapeo.ownData": {
     "message": "Altijd de eigenaar en controle van je gegevens"
   },
   "$1screens.InviteReceived.declineInvite": {

@@ -343,22 +343,22 @@
   "$1screens.ExchangeSettingsBottomSheet.save": {
     "message": "Speichern"
   },
-  "$1screens.IntroToEkanâdyby.collaborate": {
+  "$1screens.IntroToCoMapeo.collaborate": {
     "message": "Sicher mit Mitarbeitern teilen"
   },
-  "$1screens.IntroToEkanâdyby.designedFor": {
+  "$1screens.IntroToCoMapeo.designedFor": {
     "message": "Co-entworfen mit und für indigene Territorien Landkarten & Monitore."
   },
-  "$1screens.IntroToEkanâdyby.getStarted": {
+  "$1screens.IntroToCoMapeo.getStarted": {
     "message": "Los geht's"
   },
-  "$1screens.IntroToEkanâdyby.mapAnywhere": {
+  "$1screens.IntroToCoMapeo.mapAnywhere": {
     "message": "Karte überall und überall"
   },
-  "$1screens.IntroToEkanâdyby.mapWorldTogether": {
+  "$1screens.IntroToCoMapeo.mapWorldTogether": {
     "message": "Maple deine Welt."
   },
-  "$1screens.IntroToEkanâdyby.ownData": {
+  "$1screens.IntroToCoMapeo.ownData": {
     "message": "Immer besitzen und kontrollieren Sie Ihre Daten"
   },
   "$1screens.InviteReceived.declineInvite": {

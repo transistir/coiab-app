@@ -343,22 +343,22 @@
   "$1screens.ExchangeSettingsBottomSheet.save": {
     "message": "Simpan"
   },
-  "$1screens.IntroToEkanâdyby.collaborate": {
+  "$1screens.IntroToCoMapeo.collaborate": {
     "message": "Bagikan dengan aman dengan kolaborator"
   },
-  "$1screens.IntroToEkanâdyby.designedFor": {
+  "$1screens.IntroToCoMapeo.designedFor": {
     "message": "Dirancang bersama dengan dan untuk pemetaan & monitor wilayah adat."
   },
-  "$1screens.IntroToEkanâdyby.getStarted": {
+  "$1screens.IntroToCoMapeo.getStarted": {
     "message": "Memulai"
   },
-  "$1screens.IntroToEkanâdyby.mapAnywhere": {
+  "$1screens.IntroToCoMapeo.mapAnywhere": {
     "message": "Peta di mana saja dan di mana saja"
   },
-  "$1screens.IntroToEkanâdyby.mapWorldTogether": {
+  "$1screens.IntroToCoMapeo.mapWorldTogether": {
     "message": "Petakan dunia Anda, bersama-sama."
   },
-  "$1screens.IntroToEkanâdyby.ownData": {
+  "$1screens.IntroToCoMapeo.ownData": {
     "message": "Selalu miliki dan kendalikan data Anda"
   },
   "$1screens.InviteReceived.declineInvite": {

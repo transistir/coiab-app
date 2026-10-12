@@ -346,22 +346,22 @@
   "$1screens.ExchangeSettingsBottomSheet.save": {
     "message": "Guardar"
   },
-  "$1screens.IntroToEkanâdyby.collaborate": {
+  "$1screens.IntroToCoMapeo.collaborate": {
     "message": "Compartir de forma segura con los colaboradores"
   },
-  "$1screens.IntroToEkanâdyby.designedFor": {
+  "$1screens.IntroToCoMapeo.designedFor": {
     "message": "Codiseñado con y para mapeadores y monitores de territorio indígena."
   },
-  "$1screens.IntroToEkanâdyby.getStarted": {
+  "$1screens.IntroToCoMapeo.getStarted": {
     "message": "¡Comienza ya!"
   },
-  "$1screens.IntroToEkanâdyby.mapAnywhere": {
+  "$1screens.IntroToCoMapeo.mapAnywhere": {
     "message": "Mapea en cualquier lugar y en todas partes"
   },
-  "$1screens.IntroToEkanâdyby.mapWorldTogether": {
+  "$1screens.IntroToCoMapeo.mapWorldTogether": {
     "message": "Mapea tu mundo, en colectivo."
   },
-  "$1screens.IntroToEkanâdyby.ownData": {
+  "$1screens.IntroToCoMapeo.ownData": {
     "message": "Siempre posea y controle sus datos"
   },
   "$1screens.InviteReceived.declineInvite": {
