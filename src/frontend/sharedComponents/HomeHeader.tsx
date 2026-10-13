@@ -8,8 +8,7 @@ import {HeaderText} from './Text/HeaderText';
 import {BLUE_GREY, DARK_GREY} from '../lib/styles';
 import {useProjectRoleAndDetails} from '../hooks/useProjectRoleAndDetails';
 import {useActiveProject} from '../contexts/ActiveProjectContext';
-import {useCoiabOrganizationsState} from '../contexts/CoiabOrganizationsStoreContext';
-import {derivarProjectIdAtivo} from '../lib/organization/coiabOrganizations';
+import {useOrganizacaoAtiva} from '../hooks/useOrganizacaoAtiva';
 import {isLowStorage} from '../lib/storage';
 import {useStorageReadingQuery} from '../hooks/useStorageReadingQuery';
 import {ExclamationBadge} from './Storage/ExclamationBadge';
@@ -28,25 +27,9 @@ export function HomeHeader({
 }: HomeHeaderProps) {
   const {projectId} = useActiveProject();
   const projectDetails = useProjectRoleAndDetails(projectId);
-  const estado = useCoiabOrganizationsState();
-  // SPEC A §4.2 regra 5: the operational projectId is DERIVED from the
-  // persisted document, and SPEC B §3.3 item 4 names the header after the
-  // organization only in that state. `derivarProjectIdAtivo` embeds the
-  // whole gate — parseable document, existing organization, `pronta`,
-  // `!confirmacaoPendente` and the slot of `ativa.area` — so comparing its
-  // result with the active projectId keeps the header naming the
-  // organization only when the app is operating it: any switch of the
-  // active project (LeaveProject, a create/accept repoint) makes the
-  // derivation diverge and the project name stands. `ativa` is
-  // born only in the single write of the "Abrir organização" tap (regra 9),
-  // so without a selection nothing names an organization.
-  const derivado = derivarProjectIdAtivo(estado);
-  const organizacaoAtiva =
-    derivado !== null && derivado === projectId
-      ? estado.organizacoes.find(
-          organizacao => organizacao.id === estado.ativa?.organizacaoId,
-        )
-      : undefined;
+  // A organização ativa só nomeia o header quando o app a está operando
+  // (SPEC A §4.2 regra 5) — a derivação inteira vive em useOrganizacaoAtiva.
+  const organizacaoAtiva = useOrganizacaoAtiva();
   const {data} = useStorageReadingQuery();
   const isLow = isLowStorage(data.freeBytes);
   const insets = useSafeAreaInsets();
