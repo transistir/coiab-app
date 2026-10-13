@@ -68,11 +68,13 @@ describe('Observation Fields', () => {
         activeProjectId: integrationSetup.projectId,
       });
 
-      // I/O-bound waits under load (the JoinProjectIntro /
-      // index.navigator.test.tsx precedent, same class as 'correct back
-      // button behaviour' below): measured live — Home held an
-      // ActivityIndicator past the 1000 ms default while the organization
-      // gate and project queries resolved, failing this helper's findBy.
+      // Home pós-login é o Entroncamento sob a tab bar de 5 abas (#32).
+      // Para acessar a criação de observação, navega até a aba Map.
+      await user.press(
+        await screen.findByTestId('tabBarButtonMap', undefined, {
+          timeout: 15_000,
+        }),
+      );
       await user.press(
         await screen.findByTestId('MAIN.add-observation-btn', undefined, {
           timeout: 15_000,
@@ -149,8 +151,13 @@ describe('Observation Fields', () => {
         activeProjectId: integrationSetup.projectId,
       });
 
-      // Same I/O-bound waits as the TextArea helper (organization gate +
-      // categories query): the 1000 ms default is insufficient under load.
+      // Home pós-login é o Entroncamento sob a tab bar de 5 abas (#32).
+      // Para acessar a criação de observação, navega até a aba Map.
+      await user.press(
+        await screen.findByTestId('tabBarButtonMap', undefined, {
+          timeout: 15_000,
+        }),
+      );
       await user.press(
         await screen.findByTestId('MAIN.add-observation-btn', undefined, {
           timeout: 15_000,
@@ -224,8 +231,13 @@ describe('Observation Fields', () => {
         activeProjectId: integrationSetup.projectId,
       });
 
-      // Same I/O-bound waits as the TextArea helper (organization gate +
-      // categories query): the 1000 ms default is insufficient under load.
+      // Home pós-login é o Entroncamento sob a tab bar de 5 abas (#32).
+      // Para acessar a criação de observação, navega até a aba Map.
+      await user.press(
+        await screen.findByTestId('tabBarButtonMap', undefined, {
+          timeout: 15_000,
+        }),
+      );
       await user.press(
         await screen.findByTestId('MAIN.add-observation-btn', undefined, {
           timeout: 15_000,
@@ -278,8 +290,13 @@ describe('Observation Fields', () => {
         activeProjectId: integrationSetup.projectId,
       });
 
-      // Same I/O-bound waits as the TextArea helper (organization gate +
-      // categories query): the 1000 ms default is insufficient under load.
+      // Home pós-login é o Entroncamento sob a tab bar de 5 abas (#32).
+      // Para acessar a criação de observação, navega até a aba Map.
+      await user.press(
+        await screen.findByTestId('tabBarButtonMap', undefined, {
+          timeout: 15_000,
+        }),
+      );
       await user.press(
         await screen.findByTestId('MAIN.add-observation-btn', undefined, {
           timeout: 15_000,
@@ -337,12 +354,13 @@ describe('Observation Fields', () => {
         activeProjectId: integrationSetup.projectId,
       });
 
-      // I/O-bound waits under load (the JoinProjectIntro /
-      // index.navigator.test.tsx precedent): the create-observation button
-      // renders once Home clears the organization gate (persisted document
-      // + project queries), and 'Comprehensive Test' renders only after
-      // the categories query refetches the core after the import. The
-      // 1000 ms defaults broke this case under 3-worker load.
+      // Home pós-login é o Entroncamento sob a tab bar de 5 abas (#32).
+      // Para acessar a criação de observação, navega até a aba Map.
+      await user.press(
+        await screen.findByTestId('tabBarButtonMap', undefined, {
+          timeout: 15_000,
+        }),
+      );
       await user.press(
         await screen.findByTestId('MAIN.add-observation-btn', undefined, {
           timeout: 15_000,

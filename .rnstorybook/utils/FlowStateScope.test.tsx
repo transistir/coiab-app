@@ -246,8 +246,9 @@ describe('organization stories (FlowStateScope)', () => {
   test('HomeWithOrganization shows Home instead of the organization fork', async () => {
     await renderStory(HomeWithOrganizationStory);
 
+    // Home pós-login é o Entroncamento sob a tab bar de 5 abas (#32).
     expect(
-      await screen.findByTestId('MAIN.map-screen', {}, {timeout: 30_000}),
+      await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 30_000}),
     ).toBeOnTheScreen();
     expect(
       screen.queryByTestId('ONBOARDING.create-org-btn'),
@@ -296,9 +297,9 @@ describe('organization stories (FlowStateScope)', () => {
       ),
     ).toBeOnTheScreen();
     // Home stays mounted beneath the sheet, hidden from accessibility as a
-    // covered screen is.
+    // covered screen is (Entroncamento sob a tab bar de 5 abas, #32).
     expect(
-      screen.getByTestId('MAIN.map-screen', {includeHiddenElements: true}),
+      screen.getByTestId('ENTRONCAMENTO.scrn', {includeHiddenElements: true}),
     ).toBeOnTheScreen();
 
     // B sorts after A by name; it leads because it is the active one.
@@ -388,9 +389,10 @@ describe('organization stories (FlowStateScope)', () => {
         `STORYBOOK.flow-ready.${CREATE_SECOND_STORY_ID}.CreateOrganization`,
       ),
     ).toBeOnTheScreen();
-    // The real path: the drawer entry pushes over Home, which stays mounted.
+    // The real path: the drawer entry pushes over Home, which stays mounted
+    // (Entroncamento sob a tab bar de 5 abas, #32).
     expect(
-      screen.getByTestId('MAIN.map-screen', {includeHiddenElements: true}),
+      screen.getByTestId('ENTRONCAMENTO.scrn', {includeHiddenElements: true}),
     ).toBeOnTheScreen();
     expectPersistedOrganizations(
       ['aaaaaaaaaaaaaaaa:pronta'],
@@ -418,8 +420,10 @@ describe('organization stories (FlowStateScope)', () => {
     // show no preparation rows at all.
     expect(screen.getByText('Ready')).toBeOnTheScreen();
     expect(screen.getByText('Preparing')).toBeOnTheScreen();
+    // Home stays mounted beneath the provisioning surface (Entroncamento sob
+    // a tab bar de 5 abas, #32).
     expect(
-      screen.getByTestId('MAIN.map-screen', {includeHiddenElements: true}),
+      screen.getByTestId('ENTRONCAMENTO.scrn', {includeHiddenElements: true}),
     ).toBeOnTheScreen();
 
     // A stays open and active; B is persisted mid-materialization.
