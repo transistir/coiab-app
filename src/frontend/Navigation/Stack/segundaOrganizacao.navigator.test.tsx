@@ -323,7 +323,8 @@ describe('segunda organização (navigator real)', () => {
     );
     await orgSetup.renderNavigation();
     expect(
-      await screen.findByTestId('MAIN.map-screen', {}, {timeout: 15_000}),
+      // Home pós-login é o Entroncamento (tab bar 5 abas, #32).
+      await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 15_000}),
     ).toBeOnTheScreen();
 
     // Early access + drawer entry → CreateOrganization.
@@ -388,7 +389,7 @@ describe('segunda organização (navigator real)', () => {
       screen.getByTestId('ORG.provisioning-open-organization-btn'),
     );
     expect(
-      await screen.findByTestId('MAIN.map-screen', {}, {timeout: 15_000}),
+      await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 15_000}),
     ).toBeOnTheScreen();
     expect(
       mockNavigation.getRootState().routes.map(route => route.name),
@@ -434,6 +435,9 @@ describe('segunda organização (navigator real)', () => {
         ).toEqual(['Home']),
       {timeout: 15_000},
     );
+    // A troca por linha do seletor (Organizations.tsx:187) faz reset com
+    // params {screen: 'Map'} — a aba Map é a que fica visível; o alvo
+    // Entroncamento é trabalho do PR B (#32) — ver relatório.
     expect(
       await screen.findByTestId('MAIN.map-screen', {}, {timeout: 15_000}),
     ).toBeOnTheScreen();
@@ -494,7 +498,7 @@ describe('segunda organização (navigator real)', () => {
     // A's session was never taken down by B's preparation: the engine
     // stayed open on A, so Home operates A.
     expect(
-      await screen.findByTestId('MAIN.map-screen', {}, {timeout: 15_000}),
+      await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 15_000}),
     ).toBeOnTheScreen();
     expect(
       await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
@@ -764,7 +768,7 @@ describe('segunda organização (navigator real)', () => {
         releaseRefresh();
       });
       expect(
-        await screen.findByTestId('MAIN.map-screen', {}, {timeout: 15_000}),
+        await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 15_000}),
       ).toBeOnTheScreen();
       expect(
         await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
