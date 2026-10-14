@@ -1,12 +1,16 @@
 import * as React from 'react';
-import {TouchableOpacity, useWindowDimensions} from 'react-native';
+import {
+  StyleSheet,
+  TouchableOpacity,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import {
   createBottomTabNavigator,
   type BottomTabHeaderProps,
 } from '@react-navigation/bottom-tabs';
 import {CameraScreen} from '../../screens/CameraScreen';
 import {Entroncamento} from '../../screens/Entroncamento';
-import {Filtros} from '../../screens/Filtros';
 import {MapScreen} from '../../screens/MapScreen';
 import {Notificacoes} from '../../screens/Notificacoes';
 import {ObservationsList} from '../../screens/ObservationsList';
@@ -17,12 +21,16 @@ import {
 import {HomeHeader} from '../../sharedComponents/HomeHeader';
 import {TabBar} from './TabBar';
 import {FullScreenCenteredLoader} from '../../sharedComponents/FullScreenCenteredLoader';
-import {NEW_DARK_GREY, WHITE} from '../../lib/styles';
+import {COIAB_ORANGE, NEW_DARK_GREY, WHITE} from '../../lib/styles';
 import {Drawer} from 'react-native-drawer-layout';
 import {DrawerMenu} from '../../sharedComponents/DrawerMenu';
 import {useOpenDrawer} from '../../hooks/useOpenDrawer';
 import {ProjectRemovalListener} from '../../sharedComponents/ProjectRemovalListener';
 import {DownloadIcon} from '../../sharedComponents/icons';
+import TracksIcon from '../../images/Tracks.svg';
+import {useTracking} from '../../hooks/useTracking';
+import {useTrackTimer} from '../../hooks/useTrackTimer.ts';
+import {BodyText} from '../../sharedComponents/Text/BodyText';
 import {useObservations} from '../../hooks/server/observations';
 import {useTracks} from '../../hooks/server/track';
 import {useAuthContext} from '../../contexts/AuthContext';
@@ -118,21 +126,27 @@ export const HomeTabs = ({navigation}: NativeRootNavigationProps<'Home'>) => {
             </React.Suspense>
           )}
           backBehavior="initialRoute">
-          {/* COIAB (#32 PR A): barra de 5 abas — Entroncamento (inicial,
-              pós-login), Filtros, Map, Notificações e Paneiro. A rota Camera
-              segue registrada sem botão na barra (o acesso à câmera vive no
-              fluxo de criação de observação). */}
+          {/* COIAB (#32 feedback): barra de 4 abas — Organização (inicial,
+              pós-login, cujo conteúdo é a tela da organização), Map,
+              Notificações e Paneiro. A rota Camera segue registrada sem botão
+              na barra (o acesso à câmera vive no fluxo de criação de
+              observação). A aba Filtros foi removida (decisão de campo). */}
           <Tab.Screen
             name="Entroncamento"
             component={Entroncamento}
             options={{header: headerSolid}}
           />
           <Tab.Screen
-            name="Filtros"
-            component={Filtros}
-            options={{header: headerSolid}}
+            name="Map"
+            component={MapScreen}
+            options={({navigation: tabNav}) => ({
+              headerRight: () => (
+                <TrackMapButton
+                  onPress={() => tabNav.navigate('Map', {trackingOpen: true})}
+                />
+              ),
+            })}
           />
-          <Tab.Screen name="Map" component={MapScreen} />
           <Tab.Screen
             name="Notificacoes"
             component={Notificacoes}
@@ -157,6 +171,31 @@ export const HomeTabs = ({navigation}: NativeRootNavigationProps<'Home'>) => {
     </>
   );
 };
+
+export function TrackMapButton({onPress}: {onPress: () => void}) {
+  const {isTracking} = useTracking();
+  const timer = useTrackTimer();
+
+  return (
+    <TouchableOpacity
+      testID="mapTrackButton"
+      accessibilityLabel="Track recording"
+      hitSlop={20}
+      style={styles.trackMapButton}
+      onPress={onPress}>
+      {isTracking && (
+        <View style={styles.trackRuntimeWrapper}>
+          <View style={styles.trackIndicator} />
+          <BodyText variant="tinyMeta">{timer}</BodyText>
+        </View>
+      )}
+      <TracksIcon
+        color={isTracking ? COIAB_ORANGE : NEW_DARK_GREY}
+        height={22}
+      />
+    </TouchableOpacity>
+  );
+}
 
 function useShowDownloadIcon() {
   const {data: observations} = useObservations();
@@ -186,3 +225,32 @@ function DownloadObservationsButton({onPress}: {onPress: () => void}) {
     </TouchableOpacity>
   );
 }
+
+const styles = StyleSheet.create({
+  trackMapButton: {
+    marginRight: 10,
+    backgroundColor: WHITE,
+    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  trackRuntimeWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 6,
+  },
+  trackIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#59A553',
+    marginRight: 4,
+  },
+});

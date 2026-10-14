@@ -41,14 +41,6 @@
   "Modal.GPSDisable.title": {
     "message": "GPS Disabled"
   },
-  "Navigation.Tab.Entroncamento": {
-    "message": "Entroncamento",
-    "description": "Label of the Entroncamento (organization hub) tab"
-  },
-  "Navigation.Tab.Filtros": {
-    "message": "Filtros",
-    "description": "Label of the global filters tab"
-  },
   "Navigation.Tab.Mapa": {
     "message": "Map",
     "description": "Label of the map tab"
@@ -56,6 +48,10 @@
   "Navigation.Tab.Notificacoes": {
     "message": "Notificações",
     "description": "Label of the notifications tab"
+  },
+  "Navigation.Tab.Organizacao": {
+    "message": "Organização",
+    "description": "Accessibility label of the organization hub tab (the main tab renders no visible text)"
   },
   "Navigation.Tab.Paneiro": {
     "message": "Paneiro",
@@ -627,10 +623,6 @@
   },
   "screens.FatalError.somethingWrong": {
     "message": "Something Went Wrong"
-  },
-  "screens.Filtros.emBreve": {
-    "message": "Filtros (em breve)",
-    "description": "Placeholder note on the global filters tab"
   },
   "screens.InviteCancelled.canceled": {
     "message": "Invite Canceled"
