@@ -25,11 +25,10 @@ export type InviteProps = {
 };
 
 export type HomeTabsParamsList = {
-  // COIAB (#32): 5-abas — Entroncamento é a rota inicial pós-login; Filtros
-  // e Notificações são placeholders; Map/ObservationsList/Camera mantêm os
-  // IDs de rota do CoMapeo (Camera segue registrada, só deixou de ser aba).
+  // COIAB (#32): 4 abas — Entroncamento é a rota inicial pós-login e a Home;
+  // Notificações é placeholder; Map/ObservationsList/Camera mantêm os IDs de
+  // rota do CoMapeo (Camera segue registrada, só deixou de ser aba).
   Entroncamento: undefined;
-  Filtros: undefined;
   Map: undefined | {trackingOpen: boolean};
   Notificacoes: undefined;
   ObservationsList: undefined;
