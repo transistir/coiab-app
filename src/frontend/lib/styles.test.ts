@@ -18,6 +18,10 @@ const TABELA = {
   LIGHT_BLUE: '#A06829',
   DARK_BLUE: '#284D45',
   SYNC_BACKGROUND: '#284D45',
+  COIAB_ORANGE: '#FF9500',
+  COIAB_GREEN: '#458000',
+  COIAB_OCRE: '#A06829',
+  COIAB_RED: '#B90B0B',
   // ficam como estão
   BLACK: '#000000',
   WHITE: '#ffffff',
