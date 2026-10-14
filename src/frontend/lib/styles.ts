@@ -31,4 +31,11 @@ export const GPS_MODAL_TEXT = 'rgb(40,40,40)';
 export const DARK_GREEN = '#458000';
 export const WARNING_RED = '#D92222';
 export const LIGHT_GREEN = '#EEF6EE';
+
+// Paleta COIAB (Figma Kutary App V2, `2668:4449`): laranja marca a aba ativa
+// e cada cor nomeia um módulo da organização (doc/proposta-rotas-coiab.md).
+export const COIAB_ORANGE = '#FF9500';
+export const COIAB_GREEN = '#458000';
+export const COIAB_OCRE = '#A06829';
+export const COIAB_RED = '#B90B0B';
 export const LIGHT_ORANGE = '#FFF5EB';

@@ -528,8 +528,9 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
         )
       ).at(-1)!,
     );
+    // Home pós-login é o Entroncamento (tab bar 5 abas, #32).
     expect(
-      await screen.findByTestId('MAIN.map-screen', {}, {timeout: 30_000}),
+      await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 30_000}),
     ).toBeOnTheScreen();
     await waitFor(() => expect(rotas()).toEqual(['Home']), {timeout: 15_000});
     expect(
@@ -650,8 +651,9 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
       generation: 1,
       projectId: b.monitoramento,
     });
+    // B abre a Home = Entroncamento (tab bar 5 abas, #32).
     expect(
-      await screen.findByTestId('MAIN.map-screen', {}, {timeout: 30_000}),
+      await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 30_000}),
     ).toBeOnTheScreen();
     await waitFor(() => expect(rotas()).toEqual(['Home']), {timeout: 15_000});
     expect(documentoPersistido().ativa).toEqual({
@@ -875,7 +877,7 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
       screen.queryByTestId('ORG.provisioning-create-organization-btn'),
     ).not.toBeOnTheScreen();
 
-    // Opening B lands on B's Home/Map.
+    // Opening B lands on B's Home — Entroncamento under the 5-tab bar (#32).
     await fireEvent.press(
       (
         await screen.findAllByTestId(
@@ -886,7 +888,7 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
       ).at(-1)!,
     );
     expect(
-      await screen.findByTestId('MAIN.map-screen', {}, {timeout: 30_000}),
+      await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 30_000}),
     ).toBeOnTheScreen();
     expect(
       await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
@@ -980,8 +982,9 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
       ),
     );
     await orgSetup.renderNavigation();
+    // Home pós-login é o Entroncamento (tab bar 5 abas, #32).
     expect(
-      await screen.findByTestId('MAIN.map-screen', {}, {timeout: 30_000}),
+      await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 30_000}),
     ).toBeOnTheScreen();
 
     // In-session loss (remocaoDoProjeto's harness): the device's role in A
@@ -1050,6 +1053,9 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
       generation: geracaoDaPerda + 1,
       projectId: b.monitoramento,
     });
+    // A troca por linha do seletor (Organizations.tsx:187) faz reset com
+    // params {screen: 'Map'} — a aba Map é a que fica visível; o alvo
+    // Entroncamento é trabalho do PR B (#32) — ver relatório.
     expect(
       await screen.findByTestId('MAIN.map-screen', {}, {timeout: 30_000}),
     ).toBeOnTheScreen();
@@ -1121,8 +1127,9 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
         )
       ).at(-1)!,
     );
+    // C abre a Home = Entroncamento (tab bar 5 abas, #32).
     expect(
-      await screen.findByTestId('MAIN.map-screen', {}, {timeout: 30_000}),
+      await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 30_000}),
     ).toBeOnTheScreen();
     await waitFor(() => expect(rotas()).toEqual(['Home']), {timeout: 15_000});
     expect(

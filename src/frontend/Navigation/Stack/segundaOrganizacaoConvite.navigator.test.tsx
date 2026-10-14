@@ -338,12 +338,13 @@ describe('segunda organização por convite (navigator real)', () => {
       }
 
       await orgSetup.renderNavigation();
-      // A ativa opens Home/Map. The invite modal that the pending bundle
-      // opens over it marks the whole Home screen aria-hidden for native
-      // accessibility, so the mount assert must include hidden elements.
+      // A ativa opens Home — Entroncamento under the 5-tab bar (#32). The
+      // invite modal that the pending bundle opens over it marks the whole
+      // Home screen aria-hidden for native accessibility, so the mount
+      // assert must include hidden elements.
       expect(
         await screen.findByTestId(
-          'MAIN.map-screen',
+          'ENTRONCAMENTO.scrn',
           {includeHiddenElements: true},
           {timeout: 15_000},
         ),
@@ -542,12 +543,13 @@ describe('segunda organização por convite (navigator real)', () => {
       expect(inviteFailures).toEqual([]);
       // The tap is the only way Home opens (SPEC A §4.2 regra 9): the
       // invited organization opens like any other — the generation gate
-      // resets to Home/Map and the header shows B.
+      // resets to Home = Entroncamento (tab bar 5 abas, #32) and the
+      // header shows B.
       await fireEvent.press(
         screen.getByTestId('ORG.provisioning-open-organization-btn'),
       );
       expect(
-        await screen.findByTestId('MAIN.map-screen', {}, {timeout: 15_000}),
+        await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 15_000}),
       ).toBeOnTheScreen();
       expect(
         mockNavigation.getRootState().routes.map(route => route.name),

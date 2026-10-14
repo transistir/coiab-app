@@ -1,92 +1,177 @@
 import {BottomTabBarProps} from '@react-navigation/bottom-tabs';
 import * as React from 'react';
 import {StyleSheet, TouchableOpacity, View} from 'react-native';
-import NotebookPenIcon from '../../images/NotebookPen.svg';
+import {MessageDescriptor, defineMessages, useIntl} from 'react-intl';
 import TracksIcon from '../../images/Tracks.svg';
-import MaterialIcons from '@react-native-vector-icons/material-icons';
-import {COMAPEO_BLUE, MEDIUM_GREY} from '../../lib/styles';
+import {COIAB_ORANGE, MEDIUM_GREY} from '../../lib/styles';
 import {BodyText} from '../../sharedComponents/Text/BodyText';
 import {useTracking} from '../../hooks/useTracking';
 import {useTrackTimer} from '../../hooks/useTrackTimer.ts';
+import {
+  TabIconEntroncamento,
+  TabIconFiltros,
+  TabIconMapa,
+  TabIconNotificacoes,
+  TabIconPaneiro,
+  type TabIconProps,
+} from './TabBarIcons';
 
-const BUTTON_SIZE = 25;
 const HIT_SLOP = 20;
 
+const m = defineMessages({
+  entroncamento: {
+    id: 'Navigation.Tab.Entroncamento',
+    defaultMessage: 'Entroncamento',
+    description: 'Label of the Entroncamento (organization hub) tab',
+  },
+  filtros: {
+    id: 'Navigation.Tab.Filtros',
+    defaultMessage: 'Filtros',
+    description: 'Label of the global filters tab',
+  },
+  mapa: {
+    id: 'Navigation.Tab.Mapa',
+    defaultMessage: 'Map',
+    description: 'Label of the map tab',
+  },
+  notificacoes: {
+    id: 'Navigation.Tab.Notificacoes',
+    defaultMessage: 'Notificações',
+    description: 'Label of the notifications tab',
+  },
+  paneiro: {
+    id: 'Navigation.Tab.Paneiro',
+    defaultMessage: 'Paneiro',
+    description: 'Label of the paneiro (community observations) tab',
+  },
+});
+
+type TabConfig = {
+  /** ID de rota no navigator (Map e ObservationsList preservados do CoMapeo). */
+  route:
+    'Entroncamento' | 'Filtros' | 'Map' | 'Notificacoes' | 'ObservationsList';
+  testID: string;
+  accessibilityLabel: string;
+  label: MessageDescriptor;
+  icon: React.FC<TabIconProps>;
+};
+
+// COIAB (#32 PR A): a barra global de 5 abas do Figma `2668:4449`. A Camera
+// deixou de ser aba (a rota segue registrada — o acesso à câmera vive no fluxo
+// de criação de observação); o botão de trilha GPS é ação, não aba, e segue
+// aqui para a gravação de trilha não perder sua entrada.
+const TABS: TabConfig[] = [
+  {
+    route: 'Entroncamento',
+    testID: 'tabBarButtonEntroncamento',
+    accessibilityLabel: 'Go to entroncamento.',
+    label: m.entroncamento,
+    icon: TabIconEntroncamento,
+  },
+  {
+    route: 'Filtros',
+    testID: 'tabBarButtonFiltros',
+    accessibilityLabel: 'Go to filters.',
+    label: m.filtros,
+    icon: TabIconFiltros,
+  },
+  {
+    route: 'Map',
+    testID: 'tabBarButtonMap',
+    accessibilityLabel: 'Go to map.',
+    label: m.mapa,
+    icon: TabIconMapa,
+  },
+  {
+    route: 'Notificacoes',
+    testID: 'tabBarButtonNotificacoes',
+    accessibilityLabel: 'Go to notifications.',
+    label: m.notificacoes,
+    icon: TabIconNotificacoes,
+  },
+  {
+    route: 'ObservationsList',
+    testID: 'tabBarButtonPaneiro',
+    accessibilityLabel: 'Go to paneiro.',
+    label: m.paneiro,
+    icon: TabIconPaneiro,
+  },
+];
+
+function TabButton({
+  config,
+  isSelected,
+  onPress,
+}: {
+  config: TabConfig;
+  isSelected: boolean;
+  onPress: () => void;
+}) {
+  const {formatMessage} = useIntl();
+  const Icon = config.icon;
+
+  return (
+    <TouchableOpacity
+      testID={config.testID}
+      accessibilityLabel={config.accessibilityLabel}
+      accessibilityRole="tab"
+      accessibilityState={{selected: isSelected}}
+      hitSlop={HIT_SLOP}
+      style={styles.buttonStyle}
+      onPress={onPress}>
+      <Icon active={isSelected} />
+      <BodyText
+        variant="tinyMeta"
+        style={{
+          marginTop: 2,
+          color: isSelected ? COIAB_ORANGE : MEDIUM_GREY,
+        }}>
+        {formatMessage(config.label)}
+      </BodyText>
+    </TouchableOpacity>
+  );
+}
 export const TabBar = ({navigation, state}: BottomTabBarProps) => {
   const currentIndex = state.index;
   const currentTab = state.routes[currentIndex];
 
-  function onPressMap() {
-    navigation.navigate('Map', {trackingOpen: false});
-  }
+  const mapaSelecionado = !!(
+    currentTab?.name === 'Map' &&
+    currentTab?.params &&
+    !(
+      'trackingOpen' in currentTab.params &&
+      currentTab.params.trackingOpen === true
+    )
+  );
+  const trilhaSelecionada = !!(
+    currentTab?.name === 'Map' &&
+    currentTab?.params &&
+    'trackingOpen' in currentTab.params &&
+    currentTab.params.trackingOpen === true
+  );
 
-  function onPressTracks() {
-    navigation.navigate('Map', {trackingOpen: true});
-  }
   return (
     <View style={styles.container}>
-      <TouchableOpacity
-        hitSlop={HIT_SLOP}
-        testID="tabBarButtonObservationsList"
-        accessibilityLabel="Go to observations list."
-        style={styles.buttonStyle}
-        onPress={() => navigation.navigate('ObservationsList')}>
-        <NotebookPenIcon
-          color={
-            currentTab?.name === 'ObservationsList' ? COMAPEO_BLUE : MEDIUM_GREY
+      {TABS.map(config => (
+        <TabButton
+          key={config.route}
+          config={config}
+          isSelected={
+            config.route === 'Map'
+              ? mapaSelecionado
+              : currentTab?.name === config.route
           }
-          stroke={
-            currentTab?.name === 'ObservationsList' ? COMAPEO_BLUE : MEDIUM_GREY
-          }
-          height={BUTTON_SIZE}
+          onPress={() => navigation.navigate(config.route)}
         />
-      </TouchableOpacity>
-      <TouchableOpacity
-        testID="tabBarButtonMap"
-        accessibilityLabel="Go to map."
-        hitSlop={HIT_SLOP}
-        style={styles.buttonStyle}
-        onPress={onPressMap}>
-        <MaterialIcons
-          color={
-            //@ts-expect-error known type
-            currentTab?.name === 'Map' && !currentTab?.params?.trackingOpen
-              ? COMAPEO_BLUE
-              : MEDIUM_GREY
-          }
-          size={BUTTON_SIZE}
-          name="map"
-        />
-      </TouchableOpacity>
-      <TouchableOpacity
-        hitSlop={HIT_SLOP}
-        testID="tabBarButtonCamera"
-        accessibilityLabel="Go to camera."
-        style={styles.buttonStyle}
-        onPress={() => navigation.navigate('Camera')}>
-        <MaterialIcons
-          color={currentTab?.name === 'Camera' ? COMAPEO_BLUE : MEDIUM_GREY}
-          size={BUTTON_SIZE}
-          name="photo-camera"
-        />
-      </TouchableOpacity>
+      ))}
 
       <TouchableOpacity
         hitSlop={HIT_SLOP}
         testID="tabBarButtonTracking"
         accessibilityLabel="Go to tracking."
         style={styles.trackContainer}
-        onPress={onPressTracks}>
-        <TrackButtonContent
-          isSelected={
-            !!(
-              currentTab?.name === 'Map' &&
-              currentTab?.params &&
-              'trackingOpen' in currentTab.params &&
-              currentTab.params.trackingOpen === true
-            )
-          }
-        />
+        onPress={() => navigation.navigate('Map', {trackingOpen: true})}>
+        <TrackButtonContent isSelected={trilhaSelecionada} />
       </TouchableOpacity>
     </View>
   );
@@ -105,10 +190,7 @@ const TrackButtonContent = ({isSelected}: {isSelected: boolean}) => {
           </BodyText>
         </View>
       )}
-      <TracksIcon
-        color={isSelected ? COMAPEO_BLUE : MEDIUM_GREY}
-        height={BUTTON_SIZE}
-      />
+      <TracksIcon color={isSelected ? COIAB_ORANGE : MEDIUM_GREY} height={25} />
     </>
   );
 };
@@ -120,8 +202,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   buttonStyle: {
-    marginTop: 25,
-    marginBottom: 25,
+    marginTop: 10,
+    marginBottom: 10,
     flex: 1,
     alignItems: 'center',
   },

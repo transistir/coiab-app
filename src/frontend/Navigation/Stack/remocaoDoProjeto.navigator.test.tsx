@@ -149,8 +149,9 @@ describe('remoção do dispositivo de um projeto (navigator real)', () => {
       orgSetup.orgName,
     );
     await orgSetup.renderNavigation();
+    // Home pós-login é o Entroncamento (tab bar 5 abas, #32).
     expect(
-      await screen.findByTestId('MAIN.map-screen', {}, {timeout: 15_000}),
+      await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 15_000}),
     ).toBeOnTheScreen();
     expect(nomesDasRotas()).toEqual(['Home']);
 

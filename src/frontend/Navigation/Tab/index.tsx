@@ -1,14 +1,20 @@
 import * as React from 'react';
 import {TouchableOpacity, useWindowDimensions} from 'react-native';
-import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
+import {
+  createBottomTabNavigator,
+  type BottomTabHeaderProps,
+} from '@react-navigation/bottom-tabs';
 import {CameraScreen} from '../../screens/CameraScreen';
+import {Entroncamento} from '../../screens/Entroncamento';
+import {Filtros} from '../../screens/Filtros';
 import {MapScreen} from '../../screens/MapScreen';
+import {Notificacoes} from '../../screens/Notificacoes';
 import {ObservationsList} from '../../screens/ObservationsList';
-import {HomeHeader} from '../../sharedComponents/HomeHeader';
 import {
   HomeTabsParamsList,
   NativeRootNavigationProps,
 } from '../../sharedTypes/navigation';
+import {HomeHeader} from '../../sharedComponents/HomeHeader';
 import {TabBar} from './TabBar';
 import {FullScreenCenteredLoader} from '../../sharedComponents/FullScreenCenteredLoader';
 import {NEW_DARK_GREY, WHITE} from '../../lib/styles';
@@ -37,9 +43,27 @@ export function getDrawerWidth(windowWidth: number) {
   return Math.max(Math.min(windowWidth - DRAWER_EDGE_GAP, MAX_DRAWER_WIDTH), 0);
 }
 
+// Header sólido (fundo branco) das abas de conteúdo — mesmo HomeHeader com o
+// botão que abre o drawer, para a gaveta seguir acessível de qualquer aba.
+const headerSolido =
+  (onPress: () => void) =>
+  (props: BottomTabHeaderProps): React.ReactElement => (
+    <React.Suspense fallback={null}>
+      <HomeHeader
+        {...props}
+        backgroundColor={WHITE}
+        showBottomBorder={true}
+        onPress={onPress}
+      />
+    </React.Suspense>
+  );
+
 export const HomeTabs = ({navigation}: NativeRootNavigationProps<'Home'>) => {
   const [drawerOpen, setDrawerOpen] = useOpenDrawer();
   const drawerWidth = getDrawerWidth(useWindowDimensions().width);
+
+  // Header sólido (fundo branco) das abas de conteúdo — ver headerSolido.
+  const headerSolid = headerSolido(() => setDrawerOpen(val => !val));
 
   return (
     <>
@@ -87,13 +111,33 @@ export const HomeTabs = ({navigation}: NativeRootNavigationProps<'Home'>) => {
               </React.Suspense>
             ),
           }}
-          initialRouteName={'Map'}
+          initialRouteName={'Entroncamento'}
           screenLayout={({children}) => (
             <React.Suspense fallback={<FullScreenCenteredLoader />}>
               {children}
             </React.Suspense>
           )}
           backBehavior="initialRoute">
+          {/* COIAB (#32 PR A): barra de 5 abas — Entroncamento (inicial,
+              pós-login), Filtros, Map, Notificações e Paneiro. A rota Camera
+              segue registrada sem botão na barra (o acesso à câmera vive no
+              fluxo de criação de observação). */}
+          <Tab.Screen
+            name="Entroncamento"
+            component={Entroncamento}
+            options={{header: headerSolid}}
+          />
+          <Tab.Screen
+            name="Filtros"
+            component={Filtros}
+            options={{header: headerSolid}}
+          />
+          <Tab.Screen name="Map" component={MapScreen} />
+          <Tab.Screen
+            name="Notificacoes"
+            component={Notificacoes}
+            options={{header: headerSolid}}
+          />
           <Tab.Screen
             name="ObservationsList"
             component={ObservationsList}
@@ -104,19 +148,9 @@ export const HomeTabs = ({navigation}: NativeRootNavigationProps<'Home'>) => {
                   onPress={() => navigation.navigate('ExportObservations')}
                 />
               ),
-              header: props => (
-                <React.Suspense fallback={null}>
-                  <HomeHeader
-                    {...props}
-                    backgroundColor={WHITE}
-                    showBottomBorder={true}
-                    onPress={() => setDrawerOpen(val => !val)}
-                  />
-                </React.Suspense>
-              ),
+              header: headerSolid,
             }}
           />
-          <Tab.Screen name="Map" component={MapScreen} />
           <Tab.Screen name="Camera" component={CameraScreen} />
         </Tab.Navigator>
       </Drawer>

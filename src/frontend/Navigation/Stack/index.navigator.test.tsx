@@ -448,7 +448,10 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       expect(screen.getByTestId('ORG.create-name-inp')).toBeOnTheScreen();
       expect(screen.getByText('Creating Organization…')).toBeOnTheScreen();
       expect(screen.queryByTestId('ORG.create-btn')).not.toBeOnTheScreen();
+      // "Nothing bounced to Home" covers the whole Home screen — under the
+      // 5-tab bar (#32) its initial tab is Entroncamento, not the Map.
       expect(screen.queryByTestId('MAIN.map-screen')).not.toBeOnTheScreen();
+      expect(screen.queryByTestId('ENTRONCAMENTO.scrn')).not.toBeOnTheScreen();
       expect(
         mockNavigation.getRootState().routes.map(route => route.name),
       ).not.toContain('Home');
@@ -468,11 +471,11 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       await fireEvent.press(
         screen.getByTestId('ORG.provisioning-open-organization-btn'),
       );
-      expect(await screen.findByTestId('MAIN.map-screen')).toBeOnTheScreen();
+      expect(await screen.findByTestId('ENTRONCAMENTO.scrn')).toBeOnTheScreen();
       await act(async () => {
         await listProjects();
       });
-      expect(screen.getByTestId('MAIN.map-screen')).toBeOnTheScreen();
+      expect(screen.getByTestId('ENTRONCAMENTO.scrn')).toBeOnTheScreen();
       expect(
         screen.queryByTestId('ONBOARDING.create-org-btn'),
       ).not.toBeOnTheScreen();
@@ -538,12 +541,15 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       expect(
         screen.queryByText('Wait for an invitation'),
       ).not.toBeOnTheScreen();
+      // "No flash of the fork" also means no Home mounted anywhere — under
+      // the 5-tab bar (#32) Home's initial tab is Entroncamento, not the Map.
       expect(screen.queryByTestId('MAIN.map-screen')).not.toBeOnTheScreen();
+      expect(screen.queryByTestId('ENTRONCAMENTO.scrn')).not.toBeOnTheScreen();
       await act(async () => {
         releaseValidacao();
       });
       expect(
-        await screen.findByTestId('MAIN.map-screen', {}, {timeout: 10000}),
+        await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 10000}),
       ).toBeOnTheScreen();
       expect(
         screen.queryByText('Wait for an invitation'),
@@ -752,7 +758,9 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       screen.getByTestId('ORG.provisioning-open-organization-btn'),
     );
 
-    expect(await screen.findByTestId('MAIN.map-screen')).toBeOnTheScreen();
+    // Home pós-login é o Entroncamento (tab bar 5 abas, #32): a aba Map
+    // e o MAIN.map-screen só existem depois de navegar até ela.
+    expect(await screen.findByTestId('ENTRONCAMENTO.scrn')).toBeOnTheScreen();
     // SPEC B §7: a evidência de organização aberta é o nome no cabeçalho —
     // com espaços das bordas removidos no save.
     expect(await screen.findByTestId('HOME.header-title')).toHaveTextContent(
@@ -837,7 +845,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
 
     await orgSetup.renderNavigation();
     expect(
-      await screen.findByTestId('MAIN.map-screen', {}, {timeout: 15_000}),
+      await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 15_000}),
     ).toBeOnTheScreen();
 
     // Enable the existing feature flag through its real registered screen,
@@ -887,7 +895,8 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     );
 
     await orgSetup.renderNavigation();
-    expect(await screen.findByTestId('MAIN.map-screen')).toBeOnTheScreen();
+    // Home pós-login é o Entroncamento sob a tab bar de 5 abas (#32).
+    expect(await screen.findByTestId('ENTRONCAMENTO.scrn')).toBeOnTheScreen();
 
     // CA16 no navigator real: o drawer mostra o nome da organização e os dois
     // acessos fixos, com Monitoramento marcado como corrente.
@@ -1009,8 +1018,11 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       });
       expect(derivarProjectIdAtivo(raw)).toBe(aProjectId);
 
-      // O refresh atrasado resolve e a tela de mapa abre no contexto novo —
-      // nada ressuscita a rota podada.
+      // O refresh atrasado resolve e a Home reabre no contexto novo — nada
+      // ressuscita a rota podada. O reset do gate (SPEC A §6.2 como
+      // implementado, Stack/index.tsx:181) mira explicitamente a aba Map
+      // (params {screen: 'Map'}): o alvo Entroncamento é trabalho do PR B
+      // (#32) — ver relatório.
       await act(async () => releaseRefresh());
       await act(async () => {
         await getOwnRoleReal();
@@ -1022,14 +1034,16 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
         mockNavigation.getRootState().routes.map(route => route.name),
       ).toEqual(['Home']);
 
-      // Back NÃO volta para a Observation (SPEC A §5.2:168).
+      // Back NÃO volta para a Observation (SPEC A §5.2:168). O Back do tab
+      // navigator (backBehavior initialRoute) agora recai na rota inicial
+      // das abas — Entroncamento (tab bar 5 abas, #32) — e não na aba Map.
       await act(async () => {
         mockNavigation.goBack();
       });
       expect(
         mockNavigation.getRootState().routes.map(route => route.name),
       ).toEqual(['Home']);
-      expect(screen.getByTestId('MAIN.map-screen')).toBeOnTheScreen();
+      expect(screen.getByTestId('ENTRONCAMENTO.scrn')).toBeOnTheScreen();
     } finally {
       releaseValidation();
       releaseRefresh();
