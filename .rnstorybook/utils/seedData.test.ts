@@ -5,6 +5,9 @@ import {
   selectSeedPosition,
   seededAreas,
   selectSeedPresets,
+  MISSING_PROJECT_ID,
+  ORPHANED_ORGANIZATION_ID,
+  unopenableDocument,
 } from './seedData';
 import {
   classificarDocumento,
@@ -368,5 +371,187 @@ describe('buildOrganizationDocument', () => {
         ),
       ).toThrow(/at most one organization being prepared/);
     });
+  });
+});
+
+describe('unopenableDocument', () => {
+  const organizationA = {id: 'aaaaaaaaaaaaaaaa', name: 'Test Organization A'};
+  const organizationB = {id: 'bbbbbbbbbbbbbbbb', name: 'Test Organization B'};
+  const projectIds = new Map([
+    [organizationA.id, {monitoramento: 'project-a-m', alertas: 'project-a-a'}],
+    [organizationB.id, {monitoramento: 'project-b-m', alertas: 'project-b-a'}],
+  ]);
+  // B is active although it sorts second: the fault must find the active
+  // organization by id, never by position.
+  const openDocument = () =>
+    buildOrganizationDocument(
+      {list: [organizationA, organizationB], activeId: organizationB.id},
+      projectIds,
+    );
+
+  it('relinks only the active Alertas to the missing project, keeping Monitoramento derived and the key order', () => {
+    const document = openDocument();
+    const unopenable = unopenableDocument(document, 'missing-project');
+
+    expect(parseEstadoOrganizacoes(unopenable)).not.toBeNull();
+    expect(derivarProjectIdAtivo(unopenable)).toBe('project-b-m');
+    // flowState compares documents by JSON.stringify: a reordered key would
+    // make it rewrite the persisted document on every pass.
+    expect(JSON.stringify(unopenable)).toBe(
+      JSON.stringify({
+        versao: 1,
+        organizacoes: [
+          {
+            id: organizationA.id,
+            nome: 'Test Organization A',
+            estado: 'pronta',
+            confirmacaoPendente: false,
+            materializacao: {
+              monitoramento: {
+                etapa: 'verificado',
+                projectId: 'project-a-m',
+                template: {versao: '1', hash: 'monitoramento'},
+                idsAntesDaCriacao: null,
+              },
+              alertas: {
+                etapa: 'verificado',
+                projectId: 'project-a-a',
+                template: {versao: '1', hash: 'alertas'},
+                idsAntesDaCriacao: null,
+              },
+            },
+            areaEmExecucao: null,
+            ultimoErro: null,
+          },
+          {
+            id: organizationB.id,
+            nome: 'Test Organization B',
+            estado: 'pronta',
+            confirmacaoPendente: false,
+            materializacao: {
+              monitoramento: {
+                etapa: 'verificado',
+                projectId: 'project-b-m',
+                template: {versao: '1', hash: 'monitoramento'},
+                idsAntesDaCriacao: null,
+              },
+              alertas: {
+                etapa: 'verificado',
+                projectId: MISSING_PROJECT_ID,
+                template: {versao: '1', hash: 'alertas'},
+                idsAntesDaCriacao: null,
+              },
+            },
+            areaEmExecucao: null,
+            ultimoErro: null,
+          },
+        ],
+        ativa: {organizacaoId: organizationB.id, area: 'monitoramento'},
+      }),
+    );
+    expect(document).toEqual(openDocument());
+  });
+
+  it('selects an organization the document does not hold, leaving the organizations intact', () => {
+    const document = openDocument();
+    const unopenable = unopenableDocument(document, 'orphan-selection');
+
+    expect(parseEstadoOrganizacoes(unopenable)).not.toBeNull();
+    expect(derivarProjectIdAtivo(unopenable)).toBeNull();
+    expect(unopenable.organizacoes.map(({id}) => id)).not.toContain(
+      ORPHANED_ORGANIZATION_ID,
+    );
+    expect(JSON.stringify(unopenable)).toBe(
+      JSON.stringify({
+        ...openDocument(),
+        ativa: {organizacaoId: ORPHANED_ORGANIZATION_ID, area: 'monitoramento'},
+      }),
+    );
+    expect(document).toEqual(openDocument());
+  });
+
+  it('refuses a document without a selection to break', () => {
+    const document = {...openDocument(), ativa: null};
+
+    expect(() => unopenableDocument(document, 'missing-project')).toThrow(
+      /needs an active organization/,
+    );
+    expect(() => unopenableDocument(document, 'orphan-selection')).toThrow(
+      /needs an active organization/,
+    );
+  });
+
+  it('refuses a missing project that would not leave the active Monitoramento derived', () => {
+    const document = openDocument();
+
+    // Selecting Alertas would make the missing project the derived one.
+    expect(() =>
+      unopenableDocument(
+        {...document, ativa: {organizacaoId: organizationB.id, area: 'alertas'}},
+        'missing-project',
+      ),
+    ).toThrow(/missing-project seed must stay/);
+    // A selection naming no organization has no project to keep open.
+    expect(() =>
+      unopenableDocument(
+        {
+          ...document,
+          ativa: {
+            organizacaoId: ORPHANED_ORGANIZATION_ID,
+            area: 'monitoramento',
+          },
+        },
+        'missing-project',
+      ),
+    ).toThrow(/missing-project seed must stay/);
+  });
+
+  it('refuses an orphaned selection the document holds an organization for', () => {
+    // Being prepared, that organization derives nothing either: only its
+    // presence in the list shows the selection is not orphaned.
+    const document = buildOrganizationDocument(
+      {
+        list: [
+          organizationA,
+          {
+            id: ORPHANED_ORGANIZATION_ID,
+            name: 'Test Organization C',
+            preparing: 'alertas',
+          },
+        ],
+        activeId: organizationA.id,
+      },
+      new Map([
+        ...projectIds,
+        [
+          ORPHANED_ORGANIZATION_ID,
+          {monitoramento: 'project-c-m', alertas: 'project-c-a'},
+        ],
+      ]),
+    );
+
+    expect(() => unopenableDocument(document, 'orphan-selection')).toThrow(
+      /orphan-selection seed must stay/,
+    );
+  });
+
+  it('refuses a copy the repository would not persist', () => {
+    // The parser rejects a nameless organization, and so does
+    // `repositorio.write`.
+    const document = openDocument();
+    const nameless = {
+      ...document,
+      organizacoes: document.organizacoes.map(organization => ({
+        ...organization,
+        nome: '',
+      })),
+    };
+
+    expect(() => unopenableDocument(nameless, 'missing-project')).toThrow(
+      /missing-project seed must stay/,
+    );
+    expect(() => unopenableDocument(nameless, 'orphan-selection')).toThrow(
+      /orphan-selection seed must stay/,
+    );
   });
 });

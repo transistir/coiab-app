@@ -24,6 +24,7 @@ import {
   AREAS,
   criarEtapaAreaAusente,
   derivarProjectIdAtivo,
+  parseEstadoOrganizacoes,
   type Area,
   type EstadoOrganizacoes,
   type EtapaArea,
@@ -123,6 +124,9 @@ export function useSeedOrganization(
  */
 export type SeedOrganization = {id: string; name: string; preparing?: Area};
 
+/** How `SeedOrganizations.unopenable` breaks the persisted selection. */
+export type UnopenableFault = 'missing-project' | 'orphan-selection';
+
 /**
  * Organizations for the COIAB document, `activeId` selected. At most one of
  * them may be `preparing`, and never the active one.
@@ -130,7 +134,22 @@ export type SeedOrganization = {id: string; name: string; preparing?: Area};
 export type SeedOrganizations = {
   list: ReadonlyArray<SeedOrganization>;
   activeId: string;
+  /**
+   * Persist the seed so the root engine cannot open its selection (recovery
+   * surface).
+   * - 'missing-project': the active org's Alertas link names a project the
+   *   backend never had.
+   * - 'orphan-selection': `ativa` names an organization the document does not
+   *   hold.
+   */
+  unopenable?: UnopenableFault;
 };
+
+/** The project a 'missing-project' seed links: no backend ever creates it. */
+export const MISSING_PROJECT_ID = 'storybook-missing-project';
+
+/** The organization an 'orphan-selection' seed selects: no seed holds it. */
+export const ORPHANED_ORGANIZATION_ID = 'cccccccccccccccc';
 
 const AREA_PROJECT_NAMES: Record<Area, string> = {
   monitoramento: 'Monitoramento',
@@ -215,6 +234,80 @@ export function buildOrganizationDocument(
     );
   }
   return document;
+}
+
+/**
+ * A copy of `document` — as `buildOrganizationDocument` returns it — that the
+ * root engine cannot open, yet the app still parses, so the production
+ * repository persists it:
+ *
+ * - 'missing-project' relinks only the active organization's Alertas to
+ *   `MISSING_PROJECT_ID`. Monitoramento stays the derived project, so the
+ *   screens keep a real one while the engine's role check fails on Alertas.
+ * - 'orphan-selection' points `ativa` at `ORPHANED_ORGANIZATION_ID`, which no
+ *   organization in the document holds: nothing is derived.
+ *
+ * Pure, and the key order is kept: flowState compares documents by
+ * `JSON.stringify`, and a reordered copy would be rewritten on every pass.
+ * Throws without a selection to break, or when the copy would not hold its
+ * fault's invariant.
+ */
+export function unopenableDocument(
+  document: EstadoOrganizacoes,
+  fault: UnopenableFault,
+): EstadoOrganizacoes {
+  const {ativa} = document;
+  if (!ativa) {
+    throw new Error(
+      `Storybook ${fault} seed needs an active organization to make unopenable`,
+    );
+  }
+
+  if (fault === 'missing-project') {
+    const derived = derivarProjectIdAtivo(document);
+    const unopenable: EstadoOrganizacoes = {
+      ...document,
+      organizacoes: document.organizacoes.map(organization =>
+        organization.id === ativa.organizacaoId
+          ? {
+              ...organization,
+              materializacao: {
+                ...organization.materializacao,
+                alertas: {
+                  ...organization.materializacao.alertas,
+                  projectId: MISSING_PROJECT_ID,
+                },
+              },
+            }
+          : organization,
+      ),
+    };
+    if (
+      !parseEstadoOrganizacoes(unopenable) ||
+      derived === null ||
+      derivarProjectIdAtivo(unopenable) !== derived
+    ) {
+      throw new Error(
+        'Storybook missing-project seed must stay a valid COIAB document deriving the same active project',
+      );
+    }
+    return unopenable;
+  }
+
+  const unopenable: EstadoOrganizacoes = {
+    ...document,
+    ativa: {...ativa, organizacaoId: ORPHANED_ORGANIZATION_ID},
+  };
+  if (
+    !parseEstadoOrganizacoes(unopenable) ||
+    derivarProjectIdAtivo(unopenable) !== null ||
+    unopenable.organizacoes.some(({id}) => id === ORPHANED_ORGANIZATION_ID)
+  ) {
+    throw new Error(
+      'Storybook orphan-selection seed must stay a valid COIAB document selecting none of its organizations',
+    );
+  }
+  return unopenable;
 }
 
 /**
