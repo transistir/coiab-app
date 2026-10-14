@@ -94,6 +94,7 @@ import {
   screen,
   userEvent,
   waitFor,
+  within,
 } from '@testing-library/react-native';
 
 import type {MapeoManager} from '@comapeo/core';
@@ -112,6 +113,9 @@ import {HomeTabs} from './index';
 type TestStackParamsList = {
   Home: NavigatorScreenParams<HomeTabsParamsList>;
   ObservationCategoryChooser: undefined;
+  // Configurações (5º item da tab bar) navega para AppSettings na root stack;
+  // aqui ela é stub, o suite só observa que a navegação sai das home tabs.
+  AppSettings: undefined;
 };
 
 const Stack = createNativeStackNavigator<TestStackParamsList>();
@@ -122,6 +126,12 @@ let mockNavigation: NavigationContainerRef<TestStackParamsList>;
 // "+" must leave the home tabs, which is all this suite needs to observe.
 function StubObservationCategoryChooser() {
   return <View testID="STUB.category-chooser" />;
+}
+
+// Configurações alvo (AppSettings) stub: pressionar a engrenagem deve sair
+// das home tabs e chegar aqui.
+function StubAppSettings() {
+  return <View testID="STUB.app-settings" />;
 }
 
 describe('HomeTabs — barra de 5 abas (#32)', () => {
@@ -178,6 +188,7 @@ describe('HomeTabs — barra de 5 abas (#32)', () => {
                 name="ObservationCategoryChooser"
                 component={StubObservationCategoryChooser}
               />
+              <Stack.Screen name="AppSettings" component={StubAppSettings} />
             </Stack.Navigator>
           </ActiveProjectProvider>
         </React.Suspense>
@@ -191,35 +202,88 @@ describe('HomeTabs — barra de 5 abas (#32)', () => {
     });
   }
 
-  test('a tab bar mostra exatamente 5 abas com labels, Entroncamento ativa por padrão', async () => {
+  test('a tab bar mostra exatamente 5 itens (menu, paneiro, map, notificações, configurações), sem rótulo de texto, Menu ativo por padrão', async () => {
     await renderHomeTabs();
 
-    // As cinco abas da barra (IDs de rota preservados: Map e
-    // ObservationsList continuam Map e ObservationsList).
+    // Os cinco itens da barra do Figma `footer-menu`, na ordem
+    // esquerda→direita. Paneiro usa a rota ObservationsList (funil ≠ filtro);
+    // Configurações navega para AppSettings na root stack (não é aba).
     const tabButtons = [
-      'tabBarButtonEntroncamento',
-      'tabBarButtonFiltros',
+      'tabBarButtonMenu',
+      'tabBarButtonPaneiro',
       'tabBarButtonMap',
       'tabBarButtonNotificacoes',
-      'tabBarButtonPaneiro',
+      'tabBarButtonConfiguracoes',
     ];
     for (const testID of tabButtons) {
       expect(await screen.findByTestId(testID)).toBeTruthy();
     }
     // A Camera deixou de ser aba (só o botão some; a rota continua).
     expect(screen.queryByTestId('tabBarButtonCamera')).toBeNull();
+    // Itens que saíram no v3: perfil nunca existiu; a trilha/download não
+    // vive na barra (a trilha é ação DENTRO do mapa); Filtros deixou de ser
+    // aba (o funil agora é o Paneiro).
+    expect(screen.queryByTestId('tabBarButtonTracking')).toBeNull();
+    expect(screen.queryByTestId('tabBarButtonFiltros')).toBeNull();
+    expect(screen.queryByTestId('tabBarButtonEntroncamento')).toBeNull();
 
-    // Labels visíveis nas 5 abas.
-    expect(screen.getByText('Entroncamento')).toBeTruthy();
-    expect(screen.getByText('Filtros')).toBeTruthy();
-    expect(screen.getByText('Map')).toBeTruthy();
-    expect(screen.getByText('Notificações')).toBeTruthy();
-    expect(screen.getByText('Paneiro')).toBeTruthy();
+    // Sem rótulo de texto na barra (ícones apenas, como no Figma).
+    expect(screen.queryByText('Menu')).toBeNull();
+    expect(screen.queryByText('Paneiro')).toBeNull();
+    expect(screen.queryByText('Filtros')).toBeNull();
+    expect(screen.queryByText('Entroncamento')).toBeNull();
 
-    // Entroncamento é a rota inicial pós-login e seu placeholder aparece.
-    expect(mockNavigation.getCurrentRoute()?.name).toBe('Entroncamento');
-    expect(screen.getByText('Olá')).toBeTruthy();
-    expect(screen.getByText('4 módulos em breve')).toBeTruthy();
+    // Menu é a rota inicial pós-login e renderiza a página de menu (o
+    // conteúdo que o CoMapeo mostrava na drawer do header).
+    expect(mockNavigation.getCurrentRoute()?.name).toBe('Menu');
+    expect(await screen.findByTestId('MENU.scrn')).toBeTruthy();
+    // Continuidade de testes de navigator (#32): a Home pós-login carrega o
+    // testID ENTRONCAMENTO.scrn.
+    expect(screen.getByTestId('ENTRONCAMENTO.scrn')).toBeTruthy();
+  });
+
+  test('o botão funil (paneiro) navega para a ObservationsList', async () => {
+    await renderHomeTabs();
+    const user = userEvent.setup();
+
+    await user.press(await screen.findByTestId('tabBarButtonPaneiro'));
+
+    expect(mockNavigation.getCurrentRoute()?.name).toBe('ObservationsList');
+    // Sem observações no projeto novo, a lista existente cai na view vazia.
+    expect(await screen.findByTestId('observationsEmptyView')).toBeTruthy();
+  });
+
+  test('o botão engrenagem navega para a tela de configurações (AppSettings)', async () => {
+    await renderHomeTabs();
+    const user = userEvent.setup();
+
+    await user.press(await screen.findByTestId('tabBarButtonConfiguracoes'));
+
+    await waitFor(() =>
+      expect(mockNavigation.getCurrentRoute()?.name).toBe('AppSettings'),
+    );
+    expect(await screen.findByTestId('STUB.app-settings')).toBeTruthy();
+  });
+
+  test('o botão menu abre a página de menu (conteúdo da drawer atual)', async () => {
+    await renderHomeTabs();
+    const user = userEvent.setup();
+
+    // Sai da Home para o mapa e volta pelo botão de menu.
+    await user.press(await screen.findByTestId('tabBarButtonMap'));
+    expect(await screen.findByTestId('MAIN.map-screen')).toBeTruthy();
+
+    await user.press(await screen.findByTestId('tabBarButtonMenu'));
+
+    expect(mockNavigation.getCurrentRoute()?.name).toBe('Menu');
+    // A página de menu mostra o conteúdo da drawer: o botão de ação (Exchange)
+    // e o cartão da organização, que vivem no DrawerMenu reaproveitado.
+    // Escopo ao subtree MENU.scrn porque o header do CoMapeo ainda monta sua
+    // própria cópia da drawer (follow-up: remover — ver docs/navegacao-coiab.md).
+    const menuPage = await screen.findByTestId('MENU.scrn');
+    expect(
+      within(menuPage).getByTestId('MENU.main-action-button'),
+    ).toBeTruthy();
   });
 
   test('a aba Map renderiza a MapScreen existente', async () => {
@@ -229,17 +293,6 @@ describe('HomeTabs — barra de 5 abas (#32)', () => {
     await user.press(await screen.findByTestId('tabBarButtonMap'));
 
     expect(await screen.findByTestId('MAIN.map-screen')).toBeTruthy();
-  });
-
-  test('a aba Paneiro renderiza a ObservationsList existente', async () => {
-    await renderHomeTabs();
-    const user = userEvent.setup();
-
-    await user.press(await screen.findByTestId('tabBarButtonPaneiro'));
-
-    // Sem observações no projeto novo, a lista existente cai na view vazia
-    // dela — é a ObservationsList montando, não uma tela nova.
-    expect(await screen.findByTestId('observationsEmptyView')).toBeTruthy();
   });
 
   test('a criação de observação continua acessível e a rota Camera não sumiu', async () => {

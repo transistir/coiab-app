@@ -1,10 +1,10 @@
 import * as React from 'react';
 import {StyleSheet, View} from 'react-native';
 
-import NotebookPenIcon from '../../images/NotebookPen.svg';
 import TabIconFunil from '../../images/TabIconFunil.svg';
 import TabIconMapaDobrado from '../../images/TabIconMapaDobrado.svg';
 import TabIconSino from '../../images/TabIconSino.svg';
+import TabIconEngrenagem from '../../images/TabIconEngrenagem.svg';
 import {
   COIAB_GREEN,
   COIAB_OCRE,
@@ -18,13 +18,13 @@ export type TabIconProps = {
   active: boolean;
   /**
    * Badge de pendência (#32): pontinho verde sob a aba — infra pronta, sem
-   * uso ainda (chega com as notificações/filtros reais).
+   * uso ainda (chega com as notificações reais).
    */
   showDot?: boolean;
 };
 
 const ICON_HEIGHT = 24;
-// O círculo do mapa é maior que os ícones vizinhos (Figma `2668:4449`).
+// O círculo do mapa é maior que os ícones vizinhos (Figma `footer-menu`).
 const MAP_CIRCLE_HEIGHT = 40;
 const DOT_SIZE = 8;
 
@@ -49,8 +49,11 @@ function IconWithDot({
   );
 }
 
-/** Entroncamento: 4 traços empilhados, um por módulo da organização. */
-export const TabIconEntroncamento = ({active, showDot}: TabIconProps) => (
+/**
+ * Menu: logo "bars" — 4 traços empilhados (um por módulo da organização).
+ * É o 1º botão do Figma `footer-menu`: abre a página de Menu (MenuScreen).
+ */
+export const TabIconMenu = ({active, showDot}: TabIconProps) => (
   <IconWithDot showDot={showDot}>
     <View style={styles.bars}>
       {BARRAS.map(({modulo, cor}) => (
@@ -63,8 +66,11 @@ export const TabIconEntroncamento = ({active, showDot}: TabIconProps) => (
   </IconWithDot>
 );
 
-/** Filtros: funil (traço do Figma `2668:4449`, aba 2). */
-export const TabIconFiltros = ({active, showDot}: TabIconProps) => (
+/**
+ * Paneiro: funil (Figma `footer-menu`, 2º item). O funil NÃO é filtro — é o
+ * paneiro, onde vivem as observações (rota ObservationsList).
+ */
+export const TabIconPaneiro = ({active, showDot}: TabIconProps) => (
   <IconWithDot showDot={showDot}>
     <TabIconFunil
       color={active ? COIAB_ORANGE : MEDIUM_GREY}
@@ -74,7 +80,7 @@ export const TabIconFiltros = ({active, showDot}: TabIconProps) => (
   </IconWithDot>
 );
 
-/** Mapa: mapa dobrado dentro do círculo destacado (Figma `2668:4449`, aba 3). */
+/** Mapa: mapa dobrado dentro do círculo destacado (Figma `footer-menu`, central). */
 export const TabIconMapa = ({active, showDot}: TabIconProps) => (
   <IconWithDot showDot={showDot}>
     <TabIconMapaDobrado
@@ -85,7 +91,7 @@ export const TabIconMapa = ({active, showDot}: TabIconProps) => (
   </IconWithDot>
 );
 
-/** Notificações: sino (traço do Figma `2668:4449`, aba 4). */
+/** Notificações: sino (Figma `footer-menu`, 4º item). */
 export const TabIconNotificacoes = ({active, showDot}: TabIconProps) => (
   <IconWithDot showDot={showDot}>
     <TabIconSino
@@ -96,12 +102,13 @@ export const TabIconNotificacoes = ({active, showDot}: TabIconProps) => (
   </IconWithDot>
 );
 
-/** Paneiro: caderneta (ícone de observações já existente no app). */
-export const TabIconPaneiro = ({active, showDot}: TabIconProps) => (
+/** Configurações: engrenagem (Figma `footer-menu`, 5º item). */
+export const TabIconConfiguracoes = ({active, showDot}: TabIconProps) => (
   <IconWithDot showDot={showDot}>
-    <NotebookPenIcon
+    <TabIconEngrenagem
       color={active ? COIAB_ORANGE : MEDIUM_GREY}
       height={ICON_HEIGHT}
+      width={ICON_HEIGHT}
     />
   </IconWithDot>
 );

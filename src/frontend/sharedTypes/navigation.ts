@@ -25,11 +25,13 @@ export type InviteProps = {
 };
 
 export type HomeTabsParamsList = {
-  // COIAB (#32): 5-abas — Entroncamento é a rota inicial pós-login; Filtros
-  // e Notificações são placeholders; Map/ObservationsList/Camera mantêm os
-  // IDs de rota do CoMapeo (Camera segue registrada, só deixou de ser aba).
-  Entroncamento: undefined;
-  Filtros: undefined;
+  // COIAB (#32 fase 3): tab bar de 5 itens do Figma `footer-menu` —
+  // Menu (rota inicial pós-login; renderiza o conteúdo da drawer como
+  // página), Paneiro=ObservationsList (funil), Map (central), Notificações
+  // (placeholder) e Configurações (navega para AppSettings na root stack,
+  // não é aba). Map/ObservationsList/Camera mantêm os IDs de rota do CoMapeo
+  // (Camera segue registrada, só deixou de ser aba). Ver docs/navegacao-coiab.md.
+  Menu: undefined;
   Map: undefined | {trackingOpen: boolean};
   Notificacoes: undefined;
   ObservationsList: undefined;

@@ -5,8 +5,7 @@ import {
   type BottomTabHeaderProps,
 } from '@react-navigation/bottom-tabs';
 import {CameraScreen} from '../../screens/CameraScreen';
-import {Entroncamento} from '../../screens/Entroncamento';
-import {Filtros} from '../../screens/Filtros';
+import {MenuScreen} from '../../screens/MenuScreen';
 import {MapScreen} from '../../screens/MapScreen';
 import {Notificacoes} from '../../screens/Notificacoes';
 import {ObservationsList} from '../../screens/ObservationsList';
@@ -111,31 +110,23 @@ export const HomeTabs = ({navigation}: NativeRootNavigationProps<'Home'>) => {
               </React.Suspense>
             ),
           }}
-          initialRouteName={'Entroncamento'}
+          initialRouteName={'Menu'}
           screenLayout={({children}) => (
             <React.Suspense fallback={<FullScreenCenteredLoader />}>
               {children}
             </React.Suspense>
           )}
           backBehavior="initialRoute">
-          {/* COIAB (#32 PR A): barra de 5 abas — Entroncamento (inicial,
-              pós-login), Filtros, Map, Notificações e Paneiro. A rota Camera
+          {/* COIAB (#32 fase 3): barra de 5 itens do Figma `footer-menu` —
+              Menu (inicial pós-login; renderiza o conteúdo da drawer como
+              página), Paneiro=ObservationsList (funil), Map (central),
+              Notificações e Configurações. Configurações não é aba: o botão
+              navega para AppSettings na root stack (ver TabBar). A rota Camera
               segue registrada sem botão na barra (o acesso à câmera vive no
-              fluxo de criação de observação). */}
+              fluxo de criação de observação). Ver docs/navegacao-coiab.md. */}
           <Tab.Screen
-            name="Entroncamento"
-            component={Entroncamento}
-            options={{header: headerSolid}}
-          />
-          <Tab.Screen
-            name="Filtros"
-            component={Filtros}
-            options={{header: headerSolid}}
-          />
-          <Tab.Screen name="Map" component={MapScreen} />
-          <Tab.Screen
-            name="Notificacoes"
-            component={Notificacoes}
+            name="Menu"
+            component={MenuScreen}
             options={{header: headerSolid}}
           />
           <Tab.Screen
@@ -150,6 +141,12 @@ export const HomeTabs = ({navigation}: NativeRootNavigationProps<'Home'>) => {
               ),
               header: headerSolid,
             }}
+          />
+          <Tab.Screen name="Map" component={MapScreen} />
+          <Tab.Screen
+            name="Notificacoes"
+            component={Notificacoes}
+            options={{header: headerSolid}}
           />
           <Tab.Screen name="Camera" component={CameraScreen} />
         </Tab.Navigator>
