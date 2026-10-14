@@ -6,7 +6,7 @@
     "message": "Hentikan trek"
   },
   "$1Navigation.Menu.Settings": {
-    "message": "Pengaturan CoMapeo"
+    "message": "Pengaturan Ekanâdyby"
   },
   "$1Navigation.Menu.bgMap": {
     "message": "Peta Latar Belakang"
@@ -115,11 +115,11 @@
   "$1Screens.ProjectSettings.title": {
     "message": "Alat Koordinator"
   },
-  "$1Screens.Settings.AppSettings.aboutCoMapeo": {
-    "message": "Tentang CoMapeo"
+  "$1Screens.Settings.AppSettings.aboutEkanâdyby": {
+    "message": "Tentang Ekanâdyby"
   },
   "$1Screens.Settings.AppSettings.title": {
-    "message": "Pengaturan CoMapeo"
+    "message": "Pengaturan Ekanâdyby"
   },
   "$1TrackBottomSheet.DidNotMove.delete": {
     "message": "Keluar dari Trek"
@@ -155,7 +155,7 @@
     "message": "Tidak melihat Perangkat?"
   },
   "$1screen.Settings.ProjectSettings.YourTeam.SelectDevice.sameVersion": {
-    "message": "Pastikan kedua perangkat berada di versi CoMapeo yang sama"
+    "message": "Pastikan kedua perangkat berada di versi Ekanâdyby yang sama"
   },
   "$1screen.Settings.ProjectSettings.YourTeam.SelectDevice.sameWifi": {
     "message": "Pastikan berdua perangkat terhubung ke jaringan Wi-Fi yang sama."
@@ -167,11 +167,11 @@
     "message": "Pilih Peran"
   },
   "$1screens.AboutSettings.seeUpdates": {
-    "message": "Lihat Pembaruan CoMapeo"
+    "message": "Lihat Pembaruan Ekanâdyby"
   },
   "$1screens.AboutSettings.title": {
-    "message": "Tentang CoMapeo",
-    "description": "Title of 'About CoMapeo' screen"
+    "message": "Tentang Ekanâdyby",
+    "description": "Title of 'About Ekanâdyby' screen"
   },
   "$1screens.AppPasscode": {
     "message": "Kode Sandi Aplikasi"
@@ -208,7 +208,7 @@
     "message": "Kata sandi tidak cocok"
   },
   "$1screens.AppPasscode.NewPasscode.InputPasscodeScreen.subTitleSet": {
-    "message": "Kode sandi ini akan diperlukan untuk membuka Aplikasi CoMapeo"
+    "message": "Kode sandi ini akan diperlukan untuk membuka Aplikasi Ekanâdyby"
   },
   "$1screens.AppPasscode.NewPasscode.SetPasscodeScreen.title": {
     "message": "Atur Kode Sandi"
@@ -220,10 +220,10 @@
     "message": "Apa itu Kode Sandi Aplikasi?"
   },
   "$1screens.AppPasscode.PasscodeIntro.description": {
-    "message": "Kode Sandi Aplikasi memungkinkan Anda menambahkan lapisan keamanan tambahan dengan mengharuskan Anda memasukkan kode sandi untuk membuka aplikasi CoMapeo. Anda dapat menentukan kode sandi 5 digit Anda sendiri dengan mengaktifkan fitur di bawah ini."
+    "message": "Kode Sandi Aplikasi memungkinkan Anda menambahkan lapisan keamanan tambahan dengan mengharuskan Anda memasukkan kode sandi untuk membuka aplikasi Ekanâdyby. Anda dapat menentukan kode sandi 5 digit Anda sendiri dengan mengaktifkan fitur di bawah ini."
   },
   "$1screens.AppPasscode.PasscodeIntro.warning": {
-    "message": "<bold>Awas: code sandi yang terlupakan tidak dapat dipulihkan!</bold> Setelah fitur ini diaktifkan, jika kode sandi dilupakan atau hilang, Anda tidak akan dapat membuka CoMapeo dan akan kehilangan akses ke data CoMapeo apa pun yang belum dipertukarkan dengan peserta lain."
+    "message": "<bold>Awas: code sandi yang terlupakan tidak dapat dipulihkan!</bold> Setelah fitur ini diaktifkan, jika kode sandi dilupakan atau hilang, Anda tidak akan dapat membuka Ekanâdyby dan akan kehilangan akses ke data Ekanâdyby apa pun yang belum dipertukarkan dengan peserta lain."
   },
   "$1screens.AppPasscode.TurnOffPasscode.changePasscode": {
     "message": "Mengubah Kode Sandi Aplikasi"
@@ -232,7 +232,7 @@
     "message": "Saat ini Anda menggunakan Kode Sandi Aplikasi. Lihat di bawah untuk berhenti menggunakan atau mengubah kode sandi Anda."
   },
   "$1screens.AppPasscode.TurnOffPasscode.description": {
-    "message": "Kode Sandi Aplikasi menambahkan lapisan keamanan tambahan dengan mengharuskan Anda memasukkan kode sandi untuk membuka aplikasi CoMapeo."
+    "message": "Kode Sandi Aplikasi menambahkan lapisan keamanan tambahan dengan mengharuskan Anda memasukkan kode sandi untuk membuka aplikasi Ekanâdyby."
   },
   "$1screens.AppPasscode.TurnOffPasscode.title": {
     "message": "Kode Sandi Aplikasi"
@@ -252,7 +252,7 @@
     "description": "Screen button text for not granting audio permission"
   },
   "$1screens.AudioPermission.title": {
-    "message": "Merekam Audio dengan CoMapeo",
+    "message": "Merekam Audio dengan Ekanâdyby",
     "description": "Screen title for audio permission screen"
   },
   "$1screens.AudioPlaybackNew.backToEditing": {
@@ -305,7 +305,7 @@
     "message": "Data Anda tetap berada di perangkat Anda—terenkripsi sepenuhnya dan berada dalam kendali Anda."
   },
   "$1screens.DataPrivacy.title": {
-    "message": "CoMapeo bersifat pribadi secara default."
+    "message": "Ekanâdyby bersifat pribadi secara default."
   },
   "$1screens.DeviceNaming.Success.chooseProject": {
     "message": "Pilih dari bawah ini untuk memulai proyek pertama Anda."
@@ -320,7 +320,7 @@
     "message": "Peta Sendiri"
   },
   "$1screens.DeviceNaming.description": {
-    "message": "Nama yang berbeda membantu kolaborator yang menggunakan CoMapeo untuk mengenali Anda."
+    "message": "Nama yang berbeda membantu kolaborator yang menggunakan Ekanâdyby untuk mengenali Anda."
   },
   "$1screens.DeviceNaming.header": {
     "message": "Beri Nama Perangkat Anda"
@@ -471,7 +471,7 @@
     "description": "Title of dialog to share an observation with media"
   },
   "$1screens.Observation.shareMessageFooter": {
-    "message": "Dikirim dari CoMapeo"
+    "message": "Dikirim dari Ekanâdyby"
   },
   "$1screens.Observation.shareTextTitle": {
     "message": "Berbagi teks",
@@ -523,7 +523,7 @@
     "message": "Tutup"
   },
   "$1screens.Onboarding.MapOnYourOwnIntro.description": {
-    "message": "Jelajahi CoMapeo—undang kolaborator kapan saja."
+    "message": "Jelajahi Ekanâdyby—undang kolaborator kapan saja."
   },
   "$1screens.Onboarding.MapOnYourOwnIntro.goToMap": {
     "message": "Buka Peta"

@@ -225,13 +225,13 @@
   "screen.Settings.ProjectSettings.YourTeam.SelectInviteeRole.selectingDevice": {
     "message": "Vous sélectionnez un rôle pour cet appareil:"
   },
-  "screens.AboutSettings.CoMapeoBuild": {
-    "message": "Version de CoMapeo",
-    "description": "Label for CoMapeo build number"
+  "screens.AboutSettings.EkanâdybyBuild": {
+    "message": "Version de Ekanâdyby",
+    "description": "Label for Ekanâdyby build number"
   },
-  "screens.AboutSettings.CoMapeoVersion": {
-    "message": "Version de CoMapeo",
-    "description": "Label for CoMapeo version"
+  "screens.AboutSettings.EkanâdybyVersion": {
+    "message": "Version de Ekanâdyby",
+    "description": "Label for Ekanâdyby version"
   },
   "screens.AboutSettings.androidBuild": {
     "message": "Numéro de la version d'Android",
@@ -242,14 +242,14 @@
     "description": "Label for Android version"
   },
   "screens.AboutSettings.comapeoWebsiteLabel": {
-    "message": "Site Web de CoMapeo"
+    "message": "Site Web de Ekanâdyby"
   },
   "screens.AboutSettings.earlyAccessBanner": {
     "message": "Vous êtes en mode accès anticipé."
   },
   "screens.AboutSettings.emojiSource": {
     "message": "Source d'émojis",
-    "description": "Label for the source of emojis used in CoMapeo"
+    "description": "Label for the source of emojis used in Ekanâdyby"
   },
   "screens.AboutSettings.phoneModel": {
     "message": "Modèle du téléphone",
@@ -297,10 +297,10 @@
     "message": "Les identifiants sont mélangés aléatoirement et changés chaque mois."
   },
   "screens.AppUsagePrompt.introText": {
-    "message": "Partagez la façon dont vous utilisez CoMapeo—toutes les données partagées ne peuvent pas être utilisées pour vous suivre."
+    "message": "Partagez la façon dont vous utilisez Ekanâdyby—toutes les données partagées ne peuvent pas être utilisées pour vous suivre."
   },
   "screens.AppUsagePrompt.neverStores": {
-    "message": "CoMapeo ne stocke jamais les adresses IP."
+    "message": "Ekanâdyby ne stocke jamais les adresses IP."
   },
   "screens.AppUsagePrompt.notNow": {
     "message": "Non, pas maintenant"
@@ -315,7 +315,7 @@
     "message": "Terminé"
   },
   "screens.AppUsageSharingSuccess.nowSharing": {
-    "message": "partage maintenant la façon dont vous utilisez CoMapeo avec Awana Digital."
+    "message": "partage maintenant la façon dont vous utilisez Ekanâdyby avec Awana Digital."
   },
   "screens.AppUsageSharingSuccess.removeAnytime": {
     "message": "Changez ceci à tout moment en accédant à Data & Privacy dans le Menu."
@@ -331,7 +331,7 @@
     "description": "Screen button text for navigating the user to settings when audio permission is denied"
   },
   "screens.AudioPermission.description": {
-    "message": "Pour enregistrer de l'audio en utilisant l'application et en arrière-plan, CoMapeo a besoin d'accéder à votre microphone. Veuillez activer les autorisations de microphone dans les paramètres de votre application.",
+    "message": "Pour enregistrer de l'audio en utilisant l'application et en arrière-plan, Ekanâdyby a besoin d'accéder à votre microphone. Veuillez activer les autorisations de microphone dans les paramètres de votre application.",
     "description": "Screen description for audio permission screen"
   },
   "screens.AudioRecording.lessThan1": {
@@ -371,7 +371,7 @@
     "message": "Les numéros d’identification sont mélangés aléatoirement et changés chaque mois."
   },
   "screens.DataAndPrivacy.appUsageText": {
-    "message": "Partagez la façon dont vous utilisez CoMapeo avec Awana Digital. Aucune information que vous partagez ne peut être utilisée pour vous suivre."
+    "message": "Partagez la façon dont vous utilisez Ekanâdyby avec Awana Digital. Aucune information que vous partagez ne peut être utilisée pour vous suivre."
   },
   "screens.DataAndPrivacy.appUsageTitle": {
     "message": "Utilisation de l'application"
@@ -383,7 +383,7 @@
     "message": "Informations sur le diagnostic"
   },
   "screens.DataAndPrivacy.ipAddress": {
-    "message": "CoMapeo ne stocke jamais les adresses IP."
+    "message": "Ekanâdyby ne stocke jamais les adresses IP."
   },
   "screens.DataAndPrivacy.learnMore": {
     "message": "En savoir plus"
@@ -398,7 +398,7 @@
     "message": "Vous pouvez refuser de partager des informations de diagnostic à tout moment."
   },
   "screens.DataAndPrivacy.respectsPrivacy": {
-    "message": "CoMapeo respecte votre vie privée et votre autonomie"
+    "message": "Ekanâdyby respecte votre vie privée et votre autonomie"
   },
   "screens.EarlyAccess.infoBox": {
     "message": "Les données de l'accès anticipé ne seront pas visibles pour les collaborateurs qui ne s'y sont pas engagés."
@@ -410,7 +410,7 @@
     "message": "Mode d'accès anticipé"
   },
   "screens.EarlyAccess.updates": {
-    "message": "Voir les mises à jour de CoMapeo"
+    "message": "Voir les mises à jour de Ekanâdyby"
   },
   "screens.EarlyAccess.useEarlyAccess": {
     "message": "Utiliser les fonctionnalités d'accès anticipé"
@@ -657,10 +657,10 @@
     "message": "Numéro de la zone"
   },
   "screens.ObscurePasscode.description": {
-    "message": "Le mot de passe obscure est une fonctionnalité de sécurité qui vous permet d'ouvrir CoMapeo en mode leurre qui masque toutes vos données. La saisie du mot de passe obscure sur l'écran d'introduction affichera une version vide de CoMapeo qui vous permet de créer des observations de démonstration qui ne sont pas enregistrées dans la base de données de CoMapeo."
+    "message": "Le mot de passe obscure est une fonctionnalité de sécurité qui vous permet d'ouvrir Ekanâdyby en mode leurre qui masque toutes vos données. La saisie du mot de passe obscure sur l'écran d'introduction affichera une version vide de Ekanâdyby qui vous permet de créer des observations de démonstration qui ne sont pas enregistrées dans la base de données de Ekanâdyby."
   },
   "screens.ObscurePasscode.instructions": {
-    "message": "Entrez le code ci-dessus pour cacher vos données dans CoMapeo"
+    "message": "Entrez le code ci-dessus pour cacher vos données dans Ekanâdyby"
   },
   "screens.ObscurePasscode.toggleMessage": {
     "message": "Utiliser le mot de passe obscure"
@@ -725,7 +725,7 @@
     "message": "Précision d'altitude"
   },
   "screens.ObservationMetadataVerified.coMapeoMetadata": {
-    "message": "Métadonnées de CoMapeo"
+    "message": "Métadonnées de Ekanâdyby"
   },
   "screens.ObservationMetadataVerified.dataEntered": {
     "message": "Ces données ont été saisies manuellement."
@@ -740,16 +740,16 @@
     "message": "Saisie manuellement."
   },
   "screens.ObservationMetadataVerified.sentByComapeo": {
-    "message": "Envoyé par CoMapeo"
+    "message": "Envoyé par Ekanâdyby"
   },
   "screens.ObservationMetadataVerified.sentFrom": {
-    "message": "Métadonnées de CoMapeo envoyées depuis"
+    "message": "Métadonnées de Ekanâdyby envoyées depuis"
   },
   "screens.ObservationMetadataVerified.speed": {
     "message": "Rapidité"
   },
-  "screens.ObservationMetadataVerified.validatedByCoMapeo": {
-    "message": "Envoyé et validé par CoMapeo"
+  "screens.ObservationMetadataVerified.validatedByEkanâdyby": {
+    "message": "Envoyé et validé par Ekanâdyby"
   },
   "screens.ObservationsList.ObservationsEmptyView.noObservationsDesc": {
     "message": "Commencez à partir de la carte ou de la caméra pour enregistrer votre première observation.",
@@ -802,8 +802,8 @@
     "message": "Attaché {formattedNum} après observation",
     "description": "Label for the time when the photo was attached to an observation"
   },
-  "screens.PhotoPreviewModal.validatedByCoMapeo": {
-    "message": "Validé par CoMapeo"
+  "screens.PhotoPreviewModal.validatedByEkanâdyby": {
+    "message": "Validé par Ekanâdyby"
   },
   "screens.PhotoPreviewModal.verifiedOriginal": {
     "message": "Ceci est un original vérifié non modifié.",
@@ -813,7 +813,7 @@
     "message": "À propos d'Awana Digital"
   },
   "screens.PrivacyPolicy.aboutAwanaContent": {
-    "message": "CoMapeo est développé par Awana Digital, une organisation à but non lucratif de 501c3 enregistrée aux États-Unis. Awana Digital travaille en solidarité avec les communautés de première ligne pour utiliser la technologie pour défendre leurs droits et lutter contre le changement climatique."
+    "message": "Ekanâdyby est développé par Awana Digital, une organisation à but non lucratif de 501c3 enregistrée aux États-Unis. Awana Digital travaille en solidarité avec les communautés de première ligne pour utiliser la technologie pour défendre leurs droits et lutter contre le changement climatique."
   },
   "screens.PrivacyPolicy.appErrors": {
     "message": "Erreurs d'application"
@@ -825,7 +825,7 @@
     "message": "Infos sur l'application"
   },
   "screens.PrivacyPolicy.appInfoDescription": {
-    "message": "La version et la locale (langue) de CoMapeo"
+    "message": "La version et la locale (langue) de Ekanâdyby"
   },
   "screens.PrivacyPolicy.appUsageTitle": {
     "message": "Utilisation de l'application"
@@ -834,7 +834,7 @@
     "message": "Vous êtes sous contrôle"
   },
   "screens.PrivacyPolicy.controlDescription": {
-    "message": "Vous pouvez choisir de ne plus envoyer de données à Awana Digital, où vos données sont enregistrées et avec qui elles sont partagées. Vous pouvez choisir de partager des données anonymes et résumées sur la façon dont vous utilisez CoMapeo avec Awana Digital. Nous serons toujours transparents sur les informations que vous choisissez de partager pour améliorer l'application, et cette information ne comprendra jamais des photos, des vidéos, de l'audio, du texte ou des lieux précis que vous avez entrés dans CoMapeo."
+    "message": "Vous pouvez choisir de ne plus envoyer de données à Awana Digital, où vos données sont enregistrées et avec qui elles sont partagées. Vous pouvez choisir de partager des données anonymes et résumées sur la façon dont vous utilisez Ekanâdyby avec Awana Digital. Nous serons toujours transparents sur les informations que vous choisissez de partager pour améliorer l'application, et cette information ne comprendra jamais des photos, des vidéos, de l'audio, du texte ou des lieux précis que vous avez entrés dans Ekanâdyby."
   },
   "screens.PrivacyPolicy.crashData": {
     "message": "Données de plantage"
@@ -843,7 +843,7 @@
     "message": "Informations sur ce qui a causé la fermeture inattendue de l'application"
   },
   "screens.PrivacyPolicy.dataCollection": {
-    "message": "Collecte de données CoMapeo"
+    "message": "Collecte de données Ekanâdyby"
   },
   "screens.PrivacyPolicy.deviceInfo": {
     "message": "Infos sur l'appareil"
@@ -855,22 +855,22 @@
     "message": "Aucune information personnellement identifiable"
   },
   "screens.PrivacyPolicy.noPIIDescription": {
-    "message": "L'utilisation de CoMapeo ne nécessite pas de compte utilisateur. Awana Digital ne recueille pas votre nom, votre adresse e-mail ou toute autre information personnelle. Aucun identifiant d'utilisateur ou identifiant de périphérique permanent n'est jamais partagé avec Awana Digital, et nous prenons des mesures supplémentaires pour nous assurer qu'aucune information que vous partagez ne peut être utilisée pour vous suivre : les identifiants sont randomisés et tournés (changés) chaque mois et nous ne stockons pas d'adresses IP."
+    "message": "L'utilisation de Ekanâdyby ne nécessite pas de compte utilisateur. Awana Digital ne recueille pas votre nom, votre adresse e-mail ou toute autre information personnelle. Aucun identifiant d'utilisateur ou identifiant de périphérique permanent n'est jamais partagé avec Awana Digital, et nous prenons des mesures supplémentaires pour nous assurer qu'aucune information que vous partagez ne peut être utilisée pour vous suivre : les identifiants sont randomisés et tournés (changés) chaque mois et nous ne stockons pas d'adresses IP."
   },
   "screens.PrivacyPolicy.notCollected": {
     "message": "Qu'est-ce qui n'est pas collecté?"
   },
   "screens.PrivacyPolicy.notCollectedDescription": {
-    "message": "Nous ne collectons aucune donnée personnelle ou de quoi que ce soit qui puisse être utilisé pour identifier ou suivre un utilisateur ou un périphérique. Les identifiants d'appareils utilisés pour agréger les informations sont aléatoires, anonymes et modifiés chaque mois. Les informations diagnostiques n'incluent pas de données sur la façon dont vous utilisez l'application, et il ne comprend jamais les données que vous avez collectées avec l'application. Nous ne collectons pas votre emplacement précis ou grossier, seulement le pays où vous utilisez CoMapeo."
+    "message": "Nous ne collectons aucune donnée personnelle ou de quoi que ce soit qui puisse être utilisé pour identifier ou suivre un utilisateur ou un périphérique. Les identifiants d'appareils utilisés pour agréger les informations sont aléatoires, anonymes et modifiés chaque mois. Les informations diagnostiques n'incluent pas de données sur la façon dont vous utilisez l'application, et il ne comprend jamais les données que vous avez collectées avec l'application. Nous ne collectons pas votre emplacement précis ou grossier, seulement le pays où vous utilisez Ekanâdyby."
   },
   "screens.PrivacyPolicy.openSource": {
     "message": "Open Source et la version \"Officielle\""
   },
   "screens.PrivacyPolicy.openSourceContent": {
-    "message": "CoMapeo est une application open-source. Cela signifie que n'importe qui peut voir le code qui fait fonctionner l'application et peut vérifier les déclarations de confidentialité dans ce document. Cela signifie également que n'importe qui peut adapter l'application à ses propres besoins et publier une version alternative. Ce document fait référence aux données recueillies par les communiqués officiels de CoMapeo, signé numériquement par Awana Digital, disponible sur le Google Play Store ou sur le site web Awana Digital. Les publications non officielles de CoMapeo obtenues à partir d'autres canaux échappent à notre contrôle et peuvent partager des informations supplémentaires avec d'autres organisations."
+    "message": "Ekanâdyby est une application open-source. Cela signifie que n'importe qui peut voir le code qui fait fonctionner l'application et peut vérifier les déclarations de confidentialité dans ce document. Cela signifie également que n'importe qui peut adapter l'application à ses propres besoins et publier une version alternative. Ce document fait référence aux données recueillies par les communiqués officiels de Ekanâdyby, signé numériquement par Awana Digital, disponible sur le Google Play Store ou sur le site web Awana Digital. Les publications non officielles de Ekanâdyby obtenues à partir d'autres canaux échappent à notre contrôle et peuvent partager des informations supplémentaires avec d'autres organisations."
   },
   "screens.PrivacyPolicy.overview": {
-    "message": "Ce document décrit quelles informations (« données ») sont envoyées de CoMapeo au développeur de l'application, Awana Digital, et comment ces informations sont utilisées."
+    "message": "Ce document décrit quelles informations (« données ») sont envoyées de Ekanâdyby au développeur de l'application, Awana Digital, et comment ces informations sont utilisées."
   },
   "screens.PrivacyPolicy.performanceData": {
     "message": "Données de performance"
@@ -879,13 +879,13 @@
     "message": "Comme le temps de lancement, l'utilisation d'énergie, le blocage de l'application et la réactivité"
   },
   "screens.PrivacyPolicy.privacyPolicyTitle": {
-    "message": "Confidentialité des données de CoMapeo"
+    "message": "Confidentialité des données de Ekanâdyby"
   },
   "screens.PrivacyPolicy.privateByDefault": {
     "message": "Privé par défaut"
   },
   "screens.PrivacyPolicy.privateByDefaultDescription": {
-    "message": "Les données que vous collectez et créez avec CoMapeo (emplacements, photos, vidéos, audio, text) est stocké uniquement sur votre appareil par défaut, et n'est stocké ou envoyé nulle part ailleurs. Lorsque vous partagez des données avec des collaborateurs en rejoignant un projet avec eux, elles sont envoyées chiffrées, directement à l'appareil de vos collaborateurs. Cela signifie que les données ne sont pas envoyées par Awana Digital, ni par qui que ce soit d'autre, en route vers votre collaborateur. Awana Digital ne voit jamais et n'a pas accès aux données que vous collectez avec CoMapeo à moins que vous ne nous les transmettiez explicitement."
+    "message": "Les données que vous collectez et créez avec Ekanâdyby (emplacements, photos, vidéos, audio, text) est stocké uniquement sur votre appareil par défaut, et n'est stocké ou envoyé nulle part ailleurs. Lorsque vous partagez des données avec des collaborateurs en rejoignant un projet avec eux, elles sont envoyées chiffrées, directement à l'appareil de vos collaborateurs. Cela signifie que les données ne sont pas envoyées par Awana Digital, ni par qui que ce soit d'autre, en route vers votre collaborateur. Awana Digital ne voit jamais et n'a pas accès aux données que vous collectez avec Ekanâdyby à moins que vous ne nous les transmettiez explicitement."
   },
   "screens.PrivacyPolicy.thirdParty": {
     "message": "Accès tiers aux données"
@@ -903,13 +903,13 @@
     "message": "Qu'est-ce qui est collecté?"
   },
   "screens.PrivacyPolicy.whatIsCollectedDescription": {
-    "message": "Par défaut, des informations de diagnostic anonymes sur votre appareil, des plantages d'applications, des erreurs et des performances sont partagées avec Awana Digital. Vous pouvez refuser de partager ces informations à tout moment. Ces informations de diagnostic sont totalement anonymes et ne contiennent jamais vos données (les données que vous avez collectées avec CoMapeo)."
+    "message": "Par défaut, des informations de diagnostic anonymes sur votre appareil, des plantages d'applications, des erreurs et des performances sont partagées avec Awana Digital. Vous pouvez refuser de partager ces informations à tout moment. Ces informations de diagnostic sont totalement anonymes et ne contiennent jamais vos données (les données que vous avez collectées avec Ekanâdyby)."
   },
   "screens.PrivacyPolicy.whyCollected": {
     "message": "Pourquoi ces données sont-elles collectées ?"
   },
   "screens.PrivacyPolicy.whyCollectedDescription": {
-    "message": "Les données de plantage et les erreurs d'application ainsi que les informations de l'appareil et de l'application fournissent à Awana Digital les informations dont nous avons besoin pour corriger les erreurs et les bugs dans l'application. Les données de performance nous aident à améliorer la réactivité de l'application et à identifier les erreurs. Le nombre d'utilisateurs, y compris le nombre total d'utilisateurs, d'utilisateurs par pays et d'utilisateurs par projet, aide à justifier l'investissement continu dans le développement de CoMapeo."
+    "message": "Les données de plantage et les erreurs d'application ainsi que les informations de l'appareil et de l'application fournissent à Awana Digital les informations dont nous avons besoin pour corriger les erreurs et les bugs dans l'application. Les données de performance nous aident à améliorer la réactivité de l'application et à identifier les erreurs. Le nombre d'utilisateurs, y compris le nombre total d'utilisateurs, d'utilisateurs par pays et d'utilisateurs par projet, aide à justifier l'investissement continu dans le développement de Ekanâdyby."
   },
   "screens.ProjectStatistics.navTitle": {
     "message": "Statistiques du projet"
@@ -1037,7 +1037,7 @@
     "message": "Politique de confidentialité"
   },
   "screens.ShareProjectStats.description": {
-    "message": "Cela nous aidera à recueillir des données sur la façon dont CoMapeo est utilisé et sur les fonctionnalités supplémentaires nécessaires."
+    "message": "Cela nous aidera à recueillir des données sur la façon dont Ekanâdyby est utilisé et sur les fonctionnalités supplémentaires nécessaires."
   },
   "screens.ShareProjectStats.fullyEncrypted": {
     "message": "Votre projet restera entièrement chiffré"
@@ -1140,7 +1140,7 @@
     "message": "Retour"
   },
   "soloProject.inviteCollaborators.introText": {
-    "message": "Partagez des observations avec d’autres personnes en utilisant CoMapeo."
+    "message": "Partagez des observations avec d’autres personnes en utilisant Ekanâdyby."
   },
   "soloProject.inviteCollaborators.inviteOnly": {
     "message": "Seuls les appareils invités à ce projet peuvent contribuer."

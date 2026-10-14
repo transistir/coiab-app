@@ -1,6 +1,6 @@
 import * as React from 'react';
 import {View, ScrollView, StyleSheet, TouchableOpacity} from 'react-native';
-import CoMapeoShield from '../../../images/CoMapeoShield.svg';
+import EkanadybySun from '../../../images/EkanadybySun.svg';
 import {
   BLUE_GREY,
   WHITE,
@@ -27,7 +27,7 @@ const m = defineMessages({
   },
   respectsPrivacy: {
     id: 'screens.DataAndPrivacy.respectsPrivacy',
-    defaultMessage: 'CoMapeo Respects Your Privacy & Autonomy',
+    defaultMessage: 'Ekanâdyby Respects Your Privacy & Autonomy',
   },
   learnMore: {
     id: 'screens.DataAndPrivacy.learnMore',
@@ -59,7 +59,7 @@ const m = defineMessages({
   appUsageText: {
     id: 'screens.DataAndPrivacy.appUsageText',
     defaultMessage:
-      'Share how you use CoMapeo with Awana Digital—no information you share can be used to track you.',
+      'Share how you use Ekanâdyby with Awana Digital—no information you share can be used to track you.',
   },
   appUsageId: {
     id: 'screens.DataAndPrivacy.appUsageId',
@@ -68,7 +68,7 @@ const m = defineMessages({
   },
   ipAddress: {
     id: 'screens.DataAndPrivacy.ipAddress',
-    defaultMessage: 'CoMapeo never stores IP addresses.',
+    defaultMessage: 'Ekanâdyby never stores IP addresses.',
   },
   shareAppUsage: {
     id: '$1screens.DataAndPrivacy.shareAppUsage',
@@ -88,7 +88,7 @@ export const DataAndPrivacy = ({
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.shieldContainer}>
-        <CoMapeoShield width={24} height={30} />
+        <EkanadybySun width={24} height={30} />
         <View style={styles.shieldTextContainer}>
           <HeaderText variant="header5" style={styles.respectsPrivacy}>
             {formatMessage(m.respectsPrivacy)}

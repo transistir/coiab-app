@@ -73,7 +73,7 @@ const m = defineMessages({
   },
   sentFrom: {
     id: 'screens.ObservationMetadataVerified.sentFrom',
-    defaultMessage: 'CoMapeo Metadata sent from',
+    defaultMessage: 'Ekanâdyby Metadata sent from',
   },
   fallbackPresetName: {
     id: 'screens.Observation.fallbackPresetName',
@@ -81,21 +81,21 @@ const m = defineMessages({
     description:
       'Fallback name used when category name cannot be determined for observation',
   },
-  coMapeoMetadata: {
-    id: 'screens.ObservationMetadataVerified.coMapeoMetadata',
-    defaultMessage: 'CoMapeo Metadata',
+  ekanadybyMetadata: {
+    id: 'screens.ObservationMetadataVerified.ekanadybyMetadata',
+    defaultMessage: 'Ekanâdyby Metadata',
   },
   date: {
     id: 'screens.ObservationMetadataVerified.date',
     defaultMessage: 'Date',
   },
-  validatedByCoMapeo: {
-    id: 'screens.ObservationMetadataVerified.validatedByCoMapeo',
-    defaultMessage: 'Sent and Validated by CoMapeo',
+  validatedByEkanadyby: {
+    id: 'screens.ObservationMetadataVerified.validatedByEkanadyby',
+    defaultMessage: 'Sent and Validated by Ekanâdyby',
   },
-  sentByComapeo: {
-    id: 'screens.ObservationMetadataVerified.sentByComapeo',
-    defaultMessage: 'Sent by CoMapeo',
+  sentByEkanadyby: {
+    id: 'screens.ObservationMetadataVerified.sentByEkanadyby',
+    defaultMessage: 'Sent by Ekanâdyby',
   },
   locationManuallyEntered: {
     id: 'screens.ObservationMetadataVerified.locationManuallyEntered',
@@ -273,11 +273,11 @@ export const ObservationMetadata: NativeNavigationComponent<
       .join('\n');
 
     const footer = !manualLocation
-      ? `-${formatMessage(m.validatedByCoMapeo)}-`
-      : `-${formatMessage(m.locationManuallyEntered)}-\n-${formatMessage(m.sentByComapeo)}-`;
+      ? `-${formatMessage(m.validatedByEkanadyby)}-`
+      : `-${formatMessage(m.locationManuallyEntered)}-\n-${formatMessage(m.sentByEkanadyby)}-`;
 
     const projectName = !name
-      ? formatMessage(m.coMapeoMetadata)
+      ? formatMessage(m.ekanadybyMetadata)
       : formatMessage(m.sentFrom) + ' ' + name;
 
     const categoryName = preset

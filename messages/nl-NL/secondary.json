@@ -228,13 +228,13 @@
   "screen.Settings.ProjectSettings.YourTeam.SelectInviteeRole.selectingDevice": {
     "message": "U selecteert een rol voor dit apparaat:"
   },
-  "screens.AboutSettings.CoMapeoBuild": {
-    "message": "CoMapeo maken",
-    "description": "Label for CoMapeo build number"
+  "screens.AboutSettings.EkanâdybyBuild": {
+    "message": "Ekanâdyby maken",
+    "description": "Label for Ekanâdyby build number"
   },
-  "screens.AboutSettings.CoMapeoVersion": {
-    "message": "CoMapeo versie",
-    "description": "Label for CoMapeo version"
+  "screens.AboutSettings.EkanâdybyVersion": {
+    "message": "Ekanâdyby versie",
+    "description": "Label for Ekanâdyby version"
   },
   "screens.AboutSettings.androidBuild": {
     "message": "Android build nummer",
@@ -245,14 +245,14 @@
     "description": "Label for Android version"
   },
   "screens.AboutSettings.comapeoWebsiteLabel": {
-    "message": "CoMapeo website"
+    "message": "Ekanâdyby website"
   },
   "screens.AboutSettings.earlyAccessBanner": {
     "message": "U bent in de Vroegtijdige toegangsmodus."
   },
   "screens.AboutSettings.emojiSource": {
     "message": "Emojis bron",
-    "description": "Label for the source of emojis used in CoMapeo"
+    "description": "Label for the source of emojis used in Ekanâdyby"
   },
   "screens.AboutSettings.phoneModel": {
     "message": "Telefoon model",
@@ -300,10 +300,10 @@
     "message": "ID's worden willekeurig gecodeerd en elke maand veranderd."
   },
   "screens.AppUsagePrompt.introText": {
-    "message": "Deel hoe je CoMapeo—alle gedeelde gegevens kunnen niet worden gebruikt om je te volgen."
+    "message": "Deel hoe je Ekanâdyby—alle gedeelde gegevens kunnen niet worden gebruikt om je te volgen."
   },
   "screens.AppUsagePrompt.neverStores": {
-    "message": "CoMapeo slaat nooit IP-adressen op."
+    "message": "Ekanâdyby slaat nooit IP-adressen op."
   },
   "screens.AppUsagePrompt.notNow": {
     "message": "Nee, nu niet"
@@ -318,7 +318,7 @@
     "message": "Voltooid"
   },
   "screens.AppUsageSharingSuccess.nowSharing": {
-    "message": "deelt nu hoe u CoMapeo gebruikt met Awana Digital."
+    "message": "deelt nu hoe u Ekanâdyby gebruikt met Awana Digital."
   },
   "screens.AppUsageSharingSuccess.removeAnytime": {
     "message": "Verander dit op elk gewenst moment door te navigeren naar gegevens en privacy in het Menu."
@@ -334,7 +334,7 @@
     "description": "Screen button text for navigating the user to settings when audio permission is denied"
   },
   "screens.AudioPermission.description": {
-    "message": "Om audio op te nemen tijdens het gebruik van de app en op de achtergrond heeft CoMapeo toegang nodig tot uw microfoon. Schakel permissies voor microfoon in in uw app-instellingen.",
+    "message": "Om audio op te nemen tijdens het gebruik van de app en op de achtergrond heeft Ekanâdyby toegang nodig tot uw microfoon. Schakel permissies voor microfoon in in uw app-instellingen.",
     "description": "Screen description for audio permission screen"
   },
   "screens.AudioRecording.lessThan1": {
@@ -373,7 +373,7 @@
     "message": "ID-nummers worden willekeurig gecodeerd en elke maand veranderd."
   },
   "screens.DataAndPrivacy.appUsageText": {
-    "message": "Deel hoe u CoMapeo gebruikt met Awana Digital—er kan geen informatie gebruikt worden om u te volgen."
+    "message": "Deel hoe u Ekanâdyby gebruikt met Awana Digital—er kan geen informatie gebruikt worden om u te volgen."
   },
   "screens.DataAndPrivacy.appUsageTitle": {
     "message": "App gebruik"
@@ -385,7 +385,7 @@
     "message": "Diagnostische informatie"
   },
   "screens.DataAndPrivacy.ipAddress": {
-    "message": "CoMapeo slaat nooit IP-adressen op."
+    "message": "Ekanâdyby slaat nooit IP-adressen op."
   },
   "screens.DataAndPrivacy.learnMore": {
     "message": "Meer informatie"
@@ -400,7 +400,7 @@
     "message": "U kunt diagnostische informatie op elk moment niet delen."
   },
   "screens.DataAndPrivacy.respectsPrivacy": {
-    "message": "CoMapeo Respecteert uw Privacy & Autonomie"
+    "message": "Ekanâdyby Respecteert uw Privacy & Autonomie"
   },
   "screens.EarlyAccess.infoBox": {
     "message": "Gegevens uit Vroegtijdige Toegang zullen niet zichtbaar zijn voor medewerkers die niet hebben gekozen."
@@ -412,7 +412,7 @@
     "message": "Vroegtijdige toegangsmodus"
   },
   "screens.EarlyAccess.updates": {
-    "message": "Zie CoMapeo updates"
+    "message": "Zie Ekanâdyby updates"
   },
   "screens.EarlyAccess.useEarlyAccess": {
     "message": "Gebruik Vroegtijdige Toegang Functies"
@@ -646,10 +646,10 @@
     "message": "Zone nummer"
   },
   "screens.ObscurePasscode.description": {
-    "message": "Obscure Passcode is een beveiligingsfunctie waarmee je CoMapeo kunt openen in een decoy modus die al je gegevens verbergt. Het invoeren van de Obscure toegangscode op het intro scherm geeft een lege versie van CoMapeo weer die u in staat stelt demonstratie-waarnemingen te maken die niet in de CoMapeo database zijn opgeslagen."
+    "message": "Obscure Passcode is een beveiligingsfunctie waarmee je Ekanâdyby kunt openen in een decoy modus die al je gegevens verbergt. Het invoeren van de Obscure toegangscode op het intro scherm geeft een lege versie van Ekanâdyby weer die u in staat stelt demonstratie-waarnemingen te maken die niet in de Ekanâdyby database zijn opgeslagen."
   },
   "screens.ObscurePasscode.instructions": {
-    "message": "Voer de bovenstaande code in om uw gegevens in CoMapeo te verbergen"
+    "message": "Voer de bovenstaande code in om uw gegevens in Ekanâdyby te verbergen"
   },
   "screens.ObscurePasscode.toggleMessage": {
     "message": "Gebruik Obscure wachtwoord"
@@ -750,16 +750,16 @@
     "message": "Handmatig ingevoerd."
   },
   "screens.ObservationMetadataVerified.sentByComapeo": {
-    "message": "Verzonden door CoMapeo"
+    "message": "Verzonden door Ekanâdyby"
   },
   "screens.ObservationMetadataVerified.sentFrom": {
-    "message": "CoMapeo metadata verzonden van"
+    "message": "Ekanâdyby metadata verzonden van"
   },
   "screens.ObservationMetadataVerified.speed": {
     "message": "Snelheid"
   },
-  "screens.ObservationMetadataVerified.validatedByCoMapeo": {
-    "message": "Verzonden en gevalideerd door CoMapeo"
+  "screens.ObservationMetadataVerified.validatedByEkanâdyby": {
+    "message": "Verzonden en gevalideerd door Ekanâdyby"
   },
   "screens.ObservationsList.ObservationsEmptyView.noObservationsDesc": {
     "message": "Begin van de kaart- of camera weergave om de eerste waarneming op te nemen.",
@@ -816,8 +816,8 @@
     "message": "{formattedNum} bijgevoegd na waarneming",
     "description": "Label for the time when the photo was attached to an observation"
   },
-  "screens.PhotoPreviewModal.validatedByCoMapeo": {
-    "message": "Gevalideerd door CoMapeo"
+  "screens.PhotoPreviewModal.validatedByEkanâdyby": {
+    "message": "Gevalideerd door Ekanâdyby"
   },
   "screens.PhotoPreviewModal.verifiedOriginal": {
     "message": "Dit is een ongecontroleerd origineel dat is geverifieerd.",
@@ -827,7 +827,7 @@
     "message": "Over Awana Digitaal"
   },
   "screens.PrivacyPolicy.aboutAwanaContent": {
-    "message": "CoMapeo is ontwikkeld door Awana Digital, een 501c3 non-profitorganisatie geregistreerd in de Verenigde Staten. Awana Digital werkt solidair met frontlinie gemeenschappen om technologie te gebruiken om hun rechten te verdedigen en klimaatverandering te bestrijden."
+    "message": "Ekanâdyby is ontwikkeld door Awana Digital, een 501c3 non-profitorganisatie geregistreerd in de Verenigde Staten. Awana Digital werkt solidair met frontlinie gemeenschappen om technologie te gebruiken om hun rechten te verdedigen en klimaatverandering te bestrijden."
   },
   "screens.PrivacyPolicy.appErrors": {
     "message": "App Fouten"
@@ -839,7 +839,7 @@
     "message": "App informatie"
   },
   "screens.PrivacyPolicy.appInfoDescription": {
-    "message": "De versie en lokalisatie (taal) van CoMapeo"
+    "message": "De versie en lokalisatie (taal) van Ekanâdyby"
   },
   "screens.PrivacyPolicy.appUsageTitle": {
     "message": "App gebruik"
@@ -848,7 +848,7 @@
     "message": "U bent de baas"
   },
   "screens.PrivacyPolicy.controlDescription": {
-    "message": "Je kunt je afmelden voor het verzenden van informatie naar Awana Digital. Je kiest waar je gegevens worden opgeslagen en met wie ze worden gedeeld. U kunt ervoor kiezen om geanonimiseerde, samengevatte gegevens te delen over hoe u CoMapeo gebruikt met Awana Digital. We zullen altijd transparant zijn over welke informatie je wilt delen om de app te verbeteren en deze informatie zal nooit foto's, video's, audio, tekst of precieze locaties bevatten die u hebt ingevoerd in CoMapeo."
+    "message": "Je kunt je afmelden voor het verzenden van informatie naar Awana Digital. Je kiest waar je gegevens worden opgeslagen en met wie ze worden gedeeld. U kunt ervoor kiezen om geanonimiseerde, samengevatte gegevens te delen over hoe u Ekanâdyby gebruikt met Awana Digital. We zullen altijd transparant zijn over welke informatie je wilt delen om de app te verbeteren en deze informatie zal nooit foto's, video's, audio, tekst of precieze locaties bevatten die u hebt ingevoerd in Ekanâdyby."
   },
   "screens.PrivacyPolicy.crashData": {
     "message": "Crash gegevens"
@@ -857,7 +857,7 @@
     "message": "Informatie over wat de app onverwacht heeft afgesloten"
   },
   "screens.PrivacyPolicy.dataCollection": {
-    "message": "CoMapeo gegevens verzamelen"
+    "message": "Ekanâdyby gegevens verzamelen"
   },
   "screens.PrivacyPolicy.deviceInfo": {
     "message": "Apparaat Info"
@@ -872,22 +872,22 @@
     "message": "Geen persoonlijk identificeerbare informatie"
   },
   "screens.PrivacyPolicy.noPIIDescription": {
-    "message": "Het gebruik van CoMapeo vereist geen gebruikersaccount. Awana Digital verzamelt uw naam, e-mailadres of andere persoonlijke gegevens niet. Geen permanent gebruikers-id of apparaat-id wordt ooit gedeeld met Awana Digital, en we nemen extra maatregelen om ervoor te zorgen dat geen informatie die u deelt gebruikt kan worden om u bij te houden: ID's worden elke maand willekeurig geordend en geroteerd (gewijzigd) en we slaan geen IP-adressen op."
+    "message": "Het gebruik van Ekanâdyby vereist geen gebruikersaccount. Awana Digital verzamelt uw naam, e-mailadres of andere persoonlijke gegevens niet. Geen permanent gebruikers-id of apparaat-id wordt ooit gedeeld met Awana Digital, en we nemen extra maatregelen om ervoor te zorgen dat geen informatie die u deelt gebruikt kan worden om u bij te houden: ID's worden elke maand willekeurig geordend en geroteerd (gewijzigd) en we slaan geen IP-adressen op."
   },
   "screens.PrivacyPolicy.notCollected": {
     "message": "Wat wordt niet verzameld?"
   },
   "screens.PrivacyPolicy.notCollectedDescription": {
-    "message": "We verzamelen geen persoonlijke gegevens of iets dat gebruikt kan worden om een gebruiker of apparaat te identificeren of te volgen. Apparaat-ID's die gebruikt worden om informatie samen te voegen zijn willekeurig, anoniem, en elke maand gewijzigd. Diagnostische informatie bevat geen gegevens over hoe je de app gebruikt. en het bevat nooit enige van de gegevens die u met de app hebt verzameld. We verzamelen uw precieze of grofste locatie niet, alleen het land waar u CoMapeo gebruikt."
+    "message": "We verzamelen geen persoonlijke gegevens of iets dat gebruikt kan worden om een gebruiker of apparaat te identificeren of te volgen. Apparaat-ID's die gebruikt worden om informatie samen te voegen zijn willekeurig, anoniem, en elke maand gewijzigd. Diagnostische informatie bevat geen gegevens over hoe je de app gebruikt. en het bevat nooit enige van de gegevens die u met de app hebt verzameld. We verzamelen uw precieze of grofste locatie niet, alleen het land waar u Ekanâdyby gebruikt."
   },
   "screens.PrivacyPolicy.openSource": {
     "message": "Open Source en de \"Official\" versie"
   },
   "screens.PrivacyPolicy.openSourceContent": {
-    "message": "CoMapeo is een open-source applicatie. Dit betekent dat iedereen de code kan bekijken die ervoor zorgt dat de app werkt en de privacyverklaringen in dit document kan verifiëren. Het betekent ook dat iedereen de app kan aanpassen aan zijn eigen behoeften en een alternatieve versie kan vrijgeven. Dit document verwijst naar gegevens die zijn verzameld door de officiële releases van CoMapeo, digitaal ondertekend door Awana Digital, beschikbaar via de Google Play Store of de Awana Digital website. Onofficiële versies van CoMapeo verkregen van andere kanalen vallen buiten onze controle en kunnen aanvullende informatie delen met andere organisaties."
+    "message": "Ekanâdyby is een open-source applicatie. Dit betekent dat iedereen de code kan bekijken die ervoor zorgt dat de app werkt en de privacyverklaringen in dit document kan verifiëren. Het betekent ook dat iedereen de app kan aanpassen aan zijn eigen behoeften en een alternatieve versie kan vrijgeven. Dit document verwijst naar gegevens die zijn verzameld door de officiële releases van Ekanâdyby, digitaal ondertekend door Awana Digital, beschikbaar via de Google Play Store of de Awana Digital website. Onofficiële versies van Ekanâdyby verkregen van andere kanalen vallen buiten onze controle en kunnen aanvullende informatie delen met andere organisaties."
   },
   "screens.PrivacyPolicy.overview": {
-    "message": "Dit document beschrijft welke informatie (\"data\") wordt verzonden van CoMapeo naar de ontwikkelaar van de applicatie, Awana Digital, en hoe die informatie wordt gebruikt."
+    "message": "Dit document beschrijft welke informatie (\"data\") wordt verzonden van Ekanâdyby naar de ontwikkelaar van de applicatie, Awana Digital, en hoe die informatie wordt gebruikt."
   },
   "screens.PrivacyPolicy.performanceData": {
     "message": "Prestatie Data"
@@ -896,13 +896,13 @@
     "message": "Zoals lanceringstijd, energiegebruik, bevriezing van apps en reactievermogen"
   },
   "screens.PrivacyPolicy.privacyPolicyTitle": {
-    "message": "CoMapeo gegevens privacy"
+    "message": "Ekanâdyby gegevens privacy"
   },
   "screens.PrivacyPolicy.privateByDefault": {
     "message": "Standaard Privé"
   },
   "screens.PrivacyPolicy.privateByDefaultDescription": {
-    "message": "De gegevens die u verzamelt en maakt met CoMapeo (locaties, foto's, video, audio, tekst) wordt standaard alleen op je apparaat opgeslagen en wordt nergens anders opgeslagen of verzonden. Wanneer u gegevens deelt met medewerkers door deel te nemen aan een project met hen, wordt het versleuteld verzonden naar het apparaat van uw medewerkers. Dit betekent dat de gegevens niet worden verzonden via Awana Digital, noch door iemand anders, op weg naar uw medewerker. Awana Digitaal ziet nooit en heeft geen toegang tot de gegevens die u verzamelt met CoMapeo, tenzij u deze expliciet aan ons stuurt."
+    "message": "De gegevens die u verzamelt en maakt met Ekanâdyby (locaties, foto's, video, audio, tekst) wordt standaard alleen op je apparaat opgeslagen en wordt nergens anders opgeslagen of verzonden. Wanneer u gegevens deelt met medewerkers door deel te nemen aan een project met hen, wordt het versleuteld verzonden naar het apparaat van uw medewerkers. Dit betekent dat de gegevens niet worden verzonden via Awana Digital, noch door iemand anders, op weg naar uw medewerker. Awana Digitaal ziet nooit en heeft geen toegang tot de gegevens die u verzamelt met Ekanâdyby, tenzij u deze expliciet aan ons stuurt."
   },
   "screens.PrivacyPolicy.thirdParty": {
     "message": "Toegang van derden tot gegevens"
@@ -920,13 +920,13 @@
     "message": "Wat wordt verzameld?"
   },
   "screens.PrivacyPolicy.whatIsCollectedDescription": {
-    "message": "Standaard wordt geanonimiseerde diagnostische informatie over uw apparaat, app crashes, fouten en prestaties gedeeld met Awana Digital. Je kunt je op elk moment afmelden voor het delen van deze informatie. Deze diagnostische informatie is volledig geanonimiseerd en bevat nooit enige van uw gegevens (de gegevens die u hebt verzameld met CoMapeo)."
+    "message": "Standaard wordt geanonimiseerde diagnostische informatie over uw apparaat, app crashes, fouten en prestaties gedeeld met Awana Digital. Je kunt je op elk moment afmelden voor het delen van deze informatie. Deze diagnostische informatie is volledig geanonimiseerd en bevat nooit enige van uw gegevens (de gegevens die u hebt verzameld met Ekanâdyby)."
   },
   "screens.PrivacyPolicy.whyCollected": {
     "message": "Waarom worden deze gegevens verzameld?"
   },
   "screens.PrivacyPolicy.whyCollectedDescription": {
-    "message": "Crashen van gegevens en app-fouten, samen met de informatie van het apparaat en app bieden Awana Digital de informatie die nodig is om fouten en fouten in de app op te lossen. De prestatiegegevens helpen ons bij het verbeteren van het reactievermogen van de app en het identificeren van fouten. Gebruikers tellen, waaronder totale gebruikers, gebruikers per land en gebruikers per project, rechtvaardigen voortdurende investeringen in de ontwikkeling van CoMapeo."
+    "message": "Crashen van gegevens en app-fouten, samen met de informatie van het apparaat en app bieden Awana Digital de informatie die nodig is om fouten en fouten in de app op te lossen. De prestatiegegevens helpen ons bij het verbeteren van het reactievermogen van de app en het identificeren van fouten. Gebruikers tellen, waaronder totale gebruikers, gebruikers per land en gebruikers per project, rechtvaardigen voortdurende investeringen in de ontwikkeling van Ekanâdyby."
   },
   "screens.ProjectStatistics.navTitle": {
     "message": "Project statistieken"
@@ -1048,7 +1048,7 @@
     "message": "Privacy Beleid"
   },
   "screens.ShareProjectStats.description": {
-    "message": "Dit helpt ons gegevens te verzamelen over hoe CoMapeo wordt gebruikt en welke extra functies nodig zijn."
+    "message": "Dit helpt ons gegevens te verzamelen over hoe Ekanâdyby wordt gebruikt en welke extra functies nodig zijn."
   },
   "screens.ShareProjectStats.fullyEncrypted": {
     "message": "Uw project zal volledig versleuteld blijven"
@@ -1154,7 +1154,7 @@
     "message": "Ga terug"
   },
   "soloProject.inviteCollaborators.introText": {
-    "message": "Deel waarnemingen met anderen met behulp van CoMapeo."
+    "message": "Deel waarnemingen met anderen met behulp van Ekanâdyby."
   },
   "soloProject.inviteCollaborators.inviteOnly": {
     "message": "Alleen apparaten die voor dit project zijn uitgenodigd, kunnen bijdragen."

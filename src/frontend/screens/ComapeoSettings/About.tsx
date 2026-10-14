@@ -13,26 +13,26 @@ import {useEarlyAccessState} from '../../contexts/EarlyAccessContext';
 import {BodyText} from '../../sharedComponents/Text/BodyText';
 
 const m = defineMessages({
-  aboutCoMapeoTitle: {
+  aboutEkanadybyTitle: {
     id: '$1screens.AboutSettings.title',
-    defaultMessage: 'About CoMapeo',
-    description: "Title of 'About CoMapeo' screen",
+    defaultMessage: 'About Ekanâdyby',
+    description: "Title of 'About Ekanâdyby' screen",
   },
-  coMapeoVersion: {
-    id: 'screens.AboutSettings.CoMapeoVersion',
-    defaultMessage: 'CoMapeo version',
-    description: 'Label for CoMapeo version',
+  ekanadybyVersion: {
+    id: 'screens.AboutSettings.ekanadybyVersion',
+    defaultMessage: 'Ekanâdyby version',
+    description: 'Label for Ekanâdyby version',
   },
-  coMapeoBuild: {
-    id: 'screens.AboutSettings.CoMapeoBuild',
-    defaultMessage: 'CoMapeo build',
-    description: 'Label for CoMapeo build number',
+  ekanadybyBuild: {
+    id: 'screens.AboutSettings.ekanadybyBuild',
+    defaultMessage: 'Ekanâdyby build',
+    description: 'Label for Ekanâdyby build number',
   },
   mapeoType: {
-    id: 'screens.AboutSettings.CoMapeoType',
-    defaultMessage: 'CoMapeo variant',
+    id: 'screens.AboutSettings.ekanadybyType',
+    defaultMessage: 'Ekanâdyby variant',
     description:
-      'Label for CoMapeo type/variant (e.g. QA for testing vs normal version of app)',
+      'Label for Ekanâdyby type/variant (e.g. QA for testing vs normal version of app)',
   },
   androidVersion: {
     id: 'screens.AboutSettings.androidVersion',
@@ -57,7 +57,7 @@ const m = defineMessages({
   emojiSource: {
     id: 'screens.AboutSettings.emojiSource',
     defaultMessage: 'Emojis source',
-    description: 'Label for the source of emojis used in CoMapeo',
+    description: 'Label for the source of emojis used in Ekanâdyby',
   },
   releaseNameLabel: {
     id: 'screens.AboutSettings.releaseNameLabel',
@@ -66,15 +66,15 @@ const m = defineMessages({
   },
   seeUpdates: {
     id: '$1screens.AboutSettings.seeUpdates',
-    defaultMessage: 'See CoMapeo Updates',
+    defaultMessage: 'See Ekanâdyby Updates',
   },
   earlyAccessBanner: {
     id: 'screens.AboutSettings.earlyAccessBanner',
     defaultMessage: 'You are in Early Access Mode.',
   },
-  comapeoWebsiteLabel: {
-    id: 'screens.AboutSettings.comapeoWebsiteLabel',
-    defaultMessage: 'CoMapeo Website',
+  ekanadybyWebsiteLabel: {
+    id: 'screens.AboutSettings.ekanadybyWebsiteLabel',
+    defaultMessage: 'Ekanâdyby Website',
   },
 });
 
@@ -120,11 +120,11 @@ export const AboutSettings = () => {
       ) : null}
       <List disablePadding>
         <DeviceInfoListItem
-          label={t(m.coMapeoVersion)}
+          label={t(m.ekanadybyVersion)}
           deviceInfoMethod="getVersion"
         />
         <DeviceInfoListItem
-          label={t(m.coMapeoBuild)}
+          label={t(m.ekanadybyBuild)}
           deviceInfoMethod="getBuildNumber"
         />
         <DeviceInfoListItem
@@ -158,7 +158,7 @@ export const AboutSettings = () => {
           disableGutters
           onPress={() => Linking.openURL('https://comapeo.app')}>
           <ListItemText
-            primary={t(m.comapeoWebsiteLabel)}
+            primary={t(m.ekanadybyWebsiteLabel)}
             secondary="comapeo.app"
           />
         </ListItem>
@@ -174,7 +174,7 @@ export const AboutSettings = () => {
   );
 };
 
-AboutSettings.navTitle = m.aboutCoMapeoTitle;
+AboutSettings.navTitle = m.aboutEkanadybyTitle;
 
 const styles = StyleSheet.create({
   container: {

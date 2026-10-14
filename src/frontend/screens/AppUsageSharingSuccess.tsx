@@ -22,7 +22,7 @@ const m = defineMessages({
   },
   nowSharing: {
     id: 'screens.AppUsageSharingSuccess.nowSharing',
-    defaultMessage: 'is now sharing how you use CoMapeo with Awana Digital.',
+    defaultMessage: 'is now sharing how you use Ekanâdyby with Awana Digital.',
   },
   removeAnytime: {
     id: 'screens.AppUsageSharingSuccess.removeAnytime',

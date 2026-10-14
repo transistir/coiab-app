@@ -6,7 +6,7 @@
     "message": "Parar trilha"
   },
   "$1Navigation.Menu.Settings": {
-    "message": "Configurações do CoMapeo"
+    "message": "Configurações do Ekanâdyby"
   },
   "$1Navigation.Menu.bgMap": {
     "message": "Mapas de fundo"
@@ -121,8 +121,8 @@
   "$1Screens.ProjectSettings.title": {
     "message": "Ferramentas do coordenador"
   },
-  "$1Screens.Settings.AppSettings.aboutCoMapeo": {
-    "message": "Sobre CoMapeo"
+  "$1Screens.Settings.AppSettings.aboutEkanadyby": {
+    "message": "Sobre Ekanâdyby"
   },
   "$1Screens.Settings.AppSettings.earlyAccess": {
     "message": "Acesso Antecipado"
@@ -134,7 +134,7 @@
     "message": "Acesso Antecipado ATIVADO"
   },
   "$1Screens.Settings.AppSettings.title": {
-    "message": "Configurações do CoMapeo"
+    "message": "Configurações do Ekanâdyby"
   },
   "$1TrackBottomSheet.DidNotMove.delete": {
     "message": "Sair da Trilha"
@@ -173,7 +173,7 @@
     "message": "Não está vendo um dispositivo?"
   },
   "$1screen.Settings.ProjectSettings.YourTeam.SelectDevice.sameVersion": {
-    "message": "Certifique-se de que os dois dispositivos possuem a mesma versão do CoMapeo"
+    "message": "Certifique-se de que os dois dispositivos possuem a mesma versão do Ekanâdyby"
   },
   "$1screen.Settings.ProjectSettings.YourTeam.SelectDevice.sameWifi": {
     "message": "Certifique-se de que ambos os dispositivos estão na mesma rede Wi-Fi"
@@ -185,11 +185,11 @@
     "message": "Selecione uma função"
   },
   "$1screens.AboutSettings.seeUpdates": {
-    "message": "Ver atualizações do CoMapeo"
+    "message": "Ver atualizações do Ekanâdyby"
   },
   "$1screens.AboutSettings.title": {
-    "message": "Sobre CoMapeo",
-    "description": "Title of 'About CoMapeo' screen"
+    "message": "Sobre Ekanâdyby",
+    "description": "Title of 'About Ekanâdyby' screen"
   },
   "$1screens.AppPasscode": {
     "message": "Senha do aplicativo"
@@ -226,7 +226,7 @@
     "message": "Senha não corresponde"
   },
   "$1screens.AppPasscode.NewPasscode.InputPasscodeScreen.subTitleSet": {
-    "message": "Esta senha será necessária para abrir o aplicativo CoMapeo"
+    "message": "Esta senha será necessária para abrir o aplicativo Ekanâdyby"
   },
   "$1screens.AppPasscode.NewPasscode.SetPasscodeScreen.title": {
     "message": "Definir senha"
@@ -235,7 +235,7 @@
     "message": "O que é Senha do aplicativo?"
   },
   "$1screens.AppPasscode.PasscodeIntro.description": {
-    "message": "Criar uma senha para utilizar o CoMapeo te oferece mais uma camada de segurança, exigindo que você a insira para abrir o aplicativo. Você pode definir sua própria senha de 5 dígitos ativando o recurso abaixo."
+    "message": "Criar uma senha para utilizar o Ekanâdyby te oferece mais uma camada de segurança, exigindo que você a insira para abrir o aplicativo. Você pode definir sua própria senha de 5 dígitos ativando o recurso abaixo."
   },
   "$1screens.AppPasscode.TurnOffPasscode.changePasscode": {
     "message": "Alterar Senha do aplicativo"
@@ -264,7 +264,7 @@
     "description": "Screen button text for not granting audio permission"
   },
   "$1screens.AudioPermission.title": {
-    "message": "Gravando Áudio com CoMapeo",
+    "message": "Gravando Áudio com Ekanâdyby",
     "description": "Screen title for audio permission screen"
   },
   "$1screens.AudioPlaybackNew.backToEditing": {
@@ -317,7 +317,7 @@
     "message": "Seus dados permanecem em seus dispositivos — criptografados e totalmente no seu controle."
   },
   "$1screens.DataPrivacy.title": {
-    "message": "O CoMapeo é privado por padrão."
+    "message": "O Ekanâdyby é privado por padrão."
   },
   "$1screens.DeviceNaming.Success.deviceReady": {
     "message": "{deviceName} está pronto!"
@@ -329,7 +329,7 @@
     "message": "Mapeie por Sua Conta"
   },
   "$1screens.DeviceNaming.description": {
-    "message": "Nomes distintos ajudam os colaboradores a usar o CoMapeo a reconhecê-lo."
+    "message": "Nomes distintos ajudam os colaboradores a usar o Ekanâdyby a reconhecê-lo."
   },
   "$1screens.DeviceNaming.header": {
     "message": "Nomeie o Seu Dispositivo"
@@ -462,8 +462,8 @@
   "$1screens.Observation.TrackList.track": {
     "message": "Trilha"
   },
-  "$1screens.Observation.comapeoAlert": {
-    "message": "Alerta CoMapeo"
+  "$1screens.Observation.ekanadybyAlert": {
+    "message": "Alerta Ekanâdyby"
   },
   "$1screens.Observation.defaultProjectName": {
     "message": "Meu Projeto"
@@ -489,7 +489,7 @@
     "description": "Title of dialog to share an observation with media"
   },
   "$1screens.Observation.shareMessageFooter": {
-    "message": "Enviado pelo CoMapeo"
+    "message": "Enviado pelo Ekanâdyby"
   },
   "$1screens.Observation.shareTextTitle": {
     "message": "Compartilhando texto",
@@ -560,7 +560,7 @@
     "message": "Fechar"
   },
   "$1screens.Onboarding.MapOnYourOwnIntro.description": {
-    "message": "Explore o CoMapeo — convide colaboradores a qualquer hora."
+    "message": "Explore o Ekanâdyby — convide colaboradores a qualquer hora."
   },
   "$1screens.Onboarding.MapOnYourOwnIntro.goToMap": {
     "message": "Ir para Mapas"

@@ -225,17 +225,17 @@
   "screen.Settings.ProjectSettings.YourTeam.SelectInviteeRole.selectingDevice": {
     "message": "Anda sedang memilih peran untuk perangkat ini:"
   },
-  "screens.AboutSettings.CoMapeoBuild": {
-    "message": "Build CoMapeo",
-    "description": "Label for CoMapeo build number"
+  "screens.AboutSettings.EkanâdybyBuild": {
+    "message": "Build Ekanâdyby",
+    "description": "Label for Ekanâdyby build number"
   },
-  "screens.AboutSettings.CoMapeoType": {
-    "message": "Varian CoMapeo",
-    "description": "Label for CoMapeo type/variant (e.g. QA for testing vs normal version of app)"
+  "screens.AboutSettings.EkanâdybyType": {
+    "message": "Varian Ekanâdyby",
+    "description": "Label for Ekanâdyby type/variant (e.g. QA for testing vs normal version of app)"
   },
-  "screens.AboutSettings.CoMapeoVersion": {
-    "message": "Versi CoMapeo",
-    "description": "Label for CoMapeo version"
+  "screens.AboutSettings.EkanâdybyVersion": {
+    "message": "Versi Ekanâdyby",
+    "description": "Label for Ekanâdyby version"
   },
   "screens.AboutSettings.androidBuild": {
     "message": "Nomor seri Android",
@@ -246,14 +246,14 @@
     "description": "Label for Android version"
   },
   "screens.AboutSettings.comapeoWebsiteLabel": {
-    "message": "Situs Web CoMapeo"
+    "message": "Situs Web Ekanâdyby"
   },
   "screens.AboutSettings.earlyAccessBanner": {
     "message": "Anda berada dalam Mode Akses Awal."
   },
   "screens.AboutSettings.emojiSource": {
     "message": "Sumber emoji",
-    "description": "Label for the source of emojis used in CoMapeo"
+    "description": "Label for the source of emojis used in Ekanâdyby"
   },
   "screens.AboutSettings.phoneModel": {
     "message": "Model telepon",
@@ -301,10 +301,10 @@
     "message": "ID diacak secara acak dan diubah setiap bulan."
   },
   "screens.AppUsagePrompt.introText": {
-    "message": "Bagikan cara Anda menggunakan CoMapeo—data apa pun yang dibagikan tidak dapat digunakan untuk melacak Anda."
+    "message": "Bagikan cara Anda menggunakan Ekanâdyby—data apa pun yang dibagikan tidak dapat digunakan untuk melacak Anda."
   },
   "screens.AppUsagePrompt.neverStores": {
-    "message": "CoMapeo tidak pernah menyimpan alamat IP."
+    "message": "Ekanâdyby tidak pernah menyimpan alamat IP."
   },
   "screens.AppUsagePrompt.notNow": {
     "message": "Tidak, tidak sekarang"
@@ -319,7 +319,7 @@
     "message": "Selesai"
   },
   "screens.AppUsageSharingSuccess.nowSharing": {
-    "message": "sekarang membagikan cara Anda menggunakan CoMapeo dengan Awana Digital."
+    "message": "sekarang membagikan cara Anda menggunakan Ekanâdyby dengan Awana Digital."
   },
   "screens.AppUsageSharingSuccess.removeAnytime": {
     "message": "Ubah ini kapan saja dengan menavigasi ke Data & Privasi di Menu."
@@ -335,7 +335,7 @@
     "description": "Screen button text for navigating the user to settings when audio permission is denied"
   },
   "screens.AudioPermission.description": {
-    "message": "Untuk merekam audio saat menggunakan aplikasi dan di latar belakang, CoMapeo perlu mengakses mikrofon Anda. Aktifkan izin mikrofon di pengaturan aplikasi Anda.",
+    "message": "Untuk merekam audio saat menggunakan aplikasi dan di latar belakang, Ekanâdyby perlu mengakses mikrofon Anda. Aktifkan izin mikrofon di pengaturan aplikasi Anda.",
     "description": "Screen description for audio permission screen"
   },
   "screens.AudioRecording.lessThan1": {
@@ -378,7 +378,7 @@
     "message": "Nomor ID diacak secara acak dan diubah setiap bulan."
   },
   "screens.DataAndPrivacy.appUsageText": {
-    "message": "Bagikan cara Anda menggunakan CoMapeo dengan Awana Digital—tidak ada informasi yang Anda bagikan yang dapat digunakan untuk melacak Anda."
+    "message": "Bagikan cara Anda menggunakan Ekanâdyby dengan Awana Digital—tidak ada informasi yang Anda bagikan yang dapat digunakan untuk melacak Anda."
   },
   "screens.DataAndPrivacy.appUsageTitle": {
     "message": "Penggunaan Aplikasi"
@@ -390,7 +390,7 @@
     "message": "Informasi Diagnostik"
   },
   "screens.DataAndPrivacy.ipAddress": {
-    "message": "CoMapeo tidak pernah menyimpan alamat IP."
+    "message": "Ekanâdyby tidak pernah menyimpan alamat IP."
   },
   "screens.DataAndPrivacy.learnMore": {
     "message": "Pelajari Lebih Lanjut"
@@ -405,7 +405,7 @@
     "message": "Anda dapat memilih untuk tidak berbagi informasi diagnostik kapan saja."
   },
   "screens.DataAndPrivacy.respectsPrivacy": {
-    "message": "CoMapeo Menghormati Privasi & Otonomi Anda"
+    "message": "Ekanâdyby Menghormati Privasi & Otonomi Anda"
   },
   "screens.EarlyAccess.infoBox": {
     "message": "Data dari Akses Awal tidak akan terlihat oleh kolaborator yang belum ikut serta."
@@ -417,7 +417,7 @@
     "message": "Mode Akses Awal"
   },
   "screens.EarlyAccess.updates": {
-    "message": "Lihat Pembaruan CoMapeo"
+    "message": "Lihat Pembaruan Ekanâdyby"
   },
   "screens.EarlyAccess.useEarlyAccess": {
     "message": "Gunakan Fitur Akses Awal"
@@ -676,10 +676,10 @@
     "message": "Menggunakan Lokasi? Melacak lokasi bahkan saat ditutup. Data hanya ada di perangkat."
   },
   "screens.ObscurePasscode.description": {
-    "message": "Kode Sandi Obscure adalah fitur keamanan yang memungkinkan Anda membuka CoMapeo dalam mode umpan yang menyembunyikan semua data Anda. Memasukkan Kode Sandi Obscure pada layar intro akan menampilkan versi kosong CoMapeo yang memungkinkan Anda membuat pengamatan demonstrasi yang tidak disimpan ke database CoMapeo."
+    "message": "Kode Sandi Obscure adalah fitur keamanan yang memungkinkan Anda membuka Ekanâdyby dalam mode umpan yang menyembunyikan semua data Anda. Memasukkan Kode Sandi Obscure pada layar intro akan menampilkan versi kosong Ekanâdyby yang memungkinkan Anda membuat pengamatan demonstrasi yang tidak disimpan ke database Ekanâdyby."
   },
   "screens.ObscurePasscode.instructions": {
-    "message": "Masukkan kode di atas untuk menyembunyikan data Anda di CoMapeo"
+    "message": "Masukkan kode di atas untuk menyembunyikan data Anda di Ekanâdyby"
   },
   "screens.ObscurePasscode.title": {
     "message": "Kode Sandi Tidak Jelas"
@@ -783,16 +783,16 @@
     "message": "Dimasukkan secara manual."
   },
   "screens.ObservationMetadataVerified.sentByComapeo": {
-    "message": "Dikirim oleh CoMapeo"
+    "message": "Dikirim oleh Ekanâdyby"
   },
   "screens.ObservationMetadataVerified.sentFrom": {
-    "message": "Metadata CoMapeo dikirim dari"
+    "message": "Metadata Ekanâdyby dikirim dari"
   },
   "screens.ObservationMetadataVerified.speed": {
     "message": "Kecepatan"
   },
-  "screens.ObservationMetadataVerified.validatedByCoMapeo": {
-    "message": "Dikirim dan Divalidasi oleh CoMapeo"
+  "screens.ObservationMetadataVerified.validatedByEkanâdyby": {
+    "message": "Dikirim dan Divalidasi oleh Ekanâdyby"
   },
   "screens.ObservationsList.ObservationsEmptyView.noObservationsDesc": {
     "message": "Mulai dari tampilan peta atau kamera untuk merekam pengamatan pertama Anda.",
@@ -846,8 +846,8 @@
     "message": "Terlampir {formattedNum} setelah pengamatan",
     "description": "Label for the time when the photo was attached to an observation"
   },
-  "screens.PhotoPreviewModal.validatedByCoMapeo": {
-    "message": "Divalidasi oleh CoMapeo"
+  "screens.PhotoPreviewModal.validatedByEkanâdyby": {
+    "message": "Divalidasi oleh Ekanâdyby"
   },
   "screens.PhotoPreviewModal.verifiedOriginal": {
     "message": "Ini adalah asli yang diverifikasi tidak berubah.",
@@ -857,7 +857,7 @@
     "message": "Tentang Awana Digital"
   },
   "screens.PrivacyPolicy.aboutAwanaContent": {
-    "message": "CoMapeo dikembangkan oleh Awana Digital, sebuah organisasi nirlaba 501c3 yang terdaftar di Amerika Serikat. Awana Digital bekerja dalam solidaritas dengan masyarakat garis depan untuk menggunakan teknologi untuk membela hak-hak mereka dan memerangi perubahan iklim."
+    "message": "Ekanâdyby dikembangkan oleh Awana Digital, sebuah organisasi nirlaba 501c3 yang terdaftar di Amerika Serikat. Awana Digital bekerja dalam solidaritas dengan masyarakat garis depan untuk menggunakan teknologi untuk membela hak-hak mereka dan memerangi perubahan iklim."
   },
   "screens.PrivacyPolicy.appErrors": {
     "message": "Kesalahan Aplikasi"
@@ -869,7 +869,7 @@
     "message": "Info Aplikasi"
   },
   "screens.PrivacyPolicy.appInfoDescription": {
-    "message": "Versi dan lokal (bahasa) CoMapeo"
+    "message": "Versi dan lokal (bahasa) Ekanâdyby"
   },
   "screens.PrivacyPolicy.appUsageTitle": {
     "message": "Penggunaan Aplikasi"
@@ -878,13 +878,13 @@
     "message": "Anda memegang kendali"
   },
   "screens.PrivacyPolicy.controlDescription": {
-    "message": "Anda dapat memilih untuk tidak mengirim informasi apa pun ke Awana Digital. Anda memilih di mana data Anda disimpan dan dengan siapa data tersebut dibagikan. Anda dapat memilih untuk membagikan data anonim dan ringkasan tentang cara Anda menggunakan CoMapeo dengan Awana Digital. Kami akan selalu transparan tentang informasi apa yang Anda pilih untuk dibagikan dengan tujuan meningkatkan aplikasi, dan informasi ini tidak akan pernah menyertakan foto, video, audio, teks, atau lokasi tepat yang telah Anda masukkan ke CoMapeo."
+    "message": "Anda dapat memilih untuk tidak mengirim informasi apa pun ke Awana Digital. Anda memilih di mana data Anda disimpan dan dengan siapa data tersebut dibagikan. Anda dapat memilih untuk membagikan data anonim dan ringkasan tentang cara Anda menggunakan Ekanâdyby dengan Awana Digital. Kami akan selalu transparan tentang informasi apa yang Anda pilih untuk dibagikan dengan tujuan meningkatkan aplikasi, dan informasi ini tidak akan pernah menyertakan foto, video, audio, teks, atau lokasi tepat yang telah Anda masukkan ke Ekanâdyby."
   },
   "screens.PrivacyPolicy.crashDataDescription": {
     "message": "Informasi tentang apa yang menyebabkan aplikasi ditutup secara tak terduga"
   },
   "screens.PrivacyPolicy.dataCollection": {
-    "message": "Pengumpulan Data CoMapeo"
+    "message": "Pengumpulan Data Ekanâdyby"
   },
   "screens.PrivacyPolicy.deviceInfo": {
     "message": "Info Perangkat"
@@ -899,22 +899,22 @@
     "message": "Tidak ada informasi yang dapat diidentifikasi secara pribadi"
   },
   "screens.PrivacyPolicy.noPIIDescription": {
-    "message": "Menggunakan CoMapeo tidak memerlukan akun pengguna. Awana Digital tidak mengumpulkan nama, alamat email, atau detail pribadi lainnya. Tidak ada pengenal pengguna permanen atau pengenal perangkat yang pernah dibagikan dengan Awana Digital, dan kami mengambil tindakan ekstra untuk memastikan bahwa tidak ada informasi yang Anda bagikan yang dapat digunakan untuk melacak Anda: pengidentifikasi diacak dan dirotasi (diubar) setiap bulan dan kami tidak menyimpan alamat IP."
+    "message": "Menggunakan Ekanâdyby tidak memerlukan akun pengguna. Awana Digital tidak mengumpulkan nama, alamat email, atau detail pribadi lainnya. Tidak ada pengenal pengguna permanen atau pengenal perangkat yang pernah dibagikan dengan Awana Digital, dan kami mengambil tindakan ekstra untuk memastikan bahwa tidak ada informasi yang Anda bagikan yang dapat digunakan untuk melacak Anda: pengidentifikasi diacak dan dirotasi (diubar) setiap bulan dan kami tidak menyimpan alamat IP."
   },
   "screens.PrivacyPolicy.notCollected": {
     "message": "Apa yang tidak dikumpulkan?"
   },
   "screens.PrivacyPolicy.notCollectedDescription": {
-    "message": "Kami tidak mengumpulkan data pribadi apa pun atau apa pun yang dapat digunakan untuk mengidentifikasi atau melacak pengguna atau perangkat. Pengidentifikasi perangkat yang digunakan untuk mengumpulkan informasi bersifat acak, anonim, dan berubah setiap bulan. Informasi diagnostik tidak menyertakan data tentang cara Anda menggunakan aplikasi, dan tidak pernah menyertakan data apa pun yang telah Anda kumpulkan dengan aplikasi. Kami tidak mengumpulkan lokasi Anda yang tepat atau kasar, hanya negara tempat Anda menggunakan CoMapeo."
+    "message": "Kami tidak mengumpulkan data pribadi apa pun atau apa pun yang dapat digunakan untuk mengidentifikasi atau melacak pengguna atau perangkat. Pengidentifikasi perangkat yang digunakan untuk mengumpulkan informasi bersifat acak, anonim, dan berubah setiap bulan. Informasi diagnostik tidak menyertakan data tentang cara Anda menggunakan aplikasi, dan tidak pernah menyertakan data apa pun yang telah Anda kumpulkan dengan aplikasi. Kami tidak mengumpulkan lokasi Anda yang tepat atau kasar, hanya negara tempat Anda menggunakan Ekanâdyby."
   },
   "screens.PrivacyPolicy.openSource": {
     "message": "Sumber terbuka dan versi \"resmi\""
   },
   "screens.PrivacyPolicy.openSourceContent": {
-    "message": "CoMapeo adalah aplikasi sumber terbuka. Artinya, siapa pun dapat melihat kode yang membuat aplikasi berfungsi dan dapat memverifikasi deklarasi privasi dalam dokumen ini. Ini juga berarti bahwa siapa pun dapat menyesuaikan aplikasi dengan kebutuhan mereka sendiri dan merilis versi alternatif. Dokumen ini mengacu pada data yang dikumpulkan oleh rilis resmi CoMapeo, yang ditandatangani secara digital oleh Awana Digital, tersedia dari Google Play Store atau situs web Awana Digital. Rilis tidak resmi CoMapeo yang diperoleh dari saluran lain berada di luar kendali kami dan dapat membagikan informasi tambahan dengan organisasi lain."
+    "message": "Ekanâdyby adalah aplikasi sumber terbuka. Artinya, siapa pun dapat melihat kode yang membuat aplikasi berfungsi dan dapat memverifikasi deklarasi privasi dalam dokumen ini. Ini juga berarti bahwa siapa pun dapat menyesuaikan aplikasi dengan kebutuhan mereka sendiri dan merilis versi alternatif. Dokumen ini mengacu pada data yang dikumpulkan oleh rilis resmi Ekanâdyby, yang ditandatangani secara digital oleh Awana Digital, tersedia dari Google Play Store atau situs web Awana Digital. Rilis tidak resmi Ekanâdyby yang diperoleh dari saluran lain berada di luar kendali kami dan dapat membagikan informasi tambahan dengan organisasi lain."
   },
   "screens.PrivacyPolicy.overview": {
-    "message": "Dokumen ini menjelaskan informasi (\"data\") apa yang dikirim dari CoMapeo ke pengembang aplikasi, Awana Digital, dan bagaimana informasi tersebut digunakan."
+    "message": "Dokumen ini menjelaskan informasi (\"data\") apa yang dikirim dari Ekanâdyby ke pengembang aplikasi, Awana Digital, dan bagaimana informasi tersebut digunakan."
   },
   "screens.PrivacyPolicy.performanceData": {
     "message": "Data Performa"
@@ -923,13 +923,13 @@
     "message": "Seperti waktu peluncuran, penggunaan energi, pembekuan aplikasi, dan responsivitas"
   },
   "screens.PrivacyPolicy.privacyPolicyTitle": {
-    "message": "Privasi Data CoMapeo"
+    "message": "Privasi Data Ekanâdyby"
   },
   "screens.PrivacyPolicy.privateByDefault": {
     "message": "Pribadi secara default"
   },
   "screens.PrivacyPolicy.privateByDefaultDescription": {
-    "message": "Data yang Anda kumpulkan dan buat dengan CoMapeo (lokasi, foto, video, audio, teks) hanya disimpan di perangkat Anda secara default, dan tidak disimpan atau dikirim ke tempat lain. Saat Anda berbagi data dengan kolaborator dengan bergabung dengan proyek dengan mereka, data tersebut dikirim terenkripsi, langsung ke perangkat kolaborator Anda. Ini berarti bahwa data tidak dikirim melalui Awana Digital, atau orang lain, dalam perjalanan ke kolaborator Anda. Awana Digital tidak pernah melihat atau memiliki akses ke data apa pun yang Anda kumpulkan dengan CoMapeo kecuali Anda secara eksplisit mengirimkannya kepada kami."
+    "message": "Data yang Anda kumpulkan dan buat dengan Ekanâdyby (lokasi, foto, video, audio, teks) hanya disimpan di perangkat Anda secara default, dan tidak disimpan atau dikirim ke tempat lain. Saat Anda berbagi data dengan kolaborator dengan bergabung dengan proyek dengan mereka, data tersebut dikirim terenkripsi, langsung ke perangkat kolaborator Anda. Ini berarti bahwa data tidak dikirim melalui Awana Digital, atau orang lain, dalam perjalanan ke kolaborator Anda. Awana Digital tidak pernah melihat atau memiliki akses ke data apa pun yang Anda kumpulkan dengan Ekanâdyby kecuali Anda secara eksplisit mengirimkannya kepada kami."
   },
   "screens.PrivacyPolicy.thirdParty": {
     "message": "Akses pihak ketiga ke data"
@@ -947,13 +947,13 @@
     "message": "Apa yang dikumpulkan?"
   },
   "screens.PrivacyPolicy.whatIsCollectedDescription": {
-    "message": "Secara default, informasi diagnostik anonim tentang perangkat, crash aplikasi, kesalahan, dan kinerja Anda dibagikan dengan Awana Digital. Anda dapat memilih untuk tidak membagikan informasi ini kapan saja. Informasi diagnostik ini sepenuhnya dianonimkan dan tidak pernah berisi data Anda (data yang telah Anda kumpulkan dengan CoMapeo)."
+    "message": "Secara default, informasi diagnostik anonim tentang perangkat, crash aplikasi, kesalahan, dan kinerja Anda dibagikan dengan Awana Digital. Anda dapat memilih untuk tidak membagikan informasi ini kapan saja. Informasi diagnostik ini sepenuhnya dianonimkan dan tidak pernah berisi data Anda (data yang telah Anda kumpulkan dengan Ekanâdyby)."
   },
   "screens.PrivacyPolicy.whyCollected": {
     "message": "Mengapa data ini dikumpulkan?"
   },
   "screens.PrivacyPolicy.whyCollectedDescription": {
-    "message": "Data crash dan kesalahan aplikasi bersama dengan perangkat dan info aplikasi memberi Awana Digital informasi yang kami butuhkan untuk memperbaiki kesalahan dan bug di aplikasi. Data performa membantu kami meningkatkan responsivitas aplikasi dan mengidentifikasi error. Jumlah pengguna, termasuk total pengguna, pengguna per negara, dan pengguna per proyek, membantu membenarkan investasi berkelanjutan dalam pengembangan CoMapeo."
+    "message": "Data crash dan kesalahan aplikasi bersama dengan perangkat dan info aplikasi memberi Awana Digital informasi yang kami butuhkan untuk memperbaiki kesalahan dan bug di aplikasi. Data performa membantu kami meningkatkan responsivitas aplikasi dan mengidentifikasi error. Jumlah pengguna, termasuk total pengguna, pengguna per negara, dan pengguna per proyek, membantu membenarkan investasi berkelanjutan dalam pengembangan Ekanâdyby."
   },
   "screens.ProjectStatistics.navTitle": {
     "message": "Statistik Proyek"
@@ -1081,7 +1081,7 @@
     "message": "Kebijakan Privasi"
   },
   "screens.ShareProjectStats.description": {
-    "message": "Ini akan membantu kami mengumpulkan data tentang bagaimana CoMapeo digunakan dan fitur tambahan apa yang dibutuhkan."
+    "message": "Ini akan membantu kami mengumpulkan data tentang bagaimana Ekanâdyby digunakan dan fitur tambahan apa yang dibutuhkan."
   },
   "screens.ShareProjectStats.fullyEncrypted": {
     "message": "Proyek Anda akan tetap terenkripsi sepenuhnya"
@@ -1184,7 +1184,7 @@
     "message": "Kembali"
   },
   "soloProject.inviteCollaborators.introText": {
-    "message": "Bagikan pengamatan dengan orang lain menggunakan CoMapeo."
+    "message": "Bagikan pengamatan dengan orang lain menggunakan Ekanâdyby."
   },
   "soloProject.inviteCollaborators.inviteOnly": {
     "message": "Hanya perangkat yang diundang ke proyek ini yang dapat berkontribusi."

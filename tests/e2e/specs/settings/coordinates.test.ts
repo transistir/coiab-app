@@ -30,7 +30,7 @@ describe('Settings - Coordinates Settings Flow', () => {
 
     await $(byResourceId('MAIN.header-back-btn')).click();
 
-    await expect($(byTextMatches('CoMapeo Settings'))).toBeDisplayed();
+    await expect($(byTextMatches('Ekanâdyby Settings'))).toBeDisplayed();
 
     await $(byResourceId('MAIN.header-back-btn')).click();
     await $(byResourceId('MAIN.map-screen')).click();

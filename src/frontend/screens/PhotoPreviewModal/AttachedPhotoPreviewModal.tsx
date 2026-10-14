@@ -53,9 +53,9 @@ function formatDistance(meters: number, unitSystem: UnitSystem): string {
 }
 
 const m = defineMessages({
-  validatedByCoMapeo: {
-    id: 'screens.PhotoPreviewModal.validatedByCoMapeo',
-    defaultMessage: 'Validated by CoMapeo',
+  validatedByEkanadyby: {
+    id: 'screens.PhotoPreviewModal.validatedByEkanadyby',
+    defaultMessage: 'Validated by Ekanâdyby',
   },
   verifiedOriginal: {
     id: 'screens.PhotoPreviewModal.verifiedOriginal',
@@ -191,7 +191,7 @@ export function AttachedPhotoPreviewModal({
                     allowFontScaling
                   />
                   <BodyText selectable style={sharedStyles.primaryInfoText}>
-                    {formatMessage(m.validatedByCoMapeo)}
+                    {formatMessage(m.validatedByEkanadyby)}
                   </BodyText>
                 </View>
               }

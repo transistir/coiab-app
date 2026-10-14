@@ -24,7 +24,7 @@ const m = defineMessages({
   introText: {
     id: 'screens.AppUsagePrompt.introText',
     defaultMessage:
-      'Share how you use CoMapeo—any data shared cannot be used to track you.',
+      'Share how you use Ekanâdyby—any data shared cannot be used to track you.',
   },
   idsScrambled: {
     id: 'screens.AppUsagePrompt.idsScrambled',
@@ -32,7 +32,7 @@ const m = defineMessages({
   },
   neverStores: {
     id: 'screens.AppUsagePrompt.neverStores',
-    defaultMessage: 'CoMapeo never stores IP addresses.',
+    defaultMessage: 'Ekanâdyby never stores IP addresses.',
   },
   turnOffAnytime: {
     id: 'screens.AppUsagePrompt.turnOffAnytime',

@@ -79,12 +79,12 @@ export const Success = ({
           fullSize
           text={t(m.createOrganization)}
           iconPosition="left"
-          renderIcon={({size}) => (
+          renderIcon={({size, color}) => (
             <ProjectCoordinatorIcon
               width={size}
               height={size}
-              color={WHITE}
-              fill={WHITE}
+              color={color}
+              fill={color}
             />
           )}
           onPress={() => {

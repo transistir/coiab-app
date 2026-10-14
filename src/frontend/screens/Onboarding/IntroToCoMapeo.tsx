@@ -1,8 +1,7 @@
 import * as React from 'react';
-import {StyleSheet, View, ScrollView} from 'react-native';
+import {Image, StyleSheet, View, ScrollView} from 'react-native';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import TopoBackground from '../../images/TopoLogo.svg';
-import CoMapeoTextAsSVG from '../../images/CoMapeoText.svg';
 import WorldMap from '../../images/WorldMap.svg';
 import Handshake from '../../images/Handshake.svg';
 import LockedWithKey from '../../images/LockedWithKey.svg';
@@ -51,7 +50,10 @@ export const IntroToCoMapeo = ({
       <TopoBackground style={styles.background} />
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         <View style={styles.logoContainer}>
-          <CoMapeoTextAsSVG width={290} height={60} />
+          <Image
+            source={require('../../images/ekanadyby-wordmark.png')}
+            style={{width: 290, aspectRatio: 870 / 143, resizeMode: 'contain'}}
+          />
           <HeaderText variant="header3" style={styles.mainText}>
             {formatMessage(m.mapWorldTogether)}
           </HeaderText>

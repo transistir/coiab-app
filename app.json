@@ -25,12 +25,11 @@
       [
         "@maplibre/maplibre-react-native"
       ],
-      [
-        "expo-splash-screen",
-        {
-          "image": "./assets/splash.png",
-          "backgroundColor": "#050F77",
-          "imageWidth": 300,
+      ["expo-splash-screen",
+      {
+        "image": "./assets/splash.png",
+        "backgroundColor": "#DABA8D",
+        "imageWidth": 300,
           "android": {
             "resizeMode": "contain"
           },
@@ -95,8 +94,8 @@
     "android": {
       "allowBackup": false,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icon.png",
-        "backgroundColor": "#050F77"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#DABA8D"
       },
       "intentFilters": [
         {

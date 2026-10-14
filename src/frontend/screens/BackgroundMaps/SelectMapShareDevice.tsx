@@ -52,7 +52,8 @@ const m = defineMessages({
   },
   sameVersion: {
     id: 'screen.BackgroundMaps.SelectDevice.sameVersion',
-    defaultMessage: 'Make sure both devices are on the same version of CoMapeo',
+    defaultMessage:
+      'Make sure both devices are on the same version of Ekanâdyby',
   },
 });
 

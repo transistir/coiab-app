@@ -34,7 +34,7 @@ const m = defineMessages({
   },
   updates: {
     id: 'screens.EarlyAccess.updates',
-    defaultMessage: 'See CoMapeo Updates',
+    defaultMessage: 'See Ekanâdyby Updates',
   },
   feedbackPrefix: {
     id: 'screens.EarlyAccess.feedbackPrefix',
