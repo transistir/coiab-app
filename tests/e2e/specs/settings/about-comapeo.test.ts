@@ -2,8 +2,8 @@ import {expect} from '@wdio/globals';
 import {describe, it} from 'mocha';
 import {byResourceId, byTextMatches} from '../../utils/selectors';
 
-describe('Settings - About Ekanâdyby Flow', () => {
-  it('should open About Ekanâdyby from the drawer', async () => {
+describe('Settings - About CoiabApp Flow', () => {
+  it('should open About CoiabApp from the drawer', async () => {
     const mapTab = await $('~Go to map.');
     await mapTab.click();
     const drawerIcon = await $('~Open Menu');
@@ -17,17 +17,17 @@ describe('Settings - About Ekanâdyby Flow', () => {
   });
 
   it('should display version/build/variant and phone info', async () => {
-    await expect($(byTextMatches('About Ekanâdyby'))).toBeDisplayed();
+    await expect($(byTextMatches('About CoiabApp'))).toBeDisplayed();
 
-    await expect($(byTextMatches('Ekanâdyby version'))).toBeDisplayed();
-    await expect($(byTextMatches('Ekanâdyby build'))).toBeDisplayed();
-    await expect($(byTextMatches('Ekanâdyby variant'))).toBeDisplayed();
+    await expect($(byTextMatches('CoiabApp version'))).toBeDisplayed();
+    await expect($(byTextMatches('CoiabApp build'))).toBeDisplayed();
+    await expect($(byTextMatches('CoiabApp variant'))).toBeDisplayed();
     await expect($(byTextMatches('Android version'))).toBeDisplayed();
     await expect($(byTextMatches('Android build number'))).toBeDisplayed();
     await expect($(byTextMatches('Phone model'))).toBeDisplayed();
     await expect($(byTextMatches('Emojis source'))).toBeDisplayed();
     await expect($(byTextMatches('Release name'))).toBeDisplayed();
-    await expect($(byTextMatches('Ekanâdyby Website'))).toBeDisplayed();
+    await expect($(byTextMatches('CoiabApp Website'))).toBeDisplayed();
   });
 
   it('should navigate back to map screen', async () => {

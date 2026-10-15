@@ -44,7 +44,7 @@ const m = defineMessages({
   },
   shareMessageFooter: {
     id: '$1screens.Observation.shareMessageFooter',
-    defaultMessage: 'Sent from Ekanâdyby',
+    defaultMessage: 'Sent from CoiabApp',
   },
   fallbackCategoryName: {
     id: '$1screens.Observation.fallbackCategoryName',
@@ -54,7 +54,7 @@ const m = defineMessages({
   },
   ekanadybyData: {
     id: '$1screens.Observation.ekanadybyAlert',
-    defaultMessage: 'Ekanâdyby data sent from *{projectName}*',
+    defaultMessage: 'CoiabApp data sent from *{projectName}*',
   },
   defaultProjectName: {
     id: '$1screens.Observation.defaultProjectName',

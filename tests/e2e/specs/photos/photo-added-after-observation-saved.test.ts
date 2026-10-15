@@ -46,7 +46,7 @@ describe('Photo - add photo to existing observation', () => {
     await draftThumbnails[0].click();
     await expect(await $(byTextMatches('Photo Info'))).toBeDisplayed();
     await expect(await $(byTextMatches('Delete Photo'))).toBeDisplayed();
-    await checkForElementGone(byTextMatches('Validated by Ekanâdyby'));
+    await checkForElementGone(byTextMatches('Validated by CoiabApp'));
 
     const backBtn = await $(byResourceId('MAIN.header-back-btn'));
     await backBtn.click();
@@ -58,7 +58,7 @@ describe('Photo - add photo to existing observation', () => {
     await attachedThumbnails[0].click();
 
     const validatedByAccordion = await $(
-      byTextMatches('Validated by Ekanâdyby'),
+      byTextMatches('Validated by CoiabApp'),
     );
     await checkForElementGone(
       byTextMatches('This is a verified unaltered original.'),
@@ -102,7 +102,7 @@ describe('Photo - add photo to existing observation', () => {
     await attachedThumbnails[0].click();
 
     const validatedByAccordion = await $(
-      byTextMatches('Validated by Ekanâdyby'),
+      byTextMatches('Validated by CoiabApp'),
     );
 
     await checkForElementGone(
@@ -146,7 +146,7 @@ describe('Photo - add photo to existing observation', () => {
     await attachedThumbnails[1].click();
 
     const validatedByAccordion = await $(
-      byTextMatches('Validated by Ekanâdyby'),
+      byTextMatches('Validated by CoiabApp'),
     );
     await checkForElementGone(
       byTextMatches('This is a verified unaltered original.'),

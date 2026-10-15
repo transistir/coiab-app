@@ -15,24 +15,24 @@ import {BodyText} from '../../sharedComponents/Text/BodyText';
 const m = defineMessages({
   aboutEkanadybyTitle: {
     id: '$1screens.AboutSettings.title',
-    defaultMessage: 'About Ekanâdyby',
-    description: "Title of 'About Ekanâdyby' screen",
+    defaultMessage: 'About CoiabApp',
+    description: "Title of 'About CoiabApp' screen",
   },
   ekanadybyVersion: {
     id: 'screens.AboutSettings.ekanadybyVersion',
-    defaultMessage: 'Ekanâdyby version',
-    description: 'Label for Ekanâdyby version',
+    defaultMessage: 'CoiabApp version',
+    description: 'Label for CoiabApp version',
   },
   ekanadybyBuild: {
     id: 'screens.AboutSettings.ekanadybyBuild',
-    defaultMessage: 'Ekanâdyby build',
-    description: 'Label for Ekanâdyby build number',
+    defaultMessage: 'CoiabApp build',
+    description: 'Label for CoiabApp build number',
   },
   mapeoType: {
     id: 'screens.AboutSettings.ekanadybyType',
-    defaultMessage: 'Ekanâdyby variant',
+    defaultMessage: 'CoiabApp variant',
     description:
-      'Label for Ekanâdyby type/variant (e.g. QA for testing vs normal version of app)',
+      'Label for CoiabApp type/variant (e.g. QA for testing vs normal version of app)',
   },
   androidVersion: {
     id: 'screens.AboutSettings.androidVersion',
@@ -57,7 +57,7 @@ const m = defineMessages({
   emojiSource: {
     id: 'screens.AboutSettings.emojiSource',
     defaultMessage: 'Emojis source',
-    description: 'Label for the source of emojis used in Ekanâdyby',
+    description: 'Label for the source of emojis used in CoiabApp',
   },
   releaseNameLabel: {
     id: 'screens.AboutSettings.releaseNameLabel',
@@ -66,7 +66,7 @@ const m = defineMessages({
   },
   seeUpdates: {
     id: '$1screens.AboutSettings.seeUpdates',
-    defaultMessage: 'See Ekanâdyby Updates',
+    defaultMessage: 'See CoiabApp Updates',
   },
   earlyAccessBanner: {
     id: 'screens.AboutSettings.earlyAccessBanner',
@@ -74,7 +74,7 @@ const m = defineMessages({
   },
   ekanadybyWebsiteLabel: {
     id: 'screens.AboutSettings.ekanadybyWebsiteLabel',
-    defaultMessage: 'Ekanâdyby Website',
+    defaultMessage: 'CoiabApp Website',
   },
 });
 

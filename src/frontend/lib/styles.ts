@@ -1,5 +1,5 @@
 // Issue #19 (PR A). Nomes vindos do CoMapeo, mantidos iguais para facilitar
-// merges; os valores são da paleta Ekanâdyby (UI KIT 2004-1643). A tabela
+// merges; os valores são da paleta COIAB (UI KIT 2004-1643). A tabela
 // de constantes e a matriz de contraste vivem em src/frontend/lib/styles.test.ts.
 export const BLACK = '#000000';
 export const WHITE = '#ffffff';

@@ -75,7 +75,7 @@ describe('appConfig de ícone e splash (PR A #19, passo 4)', () => {
     const android = campoDe(expo, 'android');
     const adaptiveIcon = campoDe(android, 'adaptiveIcon');
 
-    // Fundo bege DABA8D (paleta Ekanâdyby) no splash e no ícone adaptativo.
+    // Fundo bege DABA8D (paleta COIAB) no splash e no ícone adaptativo.
     expect(campoDe(splash, 'backgroundColor')).toBe('#DABA8D');
     expect(campoDe(adaptiveIcon, 'backgroundColor')).toBe('#DABA8D');
     expect(campoDe(adaptiveIcon, 'foregroundImage')).toBe(
@@ -209,7 +209,7 @@ describe('appConfig de ícone e splash (PR A #19, passo 4)', () => {
         expect(alfaEm(png, x, y)).toBe(0);
       }
       // Nenhum pixel escuro FORA do disco solar (halo de pré-multiplicação).
-      // Os raios escuros DENTRO do disco fazem parte da arte Ekanâdyby.
+      // Os raios escuros DENTRO do disco fazem parte da arte CoiabApp.
       let halo = 0;
       const centro = (png.width - 1) / 2;
       const raioDisco = png.width * 0.36; // sol ocupa ~72% da largura

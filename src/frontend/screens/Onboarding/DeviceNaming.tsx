@@ -36,7 +36,7 @@ const m = defineMessages({
   description: {
     id: '$1screens.DeviceNaming.description',
     defaultMessage:
-      'Distinct names help collaborators using Ekanâdyby to recognize you.',
+      'Distinct names help collaborators using CoiabApp to recognize you.',
   },
   save: {
     id: '$1screens.DeviceNaming.save',

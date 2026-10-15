@@ -10,7 +10,7 @@ describe('Onboarding - Data & Privacy Screen', () => {
     await getStartedButton.click();
 
     const privacyText = await $(
-      byTextMatches('Ekanâdyby is private by default'),
+      byTextMatches('CoiabApp is private by default'),
     );
     await expect(privacyText).toBeDisplayed();
   });

@@ -34,7 +34,7 @@ const m = defineMessages({
   },
   updates: {
     id: 'screens.EarlyAccess.updates',
-    defaultMessage: 'See Ekanâdyby Updates',
+    defaultMessage: 'See CoiabApp Updates',
   },
   feedbackPrefix: {
     id: 'screens.EarlyAccess.feedbackPrefix',

@@ -13,7 +13,7 @@ describe('Settings - Early Access Mode', () => {
     await expect($(byTextMatches('Early Access OFF'))).toBeDisplayed();
     await $(byResourceId('earlyAccessFlag')).click();
     await expect($(byTextMatches('Early Access Mode'))).toBeDisplayed();
-    await expect($(byText('See Ekanâdyby Updates'))).toBeDisplayed();
+    await expect($(byText('See CoiabApp Updates'))).toBeDisplayed();
   });
 
   it('should toggle ON and check info box + feedback row is present', async () => {
@@ -54,7 +54,7 @@ describe('Settings - Early Access Mode', () => {
     await expect(
       $(byTextMatches('You are in Early Access Mode.')),
     ).toBeDisplayed();
-    const seeUpdates = await $(byTextMatches('See Ekanâdyby Updates'));
+    const seeUpdates = await $(byTextMatches('See CoiabApp Updates'));
     await seeUpdates.scrollIntoView();
     await expect(seeUpdates).toBeDisplayed();
     await $(byResourceId('MAIN.header-back-btn')).click();
