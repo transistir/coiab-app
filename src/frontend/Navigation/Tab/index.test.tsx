@@ -107,14 +107,15 @@ import {
 import {createAppProvidersWrapper} from '../../../../tests/integration/helpers/react';
 import {executarEmOrdem} from '../../../../tests/integration/helpers/setupIntegrationTest';
 import {ActiveProjectProvider} from '../../contexts/ActiveProjectContext';
-import {COIAB_ORGANIZATIONS_STORAGE_KEY} from '../../contexts/CoiabOrganizationsStoreContext';
-import {MMKVStoreInitializer} from '../../hooks/persistedState/createPersistedState';
 import {sleep} from '../../lib/sleep';
 import {HomeTabs} from './index';
 
 type TestStackParamsList = {
   Home: NavigatorScreenParams<HomeTabsParamsList>;
   ObservationCategoryChooser: undefined;
+  // Configurações (5º item da tab bar) navega para AppSettings na root stack;
+  // aqui ela é stub, o suite só observa que a navegação sai das home tabs.
+  AppSettings: undefined;
 };
 
 const Stack = createNativeStackNavigator<TestStackParamsList>();
@@ -127,7 +128,13 @@ function StubObservationCategoryChooser() {
   return <View testID="STUB.category-chooser" />;
 }
 
-describe('HomeTabs — barra de 4 abas (#32)', () => {
+// Configurações alvo (AppSettings) stub: pressionar a engrenagem deve sair
+// das home tabs e chegar aqui.
+function StubAppSettings() {
+  return <View testID="STUB.app-settings" />;
+}
+
+describe('HomeTabs — barra de 5 abas (#32)', () => {
   let manager: MapeoManager;
   let client: ComapeoCoreClientApi;
   let projectId: string;
@@ -158,11 +165,7 @@ describe('HomeTabs — barra de 4 abas (#32)', () => {
     // Tree and providers first: their teardown clears the QueryClient, so
     // in-flight queries are cancelled before `ipc.stop` drains the RPCs and
     // closes the channel.
-    await executarEmOrdem([
-      ...onTeardown,
-      ...coreTeardown,
-      () => MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY),
-    ]);
+    await executarEmOrdem([...onTeardown, ...coreTeardown]);
   }, 15_000);
 
   async function renderHomeTabs() {
@@ -185,6 +188,7 @@ describe('HomeTabs — barra de 4 abas (#32)', () => {
                 name="ObservationCategoryChooser"
                 component={StubObservationCategoryChooser}
               />
+              <Stack.Screen name="AppSettings" component={StubAppSettings} />
             </Stack.Navigator>
           </ActiveProjectProvider>
         </React.Suspense>
@@ -198,51 +202,88 @@ describe('HomeTabs — barra de 4 abas (#32)', () => {
     });
   }
 
-  test('a tab bar mostra exatamente 4 abas, Organização (ícone-só) ativa por padrão', async () => {
+  test('a tab bar mostra exatamente 5 itens (menu, paneiro, map, notificações, configurações), sem rótulo de texto, Menu ativo por padrão', async () => {
     await renderHomeTabs();
 
-    // As quatro abas da barra (IDs de rota preservados: Map e
-    // ObservationsList continuam Map e ObservationsList).
+    // Os cinco itens da barra do Figma `footer-menu`, na ordem
+    // esquerda→direita. Paneiro usa a rota ObservationsList (funil ≠ filtro);
+    // Configurações navega para AppSettings na root stack (não é aba).
     const tabButtons = [
-      'tabBarButtonOrganizacao',
+      'tabBarButtonMenu',
+      'tabBarButtonPaneiro',
       'tabBarButtonMap',
       'tabBarButtonNotificacoes',
-      'tabBarButtonPaneiro',
+      'tabBarButtonConfiguracoes',
     ];
     for (const testID of tabButtons) {
       expect(await screen.findByTestId(testID)).toBeTruthy();
     }
     // A Camera deixou de ser aba (só o botão some; a rota continua).
     expect(screen.queryByTestId('tabBarButtonCamera')).toBeNull();
-    // Filtros e tracking saíram da tab bar (#32 feedback).
-    expect(screen.queryByTestId('tabBarButtonFiltros')).toBeNull();
+    // Itens que saíram no v3: perfil nunca existiu; a trilha/download não
+    // vive na barra (a trilha é ação DENTRO do mapa); Filtros deixou de ser
+    // aba (o funil agora é o Paneiro).
     expect(screen.queryByTestId('tabBarButtonTracking')).toBeNull();
+    expect(screen.queryByTestId('tabBarButtonFiltros')).toBeNull();
+    expect(screen.queryByTestId('tabBarButtonEntroncamento')).toBeNull();
 
-    // A aba principal é ícone-só: sem texto visível (nem 'Entroncamento', nem
-    // 'Organização', nem o nome do projeto). A acessibilidade vem do
-    // accessibilityLabel do botão, não de um rótulo renderizado.
-    const botaoOrg = await screen.findByTestId('tabBarButtonOrganizacao');
-    expect(botaoOrg.props.accessibilityLabel).toBe('Organização');
-    expect(within(botaoOrg).queryByText('Entroncamento')).toBeNull();
-    expect(within(botaoOrg).queryByText('Organização')).toBeNull();
-    expect(within(botaoOrg).queryByText('Monitoramento')).toBeNull();
-    expect(screen.queryByText('Entroncamento')).toBeNull();
+    // Sem rótulo de texto na barra (ícones apenas, como no Figma).
+    expect(screen.queryByText('Menu')).toBeNull();
+    expect(screen.queryByText('Paneiro')).toBeNull();
     expect(screen.queryByText('Filtros')).toBeNull();
+    expect(screen.queryByText('Entroncamento')).toBeNull();
 
-    // Ativa por padrão: a bolinha teal indicadora aparece sob o logo.
+    // Menu é a rota inicial pós-login e renderiza a página de menu (o
+    // conteúdo que o CoMapeo mostrava na drawer do header).
+    expect(mockNavigation.getCurrentRoute()?.name).toBe('Menu');
+    expect(await screen.findByTestId('MENU.scrn')).toBeTruthy();
+    // Continuidade de testes de navigator (#32): a Home pós-login carrega o
+    // testID ENTRONCAMENTO.scrn.
+    expect(screen.getByTestId('ENTRONCAMENTO.scrn')).toBeTruthy();
+  });
+
+  test('o botão funil (paneiro) navega para a ObservationsList', async () => {
+    await renderHomeTabs();
+    const user = userEvent.setup();
+
+    await user.press(await screen.findByTestId('tabBarButtonPaneiro'));
+
+    expect(mockNavigation.getCurrentRoute()?.name).toBe('ObservationsList');
+    // Sem observações no projeto novo, a lista existente cai na view vazia.
+    expect(await screen.findByTestId('observationsEmptyView')).toBeTruthy();
+  });
+
+  test('o botão engrenagem navega para a tela de configurações (AppSettings)', async () => {
+    await renderHomeTabs();
+    const user = userEvent.setup();
+
+    await user.press(await screen.findByTestId('tabBarButtonConfiguracoes'));
+
+    await waitFor(() =>
+      expect(mockNavigation.getCurrentRoute()?.name).toBe('AppSettings'),
+    );
+    expect(await screen.findByTestId('STUB.app-settings')).toBeTruthy();
+  });
+
+  test('o botão menu abre a página de menu (conteúdo da drawer atual)', async () => {
+    await renderHomeTabs();
+    const user = userEvent.setup();
+
+    // Sai da Home para o mapa e volta pelo botão de menu.
+    await user.press(await screen.findByTestId('tabBarButtonMap'));
+    expect(await screen.findByTestId('MAIN.map-screen')).toBeTruthy();
+
+    await user.press(await screen.findByTestId('tabBarButtonMenu'));
+
+    expect(mockNavigation.getCurrentRoute()?.name).toBe('Menu');
+    // A página de menu mostra o conteúdo da drawer: o botão de ação (Exchange)
+    // e o cartão da organização, que vivem no DrawerMenu reaproveitado.
+    // Escopo ao subtree MENU.scrn porque o header do CoMapeo ainda monta sua
+    // própria cópia da drawer (follow-up: remover — ver docs/navegacao-coiab.md).
+    const menuPage = await screen.findByTestId('MENU.scrn');
     expect(
-      within(botaoOrg).getByTestId('tabBarActiveDotOrganizacao'),
+      within(menuPage).getByTestId('MENU.main-action-button'),
     ).toBeTruthy();
-
-    // As outras três abas mantêm rótulo visível.
-    expect(screen.getByText('Map')).toBeTruthy();
-    expect(screen.getByText('Notificações')).toBeTruthy();
-    expect(screen.getByText('Paneiro')).toBeTruthy();
-
-    // Entroncamento é a rota inicial pós-login e seu placeholder aparece.
-    expect(mockNavigation.getCurrentRoute()?.name).toBe('Entroncamento');
-    expect(screen.getByText('Olá')).toBeTruthy();
-    expect(screen.getByText('4 módulos em breve')).toBeTruthy();
   });
 
   test('a aba Map renderiza a MapScreen existente', async () => {
@@ -254,61 +295,6 @@ describe('HomeTabs — barra de 4 abas (#32)', () => {
     expect(await screen.findByTestId('MAIN.map-screen')).toBeTruthy();
   });
 
-  test('a aba Paneiro renderiza a ObservationsList existente', async () => {
-    await renderHomeTabs();
-    const user = userEvent.setup();
-
-    await user.press(await screen.findByTestId('tabBarButtonPaneiro'));
-
-    // Sem observações no projeto novo, a lista existente cai na view vazia
-    // dela — é a ObservationsList montando, não uma tela nova.
-    expect(await screen.findByTestId('observationsEmptyView')).toBeTruthy();
-  });
-
-  test("aba principal não renderiza o texto 'Entroncamento' e leva à tela da organização", async () => {
-    await renderHomeTabs();
-
-    const botaoOrg = await screen.findByTestId('tabBarButtonOrganizacao');
-
-    // Decisão de campo: a aba principal não tem rótulo visível 'Entroncamento'
-    // em lugar nenhum da tela — nem no botão da aba, nem no header.
-    expect(screen.queryByText('Entroncamento')).toBeNull();
-    expect(within(botaoOrg).queryByText('Entroncamento')).toBeNull();
-
-    // Seu conteúdo é a tela da organização (o hub Entroncamento), que é a rota
-    // inicial e mostra seu placeholder.
-    expect(mockNavigation.getCurrentRoute()?.name).toBe('Entroncamento');
-    expect(await screen.findByTestId('ENTRONCAMENTO.scrn')).toBeTruthy();
-
-    // Partindo de outra aba, tocar a aba principal volta para a tela da
-    // organização — sem nunca renderizar o texto 'Entroncamento'.
-    const user = userEvent.setup();
-    await user.press(await screen.findByTestId('tabBarButtonMap'));
-    expect(await screen.findByTestId('MAIN.map-screen')).toBeTruthy();
-
-    await user.press(botaoOrg);
-    expect(await screen.findByTestId('ENTRONCAMENTO.scrn')).toBeTruthy();
-    expect(mockNavigation.getCurrentRoute()?.name).toBe('Entroncamento');
-    expect(screen.queryByText('Entroncamento')).toBeNull();
-  });
-
-  test('o botão de trilha fica acessível dentro do mapa', async () => {
-    await renderHomeTabs();
-    const user = userEvent.setup();
-
-    await user.press(await screen.findByTestId('tabBarButtonMap'));
-
-    const trackBtn = await screen.findByTestId('mapTrackButton');
-    expect(trackBtn).toBeTruthy();
-
-    await user.press(trackBtn);
-    expect(await screen.findByText('Ready to record new track?')).toBeTruthy();
-  });
-
-  // Mantido por último de propósito: a CameraScreen real segura recursos
-  // assíncronos que só drenam no afterEach, então qualquer teste que montasse
-  // a tab bar logo depois dela não acharia os botões. Como nada roda depois,
-  // o vazamento não afeta outro teste.
   test('a criação de observação continua acessível e a rota Camera não sumiu', async () => {
     await renderHomeTabs();
     const user = userEvent.setup();
