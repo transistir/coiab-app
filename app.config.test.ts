@@ -22,28 +22,28 @@ const TEST_CASES = [
   {
     pkgVersion: '1.0.0',
     appVariant: 'development',
-    expectedName: 'Ekanâdyby Dev',
+    expectedName: 'CoiabApp Dev',
     expectedPackage: 'org.coiab.dev',
     expectedVersion: '0.0-dev+1234567',
   },
   {
     pkgVersion: '1.6.0',
     appVariant: 'development',
-    expectedName: 'Ekanâdyby Dev',
+    expectedName: 'CoiabApp Dev',
     expectedPackage: 'org.coiab.dev',
     expectedVersion: '6.0-dev+1234567',
   },
   {
     pkgVersion: '2.1.3',
     appVariant: 'development',
-    expectedName: 'Ekanâdyby Dev',
+    expectedName: 'CoiabApp Dev',
     expectedPackage: 'org.coiab.dev',
     expectedVersion: '1.3-dev+1234567',
   },
   {
     pkgVersion: '10.25.99',
     appVariant: 'development',
-    expectedName: 'Ekanâdyby Dev',
+    expectedName: 'CoiabApp Dev',
     expectedPackage: 'org.coiab.dev',
     expectedVersion: '25.99-dev+1234567',
   },
@@ -52,28 +52,28 @@ const TEST_CASES = [
   {
     pkgVersion: '1.0.0',
     appVariant: 'production',
-    expectedName: 'Ekanâdyby',
+    expectedName: 'CoiabApp',
     expectedPackage: 'org.coiab',
     expectedVersion: '0.0',
   },
   {
     pkgVersion: '1.6.0',
     appVariant: 'production',
-    expectedName: 'Ekanâdyby',
+    expectedName: 'CoiabApp',
     expectedPackage: 'org.coiab',
     expectedVersion: '6.0',
   },
   {
     pkgVersion: '2.1.3',
     appVariant: 'production',
-    expectedName: 'Ekanâdyby',
+    expectedName: 'CoiabApp',
     expectedPackage: 'org.coiab',
     expectedVersion: '1.3',
   },
   {
     pkgVersion: '10.25.99',
     appVariant: 'production',
-    expectedName: 'Ekanâdyby',
+    expectedName: 'CoiabApp',
     expectedPackage: 'org.coiab',
     expectedVersion: '25.99',
   },
@@ -82,21 +82,21 @@ const TEST_CASES = [
   {
     pkgVersion: '1.0.0',
     appVariant: 'releaseCandidate',
-    expectedName: 'Ekanâdyby RC',
+    expectedName: 'CoiabApp RC',
     expectedPackage: 'org.coiab.rc',
     expectedVersion: '0.0-rc+1234567',
   },
   {
     pkgVersion: '1.6.0',
     appVariant: 'releaseCandidate',
-    expectedName: 'Ekanâdyby RC',
+    expectedName: 'CoiabApp RC',
     expectedPackage: 'org.coiab.rc',
     expectedVersion: '6.0-rc+1234567',
   },
   {
     pkgVersion: '2.1.3',
     appVariant: 'releaseCandidate',
-    expectedName: 'Ekanâdyby RC',
+    expectedName: 'CoiabApp RC',
     expectedPackage: 'org.coiab.rc',
     expectedVersion: '1.3-rc+1234567',
   },
@@ -105,21 +105,21 @@ const TEST_CASES = [
   {
     pkgVersion: '1.0.0',
     appVariant: 'preRelease',
-    expectedName: 'Ekanâdyby Pre',
+    expectedName: 'CoiabApp Pre',
     expectedPackage: 'org.coiab.pre',
     expectedVersion: '0.0-pre+1234567',
   },
   {
     pkgVersion: '1.6.0',
     appVariant: 'preRelease',
-    expectedName: 'Ekanâdyby Pre',
+    expectedName: 'CoiabApp Pre',
     expectedPackage: 'org.coiab.pre',
     expectedVersion: '6.0-pre+1234567',
   },
   {
     pkgVersion: '2.1.3',
     appVariant: 'preRelease',
-    expectedName: 'Ekanâdyby Pre',
+    expectedName: 'CoiabApp Pre',
     expectedPackage: 'org.coiab.pre',
     expectedVersion: '1.3-pre+1234567',
   },
@@ -128,21 +128,21 @@ const TEST_CASES = [
   {
     pkgVersion: '1.6.0-pre',
     appVariant: 'development',
-    expectedName: 'Ekanâdyby Dev',
+    expectedName: 'CoiabApp Dev',
     expectedPackage: 'org.coiab.dev',
     expectedVersion: '6.0-dev+1234567',
   },
   {
     pkgVersion: '1.6.0-dev',
     appVariant: 'production',
-    expectedName: 'Ekanâdyby',
+    expectedName: 'CoiabApp',
     expectedPackage: 'org.coiab',
     expectedVersion: '6.0',
   },
   {
     pkgVersion: '1.6.0-rc.1',
     appVariant: 'releaseCandidate',
-    expectedName: 'Ekanâdyby RC',
+    expectedName: 'CoiabApp RC',
     expectedPackage: 'org.coiab.rc',
     expectedVersion: '6.0-rc+1234567',
   },
@@ -230,25 +230,25 @@ describe('app.config.js', () => {
       {
         appVersion: '1.0',
         appVariant: 'development',
-        expectedName: 'Ekanâdyby Dev',
+        expectedName: 'CoiabApp Dev',
         expectedPackage: 'org.coiab.dev',
       },
       {
         appVersion: '2.5-dev.1',
         appVariant: 'development',
-        expectedName: 'Ekanâdyby Dev',
+        expectedName: 'CoiabApp Dev',
         expectedPackage: 'org.coiab.dev',
       },
       {
         appVersion: '1.0-rc',
         appVariant: 'releaseCandidate',
-        expectedName: 'Ekanâdyby RC',
+        expectedName: 'CoiabApp RC',
         expectedPackage: 'org.coiab.rc',
       },
       {
         appVersion: '3.1-pre.5',
         appVariant: 'preRelease',
-        expectedName: 'Ekanâdyby Pre',
+        expectedName: 'CoiabApp Pre',
         expectedPackage: 'org.coiab.pre',
       },
     ];
@@ -368,6 +368,25 @@ describe('app.config.js', () => {
       // Should not include commit SHA for production
       expect(result.version).toBe('6.0');
       expect(result.version).not.toContain('+');
+    });
+
+    it('should name the production app CoiabApp', () => {
+      process.env.APP_VARIANT = 'production';
+      delete process.env.APP_VERSION;
+
+      const configFunction = getConfigWithPackageVersion('1.6.0');
+
+      const result = configFunction({
+        config: {
+          name: 'Test',
+          version: '1.0.0',
+          extra: {},
+          ios: {},
+          android: {},
+        },
+      });
+
+      expect(result.name).toBe('CoiabApp');
     });
   });
 

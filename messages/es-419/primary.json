@@ -6,7 +6,7 @@
     "message": "Detener Trayectos"
   },
   "$1Navigation.Menu.Settings": {
-    "message": "Ajustes de Ekanâdyby"
+    "message": "Ajustes de CoiabApp"
   },
   "$1Navigation.Menu.bgMap": {
     "message": "Mapas de fondo"
@@ -115,11 +115,11 @@
   "$1Screens.ProjectSettings.title": {
     "message": "Herramientas del Coordinador"
   },
-  "$1Screens.Settings.AppSettings.aboutEkanâdyby": {
-    "message": "Acerca de Ekanâdyby"
+  "$1Screens.Settings.AppSettings.aboutCoiabApp": {
+    "message": "Acerca de CoiabApp"
   },
   "$1Screens.Settings.AppSettings.title": {
-    "message": "Ajustes de Ekanâdyby"
+    "message": "Ajustes de CoiabApp"
   },
   "$1TrackBottomSheet.DidNotMove.delete": {
     "message": "Salir de trayectos"
@@ -170,11 +170,11 @@
     "message": "Selecciona un rol"
   },
   "$1screens.AboutSettings.seeUpdates": {
-    "message": "Ver actualizaciones de Ekanâdyby"
+    "message": "Ver actualizaciones de CoiabApp"
   },
   "$1screens.AboutSettings.title": {
-    "message": "Acerca de Ekanâdyby",
-    "description": "Title of 'About Ekanâdyby' screen"
+    "message": "Acerca de CoiabApp",
+    "description": "Title of 'About CoiabApp' screen"
   },
   "$1screens.AppPasscode": {
     "message": "Contraseña de la aplicación"
@@ -211,7 +211,7 @@
     "message": "La contraseña no coincide"
   },
   "$1screens.AppPasscode.NewPasscode.InputPasscodeScreen.subTitleSet": {
-    "message": "Esta contraseña será necesaria para abrir la aplicación de Ekanâdyby"
+    "message": "Esta contraseña será necesaria para abrir la aplicación de CoiabApp"
   },
   "$1screens.AppPasscode.NewPasscode.SetPasscodeScreen.title": {
     "message": "Establecer contraseña"
@@ -223,19 +223,19 @@
     "message": "¿Qué es la contraseña de la aplicación?"
   },
   "$1screens.AppPasscode.PasscodeIntro.description": {
-    "message": "La contraseña de la aplicación te permite añadir una capa adicional de seguridad, haciendo necesario escribir una contraseña para abrir la aplicación de Ekanâdyby. Puedes definir tu propia contraseña de 5 dígitos activando la siguiente función."
+    "message": "La contraseña de la aplicación te permite añadir una capa adicional de seguridad, haciendo necesario escribir una contraseña para abrir la aplicación de CoiabApp. Puedes definir tu propia contraseña de 5 dígitos activando la siguiente función."
   },
   "$1screens.AppPasscode.PasscodeIntro.warning": {
-    "message": "<bold>¡Aviso! Las contraseñas olvidadas no pueden ser recuperadas</bold> Una vez habilitada esta función, si olvidas o pierdes tu contraseña, no podrás abrir Ekanâdyby y perderás el acceso a cualquier dato de Ekanâdyby que no haya sido intercambiado con otros participantes del proyecto."
+    "message": "<bold>¡Aviso! Las contraseñas olvidadas no pueden ser recuperadas</bold> Una vez habilitada esta función, si olvidas o pierdes tu contraseña, no podrás abrir CoiabApp y perderás el acceso a cualquier dato de CoiabApp que no haya sido intercambiado con otros participantes del proyecto."
   },
   "$1screens.AppPasscode.TurnOffPasscode.changePasscode": {
-    "message": "Cambiar la contraseña de Ekanâdyby"
+    "message": "Cambiar la contraseña de CoiabApp"
   },
   "$1screens.AppPasscode.TurnOffPasscode.currentlyUsing": {
     "message": "Actualmente estás usando la contraseña de la aplicación. Consulta abajo para dejar de usar o cambiar la contraseña."
   },
   "$1screens.AppPasscode.TurnOffPasscode.description": {
-    "message": "La contraseña de la aplicación añade una capa adicional de seguridad, requiriendo que introduzcas un código para abrir la aplicación de Ekanâdyby."
+    "message": "La contraseña de la aplicación añade una capa adicional de seguridad, requiriendo que introduzcas un código para abrir la aplicación de CoiabApp."
   },
   "$1screens.AppPasscode.TurnOffPasscode.title": {
     "message": "Contraseña de la aplicación"
@@ -255,7 +255,7 @@
     "description": "Screen button text for not granting audio permission"
   },
   "$1screens.AudioPermission.title": {
-    "message": "Grabando audio con Ekanâdyby",
+    "message": "Grabando audio con CoiabApp",
     "description": "Screen title for audio permission screen"
   },
   "$1screens.AudioPlaybackNew.backToEditing": {
@@ -308,7 +308,7 @@
     "message": "Sus datos permanecen en sus dispositivos, completamente cifrados y bajo su control."
   },
   "$1screens.DataPrivacy.title": {
-    "message": "Ekanâdyby es privado por defecto."
+    "message": "CoiabApp es privado por defecto."
   },
   "$1screens.DeviceNaming.Success.chooseProject": {
     "message": "Elige de abajo para iniciar su primer proyecto."
@@ -323,7 +323,7 @@
     "message": "Mapea por tu cuenta"
   },
   "$1screens.DeviceNaming.description": {
-    "message": "Los nombres distintivos ayudan a los colaboradores que utilizan Ekanâdyby a reconocerte."
+    "message": "Los nombres distintivos ayudan a los colaboradores que utilizan CoiabApp a reconocerte."
   },
   "$1screens.DeviceNaming.header": {
     "message": "Nombra tu dispositivo"
@@ -460,7 +460,7 @@
     "message": "Trayecto"
   },
   "$1screens.Observation.comapeoAlert": {
-    "message": "Datos de Ekanâdyby enviados desde {projectName}"
+    "message": "Datos de CoiabApp enviados desde {projectName}"
   },
   "$1screens.Observation.defaultProjectName": {
     "message": "Mi proyecto"
@@ -486,7 +486,7 @@
     "description": "Title of dialog to share an observation with media"
   },
   "$1screens.Observation.shareMessageFooter": {
-    "message": "Enviado desde Ekanâdyby"
+    "message": "Enviado desde CoiabApp"
   },
   "$1screens.Observation.shareTextTitle": {
     "message": "Compartir texto",
@@ -542,7 +542,7 @@
     "message": "Cerrar"
   },
   "$1screens.Onboarding.MapOnYourOwnIntro.description": {
-    "message": "Explora Ekanâdyby—invita a colaboradores en cualquier momento."
+    "message": "Explora CoiabApp—invita a colaboradores en cualquier momento."
   },
   "$1screens.Onboarding.MapOnYourOwnIntro.goToMap": {
     "message": "Ir al mapa"

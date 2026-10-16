@@ -61,7 +61,7 @@ const m = defineMessages({
   sameVersion: {
     id: '$1screen.Settings.ProjectSettings.YourTeam.SelectDevice.sameVersion',
     defaultMessage:
-      'Make sure both devices are on the same version of Ekanâdyby',
+      'Make sure both devices are on the same version of CoiabApp',
   },
 });
 

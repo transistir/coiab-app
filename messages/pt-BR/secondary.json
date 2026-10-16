@@ -32,7 +32,7 @@
     "message": "Habilitado"
   },
   "Modal.GPSDisable.description": {
-    "message": "Para criar uma trilha, Ekanâdyby precisa acessar sua localização e GPS."
+    "message": "Para criar uma trilha, CoiabApp precisa acessar sua localização e GPS."
   },
   "Modal.GPSDisable.title": {
     "message": "GPS desativado"
@@ -235,16 +235,16 @@
     "message": "Você está selecionando uma função para este dispositivo:"
   },
   "screens.AboutSettings.ekanadybyBuild": {
-    "message": "Compilação do Ekanâdyby",
-    "description": "Label for Ekanâdyby build number"
+    "message": "Compilação do CoiabApp",
+    "description": "Label for CoiabApp build number"
   },
   "screens.AboutSettings.ekanadybyType": {
-    "message": "Variante do Ekanâdyby",
-    "description": "Label for Ekanâdyby type/variant (e.g. QA for testing vs normal version of app)"
+    "message": "Variante do CoiabApp",
+    "description": "Label for CoiabApp type/variant (e.g. QA for testing vs normal version of app)"
   },
   "screens.AboutSettings.ekanadybyVersion": {
-    "message": "Versão do Ekanâdyby",
-    "description": "Label for Ekanâdyby version"
+    "message": "Versão do CoiabApp",
+    "description": "Label for CoiabApp version"
   },
   "screens.AboutSettings.androidBuild": {
     "message": "Número de compilação do Android",
@@ -255,14 +255,14 @@
     "description": "Label for Android version"
   },
   "screens.AboutSettings.ekanadybyWebsiteLabel": {
-    "message": "Site Ekanâdyby"
+    "message": "Site CoiabApp"
   },
   "screens.AboutSettings.earlyAccessBanner": {
     "message": "Você está no Modo de Acesso Antecipado."
   },
   "screens.AboutSettings.emojiSource": {
     "message": "Origem dos emojis",
-    "description": "Label for the source of emojis used in Ekanâdyby"
+    "description": "Label for the source of emojis used in CoiabApp"
   },
   "screens.AboutSettings.phoneModel": {
     "message": "Modelo do telefone",
@@ -313,10 +313,10 @@
     "message": "IDs são misturados aleatoriamente e alterados a cada mês."
   },
   "screens.AppUsagePrompt.introText": {
-    "message": "Compartilhe como você usa o Ekanâdyby—qualquer dado compartilhado não pode ser usado para rastreá-lo."
+    "message": "Compartilhe como você usa o CoiabApp—qualquer dado compartilhado não pode ser usado para rastreá-lo."
   },
   "screens.AppUsagePrompt.neverStores": {
-    "message": "O Ekanâdyby nunca armazena endereços IP."
+    "message": "O CoiabApp nunca armazena endereços IP."
   },
   "screens.AppUsagePrompt.notNow": {
     "message": "Não, agora não"
@@ -331,7 +331,7 @@
     "message": "Concluído"
   },
   "screens.AppUsageSharingSuccess.nowSharing": {
-    "message": "agora está compartilhando como você usa o Ekanâdyby com Awana Digital."
+    "message": "agora está compartilhando como você usa o CoiabApp com Awana Digital."
   },
   "screens.AppUsageSharingSuccess.removeAnytime": {
     "message": "Altere isto a qualquer momento navegando até Privacidade e Dados no Menu."
@@ -347,7 +347,7 @@
     "description": "Screen button text for navigating the user to settings when audio permission is denied"
   },
   "screens.AudioPermission.description": {
-    "message": "Para gravar áudio enquanto usa o aplicativo, Ekanâdyby precisa acessar o seu microfone. Por favor, ative as permissões do microfone nas configurações do seu aplicativo.",
+    "message": "Para gravar áudio enquanto usa o aplicativo, CoiabApp precisa acessar o seu microfone. Por favor, ative as permissões do microfone nas configurações do seu aplicativo.",
     "description": "Screen description for audio permission screen"
   },
   "screens.AudioRecording.lessThan1": {
@@ -390,7 +390,7 @@
     "message": "Números de ID são misturados aleatoriamente e alterados a cada mês."
   },
   "screens.DataAndPrivacy.appUsageText": {
-    "message": "Compartilhe como você usa o Ekanâdyby com Awana Digital — nenhuma informação que você compartilha pode ser usada para rastreá-lo."
+    "message": "Compartilhe como você usa o CoiabApp com Awana Digital — nenhuma informação que você compartilha pode ser usada para rastreá-lo."
   },
   "screens.DataAndPrivacy.appUsageTitle": {
     "message": "Uso do aplicativo"
@@ -402,7 +402,7 @@
     "message": "Informação de diagnóstico"
   },
   "screens.DataAndPrivacy.ipAddress": {
-    "message": "O Ekanâdyby nunca armazena endereços IP."
+    "message": "O CoiabApp nunca armazena endereços IP."
   },
   "screens.DataAndPrivacy.learnMore": {
     "message": "Saiba mais"
@@ -417,7 +417,7 @@
     "message": "Você pode optar por não compartilhar informações de diagnóstico a qualquer momento."
   },
   "screens.DataAndPrivacy.respectsPrivacy": {
-    "message": "Ekanâdyby respeita suas privacidade e autonomia"
+    "message": "CoiabApp respeita suas privacidade e autonomia"
   },
   "screens.EarlyAccess.infoBox": {
     "message": "Os dados do Acesso Antecipado não serão visíveis para os colaboradores que não optaram."
@@ -429,7 +429,7 @@
     "message": "Modo de Acesso Antecipado"
   },
   "screens.EarlyAccess.updates": {
-    "message": "Ver atualizações do Ekanâdyby"
+    "message": "Ver atualizações do CoiabApp"
   },
   "screens.EarlyAccess.useEarlyAccess": {
     "message": "Usar recursos de Acesso Antecipado"
@@ -688,13 +688,13 @@
     "message": "Número do fuso"
   },
   "screens.MapScreen.GPSBackgroundPermissionDisabled.collectsLocation": {
-    "message": "O Ekanâdyby coleta dados de localização para rastrear a sua rota no mapa, mesmo quando o app é fechado. Seus dados de localização são armazenados apenas no seu dispositivo por padrão e não são armazenados ou enviados para lugar algum."
+    "message": "O CoiabApp coleta dados de localização para rastrear a sua rota no mapa, mesmo quando o app é fechado. Seus dados de localização são armazenados apenas no seu dispositivo por padrão e não são armazenados ou enviados para lugar algum."
   },
   "screens.ObscurePasscode.description": {
-    "message": "A senha secreta é um recurso de segurança que permite abrir o Ekanâdyby em um modo que oculta todos os seus dados. Digitar essa senha secreta na tela de início do app exibirá uma versão vazia do Ekanâdyby, permitindo que você crie observações de demonstração que não são salvas no banco de dados do Ekanâdyby."
+    "message": "A senha secreta é um recurso de segurança que permite abrir o CoiabApp em um modo que oculta todos os seus dados. Digitar essa senha secreta na tela de início do app exibirá uma versão vazia do CoiabApp, permitindo que você crie observações de demonstração que não são salvas no banco de dados do CoiabApp."
   },
   "screens.ObscurePasscode.instructions": {
-    "message": "Insira o código acima para ocultar seus dados no Ekanâdyby"
+    "message": "Insira o código acima para ocultar seus dados no CoiabApp"
   },
   "screens.ObscurePasscode.title": {
     "message": "Senha obscura"
@@ -777,7 +777,7 @@
     "message": "Precisão da Altitude"
   },
   "screens.ObservationMetadataVerified.ekanadybyMetadata": {
-    "message": "Metadados do Ekanâdyby"
+    "message": "Metadados do CoiabApp"
   },
   "screens.ObservationMetadataVerified.dataEntered": {
     "message": "Este dado foi inserido manualmente."
@@ -801,16 +801,16 @@
     "message": "Inserido manualmente."
   },
   "screens.ObservationMetadataVerified.sentByEkanadyby": {
-    "message": "Enviado por Ekanâdyby"
+    "message": "Enviado por CoiabApp"
   },
   "screens.ObservationMetadataVerified.sentFrom": {
-    "message": "Metadados Ekanâdyby enviados de"
+    "message": "Metadados CoiabApp enviados de"
   },
   "screens.ObservationMetadataVerified.speed": {
     "message": "Velocidade"
   },
   "screens.ObservationMetadataVerified.validatedByEkanadyby": {
-    "message": "Enviado e validado pelo Ekanâdyby"
+    "message": "Enviado e validado pelo CoiabApp"
   },
   "screens.ObservationsList.ObservationsEmptyView.noObservationsDesc": {
     "message": "Comece pela tela de mapa ou da câmera para criar sua primeira observação.",
@@ -868,7 +868,7 @@
     "description": "Label for the time when the photo was attached to an observation"
   },
   "screens.PhotoPreviewModal.validatedByEkanadyby": {
-    "message": "Validado por Ekanâdyby"
+    "message": "Validado por CoiabApp"
   },
   "screens.PhotoPreviewModal.verifiedOriginal": {
     "message": "Este é um original verificado sem alterações.",
@@ -878,7 +878,7 @@
     "message": "Sobre Awana Digital"
   },
   "screens.PrivacyPolicy.aboutAwanaContent": {
-    "message": "Ekanâdyby é desenvolvido por Awana Digital, uma organização sem fins lucrativos registrada conforme lei 501c3 nos Estados Unidos. Awana Digital trabalha em conjunto com as comunidades que estão na linha de frente, para que utilizem a tecnologia na defesa dos seus direitos e na luta contra as mudanças climáticas."
+    "message": "CoiabApp é desenvolvido por Awana Digital, uma organização sem fins lucrativos registrada conforme lei 501c3 nos Estados Unidos. Awana Digital trabalha em conjunto com as comunidades que estão na linha de frente, para que utilizem a tecnologia na defesa dos seus direitos e na luta contra as mudanças climáticas."
   },
   "screens.PrivacyPolicy.appErrors": {
     "message": "Erros do aplicativo"
@@ -890,7 +890,7 @@
     "message": "Informações do aplicativo"
   },
   "screens.PrivacyPolicy.appInfoDescription": {
-    "message": "A versão e idioma do Ekanâdyby"
+    "message": "A versão e idioma do CoiabApp"
   },
   "screens.PrivacyPolicy.appUsageTitle": {
     "message": "Uso do aplicativo"
@@ -899,7 +899,7 @@
     "message": "Você está no controle"
   },
   "screens.PrivacyPolicy.controlDescription": {
-    "message": "Você pode optar por não enviar nenhuma informação para a Awana Digital. Você escolhe onde seus dados são armazenados e com quem eles são compartilhados. Você pode escolher compartilhar dados anônimos sobre como você usa o Ekanâdyby com a Awana Digital. Nós sempre seremos transparentes sobre quais informações você escolhe compartilhar, com o propósito de melhorar o aplicativo, e essas informações nunca incluirão fotos, vídeos, áudio, texto ou localizações precisas que você inseriu no Ekanâdyby."
+    "message": "Você pode optar por não enviar nenhuma informação para a Awana Digital. Você escolhe onde seus dados são armazenados e com quem eles são compartilhados. Você pode escolher compartilhar dados anônimos sobre como você usa o CoiabApp com a Awana Digital. Nós sempre seremos transparentes sobre quais informações você escolhe compartilhar, com o propósito de melhorar o aplicativo, e essas informações nunca incluirão fotos, vídeos, áudio, texto ou localizações precisas que você inseriu no CoiabApp."
   },
   "screens.PrivacyPolicy.crashData": {
     "message": "Dados quebrados"
@@ -908,7 +908,7 @@
     "message": "Informações sobre o que fez o aplicativo fechar inesperadamente"
   },
   "screens.PrivacyPolicy.dataCollection": {
-    "message": "Coleta de dados do Ekanâdyby"
+    "message": "Coleta de dados do CoiabApp"
   },
   "screens.PrivacyPolicy.deviceInfo": {
     "message": "Informações do Dispositivo"
@@ -923,22 +923,22 @@
     "message": "Nenhuma informação pessoal identificada"
   },
   "screens.PrivacyPolicy.noPIIDescription": {
-    "message": "Para usar o Ekanâdyby não é necessário criar uma conta de usuário. A Awana Digital não coleta seu nome, e-mail ou quaisquer outros dados pessoais. Nenhuma chave de usuário ou chave de dispositivo é compartilhada com Awana Digital, e tomamos medidas adicionais para garantir que nenhuma informação compartilhada possa ser usada para rastrear você: as chaves são aleatórios e alteradas a cada mês e nós não armazenamos endereços IP."
+    "message": "Para usar o CoiabApp não é necessário criar uma conta de usuário. A Awana Digital não coleta seu nome, e-mail ou quaisquer outros dados pessoais. Nenhuma chave de usuário ou chave de dispositivo é compartilhada com Awana Digital, e tomamos medidas adicionais para garantir que nenhuma informação compartilhada possa ser usada para rastrear você: as chaves são aleatórios e alteradas a cada mês e nós não armazenamos endereços IP."
   },
   "screens.PrivacyPolicy.notCollected": {
     "message": "O que não é coletado?"
   },
   "screens.PrivacyPolicy.notCollectedDescription": {
-    "message": "Nós não coletamos nenhum dado pessoal ou nada que possa ser usado para identificar ou rastrear um usuário ou dispositivo. As chaves de dispositivos utilizadas para agregar informações, são aleatórias anônimas e modificadas todo mês. Informações de diagnóstico não incluem dados sobre como você usa o aplicativo e nem outros dados coletados durante seu uso. Também não coletamos informações sobre sua localização exata, apenas o país onde você usa o Ekanâdyby."
+    "message": "Nós não coletamos nenhum dado pessoal ou nada que possa ser usado para identificar ou rastrear um usuário ou dispositivo. As chaves de dispositivos utilizadas para agregar informações, são aleatórias anônimas e modificadas todo mês. Informações de diagnóstico não incluem dados sobre como você usa o aplicativo e nem outros dados coletados durante seu uso. Também não coletamos informações sobre sua localização exata, apenas o país onde você usa o CoiabApp."
   },
   "screens.PrivacyPolicy.openSource": {
     "message": "Código Aberto e a Versão \"Oficial\""
   },
   "screens.PrivacyPolicy.openSourceContent": {
-    "message": "Ekanâdyby é um aplicativo de código aberto. Isso significa que qualquer pessoa pode ver o código que faz o aplicativo funcionar e pode verificar as declarações de privacidade neste documento. Isso também significa que qualquer pessoa pode adaptar o aplicativo às suas próprias necessidades e lançar uma versão alternativa. Este documento refere-se aos dados coletados pelos lançamentos oficiais do Ekanâdyby, assinado digitalmente pela Awana Digital, disponível na Google Play Store ou no site da Awana Digital. As versões não-oficiais do Ekanâdyby obtidas de outros canais estão fora do nosso controle e podem compartilhar informações adicionais com outras organizações."
+    "message": "CoiabApp é um aplicativo de código aberto. Isso significa que qualquer pessoa pode ver o código que faz o aplicativo funcionar e pode verificar as declarações de privacidade neste documento. Isso também significa que qualquer pessoa pode adaptar o aplicativo às suas próprias necessidades e lançar uma versão alternativa. Este documento refere-se aos dados coletados pelos lançamentos oficiais do CoiabApp, assinado digitalmente pela Awana Digital, disponível na Google Play Store ou no site da Awana Digital. As versões não-oficiais do CoiabApp obtidas de outros canais estão fora do nosso controle e podem compartilhar informações adicionais com outras organizações."
   },
   "screens.PrivacyPolicy.overview": {
-    "message": "Este documento descreve quais informações (\"dados\") são enviadas do Ekanâdyby para o desenvolvedor do aplicativo, Awana Digital, e como essas informações são usadas."
+    "message": "Este documento descreve quais informações (\"dados\") são enviadas do CoiabApp para o desenvolvedor do aplicativo, Awana Digital, e como essas informações são usadas."
   },
   "screens.PrivacyPolicy.performanceData": {
     "message": "Dados de desempenho"
@@ -947,13 +947,13 @@
     "message": "Como o tempo de inicialização, uso de energia, congelamento de aplicativos e capacidade de resposta"
   },
   "screens.PrivacyPolicy.privacyPolicyTitle": {
-    "message": "Privacidade de dados do Ekanâdyby"
+    "message": "Privacidade de dados do CoiabApp"
   },
   "screens.PrivacyPolicy.privateByDefault": {
     "message": "Privado por padrão"
   },
   "screens.PrivacyPolicy.privateByDefaultDescription": {
-    "message": "Os dados que você coleta e cria com o Ekanâdyby (localizações, fotos, vídeo, áudio, texto) são armazenados apenas no seu dispositivo por padrão e não são armazenados ou enviados para nenhum outro lugar. Quando você compartilha dados com colaboradores ao ingressar em um projeto com eles, eles são enviados criptografados, diretamente para o dispositivo do seu colaborador. Isso significa que os dados não são enviados pela Awana Digital, nem por ninguém mais, a caminho do seu colaborador. A Awana Digital nunca vê nem tem acesso a nenhum dos dados que você coleta com o Ekanâdyby, a menos que você os envie explicitamente para nós."
+    "message": "Os dados que você coleta e cria com o CoiabApp (localizações, fotos, vídeo, áudio, texto) são armazenados apenas no seu dispositivo por padrão e não são armazenados ou enviados para nenhum outro lugar. Quando você compartilha dados com colaboradores ao ingressar em um projeto com eles, eles são enviados criptografados, diretamente para o dispositivo do seu colaborador. Isso significa que os dados não são enviados pela Awana Digital, nem por ninguém mais, a caminho do seu colaborador. A Awana Digital nunca vê nem tem acesso a nenhum dos dados que você coleta com o CoiabApp, a menos que você os envie explicitamente para nós."
   },
   "screens.PrivacyPolicy.thirdParty": {
     "message": "Acesso de terceiros aos dados"
@@ -971,13 +971,13 @@
     "message": "O que é coletado?"
   },
   "screens.PrivacyPolicy.whatIsCollectedDescription": {
-    "message": "Por padrão, informações de diagnóstico anônimas sobre o seu dispositivo, falhas de aplicativos, erros e desempenho são compartilhadas com Awana Digital. Você pode optar por não compartilhar a qualquer momento. Esta informação de diagnóstico é completamente anônima e não contém nenhum de seus dados (aqueles que você coletou no Ekanâdyby)."
+    "message": "Por padrão, informações de diagnóstico anônimas sobre o seu dispositivo, falhas de aplicativos, erros e desempenho são compartilhadas com Awana Digital. Você pode optar por não compartilhar a qualquer momento. Esta informação de diagnóstico é completamente anônima e não contém nenhum de seus dados (aqueles que você coletou no CoiabApp)."
   },
   "screens.PrivacyPolicy.whyCollected": {
     "message": "Por que esses dados são coletados?"
   },
   "screens.PrivacyPolicy.whyCollectedDescription": {
-    "message": "Dados sobre erros do aplicativo, juntamente com as informações do dispositivo, fornecem à Awana Digital as informações necessárias para corrigir bugs no aplicativo. Os dados de desempenho nos ajudam a melhorar a capacidade de resposta do aplicativo e a identificar erros. A contagem de usuários, incluindo o total de usuários, usuários por país e usuários por projeto, ajuda a justificar o investimento contínuo no desenvolvimento do Ekanâdyby."
+    "message": "Dados sobre erros do aplicativo, juntamente com as informações do dispositivo, fornecem à Awana Digital as informações necessárias para corrigir bugs no aplicativo. Os dados de desempenho nos ajudam a melhorar a capacidade de resposta do aplicativo e a identificar erros. A contagem de usuários, incluindo o total de usuários, usuários por país e usuários por projeto, ajuda a justificar o investimento contínuo no desenvolvimento do CoiabApp."
   },
   "screens.ProjectStatistics.navTitle": {
     "message": "Estatísticas do Projeto"
@@ -1114,7 +1114,7 @@
     "message": "Política de Privacidade"
   },
   "screens.ShareProjectStats.description": {
-    "message": "Isso nos ajudará a coletar dados sobre como o Ekanâdyby está sendo usado e quais recursos adicionais são necessários."
+    "message": "Isso nos ajudará a coletar dados sobre como o CoiabApp está sendo usado e quais recursos adicionais são necessários."
   },
   "screens.ShareProjectStats.fullyEncrypted": {
     "message": "Seu projeto permanecerá totalmente criptografado"
@@ -1229,7 +1229,7 @@
     "message": "Voltar"
   },
   "soloProject.inviteCollaborators.introText": {
-    "message": "Compartilhe observações com outras pessoas usando o Ekanâdyby."
+    "message": "Compartilhe observações com outras pessoas usando o CoiabApp."
   },
   "soloProject.inviteCollaborators.inviteOnly": {
     "message": "Apenas dispositivos convidados para esse projeto podem contribuir."

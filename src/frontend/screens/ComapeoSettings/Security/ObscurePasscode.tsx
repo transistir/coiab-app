@@ -30,12 +30,12 @@ const m = defineMessages({
   },
   instructions: {
     id: 'screens.ObscurePasscode.instructions',
-    defaultMessage: 'Enter the code above to hide your data in Ekanâdyby',
+    defaultMessage: 'Enter the code above to hide your data in CoiabApp',
   },
   description: {
     id: 'screens.ObscurePasscode.description',
     defaultMessage:
-      'Obscure Passcode is a security feature that allows you to open Ekanâdyby in a decoy mode that hides all of your data. Entering the Obscure Passcode on the intro screen will display an empty version of Ekanâdyby which allows you to create demonstration observations that are not saved to the Ekanâdyby database.',
+      'Obscure Passcode is a security feature that allows you to open CoiabApp in a decoy mode that hides all of your data. Entering the Obscure Passcode on the intro screen will display an empty version of CoiabApp which allows you to create demonstration observations that are not saved to the CoiabApp database.',
   },
 });
 

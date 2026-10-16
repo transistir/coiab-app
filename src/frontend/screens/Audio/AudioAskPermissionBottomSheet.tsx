@@ -20,13 +20,13 @@ import {useSecurityState} from '../../contexts/SecurityStoreContext';
 const m = defineMessages({
   title: {
     id: '$1screens.AudioPermission.title',
-    defaultMessage: 'Recording Audio with Ekanâdyby',
+    defaultMessage: 'Recording Audio with CoiabApp',
     description: 'Screen title for audio permission screen',
   },
   description: {
     id: 'screens.AudioPermission.description',
     defaultMessage:
-      'To record audio while using the app and in the background Ekanâdyby needs to access your microphone. Please enable microphone permissions in your app settings.',
+      'To record audio while using the app and in the background CoiabApp needs to access your microphone. Please enable microphone permissions in your app settings.',
     description: 'Screen description for audio permission screen',
   },
   notNowButtonText: {

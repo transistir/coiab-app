@@ -35,7 +35,7 @@ const VARIANT_TO_APP_ID_SUFFIX =
     releaseCandidate: '.rc',
     preRelease: '.pre',
   });
-const APP_NAME_BASE = 'Ekanâdyby';
+const APP_NAME_BASE = 'CoiabApp';
 const VARIANT_TO_APP_NAME_SUFFIX =
   /** @satisfies {Record<AppVariant, string>} */ ({
     development: ' Dev',

@@ -38,7 +38,7 @@ import {displayDescription} from '../lib/organization/marker';
 const m = defineMessages({
   appSettings: {
     id: '$1Navigation.Menu.Settings',
-    defaultMessage: 'Ekanâdyby Settings',
+    defaultMessage: 'CoiabApp Settings',
   },
   bgMap: {
     id: '$1Navigation.Menu.bgMap',

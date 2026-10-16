@@ -1,6 +1,6 @@
 # COIAB App Identity Inventory
 
-Inventory of the COIAB App ("Ekanâdyby") identity as it exists in the code
+Inventory of the COIAB App ("CoiabApp") identity as it exists in the code
 today: what has been applied, what is still upstream CoMapeo, and what is
 missing before the visual identity can be called COIAB. This is the ground
 truth that #19 (apply theme) and #20 (splash/onboarding identity) build on.
@@ -18,7 +18,7 @@ Applied by the rebrand pass; all verified in code on `develop`.
 
 | What | Value | Where |
 |------|-------|-------|
-| App display name | `Ekanâdyby` | `app.config.js` (`APP_NAME_BASE`), `app.json` |
+| App display name | `CoiabApp` | `app.config.js` (`APP_NAME_BASE`), `app.json` |
 | Expo slug / scheme | `ekanadyby` | `app.json`, `src/frontend/lib/deepLinkConfig.ts` (`ekanadyby://`) |
 | npm package name | `ekanadyby` | `package.json` |
 | Android application ID | `org.coiab` (+ `.rc`/`.pre`/`.dev` variants) | `app.config.js` (`APP_ID_BASE`) |
