@@ -73,7 +73,7 @@ const m = defineMessages({
   },
   sentFrom: {
     id: 'screens.ObservationMetadataVerified.sentFrom',
-    defaultMessage: 'Ekanâdyby Metadata sent from',
+    defaultMessage: 'CoiabApp Metadata sent from',
   },
   fallbackPresetName: {
     id: 'screens.Observation.fallbackPresetName',
@@ -83,7 +83,7 @@ const m = defineMessages({
   },
   ekanadybyMetadata: {
     id: 'screens.ObservationMetadataVerified.ekanadybyMetadata',
-    defaultMessage: 'Ekanâdyby Metadata',
+    defaultMessage: 'CoiabApp Metadata',
   },
   date: {
     id: 'screens.ObservationMetadataVerified.date',
@@ -91,11 +91,11 @@ const m = defineMessages({
   },
   validatedByEkanadyby: {
     id: 'screens.ObservationMetadataVerified.validatedByEkanadyby',
-    defaultMessage: 'Sent and Validated by Ekanâdyby',
+    defaultMessage: 'Sent and Validated by CoiabApp',
   },
   sentByEkanadyby: {
     id: 'screens.ObservationMetadataVerified.sentByEkanadyby',
-    defaultMessage: 'Sent by Ekanâdyby',
+    defaultMessage: 'Sent by CoiabApp',
   },
   locationManuallyEntered: {
     id: 'screens.ObservationMetadataVerified.locationManuallyEntered',

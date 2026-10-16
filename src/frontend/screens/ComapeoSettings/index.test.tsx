@@ -4,7 +4,7 @@ import {
   semearDocumentoPronta,
 } from '../../../../tests/integration/helpers/setupIntegrationTest';
 
-describe('Ekanâdyby Settings Screen', () => {
+describe('CoiabApp Settings Screen', () => {
   const integrationSetup = setupIntegrationTest();
 
   test('opens drawer when header button is pressed', async () => {
@@ -28,7 +28,7 @@ describe('Ekanâdyby Settings Screen', () => {
     await expect(headerButton).toBeVisible();
     await user.press(headerButton);
 
-    const settings = await screen.findByText('Ekanâdyby Settings');
+    const settings = await screen.findByText('CoiabApp Settings');
 
     await expect(settings).toBeVisible();
 

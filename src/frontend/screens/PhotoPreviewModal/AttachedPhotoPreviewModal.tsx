@@ -55,7 +55,7 @@ function formatDistance(meters: number, unitSystem: UnitSystem): string {
 const m = defineMessages({
   validatedByEkanadyby: {
     id: 'screens.PhotoPreviewModal.validatedByEkanadyby',
-    defaultMessage: 'Validated by Ekanâdyby',
+    defaultMessage: 'Validated by CoiabApp',
   },
   verifiedOriginal: {
     id: 'screens.PhotoPreviewModal.verifiedOriginal',

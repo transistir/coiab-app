@@ -27,12 +27,12 @@ describe('Photo - show validated photo', () => {
     expect(thumbnails.length).toBe(1);
     await thumbnails[0].click();
     await expect($(byText('Photo Info'))).toBeDisplayed();
-    await expect($(byTextMatches('Validated by Ekanâdyby'))).toBeDisplayed();
+    await expect($(byTextMatches('Validated by CoiabApp'))).toBeDisplayed();
   });
 
   it('should show validated accordian', async () => {
     const validatedByAccordion = await $(
-      byTextMatches('Validated by Ekanâdyby'),
+      byTextMatches('Validated by CoiabApp'),
     );
     await checkForElementGone(
       byTextMatches('This is a verified unaltered original.'),

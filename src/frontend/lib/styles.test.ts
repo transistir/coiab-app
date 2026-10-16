@@ -1,7 +1,7 @@
 import * as styles from './styles';
 
 // Issue #19 (PR A). Os nomes continuam os do CoMapeo para facilitar merges; os
-// valores são da paleta Ekanâdyby (UI KIT 2004-1643). Tabela COMPLETA das
+// valores são da paleta COIAB (UI KIT 2004-1643). Tabela COMPLETA das
 // constantes de styles.ts: as trocadas no PR A expõem o novo valor; as que
 // ficam travam o valor para este PR não mexer neles.
 const TABELA = {

@@ -36,7 +36,7 @@ const m = defineMessages({
   cameraUnavailable: {
     id: '$1screens.CameraScreen.cameraUnavailable',
     defaultMessage:
-      'Camera unavailable. Please close and reopen Ekanâdyby to try again.',
+      'Camera unavailable. Please close and reopen CoiabApp to try again.',
   },
 });
 

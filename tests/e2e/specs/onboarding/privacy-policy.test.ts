@@ -7,7 +7,7 @@ describe('Onboarding - Privacy Policy Screen', () => {
     const learnMoreButton = await $(byText('Learn More'));
     await learnMoreButton.click();
 
-    const privacyTitle = await $(byText('Ekanâdyby Data Privacy'));
+    const privacyTitle = await $(byText('CoiabApp Data Privacy'));
     await expect(privacyTitle).toBeDisplayed();
   });
 

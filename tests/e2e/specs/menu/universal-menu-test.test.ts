@@ -10,7 +10,7 @@ describe('Menu - basic functionality of the menu', () => {
 
     const gatherObservations = await $(byText('Gather Observations'));
     const backgroundMaps = await $(byText('Background Map'));
-    const ekanadybySettings = await $(byText('Ekanâdyby Settings'));
+    const ekanadybySettings = await $(byText('CoiabApp Settings'));
 
     await expect(gatherObservations).toBeDisplayed();
     await expect(backgroundMaps).toBeDisplayed();
@@ -21,7 +21,7 @@ describe('Menu - basic functionality of the menu', () => {
     await driver.back();
     const gatherObservations = await $(byText('Gather Observations'));
     const backgroundMaps = await $(byText('Background Map'));
-    const ekanadybySettings = await $(byText('Ekanâdyby Settings'));
+    const ekanadybySettings = await $(byText('CoiabApp Settings'));
 
     await expect(gatherObservations).not.toBeDisplayed();
     await expect(backgroundMaps).not.toBeDisplayed();
@@ -45,10 +45,10 @@ describe('Menu - basic functionality of the menu', () => {
   });
 
   it('should navigate to app settings', async () => {
-    const ekanadybySettings = await $(byTextMatches('Ekanâdyby Settings'));
+    const ekanadybySettings = await $(byTextMatches('CoiabApp Settings'));
     await ekanadybySettings.click();
 
-    await expect(await $(byText('Ekanâdyby Settings'))).toBeDisplayed();
+    await expect(await $(byText('CoiabApp Settings'))).toBeDisplayed();
     await expect(
       await $(byResourceId('device-name-list-item')),
     ).toBeDisplayed();

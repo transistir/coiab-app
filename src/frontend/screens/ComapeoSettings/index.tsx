@@ -23,7 +23,7 @@ import {useQADeviceName} from '../../contexts/QADeviceNameStoreContext';
 const m = defineMessages({
   title: {
     id: '$1Screens.Settings.AppSettings.title',
-    defaultMessage: 'Ekanâdyby Settings',
+    defaultMessage: 'CoiabApp Settings',
   },
   edit: {
     id: '$1Screens.Settings.AppSettings.edit',
@@ -67,7 +67,7 @@ const m = defineMessages({
   },
   aboutEkanadyby: {
     id: '$1Screens.Settings.AppSettings.aboutEkanadyby',
-    defaultMessage: 'About Ekanâdyby',
+    defaultMessage: 'About CoiabApp',
   },
   createTestData: {
     id: 'Screens.Settings.AppSettings.createTestData',
