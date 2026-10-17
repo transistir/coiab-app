@@ -1,6 +1,7 @@
 import * as React from 'react';
 import {View, StyleSheet} from 'react-native';
 
+import {DARK_GREY} from '../lib/styles';
 import {DrawerMenu} from '../sharedComponents/DrawerMenu';
 import {NativeHomeTabsNavigationProps} from '../sharedTypes/navigation';
 
@@ -11,6 +12,10 @@ import {NativeHomeTabsNavigationProps} from '../sharedTypes/navigation';
  * `docs/navegacao-coiab.md`. A remodelagem visual completa (cartões de
  * módulo do Figma "Página Entroncamento") é fase seguinte; aqui a página só
  * precisa abrir e mostrar o conteúdo correto.
+ *
+ * #118: a página usa o fundo do tema (DARK_GREY) — o DrawerMenu cobre o
+ * container inteiro, mas o fundo do container também é escuro para não
+ * vazar branco em cantos/overlays.
  *
  * O container carrega o testID `ENTRONCAMENTO.scrn` por continuidade: é a
  * Home pós-login (rota inicial das abas) que os testes de navigator do #32
@@ -33,7 +38,7 @@ export const MenuScreen: React.FC<
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: DARK_GREY,
   },
   inner: {
     flex: 1,

@@ -1,4 +1,5 @@
 import * as React from 'react';
+import {StyleSheet} from 'react-native';
 import {fireEvent, render, screen} from '@testing-library/react-native';
 import {IntlProvider} from 'react-intl';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
@@ -45,7 +46,7 @@ import {
 import type {OrganizacaoLocal} from '../lib/organization/coiabOrganizations';
 
 import {DrawerMenu} from './DrawerMenu';
-import {DARK_GREY, ORANGE} from '../lib/styles';
+import {DARK_GREY, ORANGE, WHITE} from '../lib/styles';
 
 // Sonda: o svg real viraria um View sem cor visível no test-renderer; o
 // mock registra o color repassado pelo renderIcon do DrawerMenu.
@@ -407,5 +408,36 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     expect(screen.getByTestId('ExchangeProbe').props.probeColor).toBe(
       DARK_GREY,
     );
+  });
+
+  test('conteúdo do menu com fundo #1C2A27 e itens em branco (#118)', async () => {
+    await renderDrawer(true);
+
+    // Fundo do tema (Figma Kutary App V2) na raiz do conteúdo do menu.
+    expect(screen.getByTestId('MENU.conteudo').props.style).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({backgroundColor: DARK_GREY}),
+      ]),
+    );
+
+    // Papel coordinator: os 5 itens existem e cada um tem texto e ícone
+    // em WHITE (o padrão DARK_GREY do BodyText sumiria no fundo escuro).
+    const itens = [
+      ['Team', 'MENU.icone.team'],
+      ['Coordinator Tools', 'MENU.icone.coordinator-tools'],
+      ['Gather Observations', 'MENU.icone.gather-observations'],
+      ['Background Map', 'MENU.icone.background-map'],
+      ['CoiabApp Settings', 'MENU.icone.settings'],
+    ] as const;
+    for (const [texto, icone] of itens) {
+      expect(screen.getByText(texto).props.style).toEqual(
+        expect.arrayContaining([expect.objectContaining({color: WHITE})]),
+      );
+      // Os componentes de ícone consomem a prop color e a movem para o
+      // style do Text hospedeiro; a cor lida é do style achatado.
+      expect(
+        StyleSheet.flatten(screen.getByTestId(icone).props.style),
+      ).toEqual(expect.objectContaining({color: WHITE}));
+    }
   });
 });

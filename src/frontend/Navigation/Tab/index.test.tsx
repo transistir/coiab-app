@@ -108,6 +108,7 @@ import {createAppProvidersWrapper} from '../../../../tests/integration/helpers/r
 import {executarEmOrdem} from '../../../../tests/integration/helpers/setupIntegrationTest';
 import {ActiveProjectProvider} from '../../contexts/ActiveProjectContext';
 import {sleep} from '../../lib/sleep';
+import {DARK_GREY, WHITE} from '../../lib/styles';
 import {HomeTabs} from './index';
 
 type TestStackParamsList = {
@@ -290,6 +291,32 @@ describe('HomeTabs — barra de 5 abas (#32)', () => {
         'MENU.main-action-button',
       ),
     ).toBeTruthy();
+  });
+
+  test('a página de Menu usa o fundo do tema (#118)', async () => {
+    await renderHomeTabs();
+
+    // O container da Home pós-login (ENTRONCAMENTO.scrn) carrega o fundo
+    // do tema em volta do conteúdo do menu.
+    const menu = await screen.findByTestId('ENTRONCAMENTO.scrn');
+    expect(menu.props.style).toEqual(
+      expect.objectContaining({backgroundColor: DARK_GREY}),
+    );
+  });
+
+  test('Notificações usa fundo do tema e texto branco (#118)', async () => {
+    await renderHomeTabs();
+    const user = userEvent.setup();
+
+    await user.press(await screen.findByTestId('tabBarButtonNotificacoes'));
+
+    const notificacoes = await screen.findByTestId('NOTIFICACOES.scrn');
+    expect(notificacoes.props.style).toEqual(
+      expect.objectContaining({backgroundColor: DARK_GREY}),
+    );
+    expect(screen.getByText('Notificações (em breve)').props.style).toEqual(
+      expect.arrayContaining([expect.objectContaining({color: WHITE})]),
+    );
   });
 
   test('a aba Map renderiza a MapScreen existente', async () => {
