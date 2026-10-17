@@ -1,13 +1,13 @@
 import {expect} from '@wdio/globals';
 import {describe, it} from 'mocha';
 import {byResourceId, byText, byTextMatches} from '../../utils/selectors';
+import {abrirMenu} from '../../utils/menu';
 import {output} from '../../utils/naming';
 import {checkForElementGone} from '../../utils/checkForGone';
 
 describe('Project - Project Settings Named Project', () => {
   it('should navigate to project settings screen and verify content for named project', async () => {
-    const drawerIcon = await $('~Open Menu');
-    await drawerIcon.click();
+    await abrirMenu();
     const viewSettings = await $('~Go to project settings screen.');
     await viewSettings.click();
 

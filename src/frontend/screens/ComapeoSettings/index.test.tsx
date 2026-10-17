@@ -7,7 +7,7 @@ import {
 describe('CoiabApp Settings Screen', () => {
   const integrationSetup = setupIntegrationTest();
 
-  test('opens drawer when header button is pressed', async () => {
+  test('abre CoiabApp Settings pela página de Menu', async () => {
     // Organization-first startup (SPEC 10.1): the persisted document, not the
     // core's project list, decides the initial route. Seed the ready
     // organization (ids of the CURRENT test manager) so this device opens
@@ -24,9 +24,9 @@ describe('CoiabApp Settings Screen', () => {
       activeProjectId: integrationSetup.projectId,
     });
 
-    const headerButton = await screen.findByTestId('HOME.header-button');
-    await expect(headerButton).toBeVisible();
-    await user.press(headerButton);
+    const menuButton = await screen.findByTestId('tabBarButtonMenu');
+    await expect(menuButton).toBeVisible();
+    await user.press(menuButton);
 
     const settings = await screen.findByText('CoiabApp Settings');
 

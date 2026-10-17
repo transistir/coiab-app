@@ -1,10 +1,11 @@
 import {expect} from '@wdio/globals';
 import {describe, it, before} from 'mocha';
 import {byResourceId, byText, byTextMatches} from '../../utils/selectors';
+import {abrirMenu} from '../../utils/menu';
 
 describe('Remote Archive - Add Error Flow', () => {
   before(async () => {
-    await $('~Open Menu').click();
+    await abrirMenu();
     await $(byText('View')).click();
   });
 

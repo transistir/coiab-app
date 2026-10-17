@@ -1,6 +1,7 @@
 import {expect} from '@wdio/globals';
 import {describe, it} from 'mocha';
 import {byResourceId, byText, byTextMatches} from '../../utils/selectors';
+import {abrirMenu} from '../../utils/menu';
 import {output} from '../../utils/naming';
 import {checkForElementGone} from '../../utils/checkForGone';
 import {handleGPSAlert} from '../../utils/alerts';
@@ -9,7 +10,7 @@ const UNIQUE_DESCRIPTION = 'Cave test obs for second project';
 
 describe('Multiple Projects - Project Data Retention', () => {
   it('should create an observation in the second project', async () => {
-    await $('~Open Menu').click();
+    await abrirMenu();
     await driver.pause(1000);
     await $(byText('Switch Project')).click();
     await $(byText(output.names.secondProject)).click();
@@ -39,7 +40,7 @@ describe('Multiple Projects - Project Data Retention', () => {
   });
 
   it('should create a third project and not carry over the observation', async () => {
-    await $('~Open Menu').click();
+    await abrirMenu();
     await $(byText('Switch Project')).click();
     await $(byText('New Collaboration')).click();
     await $(byText('Start New Project')).click();
@@ -70,7 +71,7 @@ describe('Multiple Projects - Project Data Retention', () => {
   });
 
   it('should confirm the observation still exists in the second project', async () => {
-    await $('~Open Menu').click();
+    await abrirMenu();
     await $(byText('Switch Project')).click();
     await $(byTextMatches(output.names.secondProject)).click();
     await driver.back();

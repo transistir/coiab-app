@@ -1,12 +1,12 @@
 import {expect} from '@wdio/globals';
 import {describe, it} from 'mocha';
 import {byResourceId, byText, byTextMatches} from '../../utils/selectors';
+import {abrirMenu} from '../../utils/menu';
 
 describe('Menu - basic functionality of the menu', () => {
-  it('should open on press of header', async () => {
-    // this is currently not the header, but it will be changed in a subsequent PR
-    const header = await $('~Open Menu');
-    await header.click();
+  it('should open on press of menu tab', async () => {
+    // #118: the menu is the first tab's page; no more header drawer button.
+    await abrirMenu();
 
     const gatherObservations = await $(byText('Gather Observations'));
     const backgroundMaps = await $(byText('Background Map'));
@@ -30,8 +30,7 @@ describe('Menu - basic functionality of the menu', () => {
   });
 
   it('should navigate to background map screen on background map press', async () => {
-    const header = await $('~Open Menu');
-    await header.click();
+    await abrirMenu();
 
     const backgroundMaps = await $(byText('Background Map'));
     await backgroundMaps.click();
@@ -81,9 +80,7 @@ describe('Menu - basic functionality of the menu', () => {
 
     await expect(observationView).toBeDisplayed();
 
-    const header = await $('~Open Menu');
-
-    await header.click();
+    await abrirMenu();
 
     await gatherObservations.click();
 

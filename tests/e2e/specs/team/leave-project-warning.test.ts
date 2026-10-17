@@ -1,12 +1,12 @@
 import {expect} from '@wdio/globals';
 import {describe, it} from 'mocha';
 import {byText, byResourceId, byTextMatches} from '../../utils/selectors';
+import {abrirMenu} from '../../utils/menu';
 import {output} from '../../utils/naming';
 
 describe('Team - Leave Project Warning Screen', () => {
   it('should show warning screen when last coordinator or device tries to leave', async () => {
-    const drawerIcon = await $('~Open Menu');
-    await drawerIcon.click();
+    await abrirMenu();
     const teamSettings = await $('~Go to your team screen.');
     await teamSettings.click();
 

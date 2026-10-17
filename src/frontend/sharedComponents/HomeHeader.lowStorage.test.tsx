@@ -56,7 +56,6 @@ function HomeHeaderScreen() {
       {...baseHeader}
       backgroundColor="#fff"
       showBottomBorder
-      onPress={() => {}}
       navigation={{} as BottomTabHeaderProps['navigation']}
     />
   );
@@ -134,7 +133,7 @@ describe('HomeHeader low storage badge (navigator + AppProviders)', () => {
     mockFreeBytes = 100 * 1024 * 1024;
     await renderHeader();
 
-    await screen.findByTestId('HOME.header-button');
+    await screen.findByTestId('HOME.header-title');
 
     expect(await screen.findByTestId('low-storage-badge')).toBeTruthy();
   });
@@ -143,7 +142,7 @@ describe('HomeHeader low storage badge (navigator + AppProviders)', () => {
     mockFreeBytes = 600 * 1024 * 1024;
     await renderHeader();
 
-    await screen.findByTestId('HOME.header-button');
+    await screen.findByTestId('HOME.header-title');
 
     expect(screen.queryByTestId('low-storage-badge')).toBeNull();
   });

@@ -113,9 +113,12 @@ import {HomeTabs} from './index';
 type TestStackParamsList = {
   Home: NavigatorScreenParams<HomeTabsParamsList>;
   ObservationCategoryChooser: undefined;
-  // Configurações (5º item da tab bar) navega para AppSettings na root stack;
-  // aqui ela é stub, o suite só observa que a navegação sai das home tabs.
+  // Configurações alvo (AppSettings) stub: pressionar a engrenagem deve sair
+  // das home tabs e chegar aqui.
   AppSettings: undefined;
+  // ExportObservations alvo do headerRight do Paneiro: stub para observar a
+  // navegação disparada pelo Download Observations.
+  ExportObservations: undefined;
 };
 
 const Stack = createNativeStackNavigator<TestStackParamsList>();
@@ -134,6 +137,10 @@ function StubAppSettings() {
   return <View testID="STUB.app-settings" />;
 }
 
+// ExportObservations alvo do Download Observations do Paneiro: stub.
+function StubExport() {
+  return <View testID="STUB.export-observations" />;
+}
 describe('HomeTabs — barra de 5 abas (#32)', () => {
   let manager: MapeoManager;
   let client: ComapeoCoreClientApi;
@@ -144,7 +151,6 @@ describe('HomeTabs — barra de 5 abas (#32)', () => {
   beforeEach(async () => {
     onTeardown = [];
     coreTeardown = [];
-
     const {manager: mgr, fastifyController} = await createManager({
       name: 'test-device',
       deviceType: 'mobile',
@@ -189,6 +195,7 @@ describe('HomeTabs — barra de 5 abas (#32)', () => {
                 component={StubObservationCategoryChooser}
               />
               <Stack.Screen name="AppSettings" component={StubAppSettings} />
+              <Stack.Screen name="ExportObservations" component={StubExport} />
             </Stack.Navigator>
           </ActiveProjectProvider>
         </React.Suspense>
@@ -276,13 +283,12 @@ describe('HomeTabs — barra de 5 abas (#32)', () => {
     await user.press(await screen.findByTestId('tabBarButtonMenu'));
 
     expect(mockNavigation.getCurrentRoute()?.name).toBe('Menu');
-    // A página de menu mostra o conteúdo da drawer: o botão de ação (Exchange)
+    // A página de menu mostra o conteúdo do menu: o botão de ação (Exchange)
     // e o cartão da organização, que vivem no DrawerMenu reaproveitado.
-    // Escopo ao subtree MENU.scrn porque o header do CoMapeo ainda monta sua
-    // própria cópia da drawer (follow-up: remover — ver docs/navegacao-coiab.md).
-    const menuPage = await screen.findByTestId('MENU.scrn');
     expect(
-      within(menuPage).getByTestId('MENU.main-action-button'),
+      within(screen.getByTestId('MENU.scrn')).getByTestId(
+        'MENU.main-action-button',
+      ),
     ).toBeTruthy();
   });
 
@@ -295,6 +301,79 @@ describe('HomeTabs — barra de 5 abas (#32)', () => {
     expect(await screen.findByTestId('MAIN.map-screen')).toBeTruthy();
   });
 
+  test('nenhuma aba tem botão de abrir menu (#118)', async () => {
+    await renderHomeTabs();
+    const user = userEvent.setup();
+
+    // Header sólido (Menu, Paneiro, Notificações) e transparente (Map):
+    // nenhum header home mostra mais o hambúrguer que abria a drawer.
+    for (const testID of [
+      'tabBarButtonMenu',
+      'tabBarButtonPaneiro',
+      'tabBarButtonMap',
+      'tabBarButtonNotificacoes',
+    ]) {
+      await user.press(await screen.findByTestId(testID));
+      expect(await screen.findByTestId('HOME.header-title')).toBeTruthy();
+      expect(screen.queryByLabelText('Open Menu')).toBeNull();
+      expect(screen.queryByTestId('HOME.header-button')).toBeNull();
+    }
+  });
+
+  test('o conteúdo do menu monta uma única vez (#118)', async () => {
+    await renderHomeTabs();
+    const user = userEvent.setup();
+
+    // No código antigo isso abria a gaveta; no novo não existe o botão.
+    for (const botao of screen.queryAllByLabelText('Open Menu')) {
+      await user.press(botao);
+    }
+    await user.press(await screen.findByTestId('tabBarButtonMenu'));
+
+    // A página de Menu é a única superfície com o conteúdo (cartão,
+    // itens e botão Exchange) — sem a cópia da drawer do CoMapeo.
+    const copias = await screen.findAllByTestId('MENU.main-action-button', {
+      includeHiddenElements: true,
+    });
+    expect(copias).toHaveLength(1);
+  });
+
+  test('o download do Paneiro segue funcionando sem o drawer (#118)', async () => {
+    // Proteção contra regressão do headerRight durante a reescrita do
+    // HomeHeader: passa antes e depois, sem RED (registrado no PR).
+    await renderHomeTabs();
+    const user = userEvent.setup();
+
+    await user.press(await screen.findByTestId('tabBarButtonPaneiro'));
+    // Sem observação nem trilha, o botão de download não existe.
+    expect(screen.queryByLabelText('Download Observations')).toBeNull();
+  });
+  test('o download do Paneiro leva ao ExportObservations com observação (#118)', async () => {
+    // Proteção contra regressão (sem RED): observação real criada na sessão
+    // do core ANTES do render — a query do useObservations resolve com ela.
+    const projectApi = await client.getProject(projectId);
+    await projectApi.observation.create({
+      schemaName: 'observation',
+      lat: 12,
+      lon: 34,
+      attachments: [],
+      tags: {},
+    });
+    await renderHomeTabs();
+    const user = userEvent.setup();
+
+    await user.press(await screen.findByTestId('tabBarButtonPaneiro'));
+
+    const download = await screen.findByLabelText('Download Observations');
+    await user.press(download);
+
+    expect(mockNavigation.getCurrentRoute()?.name).toBe('ExportObservations');
+  });
+  // Último do suite por um motivo real: o navigate encaixado da câmera
+  // (rota de aba via navigation ref) deixa o PreventRemoveProvider do
+  // react-navigation com remoção pendente no worker sob jest, e o PRÓXIMO
+  // mount do navigator fica pêndulo para sempre (nenhuma aba renderiza).
+  // Cobertura da câmera intacta; o efeito morre junto com o worker.
   test('a criação de observação continua acessível e a rota Camera não sumiu', async () => {
     await renderHomeTabs();
     const user = userEvent.setup();

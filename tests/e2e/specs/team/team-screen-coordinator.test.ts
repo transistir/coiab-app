@@ -1,12 +1,12 @@
 import {expect} from '@wdio/globals';
 import {describe, it} from 'mocha';
 import {byResourceId, byText, byTextMatches} from '../../utils/selectors';
+import {abrirMenu} from '../../utils/menu';
 import {output} from '../../utils/naming';
 
 describe('Team - Team Screen as Coordinator', () => {
   it('should navigate to team screen from project settings', async () => {
-    const drawerIcon = await $('~Open Menu');
-    await drawerIcon.click();
+    await abrirMenu();
     const teamSettings = await $('~Go to your team screen.');
     await teamSettings.click();
 

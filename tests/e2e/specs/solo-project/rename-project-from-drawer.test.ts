@@ -1,6 +1,7 @@
 import {expect} from '@wdio/globals';
 import {describe, it} from 'mocha';
 import {byResourceId, byText, byTextMatches} from '../../utils/selectors';
+import {abrirMenu} from '../../utils/menu';
 import {output} from '../../utils/naming';
 import {handleGPSAlert} from '../../utils/alerts';
 
@@ -24,7 +25,7 @@ describe('Project - Rename Project from Drawer while perserving observations', (
   });
 
   it('should open side drawer, navigate to Invite Collaborators screen, and verify content', async () => {
-    await $('~Open Menu').click();
+    await abrirMenu();
     await expect($(byTextMatches(output.names.device))).toBeDisplayed();
 
     const collaborateButton = await $(byText('Collaborate'));
@@ -92,7 +93,7 @@ describe('Project - Rename Project from Drawer while perserving observations', (
   });
 
   it('should verify that a new unnamed project was created in the background', async () => {
-    await $('~Open Menu').click();
+    await abrirMenu();
     await $(byText('Switch Project')).click();
     await expect($(byTextMatches(output.names.project))).toBeDisplayed();
     await expect($(byText(output.names.device))).toBeDisplayed();

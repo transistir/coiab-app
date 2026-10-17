@@ -1,12 +1,12 @@
 import {expect} from '@wdio/globals';
 import {describe, it} from 'mocha';
 import {byTextMatches, byText, byResourceId} from '../../utils/selectors';
+import {abrirMenu} from '../../utils/menu';
 import {output} from '../../utils/naming';
 
 describe('Passcode - Post Passcode Setup Flow', () => {
   it('should navigate to Security and see "Enter Passcode" if passcode is set', async () => {
-    const drawerIcon = await $('~Open Menu');
-    await drawerIcon.click();
+    await abrirMenu();
 
     const appSettingsOption = await $('~Go to app settings screen.');
     await appSettingsOption.click();

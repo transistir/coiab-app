@@ -1,12 +1,12 @@
 import {expect} from '@wdio/globals';
 import {describe, it} from 'mocha';
 import {byResourceId, byText, byTextMatches} from '../../utils/selectors';
+import {abrirMenu} from '../../utils/menu';
 import {checkForElementGone} from '../../utils/checkForGone';
 
 describe('Settings - Early Access Mode', () => {
   it('should show Early Access off and open Early Access from App Settings', async () => {
-    const drawerIcon = await $('~Open Menu');
-    await drawerIcon.click();
+    await abrirMenu();
     const appSettingsOption = await $('~Go to app settings screen.');
     await appSettingsOption.click();
     await $(byResourceId('earlyAccessFlagLabel')).scrollIntoView();

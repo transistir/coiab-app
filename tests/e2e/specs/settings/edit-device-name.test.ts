@@ -1,11 +1,12 @@
 import {expect} from '@wdio/globals';
 import {describe, it} from 'mocha';
 import {byResourceId, byText} from '../../utils/selectors';
+import {abrirMenu} from '../../utils/menu';
 import {output} from '../../utils/naming';
 
 describe('Project - Edit Device Name Test', () => {
   it('should navigate to project settings and edit the device name', async () => {
-    await $('~Open Menu').tap();
+    await abrirMenu();
 
     await $('~Go to app settings screen.').tap();
 
@@ -47,7 +48,7 @@ describe('Project - Edit Device Name Test', () => {
     await driver.back();
     await $(byResourceId('MAIN.map-screen')).click();
 
-    await $('~Open Menu').tap();
+    await abrirMenu();
     await $('~Go to app settings screen.').click();
     await $(byResourceId('device-name-list-item')).click();
 

@@ -1,12 +1,12 @@
 import {expect} from '@wdio/globals';
 import {describe, it} from 'mocha';
 import {byResourceId, byText, byTextMatches} from '../../utils/selectors';
+import {abrirMenu} from '../../utils/menu';
 import {checkForElementGone} from '../../utils/checkForGone';
 
 describe('Observations - Filter Toggle (Early Access)', () => {
   it('should enable Early Access', async () => {
-    const drawerIcon = await $('~Open Menu');
-    await drawerIcon.click();
+    await abrirMenu();
     const appSettingsOption = await $('~Go to app settings screen.');
     await appSettingsOption.click();
     const earlyAccessItem = await $(byResourceId('earlyAccessFlag'));
@@ -62,8 +62,7 @@ describe('Observations - Filter Toggle (Early Access)', () => {
   });
 
   it('should disable Early Access and hide the filter toggle', async () => {
-    const drawerIcon = await $('~Open Menu');
-    await drawerIcon.click();
+    await abrirMenu();
     const appSettingsOption = await $('~Go to app settings screen.');
     await appSettingsOption.click();
     const earlyAccessItem = await $(byResourceId('earlyAccessFlag'));

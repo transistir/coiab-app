@@ -1,13 +1,13 @@
 import {expect} from '@wdio/globals';
 import {describe, it} from 'mocha';
 import {byResourceId, byTextMatches} from '../../utils/selectors';
+import {abrirMenu} from '../../utils/menu';
 
 describe('Settings - About CoiabApp Flow', () => {
   it('should open About CoiabApp from the drawer', async () => {
     const mapTab = await $('~Go to map.');
     await mapTab.click();
-    const drawerIcon = await $('~Open Menu');
-    await drawerIcon.click();
+    await abrirMenu();
     const appSettingsOption = await $('~Go to app settings screen.');
     await appSettingsOption.click();
 

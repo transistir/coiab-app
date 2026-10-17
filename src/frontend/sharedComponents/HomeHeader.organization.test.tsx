@@ -90,7 +90,6 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
             {...baseHeader}
             backgroundColor="#fff"
             showBottomBorder
-            onPress={() => {}}
           />
         </ActiveProjectProvider>
       </React.Suspense>,

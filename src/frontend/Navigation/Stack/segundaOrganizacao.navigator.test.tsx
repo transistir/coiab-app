@@ -299,7 +299,7 @@ describe('segunda organização (navigator real)', () => {
   const SEGUNDA_ID = 'fedcba9876543210';
   const SEGUNDA_NOME = 'Organização B';
 
-  async function habilitarEarlyAccessEAbrirDrawer() {
+  async function habilitarEarlyAccessEAbrirMenu() {
     await act(async () => {
       mockNavigation.navigate('EarlyAccess');
     });
@@ -310,11 +310,11 @@ describe('segunda organização (navigator real)', () => {
       mockNavigation.goBack();
     });
     await fireEvent.press(
-      await screen.findByTestId('HOME.header-button', {}, {timeout: 15_000}),
+      await screen.findByTestId('tabBarButtonMenu', {}, {timeout: 15_000}),
     );
   }
 
-  test('criar a segunda organização do drawer preserva A e abre B pela confirmação (CA06)', async () => {
+  test('criar a segunda organização pela página de Menu preserva A e abre B pela confirmação (CA06)', async () => {
     semearDocumentoPronta(
       orgSetup.projectId,
       orgSetup.alertasProjectId,
@@ -327,8 +327,8 @@ describe('segunda organização (navigator real)', () => {
       await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 15_000}),
     ).toBeOnTheScreen();
 
-    // Early access + drawer entry → CreateOrganization.
-    await habilitarEarlyAccessEAbrirDrawer();
+    // Early access + menu page entry → CreateOrganization.
+    await habilitarEarlyAccessEAbrirMenu();
     await fireEvent.press(
       await screen.findByTestId(
         'MENU.criar-organizacao',
@@ -400,7 +400,7 @@ describe('segunda organização (navigator real)', () => {
 
     // The selector now exists (length >= 2) and switches back to A.
     await fireEvent.press(
-      await screen.findByTestId('HOME.header-button', {}, {timeout: 15_000}),
+      await screen.findByTestId('tabBarButtonMenu', {}, {timeout: 15_000}),
     );
     await fireEvent.press(
       await screen.findByTestId(
