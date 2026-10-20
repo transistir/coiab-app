@@ -514,6 +514,9 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     expect(await screen.findByText('Wait for an invitation')).toBeOnTheScreen();
     expect(screen.getByText('test is ready!')).toBeOnTheScreen();
     expect(screen.queryByTestId('MAIN.map-screen')).not.toBeOnTheScreen();
+    // #118 ciclo 5 (caso negativo): sem organização salva a janela de
+    // carregamento não existe — a bifurcação criar/aguardar é a superfície.
+    expect(screen.queryByTestId('CARREGAMENTO.scrn')).toBeNull();
   });
 
   test('a validação de papel atrasada prende o device no loader canônico e depois abre Home, sem flash da bifurcação (SPEC A §6.2 row 1)', async () => {
@@ -544,6 +547,9 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       expect(
         await screen.findByText('Loading organization…'),
       ).toBeOnTheScreen();
+      // #118 ciclo 5: a janela de carregamento é a TelaCarregamento do tema
+      // escuro — o rótulo canônico e o testID dela coexistem na mesma árvore.
+      expect(screen.getByTestId('CARREGAMENTO.scrn')).toBeOnTheScreen();
       expect(
         screen.queryByText('Wait for an invitation'),
       ).not.toBeOnTheScreen();
@@ -557,6 +563,9 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       expect(
         await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 10000}),
       ).toBeOnTheScreen();
+      // Aberta a Home, a TelaCarregamento sai da árvore junto com o ramo
+      // aguardandoAbertura.
+      expect(screen.queryByTestId('CARREGAMENTO.scrn')).toBeNull();
       expect(
         screen.queryByText('Wait for an invitation'),
       ).not.toBeOnTheScreen();
