@@ -33,7 +33,8 @@ describe('Settings - Coordinates Settings Flow', () => {
     await expect($(byTextMatches('CoiabApp Settings'))).toBeDisplayed();
 
     await $(byResourceId('MAIN.header-back-btn')).click();
-    await $(byResourceId('MAIN.map-screen')).click();
+    // #118: back from Settings lands on the Menu tab; go to the map by tab.
+    await $('~Go to map.').click();
     await expect($(byResourceId('MAIN.mapbox-map-view'))).toBeDisplayed();
   });
 });

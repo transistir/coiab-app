@@ -77,6 +77,8 @@ describe('Team - Leave Project Warning Screen', () => {
     await expect($(byText('Team'))).toBeDisplayed();
     backButton = await $(byResourceId('MAIN.header-back-btn'));
     await backButton.click();
-    await $(byResourceId('MAIN.map-screen')).click();
+    // #118: back from the Team screen lands on the Menu tab; go to the map
+    // by tab.
+    await $('~Go to map.').click();
   });
 });

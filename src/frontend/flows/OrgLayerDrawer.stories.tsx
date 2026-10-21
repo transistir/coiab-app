@@ -15,11 +15,14 @@ import {DrawerMenu} from '../sharedComponents/DrawerMenu';
  *
  * This is a non-route flow story: the menu page content (`DrawerMenu` since
  * #118 removed the drawer) wrapped in its own `ActiveProjectProvider` the
- * same way `Menu/DrawerMenu` does — see that story for why
- * `withRealNavigator` and `fullApp` don't fit, and why the provider is
- * mounted manually. It lives in its own file because `Flows/OrgLayer`'s
- * `withRealNavigator` renders the navigator instead of the story, and story
- * decorators add to the file's decorators rather than replacing them.
+ * same way `Menu/DrawerMenu` does — see that story for why the provider is
+ * mounted manually. Since #118 the content is route content under
+ * `Home`/`Menu`, so a `withRealNavigator` story with `initialState` seeded
+ * to `Home`/`Menu` would reach it too; these stories capture the menu
+ * content in isolation with `withFlowState` instead. It lives in its own
+ * file because `Flows/OrgLayer`'s `withRealNavigator` renders the navigator
+ * instead of the story, and story decorators add to the file's decorators
+ * rather than replacing them.
  */
 function OpenDrawerMenu() {
   const activeProjectId = useActiveProjectId();

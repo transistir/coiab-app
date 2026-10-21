@@ -345,6 +345,13 @@ describe('HomeTabs — barra de 5 abas (#32)', () => {
       expect(screen.queryByLabelText('Open Menu')).toBeNull();
       expect(screen.queryByTestId('HOME.header-button')).toBeNull();
     }
+
+    // O loop só termina na aba Notificações: nenhum teste sai de outra aba
+    // e volta ao Menu pela tab bar. A rota inicial (`Menu`) tem de ser
+    // alcançável de qualquer aba — sem drawer, é o único caminho de volta.
+    await user.press(await screen.findByTestId('tabBarButtonMenu'));
+    expect(mockNavigation.getCurrentRoute()?.name).toBe('Menu');
+    expect(await screen.findByTestId('MENU.scrn')).toBeTruthy();
   });
 
   test('o conteúdo do menu monta uma única vez (#118)', async () => {

@@ -35,7 +35,9 @@ describe('Settings - About CoiabApp Flow', () => {
     await backBtn.click();
     const backBtnAgain = await $(byResourceId('MAIN.header-back-btn'));
     await backBtnAgain.click();
-    await $(byResourceId('MAIN.map-screen')).click();
+    // #118: back from About/Settings lands on the Menu tab; go to the map
+    // by tab.
+    await $('~Go to map.').click();
     await expect($(byResourceId('MAIN.mapbox-map-view'))).toBeDisplayed();
   });
 });

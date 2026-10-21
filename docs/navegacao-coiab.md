@@ -73,7 +73,7 @@ v3 a rota inicial é `Menu`; para não reescrever a semântica desses testes
 
 1. **Remodelar a Página de Menu** com os cartões de módulo do Figma "Página
    Entroncamento" (hoje a página reaproveita o `DrawerMenu` cru).
-2. **Tirar o botão de menu do header**: ✓ concluído neste diff (#118, ciclo
+2. **Tirar o botão de menu do header**: ✓ concluído no #118 (ciclo
    1) — o `HomeHeader` não abre mais a drawer; a gaveta saiu e o conteúdo
    virou a Página de Menu, acessível só pela tab bar. O nome/ícone da
    organização permanece no header.

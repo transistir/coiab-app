@@ -17,20 +17,11 @@ describe('Menu - basic functionality of the menu', () => {
     await expect(coMapeoSettings).toBeDisplayed();
   });
 
-  it('should stay on the menu when back is pressed on the initial route', async () => {
-    // #118: the Menu page is the initial tab route — there is no drawer to
-    // close and no screen below it to reveal. Android back from the initial
-    // route of the app: the menu page and the tab bar remain displayed.
-    await driver.back();
-
-    const gatherObservations = await $(byText('Gather Observations'));
-    const backgroundMaps = await $(byText('Background Map'));
-    const coMapeoSettings = await $(byText('CoiabApp Settings'));
-
-    await expect(gatherObservations).toBeDisplayed();
-    await expect(backgroundMaps).toBeDisplayed();
-    await expect(coMapeoSettings).toBeDisplayed();
-  });
+  // #118: hardware back from the initial route sends the app to the
+  // background (Android default — no BackHandler remains on the Home '/'
+  // tabs/MenuScreen and there is no drawer left to close), so there is
+  // nothing meaningful to assert at the e2e level; the it that used to claim
+  // the Menu stays displayed after back was removed.
 
   it('should navigate to background map screen on background map press', async () => {
     await abrirMenu();

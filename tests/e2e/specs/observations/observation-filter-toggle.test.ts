@@ -19,7 +19,8 @@ describe('Observations - Filter Toggle (Early Access)', () => {
     await backBtn.click();
     const backBtnAgain = await $(byResourceId('MAIN.header-back-btn'));
     await backBtnAgain.click();
-    await $(byResourceId('MAIN.map-screen')).click();
+    // #118: back from Settings lands on the Menu tab; go to the map by tab.
+    await $('~Go to map.').click();
   });
 
   it('should show filter toggle on observations list when Early Access is on', async () => {
@@ -79,7 +80,8 @@ describe('Observations - Filter Toggle (Early Access)', () => {
     await backButton.click();
     const backButtonAgain = await $(byResourceId('MAIN.header-back-btn'));
     await backButtonAgain.click();
-    await $(byResourceId('MAIN.map-screen')).click();
+    // #118: back from Settings lands on the Menu tab; go to the map by tab.
+    await $('~Go to map.').click();
   });
 
   it('should not show filter toggle on observations list when Early Access is off', async () => {

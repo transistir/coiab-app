@@ -76,6 +76,7 @@ describe('Settings - Early Access Mode', () => {
     await $(byResourceId('earlyAccessFlagLabel')).scrollIntoView();
     await expect($(byTextMatches('Early Access OFF'))).toBeDisplayed();
     await backBtn.click();
-    await $(byResourceId('MAIN.map-screen')).click();
+    // #118: back from Settings lands on the Menu tab; go to the map by tab.
+    await $('~Go to map.').click();
   });
 });

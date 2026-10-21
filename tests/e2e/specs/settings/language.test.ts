@@ -40,7 +40,9 @@ describe('Settings - Language Settings Flow', () => {
 
     await $(byResourceId('MAIN.header-back-btn')).click();
     await $(byResourceId('MAIN.header-back-btn')).click();
-    await $(byResourceId('MAIN.map-screen')).click();
+    // #118: back from Language/Settings lands on the Menu tab; go to the
+    // map by tab.
+    await $('~Go to map.').click();
     const obsListTab = await $('~Go to observations list.');
     await obsListTab.click();
 
@@ -62,6 +64,7 @@ describe('Settings - Language Settings Flow', () => {
     await expect($(byResourceId('currentLanguageLabel'))).toHaveText('English');
     await $(byResourceId('MAIN.header-back-btn')).click();
     await $(byResourceId('MAIN.header-back-btn')).click();
-    await $(byResourceId('MAIN.map-screen')).click();
+    // #118: back from Settings lands on the Menu tab; go to the map by tab.
+    await $('~Go to map.').click();
   });
 });
