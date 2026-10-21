@@ -86,11 +86,7 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
     const utils = await render(
       <React.Suspense fallback={null}>
         <ActiveProjectProvider activeProjectId={projectId}>
-          <HomeHeader
-            {...baseHeader}
-            backgroundColor="#fff"
-            showBottomBorder
-          />
+          <HomeHeader {...baseHeader} backgroundColor="#fff" showBottomBorder />
         </ActiveProjectProvider>
       </React.Suspense>,
       {wrapper: appProviders.wrapper},

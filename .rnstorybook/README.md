@@ -15,9 +15,9 @@ There are two different kinds of stories in this Storybook:
   everything visible; do not put a second screen or navigator in the story
   function.
 - **Non-route flow stories** exercise something the capture manifest lists
-  that isn't a navigation route — `DrawerMenu` (rendered by
-  `react-native-drawer-layout` with component-local open/closed state, so
-  `withRealNavigator`'s `initialState` can't reach it) or a full screen whose
+  that isn't a navigation route — `DrawerMenu` (now rendered directly on the
+  Menu page, without a drawer wrapper, so `withRealNavigator`'s
+  `initialState` can't reach it) or a full screen whose
   live presentation state cannot be seeded through `FlowStateSpec`. Use
   `withFlowState`, described below, combined with `withNavigation` (or another
   navigation decorator) when the component also calls navigation hooks.

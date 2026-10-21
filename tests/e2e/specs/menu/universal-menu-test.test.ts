@@ -10,23 +10,26 @@ describe('Menu - basic functionality of the menu', () => {
 
     const gatherObservations = await $(byText('Gather Observations'));
     const backgroundMaps = await $(byText('Background Map'));
-    const ekanadybySettings = await $(byText('CoiabApp Settings'));
+    const coMapeoSettings = await $(byText('CoiabApp Settings'));
 
     await expect(gatherObservations).toBeDisplayed();
     await expect(backgroundMaps).toBeDisplayed();
     await expect(coMapeoSettings).toBeDisplayed();
   });
 
-  it('Should close menu on back button', async () => {
+  it('should stay on the menu when back is pressed on the initial route', async () => {
+    // #118: the Menu page is the initial tab route — there is no drawer to
+    // close and no screen below it to reveal. Android back from the initial
+    // route of the app: the menu page and the tab bar remain displayed.
     await driver.back();
+
     const gatherObservations = await $(byText('Gather Observations'));
     const backgroundMaps = await $(byText('Background Map'));
-    const ekanadybySettings = await $(byText('CoiabApp Settings'));
+    const coMapeoSettings = await $(byText('CoiabApp Settings'));
 
-    await expect(gatherObservations).not.toBeDisplayed();
-    await expect(backgroundMaps).not.toBeDisplayed();
-    await expect(coMapeoSettings).not.toBeDisplayed();
-    await expect($(byResourceId('MAIN.map-screen'))).toBeDisplayed();
+    await expect(gatherObservations).toBeDisplayed();
+    await expect(backgroundMaps).toBeDisplayed();
+    await expect(coMapeoSettings).toBeDisplayed();
   });
 
   it('should navigate to background map screen on background map press', async () => {
@@ -62,7 +65,8 @@ describe('Menu - basic functionality of the menu', () => {
     const addObservationButton = await $(
       byResourceId('MAIN.add-observation-btn'),
     );
-    //should not be visible as the menu pushes it off screen
+    // should not be visible from the Menu tab page; the map shows it only
+    // after navigating to the map tab
     await expect(addObservationButton).not.toBeDisplayed();
 
     const gatherObservations = await $(byText('Gather Observations'));

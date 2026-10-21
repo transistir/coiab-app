@@ -294,9 +294,7 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
               size={20}
               color={WHITE}
             />
-            <BodyText
-              variant="medium"
-              style={{paddingLeft: 12, color: WHITE}}>
+            <BodyText variant="medium" style={{paddingLeft: 12, color: WHITE}}>
               {formatMessage(m.gatherObservations)}
             </BodyText>
           </TouchableOpacity>
@@ -310,9 +308,7 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
               size={20}
               color={WHITE}
             />
-            <BodyText
-              variant="medium"
-              style={{paddingLeft: 12, color: WHITE}}>
+            <BodyText variant="medium" style={{paddingLeft: 12, color: WHITE}}>
               {formatMessage(m.bgMap)}
             </BodyText>
           </TouchableOpacity>
@@ -326,9 +322,7 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
               size={20}
               color={WHITE}
             />
-            <BodyText
-              variant="medium"
-              style={{paddingLeft: 12, color: WHITE}}>
+            <BodyText variant="medium" style={{paddingLeft: 12, color: WHITE}}>
               {formatMessage(m.appSettings)}
             </BodyText>
           </TouchableOpacity>

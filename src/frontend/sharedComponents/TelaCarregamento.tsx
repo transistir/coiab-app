@@ -11,9 +11,10 @@ import {DARK_GREY, WHITE} from '../lib/styles';
  * veta qualquer imagem: só fundo + spinner + rótulo textual.
  *
  * A barra de status vai para 'light-content' via o StatusBar ESTÁTICO (não o
- * componente `<StatusBar barStyle=...>`): no iOS com
- * UIViewControllerBasedStatusBarAppearance a prop é ignorada, e no Android o
- * unmount devolveria a 'default' em vez do 'dark-content' anterior.
+ * componente `<StatusBar barStyle=...>`): com
+ * `UIViewControllerBasedStatusBarAppearance: true` no `app.json`, o iOS
+ * ignora a API estática do StatusBar (efeito só não é visível); no Android o
+ * unmount devolveria 'default' em vez do 'dark-content' anterior.
  */
 export const TelaCarregamento = ({label}: {label?: string}) => {
   React.useEffect(() => {

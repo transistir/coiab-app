@@ -73,9 +73,10 @@ v3 a rota inicial é `Menu`; para não reescrever a semântica desses testes
 
 1. **Remodelar a Página de Menu** com os cartões de módulo do Figma "Página
    Entroncamento" (hoje a página reaproveita o `DrawerMenu` cru).
-2. **Tirar o botão de menu do header**: hoje o `HomeHeader` ainda abre a drawer
-   (mantida por continuidade). Com a Página de Menu estável, a drawer e o botão
-   do header saem; o nome/ícone da organização permanece no header.
+2. **Tirar o botão de menu do header**: ✓ concluído neste diff (#118, ciclo
+   1) — o `HomeHeader` não abre mais a drawer; a gaveta saiu e o conteúdo
+   virou a Página de Menu, acessível só pela tab bar. O nome/ícone da
+   organização permanece no header.
 3. **Retematizar as telas de Settings** do CoMapeo sob o item Configurações.
 4. **Conteúdo real de Notificações** (#49) e **filtro global** quando o #30
    trouxer as categorias por módulo.

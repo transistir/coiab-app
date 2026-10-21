@@ -351,10 +351,8 @@ describe('HomeTabs — barra de 5 abas (#32)', () => {
     await renderHomeTabs();
     const user = userEvent.setup();
 
-    // No código antigo isso abria a gaveta; no novo não existe o botão.
-    for (const botao of screen.queryAllByLabelText('Open Menu')) {
-      await user.press(botao);
-    }
+    // No código antigo isso abria a gaveta; no novo não existe o botão de
+    // menu em nenhum header — o conteúdo só é alcançado pela tab Menu.
     await user.press(await screen.findByTestId('tabBarButtonMenu'));
 
     // A página de Menu é a única superfície com o conteúdo (cartão,

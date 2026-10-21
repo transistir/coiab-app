@@ -16,11 +16,11 @@ type FlowParameters = {
  * The flow-state half of `withRealNavigator`, without the navigator, plus
  * the story-readiness marker the capture pipeline requires.
  *
- * Exists for stories that the capture manifest lists but that aren't a
- * navigation route, so `withRealNavigator`'s `initialState` can't reach
- * them — e.g. `DrawerMenu`, which `react-native-drawer-layout` renders with
- * component-local open/closed state, or a purely presentational leaf
- * component fixtured with props. Combine with `withNavigation` (or another
+  * Exists for stories that the capture manifest lists but that aren't a
+  * navigation route, so `withRealNavigator`'s `initialState` can't reach
+  * them — e.g. `DrawerMenu`, which is now rendered directly on the Menu
+  * page (no drawer wrapper), or a purely presentational leaf
+  * component fixtured with props. Combine with `withNavigation` (or another
  * navigation decorator) for components that also call navigation hooks.
  *
  * `scripts/storybook-capture.sh` requires `STORYBOOK.flow-ready.<storyId>`

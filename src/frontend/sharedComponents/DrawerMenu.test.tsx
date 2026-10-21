@@ -435,9 +435,9 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
       );
       // Os componentes de ícone consomem a prop color e a movem para o
       // style do Text hospedeiro; a cor lida é do style achatado.
-      expect(
-        StyleSheet.flatten(screen.getByTestId(icone).props.style),
-      ).toEqual(expect.objectContaining({color: WHITE}));
+      expect(StyleSheet.flatten(screen.getByTestId(icone).props.style)).toEqual(
+        expect.objectContaining({color: WHITE}),
+      );
     }
   });
 });
