@@ -1,4 +1,5 @@
 import * as React from 'react';
+import {StyleSheet} from 'react-native';
 import {
   act,
   render,
@@ -41,7 +42,9 @@ import {PermissionStatus} from 'expo-location';
 import {MEMBER_ROLE_ID} from '../sharedTypes';
 import {organizationDocument} from '../lib/organization/fixtures';
 import {parseEstadoOrganizacoes} from '../lib/organization/coiabOrganizations';
-import {WHITE} from '../lib/styles';
+import {DARK_GREY, NEW_DARK_GREY} from '../lib/styles';
+import {ColorCard} from './ColorCard';
+import {DEFAULT_PROJECT_COLOR} from '../constants';
 
 import {OrganizationAreaAccesses} from './OrganizationAreaAccesses';
 
@@ -216,19 +219,37 @@ describe('OrganizationAreaAccesses (SPEC A §6.1/D12, CA16)', () => {
     expect(screen.getByText('Current')).toBeOnTheScreen();
   });
 
-  test('textos das áreas em branco sobre o fundo escuro do menu (#118)', async () => {
-    // Pré-merge da 3ª revisão: NEW_DARK_GREY (#757575) sobre o fundo
-    // escuro do menu (#1C2A27) dá ≈3,2:1 (< 4,5:1 do WCAG AA) — e o
-    // rótulo sem cor herdaria o DARK_GREY padrão do BodyText. Mesmo
-    // molde dos itens do menu: rótulos das duas áreas e o selo da
-    // corrente em WHITE.
-    await renderAreaAccesses();
+  test('textos das áreas escuros sobre o cartão claro do projeto (#118)', async () => {
+    // 4ª revisão: o componente fica DENTRO do ColorCard
+    // (backgroundColor={projectColor}, default #FFF5EB claro) — o WHITE da
+    // fase F era quase ilegível sobre o cartão claro. Compondo com o
+    // ColorCard real (cor default), os rótulos herdam o DARK_GREY do
+    // BodyText e o selo da corrente mantém o NEW_DARK_GREY
+    // pré-fase F.
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState(organizationDocument(), true);
+    await render(
+      <ColorCard
+        backgroundColor={DEFAULT_PROJECT_COLOR}
+        testID="MENU.card-projeto">
+        <Providers store={store} />
+      </ColorCard>,
+    );
 
-    for (const texto of ['Monitoring', 'Alerts', 'Current']) {
+    expect(
+      StyleSheet.flatten(screen.getByTestId('MENU.card-projeto').props.style),
+    ).toEqual(
+      expect.objectContaining({backgroundColor: DEFAULT_PROJECT_COLOR}),
+    );
+
+    for (const texto of ['Monitoring', 'Alerts']) {
       expect(screen.getByText(texto).props.style).toEqual(
-        expect.arrayContaining([expect.objectContaining({color: WHITE})]),
+        expect.arrayContaining([expect.objectContaining({color: DARK_GREY})]),
       );
     }
+    expect(screen.getByText('Current').props.style).toEqual(
+      expect.arrayContaining([expect.objectContaining({color: NEW_DARK_GREY})]),
+    );
   });
 
   test('toque na área corrente não ativa: só fecha o menu', async () => {
@@ -301,9 +322,10 @@ describe('OrganizationAreaAccesses (SPEC A §6.1/D12, CA16)', () => {
     await user.press(screen.getByTestId('MENU.area-monitoramento'));
 
     expect(await screen.findByText(/discard the record/)).toBeOnTheScreen();
-    // O aviso também fica sobre o fundo escuro do menu (#118): WHITE.
+    // O aviso também fica sobre o cartão claro do projeto (#118, revisão
+    // Fase G): NEW_DARK_GREY pré-fase F, legível sobre o cartão claro.
     expect(screen.getByText(/discard the record/).props.style).toEqual(
-      expect.arrayContaining([expect.objectContaining({color: WHITE})]),
+      expect.arrayContaining([expect.objectContaining({color: NEW_DARK_GREY})]),
     );
     // Recusada: nada trocou, nada resetou — mas o menu fecha (o contrato
     // fecha o menu após a tentativa).

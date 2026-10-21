@@ -210,7 +210,11 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
                         navigation.navigate('Organizations');
                       }}
                       accessibilityLabel="Open the organization selector.">
-                      <BodyText variant="medium" style={{color: WHITE}}>
+                      {/* 4ª revisão: as entradas ficam DENTRO do ColorCard
+                          (projectColor, default claro #FFF5EB) — herdam o
+                          DARK_GREY do BodyText; WHITE só vale no fundo
+                          DARK_GREY fora do cartão. */}
+                      <BodyText variant="medium">
                         {formatMessage(m.switchOrganization)}
                       </BodyText>
                     </TouchableOpacity>
@@ -229,7 +233,7 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
                         navigation.navigate('CreateOrganization');
                       }}
                       accessibilityLabel="Open the organization creation flow.">
-                      <BodyText variant="medium" style={{color: WHITE}}>
+                      <BodyText variant="medium">
                         {formatMessage(m.createOrganization)}
                       </BodyText>
                     </TouchableOpacity>

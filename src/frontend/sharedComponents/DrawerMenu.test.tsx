@@ -44,6 +44,7 @@ import {
   readyOrganization,
 } from '../lib/organization/fixtures';
 import type {OrganizacaoLocal} from '../lib/organization/coiabOrganizations';
+import {DEFAULT_PROJECT_COLOR} from '../constants';
 
 import {DrawerMenu} from './DrawerMenu';
 import {DARK_GREY, ORANGE, WHITE} from '../lib/styles';
@@ -441,15 +442,25 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     }
   });
 
-  test('entradas de organização (early access + 2 organizações) em branco (#118)', async () => {
-    // Bloqueio da 3ª revisão: as duas entradas de organização herdavam o
-    // DARK_GREY padrão do BodyText e ficavam invisíveis sobre o fundo
-    // escuro do menu do tema. Mesmo molde dos 5 itens acima.
+  test('entradas de organização com texto escuro sobre o cartão claro (#118)', async () => {
+    // 4ª revisão: as duas entradas ficam DENTRO do ColorCard
+    // (backgroundColor={projectColor}, default #FFF5EB claro) — o WHITE da
+    // fase F era quase ilegível sobre o cartão claro, e o mock escuro
+    // pré-existente (#232323) mascarou o problema. Com o projectColor
+    // claro default, as entradas herdam o DARK_GREY do BodyText
+    // (mesmo comportamento previo à fase F).
+    useProjectRoleAndDetailsMock.mockReturnValue({
+      role: 'coordinator',
+      projectHeader: 'Monitoramento',
+      projectName: 'Monitoramento',
+      projectColor: DEFAULT_PROJECT_COLOR,
+      projectDescription: undefined,
+    });
     await renderDrawer(true, {earlyAccess: true});
 
     for (const texto of ['Switch organization', 'Create Organization']) {
       expect(screen.getByText(texto).props.style).toEqual(
-        expect.arrayContaining([expect.objectContaining({color: WHITE})]),
+        expect.arrayContaining([expect.objectContaining({color: DARK_GREY})]),
       );
     }
   });
