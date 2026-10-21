@@ -440,4 +440,17 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
       );
     }
   });
+
+  test('entradas de organização (early access + 2 organizações) em branco (#118)', async () => {
+    // Bloqueio da 3ª revisão: as duas entradas de organização herdavam o
+    // DARK_GREY padrão do BodyText e ficavam invisíveis sobre o fundo
+    // escuro do menu do tema. Mesmo molde dos 5 itens acima.
+    await renderDrawer(true, {earlyAccess: true});
+
+    for (const texto of ['Switch organization', 'Create Organization']) {
+      expect(screen.getByText(texto).props.style).toEqual(
+        expect.arrayContaining([expect.objectContaining({color: WHITE})]),
+      );
+    }
+  });
 });

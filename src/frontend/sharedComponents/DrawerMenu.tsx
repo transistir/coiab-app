@@ -210,7 +210,7 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
                         navigation.navigate('Organizations');
                       }}
                       accessibilityLabel="Open the organization selector.">
-                      <BodyText variant="medium">
+                      <BodyText variant="medium" style={{color: WHITE}}>
                         {formatMessage(m.switchOrganization)}
                       </BodyText>
                     </TouchableOpacity>
@@ -229,7 +229,7 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
                         navigation.navigate('CreateOrganization');
                       }}
                       accessibilityLabel="Open the organization creation flow.">
-                      <BodyText variant="medium">
+                      <BodyText variant="medium" style={{color: WHITE}}>
                         {formatMessage(m.createOrganization)}
                       </BodyText>
                     </TouchableOpacity>

@@ -9,7 +9,7 @@ import {
   derivarProjectIdAtivo,
   type Area,
 } from '../lib/organization/coiabOrganizations';
-import {NEW_DARK_GREY} from '../lib/styles';
+import {WHITE} from '../lib/styles';
 import {HeaderText} from './Text/HeaderText';
 import {BodyText} from './Text/BodyText';
 
@@ -132,7 +132,9 @@ export function OrganizationAreaAccesses({
             style={styles.areaRow}
             accessibilityState={{selected: corrente}}
             onPress={() => trocarArea(area)}>
-            <BodyText variant="medium">{formatMessage(rotulo)}</BodyText>
+            <BodyText variant="medium" style={{color: WHITE}}>
+              {formatMessage(rotulo)}
+            </BodyText>
             {corrente && (
               <BodyText variant="tinyMeta" style={styles.currentArea}>
                 {formatMessage(m.currentArea)}
@@ -164,9 +166,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   currentArea: {
-    color: NEW_DARK_GREY,
+    color: WHITE,
   },
   pendingWork: {
-    color: NEW_DARK_GREY,
+    color: WHITE,
   },
 });

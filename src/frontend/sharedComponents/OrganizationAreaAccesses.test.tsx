@@ -41,6 +41,7 @@ import {PermissionStatus} from 'expo-location';
 import {MEMBER_ROLE_ID} from '../sharedTypes';
 import {organizationDocument} from '../lib/organization/fixtures';
 import {parseEstadoOrganizacoes} from '../lib/organization/coiabOrganizations';
+import {WHITE} from '../lib/styles';
 
 import {OrganizationAreaAccesses} from './OrganizationAreaAccesses';
 
@@ -215,6 +216,21 @@ describe('OrganizationAreaAccesses (SPEC A §6.1/D12, CA16)', () => {
     expect(screen.getByText('Current')).toBeOnTheScreen();
   });
 
+  test('textos das áreas em branco sobre o fundo escuro do menu (#118)', async () => {
+    // Pré-merge da 3ª revisão: NEW_DARK_GREY (#757575) sobre o fundo
+    // escuro do menu (#1C2A27) dá ≈3,2:1 (< 4,5:1 do WCAG AA) — e o
+    // rótulo sem cor herdaria o DARK_GREY padrão do BodyText. Mesmo
+    // molde dos itens do menu: rótulos das duas áreas e o selo da
+    // corrente em WHITE.
+    await renderAreaAccesses();
+
+    for (const texto of ['Monitoring', 'Alerts', 'Current']) {
+      expect(screen.getByText(texto).props.style).toEqual(
+        expect.arrayContaining([expect.objectContaining({color: WHITE})]),
+      );
+    }
+  });
+
   test('toque na área corrente não ativa: só fecha o menu', async () => {
     const user = userEvent.setup();
     await renderAreaAccesses();
@@ -285,6 +301,10 @@ describe('OrganizationAreaAccesses (SPEC A §6.1/D12, CA16)', () => {
     await user.press(screen.getByTestId('MENU.area-monitoramento'));
 
     expect(await screen.findByText(/discard the record/)).toBeOnTheScreen();
+    // O aviso também fica sobre o fundo escuro do menu (#118): WHITE.
+    expect(screen.getByText(/discard the record/).props.style).toEqual(
+      expect.arrayContaining([expect.objectContaining({color: WHITE})]),
+    );
     // Recusada: nada trocou, nada resetou — mas o menu fecha (o contrato
     // fecha o menu após a tentativa).
     expect(store.instance.getState().ativa).toEqual({
