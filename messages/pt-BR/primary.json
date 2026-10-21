@@ -14,11 +14,23 @@
   "$1Navigation.Menu.collaborate": {
     "message": "Colaborar"
   },
+  "$1Navigation.Menu.convidar": {
+    "message": "Convidar",
+    "description": "Menu list entry that opens the team screen"
+  },
+  "$1Navigation.Menu.convidarSubtitle": {
+    "message": "Adicionar pessoas",
+    "description": "Subtitle of the invite menu entry"
+  },
   "$1Navigation.Menu.coordinator": {
     "message": "Coordenador"
   },
   "$1Navigation.Menu.coordinatorTools": {
     "message": "Ferramentas do coordenador"
+  },
+  "$1Navigation.Menu.criarOrganizacao": {
+    "message": "Criar organização",
+    "description": "Menu list entry that opens the organization creation flow"
   },
   "$1Navigation.Menu.earlyAccessOn": {
     "message": "Acesso Antecipado ATIVADO"
@@ -32,6 +44,10 @@
   "$1Navigation.Menu.gatherObservations": {
     "message": "Reúna observações"
   },
+  "$1Navigation.Menu.greeting": {
+    "message": "Olá, Parente",
+    "description": "Página Entroncamento greeting (Figma Kutary App V2, 2668:4539)"
+  },
   "$1Navigation.Menu.mappingOnOwn": {
     "message": "Você é um mapeamento próprio."
   },
@@ -43,6 +59,14 @@
   },
   "$1Navigation.Menu.switchOrganization": {
     "message": "Trocar de organização"
+  },
+  "$1Navigation.Menu.switchOrganizationSubtitle": {
+    "message": "Escolher outra org",
+    "description": "Subtitle of the organization selector menu entry"
+  },
+  "$1Navigation.Menu.switchOrganizationTitle": {
+    "message": "Trocar de organização",
+    "description": "Menu list entry that opens the organization selector"
   },
   "$1Navigation.Menu.team": {
     "message": "Equipe"
@@ -1044,9 +1068,21 @@
   "$1sharedComponents.ErrorBottomSheet.somethingWrong": {
     "message": "Ocorreu um erro"
   },
+  "$1sharedComponents.OrganizationAreaAccesses.cardAlertas": {
+    "message": "Alertas",
+    "description": "Título do card Alertas (Figma 2668:4539)"
+  },
+  "$1sharedComponents.OrganizationAreaAccesses.cardMonitoramento": {
+    "message": "Monitoramento Territorial",
+    "description": "Título do card Monitoramento (Figma 2668:4539)"
+  },
   "$1sharedComponents.OrganizationAreaAccesses.currentArea": {
     "message": "Atual",
     "description": "Badge naming the work area the device operates right now"
+  },
+  "$1sharedComponents.OrganizationAreaAccesses.maisDetalhes": {
+    "message": "Mais detalhes",
+    "description": "Chip de detalhes do card (Figma 2668:4539)"
   },
   "$1sharedComponents.OrganizationAreaAccesses.pendingWork": {
     "message": "Conclua ou descarte o registro antes de trocar de organização",

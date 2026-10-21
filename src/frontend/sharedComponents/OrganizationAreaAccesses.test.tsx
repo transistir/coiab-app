@@ -210,12 +210,16 @@ describe('OrganizationAreaAccesses — os dois cards da Entroncamento (SPEC A §
     expect(
       screen.getByTestId('MENU.area-monitoramento').props.accessibilityState,
     ).toEqual({selected: false});
+    // Review 3 (P2-1): rótulo a11y composto nos DOIS cards — título + nome
+    // da organização; o título visível continua sendo o texto do card.
+    expect(
+      screen.getByTestId('MENU.area-monitoramento').props.accessibilityLabel,
+    ).toBe('Monitoramento Territorial — Organização A');
+    expect(
+      screen.getByTestId('MENU.area-alertas').props.accessibilityLabel,
+    ).toBe('Alertas — Organização A');
     expect(screen.getByText('Monitoramento Territorial')).toBeOnTheScreen();
     expect(screen.getByText('Alertas')).toBeOnTheScreen();
-    // Review 2 (P2-1): os cards NÃO têm rótulo assistivo próprio — a leitura
-    // assistiva segue os títulos ("Monitoramento Territorial"/"Alertas");
-    // o nome da organização voltou a ser texto visível na saudação.
-    expect(screen.queryByLabelText('Organização A')).not.toBeOnTheScreen();
   });
 
   test('fundos dos cards #FF9500/#B90B0B e títulos brancos sobre o fundo escuro (Figma 2668:4539)', async () => {

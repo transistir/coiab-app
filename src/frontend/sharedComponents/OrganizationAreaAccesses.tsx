@@ -85,6 +85,12 @@ export function OrganizationAreaAccesses(): React.JSX.Element | null {
   // cards.
   const {trocarArea, areaAtual, trocaRecusada} = useTrocarArea();
 
+  // Nome da organização ativa para o rótulo a11y composto dos cards
+  // (review 3, P2-1: `Formato — Nome da org`).
+  const nomeOrganizacao = estado.organizacoes.find(
+    item => item.id === estado.ativa?.organizacaoId,
+  )?.nome;
+
   if (derivarProjectIdAtivo(estado) === null) return null;
 
   return (
@@ -97,6 +103,14 @@ export function OrganizationAreaAccesses(): React.JSX.Element | null {
             testID={testID}
             style={[styles.card, {backgroundColor: fundo}]}
             accessibilityState={{selected: corrente}}
+            // Rótulo a11y composto (review 1 então review 2 rollback, review 3
+            // P2-1): título do card + nome da organização; sem organização
+            // nomeada, fica só o rótulo do card.
+            accessibilityLabel={
+              nomeOrganizacao
+                ? `${formatMessage(rotulo)} — ${nomeOrganizacao}`
+                : formatMessage(rotulo)
+            }
             onPress={() => trocarArea(area)}>
             <BodyText style={styles.cardTitle}>
               {formatMessage(rotulo)}
