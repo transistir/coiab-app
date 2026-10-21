@@ -1,10 +1,11 @@
 import {expect} from '@wdio/globals';
 import {describe, it} from 'mocha';
 import {byResourceId, byText} from '../../utils/selectors';
+import {abrirMenu} from '../../utils/menu';
 
 describe('Multiple Projects - All Projects Screen', () => {
   it('should show projects in order of creation when solo project is the selected project', async () => {
-    await $('~Open Menu').click();
+    await abrirMenu();
     await $(byText('Switch Project')).click();
 
     const firstCard = await $(byResourceId('project_card_test_phone'));

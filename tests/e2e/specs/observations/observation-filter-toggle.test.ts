@@ -1,12 +1,12 @@
 import {expect} from '@wdio/globals';
 import {describe, it} from 'mocha';
 import {byResourceId, byText, byTextMatches} from '../../utils/selectors';
+import {abrirMenu} from '../../utils/menu';
 import {checkForElementGone} from '../../utils/checkForGone';
 
 describe('Observations - Filter Toggle (Early Access)', () => {
   it('should enable Early Access', async () => {
-    const drawerIcon = await $('~Open Menu');
-    await drawerIcon.click();
+    await abrirMenu();
     const appSettingsOption = await $('~Go to app settings screen.');
     await appSettingsOption.click();
     const earlyAccessItem = await $(byResourceId('earlyAccessFlag'));
@@ -19,7 +19,8 @@ describe('Observations - Filter Toggle (Early Access)', () => {
     await backBtn.click();
     const backBtnAgain = await $(byResourceId('MAIN.header-back-btn'));
     await backBtnAgain.click();
-    await $(byResourceId('MAIN.map-screen')).click();
+    // #118: back from Settings lands on the Menu tab; go to the map by tab.
+    await $('~Go to map.').click();
   });
 
   it('should show filter toggle on observations list when Early Access is on', async () => {
@@ -62,8 +63,7 @@ describe('Observations - Filter Toggle (Early Access)', () => {
   });
 
   it('should disable Early Access and hide the filter toggle', async () => {
-    const drawerIcon = await $('~Open Menu');
-    await drawerIcon.click();
+    await abrirMenu();
     const appSettingsOption = await $('~Go to app settings screen.');
     await appSettingsOption.click();
     const earlyAccessItem = await $(byResourceId('earlyAccessFlag'));
@@ -80,7 +80,8 @@ describe('Observations - Filter Toggle (Early Access)', () => {
     await backButton.click();
     const backButtonAgain = await $(byResourceId('MAIN.header-back-btn'));
     await backButtonAgain.click();
-    await $(byResourceId('MAIN.map-screen')).click();
+    // #118: back from Settings lands on the Menu tab; go to the map by tab.
+    await $('~Go to map.').click();
   });
 
   it('should not show filter toggle on observations list when Early Access is off', async () => {

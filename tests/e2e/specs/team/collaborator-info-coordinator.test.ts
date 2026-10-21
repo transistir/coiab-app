@@ -41,6 +41,9 @@ describe('Team - Collaborator Info as Coordinator', () => {
     await expect($(byText('Team'))).toBeDisplayed();
     backButton = await $(byResourceId('MAIN.header-back-btn'));
     await backButton.click();
-    await $(byResourceId('MAIN.map-screen')).click();
+    // #118: back from YourTeam returns to the Menu tab (pushed route);
+    // reach the map via the tab bar instead of tapping the hidden map screen.
+    await $('~Go to map.').click();
+    await expect($(byResourceId('MAIN.map-screen'))).toBeDisplayed();
   });
 });

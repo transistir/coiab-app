@@ -1,11 +1,12 @@
 import {expect} from '@wdio/globals';
 import {describe, it} from 'mocha';
 import {byResourceId, byText} from '../../utils/selectors';
+import {abrirMenu} from '../../utils/menu';
 import {output} from '../../utils/naming';
 
 describe('Project - Edit Device Name Test', () => {
   it('should navigate to project settings and edit the device name', async () => {
-    await $('~Open Menu').tap();
+    await abrirMenu();
 
     await $('~Go to app settings screen.').tap();
 
@@ -45,9 +46,10 @@ describe('Project - Edit Device Name Test', () => {
 
     await driver.back();
     await driver.back();
-    await $(byResourceId('MAIN.map-screen')).click();
-
-    await $('~Open Menu').tap();
+    // #118: back from the DeviceName/Settings screens lands on the Menu tab
+    // (initial route), not the map — no dead map tap needed before reopening
+    // the menu below.
+    await abrirMenu();
     await $('~Go to app settings screen.').click();
     await $(byResourceId('device-name-list-item')).click();
 
@@ -55,6 +57,8 @@ describe('Project - Edit Device Name Test', () => {
 
     await driver.back();
     await driver.back();
-    await $(byResourceId('MAIN.map-screen')).click();
+    // #118: back from Settings returns to the Menu tab — leave the app on
+    // the map for the next spec via the tab bar instead.
+    await $('~Go to map.').click();
   });
 });

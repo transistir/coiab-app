@@ -1,12 +1,12 @@
 import {expect} from '@wdio/globals';
 import {describe, it} from 'mocha';
 import {byText, byResourceId, byTextMatches} from '../../utils/selectors';
+import {abrirMenu} from '../../utils/menu';
 import {output} from '../../utils/naming';
 
 describe('Team - Leave Project Warning Screen', () => {
   it('should show warning screen when last coordinator or device tries to leave', async () => {
-    const drawerIcon = await $('~Open Menu');
-    await drawerIcon.click();
+    await abrirMenu();
     const teamSettings = await $('~Go to your team screen.');
     await teamSettings.click();
 
@@ -77,6 +77,8 @@ describe('Team - Leave Project Warning Screen', () => {
     await expect($(byText('Team'))).toBeDisplayed();
     backButton = await $(byResourceId('MAIN.header-back-btn'));
     await backButton.click();
-    await $(byResourceId('MAIN.map-screen')).click();
+    // #118: back from the Team screen lands on the Menu tab; go to the map
+    // by tab.
+    await $('~Go to map.').click();
   });
 });

@@ -1,10 +1,11 @@
 import {expect} from '@wdio/globals';
 import {describe, it} from 'mocha';
 import {byResourceId, byText, byTextMatches} from '../../utils/selectors';
+import {abrirMenu} from '../../utils/menu';
 
 describe('Exchange - Exchange Screen No Devices', () => {
   it('should navigate to exchange screen and verify content for no devices available', async () => {
-    await $('~Open Menu').click();
+    await abrirMenu();
     const exchangeBtn = await $(byText('Exchange'));
     await exchangeBtn.click();
 

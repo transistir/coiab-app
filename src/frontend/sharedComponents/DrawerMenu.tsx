@@ -18,6 +18,7 @@ import {BodyText} from '../sharedComponents/Text/BodyText.tsx';
 import {useProjectRoleAndDetails} from '../hooks/useProjectRoleAndDetails.ts';
 import {
   COMAPEO_BLUE,
+  DARK_GREY,
   LIGHT_ORANGE,
   NEW_DARK_GREY,
   WHITE,
@@ -125,7 +126,9 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
   const insets = useSafeAreaInsets();
 
   return (
-    <View style={[styles.container, {paddingTop: insets.top}]}>
+    <View
+      style={[styles.container, {paddingTop: insets.top}]}
+      testID="MENU.conteudo">
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         <View style={styles.topCardsContainer}>
           {isLow && (
@@ -207,6 +210,10 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
                         navigation.navigate('Organizations');
                       }}
                       accessibilityLabel="Open the organization selector.">
+                      {/* 4ª revisão: as entradas ficam DENTRO do ColorCard
+                          (projectColor, default claro #FFF5EB) — herdam o
+                          DARK_GREY do BodyText; WHITE só vale no fundo
+                          DARK_GREY fora do cartão. */}
                       <BodyText variant="medium">
                         {formatMessage(m.switchOrganization)}
                       </BodyText>
@@ -245,8 +252,15 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
                 navigation.navigate('YourTeam');
               }}
               accessibilityLabel="Go to your team screen.">
-              <MaterialIcon color={NEW_DARK_GREY} size={20} name={'people'} />
-              <BodyText variant="medium" style={{paddingLeft: 12}}>
+              <MaterialIcon
+                testID="MENU.icone.team"
+                color={WHITE}
+                size={20}
+                name={'people'}
+              />
+              <BodyText
+                variant="medium"
+                style={{paddingLeft: 12, color: WHITE}}>
                 {formatMessage(m.team)}
               </BodyText>
             </TouchableOpacity>
@@ -259,11 +273,14 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
               }}
               accessibilityLabel="Go to project settings screen.">
               <MaterialIcon
-                color={NEW_DARK_GREY}
+                testID="MENU.icone.coordinator-tools"
+                color={WHITE}
                 size={20}
                 name={'manage-accounts'}
               />
-              <BodyText variant="medium" style={{paddingLeft: 12}}>
+              <BodyText
+                variant="medium"
+                style={{paddingLeft: 12, color: WHITE}}>
                 {formatMessage(m.coordinatorTools)}
               </BodyText>
             </TouchableOpacity>
@@ -275,8 +292,13 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
               closeMenu();
             }}
             accessibilityLabel="Go to map screen.">
-            <Octicons name="plus-circle" size={20} color={NEW_DARK_GREY} />
-            <BodyText variant="medium" style={{paddingLeft: 12}}>
+            <Octicons
+              testID="MENU.icone.gather-observations"
+              name="plus-circle"
+              size={20}
+              color={WHITE}
+            />
+            <BodyText variant="medium" style={{paddingLeft: 12, color: WHITE}}>
               {formatMessage(m.gatherObservations)}
             </BodyText>
           </TouchableOpacity>
@@ -284,8 +306,13 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
             style={styles.menuItem}
             onPress={() => navigation.navigate('BackgroundMaps')}
             accessibilityLabel="Go to background maps screen.">
-            <MaterialIcon name="layers" size={20} color={NEW_DARK_GREY} />
-            <BodyText variant="medium" style={{paddingLeft: 12}}>
+            <MaterialIcon
+              testID="MENU.icone.background-map"
+              name="layers"
+              size={20}
+              color={WHITE}
+            />
+            <BodyText variant="medium" style={{paddingLeft: 12, color: WHITE}}>
               {formatMessage(m.bgMap)}
             </BodyText>
           </TouchableOpacity>
@@ -293,8 +320,13 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
             style={styles.menuItem}
             onPress={() => navigation.navigate('AppSettings')}
             accessibilityLabel="Go to app settings screen.">
-            <IonIcon name="settings-outline" size={20} color={NEW_DARK_GREY} />
-            <BodyText variant="medium" style={{paddingLeft: 12}}>
+            <IonIcon
+              testID="MENU.icone.settings"
+              name="settings-outline"
+              size={20}
+              color={WHITE}
+            />
+            <BodyText variant="medium" style={{paddingLeft: 12, color: WHITE}}>
               {formatMessage(m.appSettings)}
             </BodyText>
           </TouchableOpacity>
@@ -323,7 +355,7 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: DARK_GREY,
   },
   scrollContainer: {
     flexGrow: 1,

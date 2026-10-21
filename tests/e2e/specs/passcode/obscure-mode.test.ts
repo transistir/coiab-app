@@ -1,6 +1,7 @@
 import {expect} from '@wdio/globals';
 import {describe, it} from 'mocha';
 import {byText, byTextMatches, byResourceId} from '../../utils/selectors';
+import {abrirMenu} from '../../utils/menu';
 import {output} from '../../utils/naming';
 import {checkForElementGone} from '../../utils/checkForGone';
 import {handleGPSAlert} from '../../utils/alerts';
@@ -63,8 +64,7 @@ describe('Passcode - Obscure Passcode Mode', () => {
   });
 
   it('should not show security after entering obscure passcode', async () => {
-    const drawerIcon = await $('~Open Menu');
-    await drawerIcon.click();
+    await abrirMenu();
     const appSettingsOption = await $('~Go to app settings screen.');
     await appSettingsOption.click();
 

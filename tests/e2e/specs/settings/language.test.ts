@@ -1,11 +1,11 @@
 import {expect} from '@wdio/globals';
 import {describe, it} from 'mocha';
 import {byResourceId, byText, byTextMatches} from '../../utils/selectors';
+import {abrirMenu} from '../../utils/menu';
 
 describe('Settings - Language Settings Flow', () => {
   it('should open the Language list from App Settings', async () => {
-    const drawerIcon = await $('~Open Menu');
-    await drawerIcon.click();
+    await abrirMenu();
 
     const appSettingsOption = await $('~Go to app settings screen.');
     await appSettingsOption.click();
@@ -40,7 +40,9 @@ describe('Settings - Language Settings Flow', () => {
 
     await $(byResourceId('MAIN.header-back-btn')).click();
     await $(byResourceId('MAIN.header-back-btn')).click();
-    await $(byResourceId('MAIN.map-screen')).click();
+    // #118: back from Language/Settings lands on the Menu tab; go to the
+    // map by tab.
+    await $('~Go to map.').click();
     const obsListTab = await $('~Go to observations list.');
     await obsListTab.click();
 
@@ -49,10 +51,7 @@ describe('Settings - Language Settings Flow', () => {
   });
 
   it('should switch back to English and confirm language revert', async () => {
-    const drawerIcon = await $(byResourceId('HOME.header-button'));
-    if (await drawerIcon.isDisplayed()) {
-      await drawerIcon.click();
-    }
+    await abrirMenu();
 
     const settingsInSpanish = $(byTextMatches('Ajustes de'));
     await settingsInSpanish.click();
@@ -65,6 +64,7 @@ describe('Settings - Language Settings Flow', () => {
     await expect($(byResourceId('currentLanguageLabel'))).toHaveText('English');
     await $(byResourceId('MAIN.header-back-btn')).click();
     await $(byResourceId('MAIN.header-back-btn')).click();
-    await $(byResourceId('MAIN.map-screen')).click();
+    // #118: back from Settings lands on the Menu tab; go to the map by tab.
+    await $('~Go to map.').click();
   });
 });

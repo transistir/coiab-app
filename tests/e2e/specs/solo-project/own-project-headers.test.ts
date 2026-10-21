@@ -19,7 +19,7 @@ describe('Project - Solo Project Headers', () => {
 
     await expect($(byTextMatches(output.names.device))).toBeDisplayed();
 
-    const drawerButton = await $(byResourceId('HOME.header-button'));
-    await expect(drawerButton).toBeDisplayed();
+    const menuTabButton = await $('~Go to menu.');
+    await expect(menuTabButton).toBeDisplayed();
   });
 });

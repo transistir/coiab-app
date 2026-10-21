@@ -1,13 +1,13 @@
 import {expect} from '@wdio/globals';
 import {describe, it} from 'mocha';
 import {byResourceId, byTextMatches} from '../../utils/selectors';
+import {abrirMenu} from '../../utils/menu';
 
 describe('Settings - About CoiabApp Flow', () => {
   it('should open About CoiabApp from the drawer', async () => {
     const mapTab = await $('~Go to map.');
     await mapTab.click();
-    const drawerIcon = await $('~Open Menu');
-    await drawerIcon.click();
+    await abrirMenu();
     const appSettingsOption = await $('~Go to app settings screen.');
     await appSettingsOption.click();
 
@@ -35,7 +35,9 @@ describe('Settings - About CoiabApp Flow', () => {
     await backBtn.click();
     const backBtnAgain = await $(byResourceId('MAIN.header-back-btn'));
     await backBtnAgain.click();
-    await $(byResourceId('MAIN.map-screen')).click();
+    // #118: back from About/Settings lands on the Menu tab; go to the map
+    // by tab.
+    await $('~Go to map.').click();
     await expect($(byResourceId('MAIN.mapbox-map-view'))).toBeDisplayed();
   });
 });

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import {TouchableOpacity, useWindowDimensions} from 'react-native';
+import {TouchableOpacity} from 'react-native';
 import {
   createBottomTabNavigator,
   type BottomTabHeaderProps,
@@ -17,9 +17,6 @@ import {HomeHeader} from '../../sharedComponents/HomeHeader';
 import {TabBar} from './TabBar';
 import {FullScreenCenteredLoader} from '../../sharedComponents/FullScreenCenteredLoader';
 import {NEW_DARK_GREY, WHITE} from '../../lib/styles';
-import {Drawer} from 'react-native-drawer-layout';
-import {DrawerMenu} from '../../sharedComponents/DrawerMenu';
-import {useOpenDrawer} from '../../hooks/useOpenDrawer';
 import {ProjectRemovalListener} from '../../sharedComponents/ProjectRemovalListener';
 import {DownloadIcon} from '../../sharedComponents/icons';
 import {useObservations} from '../../hooks/server/observations';
@@ -29,41 +26,15 @@ import {OrganizationRepairBanner} from '../../sharedComponents/OrganizationRepai
 
 const Tab = createBottomTabNavigator<HomeTabsParamsList>();
 
-// These mirror react-native-drawer-layout's own defaults, so the drawer keeps
-// exactly the size it had before. The gap leaves a strip of screen uncovered
-// beside the open drawer so it can be tapped to dismiss — the library calls it
-// APPROX_APP_BAR_HEIGHT.
-const DRAWER_EDGE_GAP = 56;
-// 360 is the Material Design 3 standard drawer width:
-// https://m3.material.io/components/navigation-drawer/specs
-const MAX_DRAWER_WIDTH = 360;
-
-export function getDrawerWidth(windowWidth: number) {
-  return Math.max(Math.min(windowWidth - DRAWER_EDGE_GAP, MAX_DRAWER_WIDTH), 0);
-}
-
-// Header sólido (fundo branco) das abas de conteúdo — mesmo HomeHeader com o
-// botão que abre o drawer, para a gaveta seguir acessível de qualquer aba.
-const headerSolido =
-  (onPress: () => void) =>
-  (props: BottomTabHeaderProps): React.ReactElement => (
-    <React.Suspense fallback={null}>
-      <HomeHeader
-        {...props}
-        backgroundColor={WHITE}
-        showBottomBorder={true}
-        onPress={onPress}
-      />
-    </React.Suspense>
-  );
+// Header sólido (fundo branco) das abas de conteúdo — sem botão de menu
+// (#118): o menu vive na página de Menu, aberta pelo 1º item da tab bar.
+const headerSolido = (props: BottomTabHeaderProps): React.ReactElement => (
+  <React.Suspense fallback={null}>
+    <HomeHeader {...props} backgroundColor={WHITE} showBottomBorder={true} />
+  </React.Suspense>
+);
 
 export const HomeTabs = ({navigation}: NativeRootNavigationProps<'Home'>) => {
-  const [drawerOpen, setDrawerOpen] = useOpenDrawer();
-  const drawerWidth = getDrawerWidth(useWindowDimensions().width);
-
-  // Header sólido (fundo branco) das abas de conteúdo — ver headerSolido.
-  const headerSolid = headerSolido(() => setDrawerOpen(val => !val));
-
   return (
     <>
       <ProjectRemovalListener />
@@ -72,85 +43,61 @@ export const HomeTabs = ({navigation}: NativeRootNavigationProps<'Home'>) => {
           onPress={() => navigation.navigate('OrganizationProvisioning')}
         />
       </React.Suspense>
-      <Drawer
-        open={drawerOpen}
-        onClose={() => {
-          setDrawerOpen(false);
-        }}
-        onOpen={() => {
-          setDrawerOpen(true);
-        }}
-        drawerType="slide"
-        swipeEnabled={false}
-        // The library's `maxWidth: '100%'` resolves to 0 if the panel lays out
-        // while an ancestor is momentarily zero-width — which a suspense
-        // hide/reveal on project switch does, blanking the drawer until restart
-        // (#1613). `width` matches so the library's drawerWidth stays in sync.
-        drawerStyle={{width: drawerWidth, maxWidth: drawerWidth}}
-        renderDrawerContent={() => (
-          <DrawerMenu
-            closeMenu={() => {
-              setDrawerOpen(false);
-            }}
-          />
-        )}>
-        <Tab.Navigator
-          tabBar={props => <TabBar {...props} />}
-          screenOptions={{
-            tabBarShowLabel: false,
-            headerTransparent: true,
-            header: props => (
-              <React.Suspense fallback={null}>
-                <HomeHeader
-                  {...props}
-                  onPress={() => setDrawerOpen(val => !val)}
-                  backgroundColor="transparent"
-                  showBottomBorder={false}
-                />
-              </React.Suspense>
-            ),
-          }}
-          initialRouteName={'Menu'}
-          screenLayout={({children}) => (
-            <React.Suspense fallback={<FullScreenCenteredLoader />}>
-              {children}
+      <Tab.Navigator
+        tabBar={props => <TabBar {...props} />}
+        screenOptions={{
+          tabBarShowLabel: false,
+          headerTransparent: true,
+          header: props => (
+            <React.Suspense fallback={null}>
+              <HomeHeader
+                {...props}
+                backgroundColor="transparent"
+                showBottomBorder={false}
+              />
             </React.Suspense>
-          )}
-          backBehavior="initialRoute">
-          {/* COIAB (#32 fase 3): barra de 5 itens do Figma `footer-menu` —
-              Menu (inicial pós-login; renderiza o conteúdo da drawer como
+          ),
+        }}
+        initialRouteName={'Menu'}
+        screenLayout={({children}) => (
+          <React.Suspense fallback={<FullScreenCenteredLoader />}>
+            {children}
+          </React.Suspense>
+        )}
+        backBehavior="initialRoute">
+        {/* COIAB (#32 fase 3): barra de 5 itens do Figma `footer-menu` —
+              Menu (inicial pós-login; mostra o conteúdo do menu como
               página), Paneiro=ObservationsList (funil), Map (central),
               Notificações e Configurações. Configurações não é aba: o botão
               navega para AppSettings na root stack (ver TabBar). A rota Camera
               segue registrada sem botão na barra (o acesso à câmera vive no
               fluxo de criação de observação). Ver docs/navegacao-coiab.md. */}
-          <Tab.Screen
-            name="Menu"
-            component={MenuScreen}
-            options={{header: headerSolid}}
-          />
-          <Tab.Screen
-            name="ObservationsList"
-            component={ObservationsList}
-            options={{
-              headerTransparent: false,
-              headerRight: () => (
-                <DownloadObservationsButton
-                  onPress={() => navigation.navigate('ExportObservations')}
-                />
-              ),
-              header: headerSolid,
-            }}
-          />
-          <Tab.Screen name="Map" component={MapScreen} />
-          <Tab.Screen
-            name="Notificacoes"
-            component={Notificacoes}
-            options={{header: headerSolid}}
-          />
-          <Tab.Screen name="Camera" component={CameraScreen} />
-        </Tab.Navigator>
-      </Drawer>
+        <Tab.Screen
+          name="Menu"
+          component={MenuScreen}
+          options={{header: headerSolido}}
+        />
+        <Tab.Screen
+          name="ObservationsList"
+          component={ObservationsList}
+          options={{
+            headerTransparent: false,
+            headerRight: () => (
+              <DownloadObservationsButton
+                onPress={() => navigation.navigate('ExportObservations')}
+              />
+            ),
+            header: headerSolido,
+          }}
+        />
+        <Tab.Screen name="Map" component={MapScreen} />
+        <Tab.Screen
+          name="Notificacoes"
+          component={Notificacoes}
+          options={{header: headerSolido}}
+        />
+        <Tab.Screen name="Camera" component={CameraScreen} />
+      </Tab.Navigator>
     </>
   );
 };

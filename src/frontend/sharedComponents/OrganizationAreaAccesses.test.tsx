@@ -1,4 +1,5 @@
 import * as React from 'react';
+import {StyleSheet} from 'react-native';
 import {
   act,
   render,
@@ -41,6 +42,9 @@ import {PermissionStatus} from 'expo-location';
 import {MEMBER_ROLE_ID} from '../sharedTypes';
 import {organizationDocument} from '../lib/organization/fixtures';
 import {parseEstadoOrganizacoes} from '../lib/organization/coiabOrganizations';
+import {DARK_GREY, NEW_DARK_GREY} from '../lib/styles';
+import {ColorCard} from './ColorCard';
+import {DEFAULT_PROJECT_COLOR} from '../constants';
 
 import {OrganizationAreaAccesses} from './OrganizationAreaAccesses';
 
@@ -215,6 +219,39 @@ describe('OrganizationAreaAccesses (SPEC A §6.1/D12, CA16)', () => {
     expect(screen.getByText('Current')).toBeOnTheScreen();
   });
 
+  test('textos das áreas escuros sobre o cartão claro do projeto (#118)', async () => {
+    // 4ª revisão: o componente fica DENTRO do ColorCard
+    // (backgroundColor={projectColor}, default #FFF5EB claro) — o WHITE da
+    // fase F era quase ilegível sobre o cartão claro. Compondo com o
+    // ColorCard real (cor default), os rótulos herdam o DARK_GREY do
+    // BodyText e o selo da corrente mantém o NEW_DARK_GREY
+    // pré-fase F.
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState(organizationDocument(), true);
+    await render(
+      <ColorCard
+        backgroundColor={DEFAULT_PROJECT_COLOR}
+        testID="MENU.card-projeto">
+        <Providers store={store} />
+      </ColorCard>,
+    );
+
+    expect(
+      StyleSheet.flatten(screen.getByTestId('MENU.card-projeto').props.style),
+    ).toEqual(
+      expect.objectContaining({backgroundColor: DEFAULT_PROJECT_COLOR}),
+    );
+
+    for (const texto of ['Monitoring', 'Alerts']) {
+      expect(screen.getByText(texto).props.style).toEqual(
+        expect.arrayContaining([expect.objectContaining({color: DARK_GREY})]),
+      );
+    }
+    expect(screen.getByText('Current').props.style).toEqual(
+      expect.arrayContaining([expect.objectContaining({color: NEW_DARK_GREY})]),
+    );
+  });
+
   test('toque na área corrente não ativa: só fecha o menu', async () => {
     const user = userEvent.setup();
     await renderAreaAccesses();
@@ -285,6 +322,11 @@ describe('OrganizationAreaAccesses (SPEC A §6.1/D12, CA16)', () => {
     await user.press(screen.getByTestId('MENU.area-monitoramento'));
 
     expect(await screen.findByText(/discard the record/)).toBeOnTheScreen();
+    // O aviso também fica sobre o cartão claro do projeto (#118, revisão
+    // Fase G): NEW_DARK_GREY pré-fase F, legível sobre o cartão claro.
+    expect(screen.getByText(/discard the record/).props.style).toEqual(
+      expect.arrayContaining([expect.objectContaining({color: NEW_DARK_GREY})]),
+    );
     // Recusada: nada trocou, nada resetou — mas o menu fecha (o contrato
     // fecha o menu após a tentativa).
     expect(store.instance.getState().ativa).toEqual({

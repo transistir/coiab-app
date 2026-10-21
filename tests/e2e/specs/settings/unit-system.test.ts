@@ -1,11 +1,11 @@
 import {expect} from '@wdio/globals';
 import {describe, it} from 'mocha';
 import {byResourceId, byTextMatches} from '../../utils/selectors';
+import {abrirMenu} from '../../utils/menu';
 
 describe('Settings - Unit System Flow', () => {
   it('should open the App Settings from the drawer', async () => {
-    const drawerIcon = await $('~Open Menu');
-    await drawerIcon.click();
+    await abrirMenu();
 
     const appSettingsOption = await $('~Go to app settings screen.');
     await appSettingsOption.click();
@@ -31,7 +31,8 @@ describe('Settings - Unit System Flow', () => {
   it('should display feet abbreviation on the GPS pill on the map', async () => {
     const backBtn = await $(byResourceId('MAIN.header-back-btn'));
     await backBtn.click();
-    await $(byResourceId('MAIN.map-screen')).click();
+    // #118: back from Settings lands on the Menu tab; go to the map by tab.
+    await $('~Go to map.').click();
     await expect($(byResourceId('MAIN.mapbox-map-view'))).toBeDisplayed();
     await expect($(byTextMatches('±\\d+ ft'))).toBeDisplayed();
   });
@@ -47,8 +48,7 @@ describe('Settings - Unit System Flow', () => {
     const backBtn = await $(byResourceId('MAIN.header-back-btn'));
     await backBtn.click();
 
-    const drawerIcon = await $('~Open Menu');
-    await drawerIcon.click();
+    await abrirMenu();
 
     const appSettingsOption = await $('~Go to app settings screen.');
     await appSettingsOption.click();
@@ -70,7 +70,8 @@ describe('Settings - Unit System Flow', () => {
     const backBtn = await $(byResourceId('MAIN.header-back-btn'));
     await backBtn.click();
 
-    await $(byResourceId('MAIN.map-screen')).click();
+    // #118: back from Settings lands on the Menu tab; go to the map by tab.
+    await $('~Go to map.').click();
     await expect($(byResourceId('MAIN.mapbox-map-view'))).toBeDisplayed();
     await expect($(byTextMatches('±\\d+ m'))).toBeDisplayed();
   });

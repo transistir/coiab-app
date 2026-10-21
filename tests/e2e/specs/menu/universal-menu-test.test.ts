@@ -1,37 +1,30 @@
 import {expect} from '@wdio/globals';
 import {describe, it} from 'mocha';
 import {byResourceId, byText, byTextMatches} from '../../utils/selectors';
+import {abrirMenu} from '../../utils/menu';
 
 describe('Menu - basic functionality of the menu', () => {
-  it('should open on press of header', async () => {
-    // this is currently not the header, but it will be changed in a subsequent PR
-    const header = await $('~Open Menu');
-    await header.click();
+  it('should open on press of menu tab', async () => {
+    // #118: the menu is the first tab's page; no more header drawer button.
+    await abrirMenu();
 
     const gatherObservations = await $(byText('Gather Observations'));
     const backgroundMaps = await $(byText('Background Map'));
-    const ekanadybySettings = await $(byText('CoiabApp Settings'));
+    const coMapeoSettings = await $(byText('CoiabApp Settings'));
 
     await expect(gatherObservations).toBeDisplayed();
     await expect(backgroundMaps).toBeDisplayed();
     await expect(coMapeoSettings).toBeDisplayed();
   });
 
-  it('Should close menu on back button', async () => {
-    await driver.back();
-    const gatherObservations = await $(byText('Gather Observations'));
-    const backgroundMaps = await $(byText('Background Map'));
-    const ekanadybySettings = await $(byText('CoiabApp Settings'));
-
-    await expect(gatherObservations).not.toBeDisplayed();
-    await expect(backgroundMaps).not.toBeDisplayed();
-    await expect(coMapeoSettings).not.toBeDisplayed();
-    await expect($(byResourceId('MAIN.map-screen'))).toBeDisplayed();
-  });
+  // #118: hardware back from the initial route sends the app to the
+  // background (Android default — no BackHandler remains on the Home '/'
+  // tabs/MenuScreen and there is no drawer left to close), so there is
+  // nothing meaningful to assert at the e2e level; the it that used to claim
+  // the Menu stays displayed after back was removed.
 
   it('should navigate to background map screen on background map press', async () => {
-    const header = await $('~Open Menu');
-    await header.click();
+    await abrirMenu();
 
     const backgroundMaps = await $(byText('Background Map'));
     await backgroundMaps.click();
@@ -63,7 +56,8 @@ describe('Menu - basic functionality of the menu', () => {
     const addObservationButton = await $(
       byResourceId('MAIN.add-observation-btn'),
     );
-    //should not be visible as the menu pushes it off screen
+    // should not be visible from the Menu tab page; the map shows it only
+    // after navigating to the map tab
     await expect(addObservationButton).not.toBeDisplayed();
 
     const gatherObservations = await $(byText('Gather Observations'));
@@ -81,9 +75,7 @@ describe('Menu - basic functionality of the menu', () => {
 
     await expect(observationView).toBeDisplayed();
 
-    const header = await $('~Open Menu');
-
-    await header.click();
+    await abrirMenu();
 
     await gatherObservations.click();
 

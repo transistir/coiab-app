@@ -7,6 +7,7 @@ import {CustomHeaderLeft} from '../../sharedComponents/CustomHeaderLeft';
 import {AppStackParamsList} from '../../sharedTypes/navigation';
 import {useAuthContext} from '../../contexts/AuthContext';
 import {FullScreenCenteredLoader} from '../../sharedComponents/FullScreenCenteredLoader';
+import {TelaCarregamento} from '../../sharedComponents/TelaCarregamento';
 import {createOnboardingScreens} from './OnboardingScreens';
 import {createAppScreens} from './AppScreens';
 import {PendingInvitesListener} from '../../sharedComponents/PendingInvitesListener';
@@ -317,9 +318,7 @@ export const RootStackNavigator = () => {
   );
 
   if (aguardandoAbertura) {
-    return (
-      <FullScreenCenteredLoader label={formatMessage(m.loadingOrganization)} />
-    );
+    return <TelaCarregamento label={formatMessage(m.loadingOrganization)} />;
   }
 
   return (

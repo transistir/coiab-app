@@ -1,11 +1,12 @@
 import {expect} from '@wdio/globals';
 import {describe, it} from 'mocha';
 import {byResourceId, byText, byTextMatches} from '../../../utils/selectors';
+import {abrirMenu} from '../../../utils/menu';
 import {output} from '../../../utils/naming';
 
 describe('Create Project and land on map screen', () => {
   it('should create a project from menu', async () => {
-    await $('~Open Menu').click();
+    await abrirMenu();
     await $(byText('Collaborate')).click();
 
     await $(byText('Start New Project')).click();

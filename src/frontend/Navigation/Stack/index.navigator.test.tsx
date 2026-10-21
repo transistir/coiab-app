@@ -26,7 +26,13 @@ jest.mock('../../../../tests/integration/helpers/navigation', () => {
     },
   };
 });
-import {act, fireEvent, screen, waitFor} from '@testing-library/react-native';
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react-native';
 
 // The full navigator mounts the real Home tabs (MapScreen included) — the
 // map stack is stubbed exactly like MapScreen.lowStorage.test.tsx does.
@@ -508,6 +514,9 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     expect(await screen.findByText('Wait for an invitation')).toBeOnTheScreen();
     expect(screen.getByText('test is ready!')).toBeOnTheScreen();
     expect(screen.queryByTestId('MAIN.map-screen')).not.toBeOnTheScreen();
+    // #118 ciclo 5 (caso negativo): sem organização salva a janela de
+    // carregamento não existe — a bifurcação criar/aguardar é a superfície.
+    expect(screen.queryByTestId('CARREGAMENTO.scrn')).toBeNull();
   });
 
   test('a validação de papel atrasada prende o device no loader canônico e depois abre Home, sem flash da bifurcação (SPEC A §6.2 row 1)', async () => {
@@ -538,6 +547,9 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       expect(
         await screen.findByText('Loading organization…'),
       ).toBeOnTheScreen();
+      // #118 ciclo 5: a janela de carregamento é a TelaCarregamento do tema
+      // escuro — o rótulo canônico e o testID dela coexistem na mesma árvore.
+      expect(screen.getByTestId('CARREGAMENTO.scrn')).toBeOnTheScreen();
       expect(
         screen.queryByText('Wait for an invitation'),
       ).not.toBeOnTheScreen();
@@ -551,6 +563,9 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       expect(
         await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 10000}),
       ).toBeOnTheScreen();
+      // Aberta a Home, a TelaCarregamento sai da árvore junto com o ramo
+      // aguardandoAbertura.
+      expect(screen.queryByTestId('CARREGAMENTO.scrn')).toBeNull();
       expect(
         screen.queryByText('Wait for an invitation'),
       ).not.toBeOnTheScreen();
@@ -813,7 +828,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     expect(await freshSetup.manager.listProjects()).toHaveLength(2);
   }, 20000);
 
-  test('par ativo mantém a entrada do drawer capaz de abrir Organizations', async () => {
+  test('par ativo mantém a entrada da página de Menu capaz de abrir Organizations', async () => {
     const segundaId = 'fedcba9876543210';
     const segundaMonitoramentoId = await orgSetup.client.createProject({
       name: 'Monitoramento Beta',
@@ -849,7 +864,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     ).toBeOnTheScreen();
 
     // Enable the existing feature flag through its real registered screen,
-    // then return to Home and exercise the drawer entry itself.
+    // then return to Home and exercise the menu page entry itself.
     await act(async () => {
       mockNavigation.navigate('EarlyAccess');
     });
@@ -860,7 +875,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       mockNavigation.goBack();
     });
     await fireEvent.press(
-      await screen.findByTestId('HOME.header-button', {}, {timeout: 15_000}),
+      await screen.findByTestId('tabBarButtonMenu', {}, {timeout: 15_000}),
     );
     await fireEvent.press(
       await screen.findByTestId(
@@ -882,7 +897,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     ).toBeOnTheScreen();
   }, 20_000);
 
-  test('troca de área pelo drawer: reset para Home/Map no projeto de Alertas, documento cru em alertas e Back não reapresenta a Observation (SPEC A §6.1/D12, CA16/CA08)', async () => {
+  test('troca de área pela página de Menu: reset para Home/Map no projeto de Alertas, documento cru em alertas e Back não reapresenta a Observation (SPEC A §6.1/D12, CA16/CA08)', async () => {
     // Documento semeado: organização PRONTA, confirmação concluída e seleção
     // Monitoramento, com os dois slots ligados aos projetos reais do core.
     const mProjectId = orgSetup.projectId;
@@ -898,14 +913,16 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     // Home pós-login é o Entroncamento sob a tab bar de 5 abas (#32).
     expect(await screen.findByTestId('ENTRONCAMENTO.scrn')).toBeOnTheScreen();
 
-    // CA16 no navigator real: o drawer mostra o nome da organização e os dois
-    // acessos fixos, com Monitoramento marcado como corrente.
-    await fireEvent.press(await screen.findByTestId('HOME.header-button'));
+    // CA16 no navigator real: a página de Menu mostra o nome da organização
+    // e os dois acessos fixos, com Monitoramento marcado como corrente.
+    await fireEvent.press(await screen.findByTestId('tabBarButtonMenu'));
     expect(
       await screen.findByTestId('MENU.area-monitoramento'),
     ).toBeOnTheScreen();
     expect(screen.getByTestId('MENU.area-alertas')).toBeOnTheScreen();
-    expect(screen.getByText(orgSetup.orgName)).toBeOnTheScreen();
+    expect(
+      within(screen.getByTestId('MENU.scrn')).getByText(orgSetup.orgName),
+    ).toBeOnTheScreen();
     expect(
       screen.getByTestId('MENU.area-monitoramento').props.accessibilityState,
     ).toEqual({selected: true});

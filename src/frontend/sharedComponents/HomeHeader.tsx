@@ -1,11 +1,10 @@
 import React from 'react';
-import {View, StyleSheet, TouchableOpacity} from 'react-native';
+import {View, StyleSheet} from 'react-native';
 import {BottomTabHeaderProps} from '@react-navigation/bottom-tabs';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import IonIcon from '@react-native-vector-icons/ionicons';
 
 import {HeaderText} from './Text/HeaderText';
-import {BLUE_GREY, DARK_GREY} from '../lib/styles';
+import {BLUE_GREY} from '../lib/styles';
 import {useProjectRoleAndDetails} from '../hooks/useProjectRoleAndDetails';
 import {useActiveProject} from '../contexts/ActiveProjectContext';
 import {useOrganizacaoAtiva} from '../hooks/useOrganizacaoAtiva';
@@ -16,13 +15,11 @@ import {ExclamationBadge} from './Storage/ExclamationBadge';
 type HomeHeaderProps = BottomTabHeaderProps & {
   backgroundColor: string;
   showBottomBorder: boolean;
-  onPress: () => void;
 };
 
 export function HomeHeader({
   backgroundColor,
   showBottomBorder,
-  onPress,
   options,
 }: HomeHeaderProps) {
   const {projectId} = useActiveProject();
@@ -46,17 +43,11 @@ export function HomeHeader({
         },
       ]}>
       <View style={styles.headerRow}>
-        <TouchableOpacity
+        <View
           style={[
             styles.titleBox,
             {backgroundColor: projectDetails.projectColor},
-          ]}
-          onPress={onPress}
-          accessibilityLabel="Open Menu"
-          testID="HOME.header-button">
-          <View style={styles.menuIconContainer}>
-            <IonIcon name="menu" size={20} color={DARK_GREY} />
-          </View>
+          ]}>
           <HeaderText
             testID="HOME.header-title"
             variant="header4"
@@ -70,7 +61,7 @@ export function HomeHeader({
               <ExclamationBadge testID="low-storage-badge" />
             </View>
           )}
-        </TouchableOpacity>
+        </View>
         <View style={{paddingLeft: 10}}>
           {options.headerRight?.({canGoBack: false})}
         </View>
@@ -96,16 +87,9 @@ const styles = StyleSheet.create({
     borderColor: BLUE_GREY,
     flexDirection: 'row',
     alignItems: 'center',
+    paddingLeft: 10,
     paddingRight: 10,
     flexShrink: 1,
-  },
-  menuIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
   },
   text: {
     flexShrink: 1,

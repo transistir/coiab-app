@@ -1,13 +1,14 @@
 import {expect} from '@wdio/globals';
 import {describe, it} from 'mocha';
-import {byTextMatches, byText, byResourceId} from '../../utils/selectors';
+import {byTextMatches, byText} from '../../utils/selectors';
+import {abrirMenu} from '../../utils/menu';
 import {output} from '../../utils/naming';
 
-describe('Main - Side Drawer Menu - No Project', () => {
-  it('should open the side drawer and verify menu options', async () => {
-    const drawerIcon = await $('~Open Menu');
-    await drawerIcon.click();
-
+describe('Main - Menu Page - No Project', () => {
+  it('should open the menu page and verify menu options', async () => {
+    // #118: the menu content is now a page that the tab bar's Menu button
+    // opens. No disambiguating tap is needed — leaving to the map tab below.
+    await abrirMenu();
     await expect($(byTextMatches(output.names.device))).toBeDisplayed();
     await expect($(byText('Just You'))).toBeDisplayed();
 
@@ -19,8 +20,6 @@ describe('Main - Side Drawer Menu - No Project', () => {
     await expect($('~Go to background maps screen.')).toBeDisplayed();
     await expect($('~Go to map screen.')).toBeDisplayed();
 
-    await $(byResourceId('observationsEmptyView')).click();
-    const mapTab = await $('~Go to map.');
-    await mapTab.click();
+    await $('~Go to map.').click();
   });
 });
