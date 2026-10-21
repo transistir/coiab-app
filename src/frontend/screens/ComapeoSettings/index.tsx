@@ -6,6 +6,8 @@ import MaterialIcon from '@react-native-vector-icons/material-icons';
 import {NativeNavigationComponent} from '../../sharedTypes/navigation';
 import {useAuthContext} from '../../contexts/AuthContext';
 import {useEarlyAccessState} from '../../contexts/EarlyAccessContext';
+import {useActiveProject} from '../../contexts/ActiveProjectContext';
+import {useProjectRoleAndDetails} from '../../hooks/useProjectRoleAndDetails';
 import {useCoordinateFormat} from '../../contexts/CoordinateFormatStoreContext';
 import {useLocaleState} from '../../contexts/LocaleStoreContext';
 import {USABLE_LANGUAGES} from '../../lib/intl';
@@ -117,6 +119,26 @@ const m = defineMessages({
     id: 'Screens.Settings.AppSettings.qaDeviceName',
     defaultMessage: 'QA Device Name',
   },
+  organization: {
+    id: '$1Screens.Settings.AppSettings.organization',
+    defaultMessage: 'Organization',
+    description: 'Section header for the migrated menu entries',
+  },
+  backgroundMaps: {
+    id: '$1Screens.Settings.AppSettings.backgroundMaps',
+    defaultMessage: 'Background Map',
+    description: 'Migrated menu entry: background maps',
+  },
+  projectSettings: {
+    id: '$1Screens.Settings.AppSettings.projectSettings',
+    defaultMessage: 'Project Settings',
+    description: 'Migrated menu entry: project settings (coordinator only)',
+  },
+  yourTeam: {
+    id: '$1Screens.Settings.AppSettings.yourTeam',
+    defaultMessage: 'Your Team',
+    description: 'Migrated menu entry: your team',
+  },
 });
 
 export const AppSettings: NativeNavigationComponent<'AppSettings'> = ({
@@ -143,9 +165,63 @@ export const AppSettings: NativeNavigationComponent<'AppSettings'> = ({
 
   const hasPasscode = passcode !== null;
   const qaDeviceName = useQADeviceName();
+  // Acessos removidos da Página Entroncamento migram para cá: participantes
+  // não perdem a equipe ("Convidar" no menu é coord-only) e Background
+  // Maps segue sem restrição de papel.
+  const {projectId} = useActiveProject();
+  const {role} = useProjectRoleAndDetails(projectId);
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      <BodyText variant="tinyMeta" style={styles.sectionHeader}>
+        {formatMessage(m.organization)}
+      </BodyText>
+      {role !== 'solo' && (
+        <SettingsRow
+          testID="settingsYourTeamButton"
+          onPress={() => navigation.navigate('YourTeam')}
+          label={formatMessage(m.yourTeam)}
+          Icon={<MaterialIcon name="people" size={24} color={NEW_DARK_GREY} />}
+          EndContent={
+            <MaterialIcon
+              name="chevron-right"
+              size={20}
+              color={NEW_DARK_GREY}
+            />
+          }
+        />
+      )}
+      {role === 'coordinator' && (
+        <SettingsRow
+          testID="settingsProjectSettingsButton"
+          onPress={() => navigation.navigate('ProjectSettings')}
+          label={formatMessage(m.projectSettings)}
+          Icon={
+            <MaterialIcon
+              name="manage-accounts"
+              size={24}
+              color={NEW_DARK_GREY}
+            />
+          }
+          EndContent={
+            <MaterialIcon
+              name="chevron-right"
+              size={20}
+              color={NEW_DARK_GREY}
+            />
+          }
+        />
+      )}
+      <SettingsRow
+        testID="settingsBackgroundMapsButton"
+        onPress={() => navigation.navigate('BackgroundMaps')}
+        label={formatMessage(m.backgroundMaps)}
+        Icon={<MaterialIcon name="layers" size={24} color={NEW_DARK_GREY} />}
+        EndContent={
+          <MaterialIcon name="chevron-right" size={20} color={NEW_DARK_GREY} />
+        }
+      />
+
       <BodyText variant="tinyMeta" style={styles.sectionHeader}>
         {formatMessage(m.deviceName)}
       </BodyText>

@@ -42,9 +42,7 @@ import {PermissionStatus} from 'expo-location';
 import {MEMBER_ROLE_ID} from '../sharedTypes';
 import {organizationDocument} from '../lib/organization/fixtures';
 import {parseEstadoOrganizacoes} from '../lib/organization/coiabOrganizations';
-import {DARK_GREY, NEW_DARK_GREY} from '../lib/styles';
-import {ColorCard} from './ColorCard';
-import {DEFAULT_PROJECT_COLOR} from '../constants';
+import {COIAB_ORANGE, COIAB_RED, WHITE} from '../lib/styles';
 
 import {OrganizationAreaAccesses} from './OrganizationAreaAccesses';
 
@@ -77,10 +75,11 @@ jest.mock('../hooks/useNavigationWithTypes', () => ({
 const useClientApiMock = useClientApi as unknown as jest.Mock;
 
 const reset = jest.fn();
+const popTo = jest.fn();
 const mockNavigation = {
   reset,
   navigate: jest.fn(),
-  popTo: jest.fn(),
+  popTo,
 };
 
 /**
@@ -107,7 +106,7 @@ function fakeProject(roleId = MEMBER_ROLE_ID) {
   };
 }
 
-describe('OrganizationAreaAccesses (SPEC A §6.1/D12, CA16)', () => {
+describe('OrganizationAreaAccesses — os dois cards da Entroncamento (SPEC A §6.1/D12, CA16)', () => {
   let projects: Record<ProjectId, ReturnType<typeof fakeProject>>;
   let clientApi: {
     getProject: jest.Mock;
@@ -118,7 +117,6 @@ describe('OrganizationAreaAccesses (SPEC A §6.1/D12, CA16)', () => {
   let queryClient: QueryClient;
   let trackStore: TrackStore;
   let draftStore: DraftObservationStore;
-  const closeMenu = jest.fn();
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -173,7 +171,7 @@ describe('OrganizationAreaAccesses (SPEC A §6.1/D12, CA16)', () => {
                 <OrganizationMaterializerProvider>
                   <OrganizationActivationProvider>
                     <IntlProvider locale="en" messages={{}}>
-                      <OrganizationAreaAccesses closeMenu={closeMenu} />
+                      <OrganizationAreaAccesses />
                     </IntlProvider>
                   </OrganizationActivationProvider>
                 </OrganizationMaterializerProvider>
@@ -197,62 +195,49 @@ describe('OrganizationAreaAccesses (SPEC A §6.1/D12, CA16)', () => {
     await render(<Providers store={createCoiabOrganizationsStore()} />);
   }
 
-  test('mostra o nome da organização, as duas áreas e marca a corrente como Atual', async () => {
+  test('mostra os dois cards com a corrente marcada e os títulos como texto', async () => {
     await renderAreaAccesses();
 
-    // O nome completo está no texto e na leitura de acessibilidade
-    // (SPEC A §6.1:195).
-    expect(await screen.findByText('Organização A')).toBeOnTheScreen();
-    expect(screen.getByLabelText('Organização A')).toBeOnTheScreen();
-    expect(screen.getByTestId('MENU.area-monitoramento')).toBeOnTheScreen();
+    // Os dois acessos fixos viram cards testáveis; a área corrente é
+    // Alertas (documento), marcada como selecionada.
+    expect(
+      await screen.findByTestId('MENU.area-monitoramento'),
+    ).toBeOnTheScreen();
     expect(screen.getByTestId('MENU.area-alertas')).toBeOnTheScreen();
-    // A área corrente é Alertas (documento): marcada como selecionada e com o
-    // texto visível.
     expect(
       screen.getByTestId('MENU.area-alertas').props.accessibilityState,
     ).toEqual({selected: true});
     expect(
       screen.getByTestId('MENU.area-monitoramento').props.accessibilityState,
     ).toEqual({selected: false});
-    expect(screen.getByText('Alerts')).toBeOnTheScreen();
-    expect(screen.getByText('Monitoring')).toBeOnTheScreen();
-    expect(screen.getByText('Current')).toBeOnTheScreen();
+    expect(screen.getByText('Monitoramento Territorial')).toBeOnTheScreen();
+    expect(screen.getByText('Alertas')).toBeOnTheScreen();
+    // Review 2 (P2-1): os cards NÃO têm rótulo assistivo próprio — a leitura
+    // assistiva segue os títulos ("Monitoramento Territorial"/"Alertas");
+    // o nome da organização voltou a ser texto visível na saudação.
+    expect(screen.queryByLabelText('Organização A')).not.toBeOnTheScreen();
   });
 
-  test('textos das áreas escuros sobre o cartão claro do projeto (#118)', async () => {
-    // 4ª revisão: o componente fica DENTRO do ColorCard
-    // (backgroundColor={projectColor}, default #FFF5EB claro) — o WHITE da
-    // fase F era quase ilegível sobre o cartão claro. Compondo com o
-    // ColorCard real (cor default), os rótulos herdam o DARK_GREY do
-    // BodyText e o selo da corrente mantém o NEW_DARK_GREY
-    // pré-fase F.
-    const store = createCoiabOrganizationsStore();
-    store.instance.setState(organizationDocument(), true);
-    await render(
-      <ColorCard
-        backgroundColor={DEFAULT_PROJECT_COLOR}
-        testID="MENU.card-projeto">
-        <Providers store={store} />
-      </ColorCard>,
-    );
+  test('fundos dos cards #FF9500/#B90B0B e títulos brancos sobre o fundo escuro (Figma 2668:4539)', async () => {
+    await renderAreaAccesses();
 
+    await screen.findByTestId('MENU.area-monitoramento');
     expect(
-      StyleSheet.flatten(screen.getByTestId('MENU.card-projeto').props.style),
-    ).toEqual(
-      expect.objectContaining({backgroundColor: DEFAULT_PROJECT_COLOR}),
-    );
-
-    for (const texto of ['Monitoring', 'Alerts']) {
-      expect(screen.getByText(texto).props.style).toEqual(
-        expect.arrayContaining([expect.objectContaining({color: DARK_GREY})]),
+      StyleSheet.flatten(
+        screen.getByTestId('MENU.area-monitoramento').props.style,
+      ),
+    ).toEqual(expect.objectContaining({backgroundColor: COIAB_ORANGE}));
+    expect(
+      StyleSheet.flatten(screen.getByTestId('MENU.area-alertas').props.style),
+    ).toEqual(expect.objectContaining({backgroundColor: COIAB_RED}));
+    for (const titulo of ['Monitoramento Territorial', 'Alertas']) {
+      expect(screen.getByText(titulo).props.style).toEqual(
+        expect.arrayContaining([expect.objectContaining({color: WHITE})]),
       );
     }
-    expect(screen.getByText('Current').props.style).toEqual(
-      expect.arrayContaining([expect.objectContaining({color: NEW_DARK_GREY})]),
-    );
   });
 
-  test('toque na área corrente não ativa: só fecha o menu', async () => {
+  test('toque no card da área corrente não ativa: popTo de volta ao Home/Map', async () => {
     const user = userEvent.setup();
     await renderAreaAccesses();
 
@@ -262,10 +247,11 @@ describe('OrganizationAreaAccesses (SPEC A §6.1/D12, CA16)', () => {
     const consultasAntes = clientApi.getProject.mock.calls.length;
     await user.press(screen.getByTestId('MENU.area-alertas'));
 
-    // Nenhuma ativação: o motor nem consulta o core de novo.
+    // Nenhuma ativação: sem consultas novas, sem reset — o toque volta ao
+    // mapa (novo comportamento da página: popTo `Home/Map`).
     expect(clientApi.getProject.mock.calls).toHaveLength(consultasAntes);
     expect(reset).not.toHaveBeenCalled();
-    expect(closeMenu).toHaveBeenCalledTimes(1);
+    expect(popTo).toHaveBeenCalledWith('Home', {screen: 'Map'});
   });
 
   test('toque duplo na outra área ativa uma vez: reset para Home/Map', async () => {
@@ -306,10 +292,9 @@ describe('OrganizationAreaAccesses (SPEC A §6.1/D12, CA16)', () => {
       index: 0,
       routes: [{name: 'Home', params: {screen: 'Map'}}],
     });
-    expect(closeMenu).toHaveBeenCalledTimes(1);
   });
 
-  test('trabalho pendente: a troca é recusada e a string canônica §4.4 renderiza', async () => {
+  test('trabalho pendente: a troca é recusada e a string canônica §4.4 renderiza legível no fundo escuro', async () => {
     const user = userEvent.setup();
     const {store} = await renderAreaAccesses();
 
@@ -322,31 +307,72 @@ describe('OrganizationAreaAccesses (SPEC A §6.1/D12, CA16)', () => {
     await user.press(screen.getByTestId('MENU.area-monitoramento'));
 
     expect(await screen.findByText(/discard the record/)).toBeOnTheScreen();
-    // O aviso também fica sobre o cartão claro do projeto (#118, revisão
-    // Fase G): NEW_DARK_GREY pré-fase F, legível sobre o cartão claro.
+    // Aviso legível no fundo escuro da página: branco, não o NEW_DARK_GREY
+    // do cartão claro legado.
     expect(screen.getByText(/discard the record/).props.style).toEqual(
-      expect.arrayContaining([expect.objectContaining({color: NEW_DARK_GREY})]),
+      expect.arrayContaining([expect.objectContaining({color: WHITE})]),
     );
-    // Recusada: nada trocou, nada resetou — mas o menu fecha (o contrato
-    // fecha o menu após a tentativa).
+    // Recusada: nada trocou, nada resetou.
     expect(store.instance.getState().ativa).toEqual({
       organizacaoId: 'A',
       area: 'alertas',
     });
     expect(reset).not.toHaveBeenCalled();
-    expect(closeMenu).toHaveBeenCalledTimes(1);
+  });
+
+  test('a recusa não trava os cards: limpo o pendente, o próximo toque ativa e o reset acontece (review 2, P2-3)', async () => {
+    const user = userEvent.setup();
+    const {store} = await renderAreaAccesses();
+
+    await screen.findByTestId('MENU.area-monitoramento');
+    // Trabalho pendente: rascunho no projeto ativo bloqueia a troca.
+    draftStore.setProjectResolver(() => 'A-a');
+    await act(async () => {
+      draftStore.actions.createDraft();
+    });
+
+    // 1º toque: activate retorna false, o aviso canônico renderiza e nada
+    // se move.
+    await user.press(screen.getByTestId('MENU.area-monitoramento'));
+    expect(await screen.findByText(/discard the record/)).toBeOnTheScreen();
+    expect(reset).not.toHaveBeenCalled();
+
+    // Limpeza: descarta o rascunho — o bloqueio de trabalho some (a
+    // mensagem do 1º toque persiste até a próxima ativação publicar).
+    await act(async () => {
+      draftStore.actions.clearDraft();
+    });
+
+    // 2º toque: se o `finally` NÃO tivesse liberado a trava, este toque
+    // morreria no guard síncrono (nenhuma 2ª ativação, nenhum reset).
+    await user.press(screen.getByTestId('MENU.area-monitoramento'));
+    await waitFor(() => {
+      expect(reset).toHaveBeenCalledTimes(1);
+    });
+    expect(reset.mock.calls[0]![0]).toEqual({
+      index: 0,
+      routes: [{name: 'Home', params: {screen: 'Map'}}],
+    });
+    expect(store.instance.getState().ativa).toEqual({
+      organizacaoId: 'A',
+      area: 'monitoramento',
+    });
+    // A publicação da 2ª ativação limpa o erro de recusa.
+    await waitFor(() => {
+      expect(screen.queryByText(/discard the record/)).not.toBeOnTheScreen();
+    });
   });
 
   test('sem organização operável (derivação nula) renderiza null', async () => {
     await renderWithoutOperableOrganization();
 
-    // Nada na tela: nem o nome, nem as linhas.
+    // Nada na tela: nem cards, nem aviso.
     await waitFor(() => {
-      expect(screen.queryByText('Organização A')).not.toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('MENU.area-monitoramento'),
+      ).not.toBeOnTheScreen();
     });
-    expect(
-      screen.queryByTestId('MENU.area-monitoramento'),
-    ).not.toBeOnTheScreen();
     expect(screen.queryByTestId('MENU.area-alertas')).not.toBeOnTheScreen();
+    expect(screen.queryByText(/discard the record/)).not.toBeOnTheScreen();
   });
 });

@@ -7,7 +7,7 @@ import {
 describe('CoiabApp Settings Screen', () => {
   const integrationSetup = setupIntegrationTest();
 
-  test('abre CoiabApp Settings pela página de Menu', async () => {
+  test('abre CoiabApp Settings pela aba Configurações (a entrada "CoiabApp Settings" saiu do Menu)', async () => {
     // Organization-first startup (SPEC 10.1): the persisted document, not the
     // core's project list, decides the initial route. Seed the ready
     // organization (ids of the CURRENT test manager) so this device opens
@@ -24,15 +24,11 @@ describe('CoiabApp Settings Screen', () => {
       activeProjectId: integrationSetup.projectId,
     });
 
-    const menuButton = await screen.findByTestId('tabBarButtonMenu');
-    await expect(menuButton).toBeVisible();
-    await user.press(menuButton);
-
-    const settings = await screen.findByText('CoiabApp Settings');
-
-    await expect(settings).toBeVisible();
-
-    await user.press(settings);
+    // A página de Menu não tem mais a entrada legada "CoiabApp Settings"
+    // (remodelagem Entroncamento); o caminho é a engrenagem da tab bar.
+    const settingsTab = await screen.findByTestId('tabBarButtonConfiguracoes');
+    await expect(settingsTab).toBeVisible();
+    await user.press(settingsTab);
 
     await expect(await screen.findByText('test')).toBeVisible();
     expect(screen.queryByText('NOT HERE')).toBeNull();

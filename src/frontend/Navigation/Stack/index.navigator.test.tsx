@@ -920,6 +920,9 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       await screen.findByTestId('MENU.area-monitoramento'),
     ).toBeOnTheScreen();
     expect(screen.getByTestId('MENU.area-alertas')).toBeOnTheScreen();
+    // Página Entroncamento: o nome da organização é TEXTO VISIBLE na
+    // saudação (review 2, P1-1/P2-1 — o rótulo assistivo do card saiu,
+    // os cards de volta a serem anunciados pelos próprios títulos).
     expect(
       within(screen.getByTestId('MENU.scrn')).getByText(orgSetup.orgName),
     ).toBeOnTheScreen();

@@ -124,6 +124,10 @@
   "$1Screens.Settings.AppSettings.aboutEkanadyby": {
     "message": "Sobre CoiabApp"
   },
+  "$1Screens.Settings.AppSettings.backgroundMaps": {
+    "message": "Mapas de fundo",
+    "description": "Migrated menu entry: background maps"
+  },
   "$1Screens.Settings.AppSettings.earlyAccess": {
     "message": "Acesso Antecipado"
   },
@@ -133,8 +137,20 @@
   "$1Screens.Settings.AppSettings.earlyAccessOn": {
     "message": "Acesso Antecipado ATIVADO"
   },
+  "$1Screens.Settings.AppSettings.organization": {
+    "message": "Organização",
+    "description": "Section header for the migrated menu entries"
+  },
+  "$1Screens.Settings.AppSettings.projectSettings": {
+    "message": "Ferramentas do coordenador",
+    "description": "Migrated menu entry: project settings (coordinator only)"
+  },
   "$1Screens.Settings.AppSettings.title": {
     "message": "Configurações do CoiabApp"
+  },
+  "$1Screens.Settings.AppSettings.yourTeam": {
+    "message": "Equipe",
+    "description": "Migrated menu entry: your team"
   },
   "$1TrackBottomSheet.DidNotMove.delete": {
     "message": "Sair da Trilha"

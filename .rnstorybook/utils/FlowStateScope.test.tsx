@@ -345,7 +345,9 @@ describe('organization stories (FlowStateScope)', () => {
     expect(
       screen.getByTestId(`STORYBOOK.flow-ready.${DRAWER_STORY_ID}`),
     ).toBeOnTheScreen();
-    expect(screen.getByText('Test Organization B')).toBeOnTheScreen();
+    // Página Entroncamento: the Menu no longer lists the organizations' rows
+    // (ORGANIZATIONS.row-*) — the entry navigates to the Organizations
+    // screen, so only the entry itself is rendered here.
     expectPersistedOrganizations();
   }, 60_000);
 
