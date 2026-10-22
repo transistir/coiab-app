@@ -8,8 +8,6 @@ import {
 } from 'react-native';
 import {useIntl, defineMessages} from 'react-intl';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import IonIcon from '@react-native-vector-icons/ionicons';
-import Octicons from '@react-native-vector-icons/octicons';
 import MaterialIcon from '@react-native-vector-icons/material-icons';
 
 import {useNavigationFromRoot} from '../hooks/useNavigationWithTypes.ts';
@@ -17,57 +15,63 @@ import Exchange from '../images/Exchange.svg';
 import {BodyText} from '../sharedComponents/Text/BodyText.tsx';
 import {useProjectRoleAndDetails} from '../hooks/useProjectRoleAndDetails.ts';
 import {
+  COIAB_SAND,
   COMAPEO_BLUE,
   DARK_GREY,
+  LIGHT_GREY,
   LIGHT_ORANGE,
   NEW_DARK_GREY,
+  ORANGE,
   WHITE,
 } from '../lib/styles.ts';
 import {useActiveProject} from '../contexts/ActiveProjectContext.tsx';
 import {MenuLowStorageAlert} from '../sharedComponents/Storage/MenuLowStorageAlert.tsx';
 import {useStorageReadingQuery} from '../hooks/useStorageReadingQuery.ts';
 import {ColorCard} from '../sharedComponents/ColorCard.tsx';
-import {HeaderText} from '../sharedComponents/Text/HeaderText.tsx';
 import {PrimaryButton} from '../sharedComponents/Buttons.tsx';
 import {isLowStorage, calcUsedPercentage} from '../lib/storage.ts';
 import {useEarlyAccessState} from '../contexts/EarlyAccessContext';
 import {useCoiabOrganizationsState} from '../contexts/CoiabOrganizationsStoreContext';
 import {derivarProjectIdAtivo} from '../lib/organization/coiabOrganizations';
 import {OrganizationAreaAccesses} from './OrganizationAreaAccesses.tsx';
-import {displayDescription} from '../lib/organization/marker';
 
 const m = defineMessages({
-  appSettings: {
-    id: '$1Navigation.Menu.Settings',
-    defaultMessage: 'CoiabApp Settings',
+  greeting: {
+    id: '$1Navigation.Menu.greeting',
+    defaultMessage: 'Olá, Parente',
+    description:
+      'Página Entroncamento greeting (Figma Kutary App V2, 2668:4539)',
   },
-  bgMap: {
-    id: '$1Navigation.Menu.bgMap',
-    defaultMessage: 'Background Map',
+  switchOrganizationTitle: {
+    id: '$1Navigation.Menu.switchOrganizationTitle',
+    defaultMessage: 'Trocar de organização',
+    // SPEC A §6.1:201 — pt-BR ships the verbatim string; a nova página usa
+    // id próprio para não divergir da duplicata canônica do seletor.
+    description: 'Menu list entry that opens the organization selector',
   },
-  gatherObservations: {
-    id: '$1Navigation.Menu.gatherObservations',
-    defaultMessage: 'Gather Observations',
+  switchOrganizationSubtitle: {
+    id: '$1Navigation.Menu.switchOrganizationSubtitle',
+    defaultMessage: 'Escolher outra org',
+    description: 'Subtitle of the organization selector menu entry',
+  },
+  convidar: {
+    id: '$1Navigation.Menu.convidar',
+    defaultMessage: 'Convidar',
+    description: 'Menu list entry that opens the team screen',
+  },
+  convidarSubtitle: {
+    id: '$1Navigation.Menu.convidarSubtitle',
+    defaultMessage: 'Adicionar pessoas',
+    description: 'Subtitle of the invite menu entry',
+  },
+  criarOrganizacao: {
+    id: '$1Navigation.Menu.criarOrganizacao',
+    defaultMessage: 'Criar organização',
+    description: 'Menu list entry that opens the organization creation flow',
   },
   exchange: {
     id: '$1Navigation.Menu.exchange',
     defaultMessage: 'Exchange',
-  },
-  mappingOnOwn: {
-    id: '$1Navigation.Menu.mappingOnOwn',
-    defaultMessage: "You're mapping on your own.",
-  },
-  coordinator: {
-    id: '$1Navigation.Menu.coordinator',
-    defaultMessage: 'Coordinator',
-  },
-  participant: {
-    id: '$1Navigation.Menu.participant',
-    defaultMessage: 'Participant',
-  },
-  justYou: {
-    id: '$1Navigation.Menu.justYou',
-    defaultMessage: 'Just You',
   },
   earlyAccessOn: {
     id: '$1Navigation.Menu.earlyAccessOn',
@@ -77,46 +81,87 @@ const m = defineMessages({
     id: '$1Navigation.Menu.earlyAccessTurnOff',
     defaultMessage: 'Turn Off',
   },
-  team: {
-    id: '$1Navigation.Menu.team',
-    defaultMessage: 'Team',
-  },
-  coordinatorTools: {
-    id: '$1Navigation.Menu.coordinatorTools',
-    defaultMessage: 'Coordinator Tools',
-  },
-  switchOrganization: {
-    id: '$1Navigation.Menu.switchOrganization',
-    defaultMessage: 'Switch organization',
-    // SPEC A §6.1:201 — opens the modal Organizations selector (§7:226).
-    // pt-BR ships the verbatim §6.1 string "Trocar de organização".
-    description: 'Drawer menu entry that opens the organization selector',
-  },
-  // Same intl id + byte-identical defaultMessage as
-  // CreateOrganization.tsx / Success.tsx (identical duplicates pass the
-  // extraction gate); the drawer entry reuses the onboarding title.
-  createOrganization: {
-    id: '$1screens.OrganizationSetup.createOrganization',
-    defaultMessage: 'Create Organization',
-  },
 });
+type Mensagem = {id: string; defaultMessage: string};
+
+/** List item da Página Entroncamento (Figma `2668:4539`): 392×64, ícone
+ * quadrado laranja (raio 8), título 16 SemiBold branco e subtítulo 14
+ * Medium cinza suave. */
+function MenuListItem({
+  testID,
+  onPress,
+  titulo,
+  subtitulo,
+  icone,
+  accessibilityLabel,
+}: {
+  testID: string;
+  onPress: () => void;
+  titulo: Mensagem;
+  subtitulo?: Mensagem;
+  icone: string;
+  accessibilityLabel: string;
+}) {
+  const {formatMessage} = useIntl();
+  return (
+    <TouchableOpacity
+      testID={testID}
+      style={styles.listItem}
+      onPress={onPress}
+      accessibilityLabel={accessibilityLabel}>
+      <View style={styles.listItemIcon}>
+        <MaterialIcon name={icone as never} size={22} color={DARK_GREY} />
+      </View>
+      <View style={styles.listItemText}>
+        <BodyText style={styles.listItemTitle}>
+          {formatMessage(titulo)}
+        </BodyText>
+        {subtitulo && (
+          <BodyText style={styles.listItemSubtitle}>
+            {formatMessage(subtitulo)}
+          </BodyText>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+/**
+ * A Página Entroncamento (Figma Kutary App V2, `2668:4539`): saudação
+ * "Olá, Parente" + nome do projeto corrente, os DOIS cards clicáveis de
+ * área (Monitoramento Territorial e Alertas — Cadeias Produtivas e Censo
+ * Demográfico ficam para fases seguintes, decisão do dono do produto) e a
+ * lista: Trocar de organização (early access + ≥2 organizações), Convidar
+ * (somente coordinator) e Criar organização (early access + organização
+ * operável). As 5 entradas legadas do CoMapeo (Team, Coordinator Tools,
+ * Gather Observations, Background Map, AppSettings) migraram: Background
+ * Maps/Project Settings/Your Team agora vivem em AppSettings
+ * (ComapeoSettings). O botão Exchange permanece no rodapé.
+ */
 export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
   const {formatMessage} = useIntl();
   const navigation = useNavigationFromRoot();
 
   const {projectId} = useActiveProject();
-  const projectDetails = useProjectRoleAndDetails(projectId);
-  const {role, projectColor, projectDescription, projectHeader} =
-    projectDetails;
-  // SPEC 3.9/15: a marker description displays as the organization name,
-  // never the raw technical value.
-  const displayableDescription = displayDescription(projectDescription);
-  // The organization card replaces the legacy description only when a
-  // usable organization derives from the document (SPEC A §4.2 rule 5);
-  // solo/free projects keep their legacy line (retirement is Phase 9).
+  const {role, projectHeader} = useProjectRoleAndDetails(projectId);
   const estadoOrganizacoes = useCoiabOrganizationsState();
+  // SEM organização operável (solo/sem doc): os cards não existem — a
+  // página mostra saudação + lista (paridade com o comportamento anterior
+  // que retornava null).
   const semOrganizacaoOperavel =
     derivarProjectIdAtivo(estadoOrganizacoes) === null;
+  // Review 2 (P1-1): com organização operável, `projectHeader` é
+  // `projectData.name` — o materializador batiza o projeto com o nome da
+  // ÁREA (`materializar.ts` NAMES), então a saudação mostraria
+  // "Monitoramento"/"Alertas" e o nome da organização sumiria. Operando
+  // uma organização, a saudação mostra `organizacao.nome`; sem
+  // organização (solo/sem doc), mantém o header legado do projeto.
+  const organizacao = estadoOrganizacoes.organizacoes.find(
+    item => item.id === estadoOrganizacoes.ativa?.organizacaoId,
+  );
+  const saudacaoNome = semOrganizacaoOperavel
+    ? projectHeader
+    : (organizacao?.nome ?? projectHeader);
   const {data} = useStorageReadingQuery();
   const {freeBytes, totalBytes} = data;
   const isLow = isLowStorage(freeBytes);
@@ -130,206 +175,82 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
       style={[styles.container, {paddingTop: insets.top}]}
       testID="MENU.conteudo">
       <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <View style={styles.topCardsContainer}>
-          {isLow && (
-            <MenuLowStorageAlert
-              freeBytes={freeBytes}
-              percentUsed={percentUsed}
-            />
-          )}
-          {isEarly ? (
-            <ColorCard backgroundColor={LIGHT_ORANGE}>
-              <View style={styles.earlyAccessAlert}>
-                <View style={styles.earlyAccessRow}>
-                  <MaterialIcon name="flag" size={20} color={NEW_DARK_GREY} />
-                  <HeaderText variant="header6" style={styles.earlyAccessLabel}>
-                    {formatMessage(m.earlyAccessOn)}
-                  </HeaderText>
-                  <Pressable
-                    onPress={() => navigation.navigate('EarlyAccess')}
-                    hitSlop={{top: 12, bottom: 12, left: 12, right: 12}}>
-                    <BodyText
-                      variant="tinyMeta"
-                      style={styles.earlyAccessTurnOff}>
-                      {formatMessage(m.earlyAccessTurnOff)}
-                    </BodyText>
-                  </Pressable>
-                </View>
-              </View>
-            </ColorCard>
-          ) : null}
-          <ColorCard backgroundColor={projectColor}>
-            <View style={{padding: 20, gap: 12}}>
-              <HeaderText variant="header2">{projectHeader}</HeaderText>
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 6,
-                }}>
-                <MaterialIcon
-                  color={NEW_DARK_GREY}
-                  size={20}
-                  name={
-                    role === 'solo'
-                      ? 'person'
-                      : role === 'coordinator'
-                        ? 'manage-accounts'
-                        : 'people'
-                  }
-                />
-                <BodyText style={{flex: 1, color: NEW_DARK_GREY}}>
-                  {role === 'solo'
-                    ? formatMessage(m.justYou)
-                    : role === 'coordinator'
-                      ? formatMessage(m.coordinator)
-                      : formatMessage(m.participant)}
+        {isLow && (
+          <MenuLowStorageAlert
+            freeBytes={freeBytes}
+            percentUsed={percentUsed}
+          />
+        )}
+        {isEarly ? (
+          <ColorCard backgroundColor={LIGHT_ORANGE}>
+            <View style={styles.earlyAccessAlert}>
+              <View style={styles.earlyAccessRow}>
+                <MaterialIcon name="flag" size={20} color={NEW_DARK_GREY} />
+                <BodyText style={styles.earlyAccessLabel}>
+                  {formatMessage(m.earlyAccessOn)}
                 </BodyText>
-              </View>
-              {semOrganizacaoOperavel ? (
-                (role === 'solo' || displayableDescription) && (
-                  <BodyText style={{color: NEW_DARK_GREY}}>
-                    {role === 'solo'
-                      ? formatMessage(m.mappingOnOwn)
-                      : displayableDescription}
+                <Pressable
+                  onPress={() => navigation.navigate('EarlyAccess')}
+                  hitSlop={{top: 12, bottom: 12, left: 12, right: 12}}>
+                  <BodyText style={styles.earlyAccessTurnOff}>
+                    {formatMessage(m.earlyAccessTurnOff)}
                   </BodyText>
-                )
-              ) : (
-                <>
-                  <OrganizationAreaAccesses closeMenu={closeMenu} />
-                  {/* SPEC A §6.1:201/§8:247 — the selector entry exists
-                      only with early access on AND two or more
-                      organizations; with either false it does not exist
-                      (no hidden or disabled control). */}
-                  {isEarly && estadoOrganizacoes.organizacoes.length >= 2 && (
-                    <TouchableOpacity
-                      testID="MENU.trocar-organizacao"
-                      style={styles.trocarOrganizacaoRow}
-                      onPress={() => {
-                        closeMenu();
-                        navigation.navigate('Organizations');
-                      }}
-                      accessibilityLabel="Open the organization selector.">
-                      {/* 4ª revisão: as entradas ficam DENTRO do ColorCard
-                          (projectColor, default claro #FFF5EB) — herdam o
-                          DARK_GREY do BodyText; WHITE só vale no fundo
-                          DARK_GREY fora do cartão. */}
-                      <BodyText variant="medium">
-                        {formatMessage(m.switchOrganization)}
-                      </BodyText>
-                    </TouchableOpacity>
-                  )}
-                  {/* SPEC Fase 6/Q3: the create entry exists only with
-                      early access on AND an operating organization; with
-                      either false it does not exist (no hidden or
-                      disabled control). Q4: reuses the canonical
-                      $1screens.OrganizationSetup.createOrganization id. */}
-                  {isEarly && !semOrganizacaoOperavel && (
-                    <TouchableOpacity
-                      testID="MENU.criar-organizacao"
-                      style={styles.trocarOrganizacaoRow}
-                      onPress={() => {
-                        closeMenu();
-                        navigation.navigate('CreateOrganization');
-                      }}
-                      accessibilityLabel="Open the organization creation flow.">
-                      <BodyText variant="medium">
-                        {formatMessage(m.createOrganization)}
-                      </BodyText>
-                    </TouchableOpacity>
-                  )}
-                </>
-              )}
+                </Pressable>
+              </View>
             </View>
           </ColorCard>
+        ) : null}
+        <View style={styles.greetingBlock}>
+          <BodyText style={styles.greeting}>
+            {formatMessage(m.greeting)}
+          </BodyText>
+          <BodyText style={styles.greetingProject}>{saudacaoNome}</BodyText>
         </View>
-
-        <View style={styles.bottomItemsContainer}>
-          {role !== 'solo' && (
-            <TouchableOpacity
-              style={styles.menuItem}
+        {!semOrganizacaoOperavel && <OrganizationAreaAccesses />}
+        <View style={styles.listContainer}>
+          {/* SPEC A §6.1:201/§8:247 — the selector entry exists only with
+              early access on AND two or more organizations; with either
+              false it does not exist (no hidden or disabled control). */}
+          {isEarly && estadoOrganizacoes.organizacoes.length >= 2 && (
+            <MenuListItem
+              testID="MENU.trocar-organizacao"
               onPress={() => {
-                navigation.navigate('YourTeam');
+                closeMenu();
+                navigation.navigate('Organizations');
               }}
-              accessibilityLabel="Go to your team screen.">
-              <MaterialIcon
-                testID="MENU.icone.team"
-                color={WHITE}
-                size={20}
-                name={'people'}
-              />
-              <BodyText
-                variant="medium"
-                style={{paddingLeft: 12, color: WHITE}}>
-                {formatMessage(m.team)}
-              </BodyText>
-            </TouchableOpacity>
+              titulo={m.switchOrganizationTitle}
+              subtitulo={m.switchOrganizationSubtitle}
+              icone="swap-horiz"
+              accessibilityLabel="Open the organization selector."
+            />
           )}
+          {/* O acesso à equipe fica COORD-only nesta página; participants
+              seguem usando Your Team em AppSettings. */}
           {role === 'coordinator' && (
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => {
-                navigation.navigate('ProjectSettings');
-              }}
-              accessibilityLabel="Go to project settings screen.">
-              <MaterialIcon
-                testID="MENU.icone.coordinator-tools"
-                color={WHITE}
-                size={20}
-                name={'manage-accounts'}
-              />
-              <BodyText
-                variant="medium"
-                style={{paddingLeft: 12, color: WHITE}}>
-                {formatMessage(m.coordinatorTools)}
-              </BodyText>
-            </TouchableOpacity>
+            <MenuListItem
+              testID="MENU.convidar"
+              onPress={() => navigation.navigate('YourTeam')}
+              titulo={m.convidar}
+              subtitulo={m.convidarSubtitle}
+              icone="person-add"
+              accessibilityLabel="Invite people to the organization."
+            />
           )}
-          <TouchableOpacity
-            style={styles.menuItem}
-            onPress={() => {
-              navigation.popTo('Home', {screen: 'Map'});
-              closeMenu();
-            }}
-            accessibilityLabel="Go to map screen.">
-            <Octicons
-              testID="MENU.icone.gather-observations"
-              name="plus-circle"
-              size={20}
-              color={WHITE}
+          {/* SPEC Fase 6/Q3: the create entry exists only with early
+              access on AND an operating organization; with either false it
+              does not exist (no hidden or disabled control). */}
+          {isEarly && !semOrganizacaoOperavel && (
+            <MenuListItem
+              testID="MENU.criar-organizacao"
+              onPress={() => {
+                closeMenu();
+                navigation.navigate('CreateOrganization');
+              }}
+              titulo={m.criarOrganizacao}
+              icone="business"
+              accessibilityLabel="Open the organization creation flow."
             />
-            <BodyText variant="medium" style={{paddingLeft: 12, color: WHITE}}>
-              {formatMessage(m.gatherObservations)}
-            </BodyText>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.menuItem}
-            onPress={() => navigation.navigate('BackgroundMaps')}
-            accessibilityLabel="Go to background maps screen.">
-            <MaterialIcon
-              testID="MENU.icone.background-map"
-              name="layers"
-              size={20}
-              color={WHITE}
-            />
-            <BodyText variant="medium" style={{paddingLeft: 12, color: WHITE}}>
-              {formatMessage(m.bgMap)}
-            </BodyText>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.menuItem}
-            onPress={() => navigation.navigate('AppSettings')}
-            accessibilityLabel="Go to app settings screen.">
-            <IonIcon
-              testID="MENU.icone.settings"
-              name="settings-outline"
-              size={20}
-              color={WHITE}
-            />
-            <BodyText variant="medium" style={{paddingLeft: 12, color: WHITE}}>
-              {formatMessage(m.appSettings)}
-            </BodyText>
-          </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
       <View style={{marginBottom: 20, marginHorizontal: 20}}>
@@ -361,21 +282,53 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     padding: 20,
     flexDirection: 'column',
-    justifyContent: 'space-between',
-  },
-  topCardsContainer: {
     gap: 12,
   },
-  bottomItemsContainer: {
-    gap: 20,
-    paddingBottom: 20,
+  greetingBlock: {
+    gap: 4,
   },
-  menuItem: {
-    minHeight: 48,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
+  greeting: {
+    color: COIAB_SAND,
+    fontSize: 20,
+    // O app só empacota Rubik (Inter não existe no bundle).
+    fontFamily: 'Rubik_600SemiBold',
+  },
+  greetingProject: {
+    color: WHITE,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  listContainer: {
+    gap: 12,
+    marginTop: 8,
+  },
+  listItem: {
+    minHeight: 64,
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
+  },
+  listItemIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: ORANGE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  listItemText: {
+    flex: 1,
+  },
+  listItemTitle: {
+    color: WHITE,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  listItemSubtitle: {
+    color: LIGHT_GREY,
+    fontSize: 14,
+    fontWeight: '500',
   },
   earlyAccessAlert: {
     padding: 15,
@@ -387,13 +340,9 @@ const styles = StyleSheet.create({
   },
   earlyAccessLabel: {
     flex: 1,
+    color: NEW_DARK_GREY,
   },
   earlyAccessTurnOff: {
     color: COMAPEO_BLUE,
-  },
-  trocarOrganizacaoRow: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
   },
 });

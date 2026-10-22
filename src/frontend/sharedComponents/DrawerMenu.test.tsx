@@ -47,7 +47,7 @@ import type {OrganizacaoLocal} from '../lib/organization/coiabOrganizations';
 import {DEFAULT_PROJECT_COLOR} from '../constants';
 
 import {DrawerMenu} from './DrawerMenu';
-import {DARK_GREY, ORANGE, WHITE} from '../lib/styles';
+import {COIAB_ORANGE, COIAB_RED, DARK_GREY, ORANGE, WHITE} from '../lib/styles';
 
 // Sonda: o svg real viraria um View sem cor visível no test-renderer; o
 // mock registra o color repassado pelo renderIcon do DrawerMenu.
@@ -61,7 +61,11 @@ jest.mock('../images/Exchange.svg', () => {
   };
 });
 
-const mockNavigation = {navigate: jest.fn(), popTo: jest.fn()};
+const mockNavigation = {
+  navigate: jest.fn(),
+  popTo: jest.fn(),
+  reset: jest.fn(),
+};
 jest.mock('../hooks/useNavigationWithTypes', () => ({
   useNavigationFromRoot: () => mockNavigation,
 }));
@@ -202,7 +206,12 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     {
       earlyAccess = false,
       organizacoes,
-    }: {earlyAccess?: boolean; organizacoes?: OrganizacaoLocal[]} = {},
+      ativa,
+    }: {
+      earlyAccess?: boolean;
+      organizacoes?: OrganizacaoLocal[];
+      ativa?: {organizacaoId: string; area: 'monitoramento' | 'alertas'};
+    } = {},
   ) {
     const earlyAccessStore = createEarlyAccessStore({persist: false});
     if (earlyAccess) earlyAccessStore.actions.setEarlyAccessEnabled(true);
@@ -212,6 +221,7 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
         {
           ...organizationDocument(),
           ...(organizacoes ? {organizacoes} : {}),
+          ...(ativa ? {ativa} : {}),
         },
         true,
       );
@@ -222,13 +232,14 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     return {store};
   }
 
-  test('com organização operável: as duas áreas substituem a troca crua de projeto', async () => {
+  test('com organização operável: os dois cards substituem as linhas de área', async () => {
     await renderDrawer(true);
 
-    // CA16 no drawer: o nome da organização e os dois acessos fixos, com a
+    // CA16 no menu: os dois acessos fixos são cards testáveis, com a
     // área corrente (Alertas na fixture) marcada.
-    expect(await screen.findByText('Organização A')).toBeOnTheScreen();
-    expect(screen.getByTestId('MENU.area-monitoramento')).toBeOnTheScreen();
+    expect(
+      await screen.findByTestId('MENU.area-monitoramento'),
+    ).toBeOnTheScreen();
     expect(screen.getByTestId('MENU.area-alertas')).toBeOnTheScreen();
     expect(
       screen.getByTestId('MENU.area-monitoramento').props.accessibilityState,
@@ -236,27 +247,63 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     expect(
       screen.getByTestId('MENU.area-alertas').props.accessibilityState,
     ).toEqual({selected: true});
-    expect(screen.getByText('Current')).toBeOnTheScreen();
+    // O nome da organização é texto VISIBLE na saudação (review 2, P1-1:
+    // o `projectHeader` da área — "Monitoramento" — não deve aparecer).
+    expect(screen.getByText('Organização A')).toBeOnTheScreen();
 
     // A troca crua de projeto do CoMapeo (SPEC A §6.1:197) saiu do menu.
     expect(screen.queryByText('Switch Project')).not.toBeOnTheScreen();
   });
 
-  test('toque na área corrente não ativa: só fecha o menu', async () => {
+  test('os dois cards da página: fundos #FF9500 e #B90B0B (Figma 2668:4539)', async () => {
     await renderDrawer(true);
 
-    await screen.findByTestId('MENU.area-alertas');
-    await fireEvent.press(screen.getByTestId('MENU.area-alertas'));
-
-    expect(closeMenu).toHaveBeenCalledTimes(1);
-    expect(mockNavigation.navigate).not.toHaveBeenCalled();
-    expect(mockNavigation.popTo).not.toHaveBeenCalled();
+    await screen.findByTestId('MENU.area-monitoramento');
+    expect(
+      StyleSheet.flatten(
+        screen.getByTestId('MENU.area-monitoramento').props.style,
+      ),
+    ).toEqual(expect.objectContaining({backgroundColor: COIAB_ORANGE}));
+    expect(
+      StyleSheet.flatten(screen.getByTestId('MENU.area-alertas').props.style),
+    ).toEqual(expect.objectContaining({backgroundColor: COIAB_RED}));
   });
 
-  test('sem organização operável: nenhuma área e o resto do menu intacto', async () => {
+  test('saudação mostra o nome da ORGANIZAÇÃO com organização operável (review 2, P1-1)', async () => {
+    await renderDrawer(true);
+
+    expect(await screen.findByText('Olá, Parente')).toBeOnTheScreen();
+    // `projectHeader` (área materializada) é "Monitoramento"; a saudação
+    // deve mostrar o nome da organização em vez dele.
+    expect(screen.getByText('Organização A')).toBeOnTheScreen();
+    expect(screen.queryByText('Monitoramento')).not.toBeOnTheScreen();
+  });
+
+  test('toque no card da área corrente (Monitoramento): volta ao mapa sem ativar', async () => {
+    // Fixture default: a corrente é Alertas; semeamos Monitoramento como
+    // corrente para o card de Monitoramento ser o atual.
+    await renderDrawer(true, {
+      ativa: {organizacaoId: 'A', area: 'monitoramento'},
+    });
+
+    await screen.findByTestId('MENU.area-monitoramento');
+    const consultasAntes = clientApi.getProject.mock.calls.length;
+    await fireEvent.press(screen.getByTestId('MENU.area-monitoramento'));
+
+    expect(mockNavigation.popTo).toHaveBeenCalledWith('Home', {
+      screen: 'Map',
+    });
+    expect(mockNavigation.navigate).not.toHaveBeenCalled();
+    expect(mockNavigation.reset).not.toHaveBeenCalled();
+    // Nenhuma ativação: o motor nem consulta o core de novo.
+    expect(clientApi.getProject.mock.calls).toHaveLength(consultasAntes);
+  });
+
+  test('sem organização operável: saudação presente, cards ausentes e o resto intacto', async () => {
     await renderDrawer(false);
 
-    await screen.findByTestId('MENU.main-action-button');
+    expect(await screen.findByText('Olá, Parente')).toBeOnTheScreen();
+    expect(screen.getByTestId('MENU.main-action-button')).toBeOnTheScreen();
     expect(
       screen.queryByTestId('MENU.area-monitoramento'),
     ).not.toBeOnTheScreen();
@@ -264,7 +311,7 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     expect(screen.queryByText('Switch Project')).not.toBeOnTheScreen();
   });
 
-  test('projeto solo (sem documento de organização): cabeçalho e descrição permanecem', async () => {
+  test('projeto solo (sem documento de organização): saudação presente, sem cards nem Convidar', async () => {
     useProjectRoleAndDetailsMock.mockReturnValue({
       role: 'solo',
       projectHeader: 'Meu projeto',
@@ -274,18 +321,17 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     });
     await renderDrawer(false);
 
-    // O cartão não fica vazio: o cabeçalho e a linha legada do solo
-    // permanecem quando a derivação é nula (aposentadoria é a Fase 9).
-    expect(await screen.findByText('Meu projeto')).toBeOnTheScreen();
-    expect(screen.getByText("You're mapping on your own.")).toBeOnTheScreen();
+    expect(await screen.findByText('Olá, Parente')).toBeOnTheScreen();
+    expect(screen.getByText('Meu projeto')).toBeOnTheScreen();
     expect(screen.getByTestId('MENU.main-action-button')).toBeOnTheScreen();
     expect(
       screen.queryByTestId('MENU.area-monitoramento'),
     ).not.toBeOnTheScreen();
     expect(screen.queryByTestId('MENU.area-alertas')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('MENU.convidar')).not.toBeOnTheScreen();
   });
 
-  test('projeto sem organização: a descrição do projeto permanece no lugar das áreas', async () => {
+  test('projeto sem organização: a linha de descrição legada sai com o cartão', async () => {
     useProjectRoleAndDetailsMock.mockReturnValue({
       role: 'coordinator',
       projectHeader: 'Projeto X',
@@ -296,7 +342,7 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     await renderDrawer(false);
 
     expect(await screen.findByText('Projeto X')).toBeOnTheScreen();
-    expect(screen.getByText('Descrição do projeto')).toBeOnTheScreen();
+    expect(screen.queryByText('Descrição do projeto')).not.toBeOnTheScreen();
     expect(
       screen.queryByTestId('MENU.area-monitoramento'),
     ).not.toBeOnTheScreen();
@@ -312,7 +358,7 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     expect(
       screen.queryByTestId('MENU.trocar-organizacao'),
     ).not.toBeOnTheScreen();
-    expect(screen.queryByText('Switch organization')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Trocar de organização')).not.toBeOnTheScreen();
   });
 
   test('acesso antecipado ligado, uma única organização: a entrada de troca não existe', async () => {
@@ -384,10 +430,11 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
 
   test('não-regressão com a entrada de troca: áreas, nome e proibidas ausentes', async () => {
     // §6.1:197 — "Trocar de projeto" e "Nova colaboração" não voltam com o
-    // seletor; o nome e os dois acessos fixos continuam como estavam.
+    // seletor; os dois cards e o nome da organização na saudação continuam
+    // como estavam (review 2, P2-1: o rótulo assistivo do card saiu).
     await renderDrawer(true, {earlyAccess: true});
 
-    expect(await screen.findByText('Organização A')).toBeOnTheScreen();
+    expect(screen.getByText('Organização A')).toBeOnTheScreen();
     expect(screen.getByTestId('MENU.area-monitoramento')).toBeOnTheScreen();
     expect(screen.getByTestId('MENU.area-alertas')).toBeOnTheScreen();
     expect(screen.queryByText('Switch Project')).not.toBeOnTheScreen();
@@ -411,8 +458,8 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     );
   });
 
-  test('conteúdo do menu com fundo #1C2A27 e itens em branco (#118)', async () => {
-    await renderDrawer(true);
+  test('entradas legadas removidas e fundo do tema (remodelagem Entroncamento)', async () => {
+    await renderDrawer(true, {earlyAccess: true});
 
     // Fundo do tema (Figma Kutary App V2) na raiz do conteúdo do menu.
     expect(screen.getByTestId('MENU.conteudo').props.style).toEqual(
@@ -421,34 +468,60 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
       ]),
     );
 
-    // Papel coordinator: os 5 itens existem e cada um tem texto e ícone
-    // em WHITE (o padrão DARK_GREY do BodyText sumiria no fundo escuro).
-    const itens = [
-      ['Team', 'MENU.icone.team'],
-      ['Coordinator Tools', 'MENU.icone.coordinator-tools'],
-      ['Gather Observations', 'MENU.icone.gather-observations'],
-      ['Background Map', 'MENU.icone.background-map'],
-      ['CoiabApp Settings', 'MENU.icone.settings'],
-    ] as const;
-    for (const [texto, icone] of itens) {
-      expect(screen.getByText(texto).props.style).toEqual(
-        expect.arrayContaining([expect.objectContaining({color: WHITE})]),
-      );
-      // Os componentes de ícone consomem a prop color e a movem para o
-      // style do Text hospedeiro; a cor lida é do style achatado.
-      expect(StyleSheet.flatten(screen.getByTestId(icone).props.style)).toEqual(
-        expect.objectContaining({color: WHITE}),
-      );
+    await screen.findByTestId('MENU.area-monitoramento');
+    // As 5 entradas legadas do CoMapeo saíram da página de Menu.
+    for (const texto of [
+      'Team',
+      'Coordinator Tools',
+      'Gather Observations',
+      'Background Map',
+      'CoiabApp Settings',
+    ] as const) {
+      expect(screen.queryByText(texto)).not.toBeOnTheScreen();
     }
+    for (const icone of [
+      'MENU.icone.team',
+      'MENU.icone.coordinator-tools',
+      'MENU.icone.gather-observations',
+      'MENU.icone.background-map',
+      'MENU.icone.settings',
+    ] as const) {
+      expect(screen.queryByTestId(icone)).not.toBeOnTheScreen();
+    }
+
+    // O botão Exchange permanece.
+    expect(screen.getByTestId('MENU.main-action-button')).toBeOnTheScreen();
   });
 
-  test('entradas de organização com texto escuro sobre o cartão claro (#118)', async () => {
-    // 4ª revisão: as duas entradas ficam DENTRO do ColorCard
-    // (backgroundColor={projectColor}, default #FFF5EB claro) — o WHITE da
-    // fase F era quase ilegível sobre o cartão claro, e o mock escuro
-    // pré-existente (#232323) mascarou o problema. Com o projectColor
-    // claro default, as entradas herdam o DARK_GREY do BodyText
-    // (mesmo comportamento previo à fase F).
+  test('Convidar presente p/ coordinator e navega para YourTeam', async () => {
+    await renderDrawer(true, {earlyAccess: true});
+
+    await fireEvent.press(await screen.findByTestId('MENU.convidar'));
+
+    expect(mockNavigation.navigate).toHaveBeenCalledWith('YourTeam');
+  });
+
+  test('Convidar ausente p/ participant (entradas de troca seguem)', async () => {
+    useProjectRoleAndDetailsMock.mockReturnValue({
+      role: 'participant',
+      projectHeader: 'Monitoramento',
+      projectName: 'Monitoramento',
+      projectColor: '#232323',
+      projectDescription: undefined,
+    });
+    await renderDrawer(true, {earlyAccess: true});
+
+    await screen.findByTestId('MENU.area-monitoramento');
+    expect(screen.queryByTestId('MENU.convidar')).not.toBeOnTheScreen();
+    // Predicados/testIDs preservados para participant também.
+    expect(screen.getByTestId('MENU.trocar-organizacao')).toBeOnTheScreen();
+    expect(screen.getByTestId('MENU.criar-organizacao')).toBeOnTheScreen();
+  });
+
+  test('entradas de organização em branco sobre o fundo escuro (remodelagem)', async () => {
+    // A página inteira vive agora no fundo DARK_GREY: os títulos das
+    // entradas precisam ser WHITE (o DARK_GREY legado sumiria no fundo
+    // escuro), mesmo com o projectColor claro no mock.
     useProjectRoleAndDetailsMock.mockReturnValue({
       role: 'coordinator',
       projectHeader: 'Monitoramento',
@@ -458,9 +531,9 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     });
     await renderDrawer(true, {earlyAccess: true});
 
-    for (const texto of ['Switch organization', 'Create Organization']) {
+    for (const texto of ['Trocar de organização', 'Criar organização']) {
       expect(screen.getByText(texto).props.style).toEqual(
-        expect.arrayContaining([expect.objectContaining({color: DARK_GREY})]),
+        expect.arrayContaining([expect.objectContaining({color: WHITE})]),
       );
     }
   });

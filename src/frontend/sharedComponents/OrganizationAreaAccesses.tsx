@@ -3,32 +3,33 @@ import {StyleSheet, TouchableOpacity, View} from 'react-native';
 import {defineMessages, useIntl} from 'react-intl';
 
 import {useCoiabOrganizationsState} from '../contexts/CoiabOrganizationsStoreContext';
-import {useOrganizationActivationContext} from '../contexts/OrganizationActivationContext';
-import {useNavigationFromRoot} from '../hooks/useNavigationWithTypes';
 import {
   derivarProjectIdAtivo,
   type Area,
 } from '../lib/organization/coiabOrganizations';
-import {NEW_DARK_GREY} from '../lib/styles';
-import {HeaderText} from './Text/HeaderText';
+import {COIAB_ORANGE, COIAB_RED, WHITE} from '../lib/styles';
 import {BodyText} from './Text/BodyText';
+import {useTrocarArea} from '../hooks/useTrocarArea';
+import type {MessageDescriptor} from 'react-intl';
 
-// The two area rows reuse the canonical §4.4 glossary strings the
-// provisioning screen already ships ("Monitoramento"/"Alertas"); identical
-// duplicates of the same id are harmless to the extraction gate.
+// The card titles use the Página Entroncamento strings (Figma Kutary App
+// V2, `2668:4539`); "Alertas" reuses the canonical §4.4 glossary family
+// the provisioning screen already ships.
 const m = defineMessages({
-  monitoringRow: {
-    id: '$1screens.OrganizationSetup.monitoringRow',
-    defaultMessage: 'Monitoring',
+  cardMonitoramento: {
+    id: '$1sharedComponents.OrganizationAreaAccesses.cardMonitoramento',
+    defaultMessage: 'Monitoramento Territorial',
+    description: 'Título do card Monitoramento (Figma 2668:4539)',
   },
-  alertsRow: {
-    id: '$1screens.OrganizationSetup.alertsRow',
-    defaultMessage: 'Alerts',
+  cardAlertas: {
+    id: '$1sharedComponents.OrganizationAreaAccesses.cardAlertas',
+    defaultMessage: 'Alertas',
+    description: 'Título do card Alertas (Figma 2668:4539)',
   },
-  currentArea: {
-    id: '$1sharedComponents.OrganizationAreaAccesses.currentArea',
-    defaultMessage: 'Current',
-    description: 'Badge naming the work area the device operates right now',
+  maisDetalhes: {
+    id: '$1sharedComponents.OrganizationAreaAccesses.maisDetalhes',
+    defaultMessage: 'Mais detalhes',
+    description: 'Chip de detalhes do card (Figma 2668:4539)',
   },
   pendingWork: {
     id: '$1sharedComponents.OrganizationAreaAccesses.pendingWork',
@@ -39,109 +40,90 @@ const m = defineMessages({
   },
 });
 
-const LINHAS: ReadonlyArray<{
+const CARDS: ReadonlyArray<{
   area: Area;
   testID: string;
-  rotulo: {id: string; defaultMessage: string};
+  rotulo: MessageDescriptor;
+  fundo: string;
 }> = [
   {
     area: 'monitoramento',
     testID: 'MENU.area-monitoramento',
-    rotulo: m.monitoringRow,
+    rotulo: m.cardMonitoramento,
+    fundo: COIAB_ORANGE,
   },
-  {area: 'alertas', testID: 'MENU.area-alertas', rotulo: m.alertsRow},
+  {
+    area: 'alertas',
+    testID: 'MENU.area-alertas',
+    rotulo: m.cardAlertas,
+    fundo: COIAB_RED,
+  },
 ];
 
 /**
- * The organization's two fixed area accesses in the drawer (SPEC A §6.1):
- * the full organization name plus one row per area, the current one marked
- * (accessibilityState.selected + visible "Current"). Tapping the current
- * area only closes the menu; tapping the other one runs the activation
- * engine's guard and, on success, resets the stack to a clean `Home/Map` on
- * the new area (§5.2:168).
+ * The organization's two fixed area accesses as the two click cards of the
+ * Página Entroncamento (Figma `2668:4539`; SPEC A §6.1): Monitoramento
+ * Territorial (#FF9500) and Alertas (#B90B0B). The current one is marked
+ * (accessibilityState.selected); tapping it only returns to the map
+ * (`popTo` `Home/Map`), tapping the other runs the activation engine's
+ * guard and, on success, resets the stack to a clean `Home/Map` (§5.2:168)
+ * — the switch logic lives in the shared `useTrocarArea` hook, called once
+ * here so both cards share the same tap lock.
+ *
+ * A "pending-work" refusal message renders when the activation engine
+ * blocks the switch; legible on the dark page background.
  *
  * Renders `null` unless the persisted document derives an operational
- * project (SPEC A §4.2 rule 5) — without a usable organization the drawer
- * keeps its legacy content.
+ * project (SPEC A §4.2 rule 5) — without a usable organization the page
+ * keeps greeting + list only (no hidden or disabled card).
  */
-export function OrganizationAreaAccesses({
-  closeMenu,
-}: {
-  closeMenu: () => void;
-}): React.JSX.Element | null {
+export function OrganizationAreaAccesses(): React.JSX.Element | null {
   const {formatMessage} = useIntl();
-  const navigation = useNavigationFromRoot();
-  const activation = useOrganizationActivationContext();
   const estado = useCoiabOrganizationsState();
-  // Synchronous guard against a double tap: the second press must see the
-  // flag BEFORE any await, so a queued second activation never starts (the
-  // engine's own lock would only JOIN the same intent and replay its result).
-  const trocaEmAndamento = React.useRef(false);
 
-  const derivado = derivarProjectIdAtivo(estado);
+  // Um único hook: o mesmo `useRef` de trava é compartilhado pelos dois
+  // cards.
+  const {trocarArea, areaAtual, trocaRecusada} = useTrocarArea();
 
-  if (derivado === null) return null;
-
-  const organizacao = estado.organizacoes.find(
+  // Nome da organização ativa para o rótulo a11y composto dos cards
+  // (review 3, P2-1: `Formato — Nome da org`).
+  const nomeOrganizacao = estado.organizacoes.find(
     item => item.id === estado.ativa?.organizacaoId,
-  );
-  // The derivation guarantees the referenced organization exists.
-  const organizacaoId = organizacao?.id ?? '';
-  const areaAtual = estado.ativa?.area ?? 'monitoramento';
+  )?.nome;
 
-  const trocarArea = (area: Area) => {
-    if (area === areaAtual) {
-      // Tapping the current area never reactivates (§5.2:163): close only.
-      closeMenu();
-      return;
-    }
-    if (trocaEmAndamento.current) return;
-    trocaEmAndamento.current = true;
-    void (async () => {
-      try {
-        const ok = await activation.activate(organizacaoId, {area});
-        closeMenu();
-        if (ok) {
-          navigation.reset({
-            index: 0,
-            routes: [{name: 'Home', params: {screen: 'Map'}}],
-          });
-        }
-      } finally {
-        trocaEmAndamento.current = false;
-      }
-    })();
-  };
+  if (derivarProjectIdAtivo(estado) === null) return null;
 
   return (
     <View style={styles.container}>
-      {/* Full name, also for assistive reading (SPEC A §6.1:195): no
-          truncation prop, the card text wraps. */}
-      <HeaderText
-        variant="header4"
-        accessibilityLabel={organizacao?.nome}
-        style={styles.organizationName}>
-        {organizacao?.nome}
-      </HeaderText>
-      {LINHAS.map(({area, testID, rotulo}) => {
+      {CARDS.map(({area, testID, rotulo, fundo}) => {
         const corrente = area === areaAtual;
         return (
           <TouchableOpacity
             key={area}
             testID={testID}
-            style={styles.areaRow}
+            style={[styles.card, {backgroundColor: fundo}]}
             accessibilityState={{selected: corrente}}
+            // Rótulo a11y composto (review 1 então review 2 rollback, review 3
+            // P2-1): título do card + nome da organização; sem organização
+            // nomeada, fica só o rótulo do card.
+            accessibilityLabel={
+              nomeOrganizacao
+                ? `${formatMessage(rotulo)} — ${nomeOrganizacao}`
+                : formatMessage(rotulo)
+            }
             onPress={() => trocarArea(area)}>
-            <BodyText variant="medium">{formatMessage(rotulo)}</BodyText>
-            {corrente && (
-              <BodyText variant="tinyMeta" style={styles.currentArea}>
-                {formatMessage(m.currentArea)}
+            <BodyText style={styles.cardTitle}>
+              {formatMessage(rotulo)}
+            </BodyText>
+            <View style={styles.chip}>
+              <BodyText style={styles.chipText}>
+                {formatMessage(m.maisDetalhes)}
               </BodyText>
-            )}
+            </View>
           </TouchableOpacity>
         );
       })}
-      {activation.error === 'pending-work' && (
+      {trocaRecusada && (
         <BodyText style={styles.pendingWork}>
           {formatMessage(m.pendingWork)}
         </BodyText>
@@ -152,21 +134,34 @@ export function OrganizationAreaAccesses({
 
 const styles = StyleSheet.create({
   container: {
-    gap: 4,
-  },
-  organizationName: {
-    flexShrink: 1,
-  },
-  areaRow: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 12,
   },
-  currentArea: {
-    color: NEW_DARK_GREY,
+  card: {
+    width: '100%',
+    minHeight: 110,
+    borderRadius: 8,
+    padding: 16,
+    gap: 12,
+  },
+  cardTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: WHITE,
+  },
+  chip: {
+    // Chip "Mais detalhes" do Figma `2668:4539`: #1E1E1E, raio 16.
+    backgroundColor: '#1E1E1E',
+    borderRadius: 16,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  chipText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: WHITE,
   },
   pendingWork: {
-    color: NEW_DARK_GREY,
+    color: WHITE,
   },
 });

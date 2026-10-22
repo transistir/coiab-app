@@ -246,9 +246,10 @@ describe('organization stories (FlowStateScope)', () => {
   test('HomeWithOrganization shows Home instead of the organization fork', async () => {
     await renderStory(HomeWithOrganizationStory);
 
-    // Home pós-login é o Entroncamento sob a tab bar de 5 abas (#32).
+    // O story semeia a tab Map ativa (o target do manifest é MAIN.map-screen;
+    // #118 fez Menu a aba inicial, então Home pelada cairia no Entroncamento).
     expect(
-      await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 30_000}),
+      await screen.findByTestId('MAIN.map-screen', {}, {timeout: 30_000}),
     ).toBeOnTheScreen();
     expect(
       screen.queryByTestId('ONBOARDING.create-org-btn'),
@@ -345,7 +346,9 @@ describe('organization stories (FlowStateScope)', () => {
     expect(
       screen.getByTestId(`STORYBOOK.flow-ready.${DRAWER_STORY_ID}`),
     ).toBeOnTheScreen();
-    expect(screen.getByText('Test Organization B')).toBeOnTheScreen();
+    // Página Entroncamento: the Menu no longer lists the organizations' rows
+    // (ORGANIZATIONS.row-*) — the entry navigates to the Organizations
+    // screen, so only the entry itself is rendered here.
     expectPersistedOrganizations();
   }, 60_000);
 

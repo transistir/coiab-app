@@ -5,17 +5,17 @@
   "$1Modal.GPSEnable.button.stop": {
     "message": "Stop Tracks"
   },
-  "$1Navigation.Menu.Settings": {
-    "message": "CoiabApp Settings"
+  "$1Navigation.Menu.convidar": {
+    "message": "Convidar",
+    "description": "Menu list entry that opens the team screen"
   },
-  "$1Navigation.Menu.bgMap": {
-    "message": "Background Map"
+  "$1Navigation.Menu.convidarSubtitle": {
+    "message": "Adicionar pessoas",
+    "description": "Subtitle of the invite menu entry"
   },
-  "$1Navigation.Menu.coordinator": {
-    "message": "Coordinator"
-  },
-  "$1Navigation.Menu.coordinatorTools": {
-    "message": "Coordinator Tools"
+  "$1Navigation.Menu.criarOrganizacao": {
+    "message": "Criar organização",
+    "description": "Menu list entry that opens the organization creation flow"
   },
   "$1Navigation.Menu.earlyAccessOn": {
     "message": "Early Access ON"
@@ -26,24 +26,21 @@
   "$1Navigation.Menu.exchange": {
     "message": "Exchange"
   },
-  "$1Navigation.Menu.gatherObservations": {
-    "message": "Gather Observations"
-  },
-  "$1Navigation.Menu.justYou": {
-    "message": "Just You"
-  },
-  "$1Navigation.Menu.mappingOnOwn": {
-    "message": "You're mapping on your own."
-  },
-  "$1Navigation.Menu.participant": {
-    "message": "Participant"
+  "$1Navigation.Menu.greeting": {
+    "message": "Olá, Parente",
+    "description": "Página Entroncamento greeting (Figma Kutary App V2, 2668:4539)"
   },
   "$1Navigation.Menu.switchOrganization": {
     "message": "Switch organization",
     "description": "Drawer menu entry that opens the organization selector"
   },
-  "$1Navigation.Menu.team": {
-    "message": "Team"
+  "$1Navigation.Menu.switchOrganizationSubtitle": {
+    "message": "Escolher outra org",
+    "description": "Subtitle of the organization selector menu entry"
+  },
+  "$1Navigation.Menu.switchOrganizationTitle": {
+    "message": "Trocar de organização",
+    "description": "Menu list entry that opens the organization selector"
   },
   "$1ObservationEdit.HeaderLeft.discardCancel": {
     "message": "Continue editing",
@@ -123,6 +120,10 @@
   "$1Screens.Settings.AppSettings.aboutEkanadyby": {
     "message": "About CoiabApp"
   },
+  "$1Screens.Settings.AppSettings.backgroundMaps": {
+    "message": "Background Map",
+    "description": "Migrated menu entry: background maps"
+  },
   "$1Screens.Settings.AppSettings.coordinateDd": {
     "message": "Decimal Degrees"
   },
@@ -168,8 +169,16 @@
   "$1Screens.Settings.AppSettings.noPasscode": {
     "message": "No Passcode"
   },
+  "$1Screens.Settings.AppSettings.organization": {
+    "message": "Organization",
+    "description": "Section header for the migrated menu entries"
+  },
   "$1Screens.Settings.AppSettings.passcode": {
     "message": "Passcode"
+  },
+  "$1Screens.Settings.AppSettings.projectSettings": {
+    "message": "Project Settings",
+    "description": "Migrated menu entry: project settings (coordinator only)"
   },
   "$1Screens.Settings.AppSettings.title": {
     "message": "CoiabApp Settings"
@@ -182,6 +191,10 @@
   },
   "$1Screens.Settings.AppSettings.unitSystem": {
     "message": "Unit System"
+  },
+  "$1Screens.Settings.AppSettings.yourTeam": {
+    "message": "Your Team",
+    "description": "Migrated menu entry: your team"
   },
   "$1TrackBottomSheet.DidNotMove.delete": {
     "message": "Exit Tracks"
@@ -983,9 +996,17 @@
   "$1sharedComponents.ErrorBottomSheet.somethingWrong": {
     "message": "Something Went Wrong"
   },
-  "$1sharedComponents.OrganizationAreaAccesses.currentArea": {
-    "message": "Current",
-    "description": "Badge naming the work area the device operates right now"
+  "$1sharedComponents.OrganizationAreaAccesses.cardAlertas": {
+    "message": "Alertas",
+    "description": "Título do card Alertas (Figma 2668:4539)"
+  },
+  "$1sharedComponents.OrganizationAreaAccesses.cardMonitoramento": {
+    "message": "Monitoramento Territorial",
+    "description": "Título do card Monitoramento (Figma 2668:4539)"
+  },
+  "$1sharedComponents.OrganizationAreaAccesses.maisDetalhes": {
+    "message": "Mais detalhes",
+    "description": "Chip de detalhes do card (Figma 2668:4539)"
   },
   "$1sharedComponents.OrganizationAreaAccesses.pendingWork": {
     "message": "Finish or discard the record before switching organization",

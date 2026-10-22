@@ -22,6 +22,7 @@ const TABELA = {
   COIAB_GREEN: '#458000',
   COIAB_OCRE: '#A06829',
   COIAB_RED: '#B90B0B',
+  COIAB_SAND: '#DABA8D',
   // ficam como estão
   BLACK: '#000000',
   WHITE: '#ffffff',

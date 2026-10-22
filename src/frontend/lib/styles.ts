@@ -39,3 +39,6 @@ export const COIAB_GREEN = '#458000';
 export const COIAB_OCRE = '#A06829';
 export const COIAB_RED = '#B90B0B';
 export const LIGHT_ORANGE = '#FFF5EB';
+// Página Entroncamento (Figma Kutary App V2, `2668:4539`): cor da saudação
+// "Olá, Parente" e de acentos claros sobre o fundo escuro.
+export const COIAB_SAND = '#DABA8D';

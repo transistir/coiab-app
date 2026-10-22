@@ -7,11 +7,12 @@ import {NativeHomeTabsNavigationProps} from '../sharedTypes/navigation';
 
 /**
  * COIAB (#32 fase 3): a página de Menu da organização, aberta pelo 1º botão
- * da tab bar (ícone "bars"/dashboard do Figma `footer-menu`). Reaproveita o
- * conteúdo que o CoMapeo mostrava na gaveta (drawer) do header — ver
- * `docs/navegacao-coiab.md`. A remodelagem visual completa (cartões de
- * módulo do Figma "Página Entroncamento") é fase seguinte; aqui a página só
- * precisa abrir e mostrar o conteúdo correto.
+ * da tab bar (ícone "bars"/dashboard do Figma `footer-menu`). A remodelagem
+ * chegou: o conteúdo é agora a "Página Entroncamento" do Figma Kutary App
+ * V2 (`2668:4539`) — saudação "Olá, Parente" + projeto corrente, os dois
+ * cards clicáveis (Monitoramento Territorial/Alertas) e a lista
+ * trocar/convidar/criar. A gaveta (drawer) do header não existe mais — ver
+ * `docs/navegacao-coiab.md`.
  *
  * #118: a página usa o fundo do tema (DARK_GREY) — o DrawerMenu cobre o
  * container inteiro, mas o fundo do container também é escuro para não
