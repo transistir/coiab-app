@@ -82,8 +82,21 @@ const reviewInviteState: InitialState = {
   index: 0,
 };
 
+/**
+ * Home with the Map tab active. #118 made Menu the initial tab, so a bare
+ * `Home` route lands on the Menu page — stories that must show the map seed
+ * the tab state explicitly (same shape as Menu.stories' `mapState`).
+ */
 const homeState: InitialState = {
-  routes: [{name: 'Home'}],
+  routes: [
+    {
+      name: 'Home',
+      state: {
+        routes: [{name: 'Map'}],
+        index: 0,
+      },
+    },
+  ],
   index: 0,
 };
 

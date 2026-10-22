@@ -246,9 +246,10 @@ describe('organization stories (FlowStateScope)', () => {
   test('HomeWithOrganization shows Home instead of the organization fork', async () => {
     await renderStory(HomeWithOrganizationStory);
 
-    // Home pós-login é o Entroncamento sob a tab bar de 5 abas (#32).
+    // O story semeia a tab Map ativa (o target do manifest é MAIN.map-screen;
+    // #118 fez Menu a aba inicial, então Home pelada cairia no Entroncamento).
     expect(
-      await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 30_000}),
+      await screen.findByTestId('MAIN.map-screen', {}, {timeout: 30_000}),
     ).toBeOnTheScreen();
     expect(
       screen.queryByTestId('ONBOARDING.create-org-btn'),
