@@ -349,16 +349,15 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     expect(screen.queryByTestId('MENU.area-alertas')).not.toBeOnTheScreen();
   });
 
-  test('acesso antecipado desligado, duas organizações: a entrada de troca não existe', async () => {
-    // O documento default já traz duas organizações (A ativa, B); §8:247
-    // exige AS DUAS condições — flag ligado e duas ou mais organizações.
+  test('acesso antecipado desligado, duas organizações: a entrada de troca existe', async () => {
+    // O documento default já traz duas organizações (A ativa, B); a única
+    // condição da entrada de troca é haver duas ou mais organizações.
     await renderDrawer(true);
 
-    await screen.findByTestId('MENU.area-alertas');
     expect(
-      screen.queryByTestId('MENU.trocar-organizacao'),
-    ).not.toBeOnTheScreen();
-    expect(screen.queryByText('Trocar de organização')).not.toBeOnTheScreen();
+      await screen.findByTestId('MENU.trocar-organizacao'),
+    ).toBeOnTheScreen();
+    expect(screen.getByText('Trocar de organização')).toBeOnTheScreen();
   });
 
   test('acesso antecipado ligado, uma única organização: a entrada de troca não existe', async () => {
@@ -400,13 +399,25 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     ).toBeOnTheScreen();
   });
 
-  test('acesso antecipado desligado, organização operável: criar não existe', async () => {
-    // Q3 exige AS DUAS condições — flag ligado e organização operável.
+  test('acesso antecipado desligado, organização operável: a entrada de criar existe', async () => {
+    // A única condição da entrada de criar é haver organização operável.
     await renderDrawer(true);
 
-    await screen.findByTestId('MENU.area-alertas');
     expect(
-      screen.queryByTestId('MENU.criar-organizacao'),
+      await screen.findByTestId('MENU.criar-organizacao'),
+    ).toBeOnTheScreen();
+    expect(screen.getByText('Criar organização')).toBeOnTheScreen();
+  });
+
+  test('acesso antecipado desligado, uma única organização operável: criar existe e troca não', async () => {
+    // Uma organização não precisa de seletor, mas ainda pode criar outra.
+    await renderDrawer(true, {organizacoes: [readyOrganization('A')]});
+
+    expect(
+      await screen.findByTestId('MENU.criar-organizacao'),
+    ).toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('MENU.trocar-organizacao'),
     ).not.toBeOnTheScreen();
   });
 

@@ -151,9 +151,24 @@ export const FLOW_STATES = {
     organization: {name: 'Test Organization', slots: 'monitoramento'},
   },
   /**
-   * Two ready organizations with early access on: the only state in which
-   * the drawer offers the organization selector.
+   * Two ready organizations with early access off (the production default):
+   * the drawer offers the organization selector on the organization count
+   * alone.
    */
+  twoOrganizations: {
+    auth: 'authenticated',
+    deviceName: 'Test Device',
+    project: 'none',
+    organizations: {
+      list: [ORGANIZATION_A, ORGANIZATION_B],
+      activeId: ORGANIZATION_B.id,
+    },
+    earlyAccess: false,
+    // A leftover draft is pending work, which keeps the story's activation
+    // engine from opening the organization.
+    draftObservation: 'none',
+  },
+  /** Two ready organizations with early access on. */
   twoOrganizationsEarlyAccess: {
     auth: 'authenticated',
     deviceName: 'Test Device',

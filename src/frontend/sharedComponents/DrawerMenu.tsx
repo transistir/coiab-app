@@ -131,9 +131,9 @@ function MenuListItem({
  * "Olá, Parente" + nome do projeto corrente, os DOIS cards clicáveis de
  * área (Monitoramento Territorial e Alertas — Cadeias Produtivas e Censo
  * Demográfico ficam para fases seguintes, decisão do dono do produto) e a
- * lista: Trocar de organização (early access + ≥2 organizações), Convidar
- * (somente coordinator) e Criar organização (early access + organização
- * operável). As 5 entradas legadas do CoMapeo (Team, Coordinator Tools,
+ * lista: Trocar de organização (≥2 organizações), Convidar (somente
+ * coordinator) e Criar organização (organização operável). Early access não
+ * condiciona mais essas entradas. As 5 entradas legadas do CoMapeo (Team, Coordinator Tools,
  * Gather Observations, Background Map, AppSettings) migraram: Background
  * Maps/Project Settings/Your Team agora vivem em AppSettings
  * (ComapeoSettings). O botão Exchange permanece no rodapé.
@@ -208,10 +208,11 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
         </View>
         {!semOrganizacaoOperavel && <OrganizationAreaAccesses />}
         <View style={styles.listContainer}>
-          {/* SPEC A §6.1:201/§8:247 — the selector entry exists only with
-              early access on AND two or more organizations; with either
-              false it does not exist (no hidden or disabled control). */}
-          {isEarly && estadoOrganizacoes.organizacoes.length >= 2 && (
+          {/* SPEC A §6.1:201/§8:247 — the selector entry exists whenever
+              there are two or more organizations; early access no longer
+              gates it, and with fewer it does not exist (no hidden or
+              disabled control). */}
+          {estadoOrganizacoes.organizacoes.length >= 2 && (
             <MenuListItem
               testID="MENU.trocar-organizacao"
               onPress={() => {
@@ -236,10 +237,11 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
               accessibilityLabel="Invite people to the organization."
             />
           )}
-          {/* SPEC Fase 6/Q3: the create entry exists only with early
-              access on AND an operating organization; with either false it
-              does not exist (no hidden or disabled control). */}
-          {isEarly && !semOrganizacaoOperavel && (
+          {/* SPEC Fase 6/Q3: the create entry exists whenever there is an
+              operating organization; early access no longer gates it, and
+              without one it does not exist (no hidden or disabled
+              control). */}
+          {!semOrganizacaoOperavel && (
             <MenuListItem
               testID="MENU.criar-organizacao"
               onPress={() => {

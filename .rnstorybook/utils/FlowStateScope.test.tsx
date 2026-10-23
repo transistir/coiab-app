@@ -447,7 +447,7 @@ describe('organization stories (FlowStateScope)', () => {
     ]);
   }, 60_000);
 
-  test('without the earlyAccess axis the app flag stays in charge and the entry does not exist', async () => {
+  test('without the earlyAccess axis two organizations still show the switch entry', async () => {
     await renderStory(
       drawerStory({
         flow: {
@@ -459,7 +459,8 @@ describe('organization stories (FlowStateScope)', () => {
       }),
     );
 
-    // The organization card rendered, so the entry's absence is a decision.
+    // Early access no longer gates the entry: two organizations are the
+    // whole condition, even when the story does not request the axis.
     expect(
       await screen.findByTestId(
         'MENU.area-monitoramento',
@@ -467,8 +468,6 @@ describe('organization stories (FlowStateScope)', () => {
         {timeout: 30_000},
       ),
     ).toBeOnTheScreen();
-    expect(
-      screen.queryByTestId('MENU.trocar-organizacao'),
-    ).not.toBeOnTheScreen();
+    expect(screen.getByTestId('MENU.trocar-organizacao')).toBeOnTheScreen();
   }, 60_000);
 });

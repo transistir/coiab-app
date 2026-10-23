@@ -66,3 +66,15 @@ export const Default: Story = {
     },
   },
 };
+
+/**
+ * Two ready organizations with early access off: the "Trocar de
+ * organização" entry is visible on the organization count alone, the way
+ * production shows it.
+ */
+export const WithOrganizations: Story = {
+  name: '02 With Organizations',
+  parameters: {
+    flow: {state: FLOW_STATES.twoOrganizations},
+  },
+};
