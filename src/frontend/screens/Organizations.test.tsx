@@ -1,6 +1,7 @@
 import * as React from 'react';
 import {
   act,
+  fireEvent,
   render,
   screen,
   userEvent,
@@ -63,14 +64,20 @@ const activate = jest.fn<Promise<boolean>, [string]>();
  * `useNavigation` for its beforeRemove animation handling; the screen's own
  * navigation contract is asserted against the props stub below. The stub
  * keeps the wrapper mounted without dragging a whole navigator into this
- * unit tree.
+ * unit tree. Only the back-button hook is stubbed (its real `useFocusEffect`
+ * needs a NavigationContainer), so other focus-driven behavior in this tree
+ * keeps running; the wrapper's own suite proves the Android back contract.
  */
+const mockSheetGoBack = jest.fn();
+jest.mock('../hooks/usePreventAndroidBackButton', () => ({
+  usePreventAndroidBackButton: () => {},
+}));
 jest.mock('@react-navigation/native', () => {
   const actual = jest.requireActual('@react-navigation/native');
   return {
     ...actual,
     useNavigation: () => ({
-      goBack: jest.fn(),
+      goBack: mockSheetGoBack,
       reset: jest.fn(),
       navigate: jest.fn(),
       dispatch: jest.fn(),
@@ -340,6 +347,51 @@ describe('Organizations (SPEC A §6.1, consult Phase 13)', () => {
     // The selector lists organizations — never areas.
     expect(screen.queryByText('Monitoring')).not.toBeOnTheScreen();
     expect(screen.queryByText('Alerts')).not.toBeOnTheScreen();
+  });
+
+  test('tocar no backdrop (fora do conteúdo) fecha o modal via goBack', async () => {
+    seedDocument([organizacao('id-b', 'Rio'), organizacao('id-a', 'Mata')], {
+      organizacaoId: 'id-b',
+      area: 'alertas',
+    });
+    await renderScreen();
+
+    await fireEvent.press(screen.getByTestId('SHEET.backdrop'));
+
+    expect(mockSheetGoBack).toHaveBeenCalledTimes(1);
+    expect(activate).not.toHaveBeenCalled();
+  });
+
+  test('tocar no conteúdo do sheet NÃO fecha o modal', async () => {
+    seedDocument([organizacao('id-b', 'Rio'), organizacao('id-a', 'Mata')], {
+      organizacaoId: 'id-b',
+      area: 'alertas',
+    });
+    await renderScreen();
+
+    await fireEvent.press(screen.getByText('Organizations'));
+    await fireEvent.press(screen.getByTestId('ORGANIZATIONS.list'));
+
+    expect(mockSheetGoBack).not.toHaveBeenCalled();
+  });
+
+  test('§5.2:165: enquanto a ativação está em curso, tocar no backdrop NÃO fecha', async () => {
+    const user = userEvent.setup();
+    // A tentativa não se resolve sozinha: o sheet é observado em voo.
+    activate.mockReturnValue(new Promise<boolean>(() => {}));
+    seedDocument([organizacao('id-b', 'Rio'), organizacao('id-a', 'Mata')], {
+      organizacaoId: 'id-b',
+      area: 'alertas',
+    });
+    await renderScreen();
+
+    await user.press(screen.getByTestId('ORGANIZATIONS.row-id-a'));
+    expect(screen.getByText('Opening organization…')).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByTestId('SHEET.backdrop'));
+
+    // "Abrindo organização…" não é dispensável (SPEC A §5.2:165).
+    expect(mockSheetGoBack).not.toHaveBeenCalled();
   });
 
   test('§6.1: o seletor não inicia a criação de outra organização', async () => {

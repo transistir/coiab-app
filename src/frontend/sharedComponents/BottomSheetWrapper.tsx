@@ -1,5 +1,5 @@
 import * as React from 'react';
-import {View} from 'react-native';
+import {Pressable, StyleSheet, View} from 'react-native';
 import Animated, {SlideInDown, SlideOutDown} from 'react-native-reanimated';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {WHITE} from '../lib/styles';
@@ -11,41 +11,54 @@ import {usePreventAndroidBackButton} from '../hooks/usePreventAndroidBackButton'
  * @description A wrapper component that should be used for bottom sheets. It will handle the animation and prevent the back button from closing the bottom sheet.
  *
  * When pushing a bottom sheet ontop of another bottom sheet use `navigation.replace`, to close the original bottom sheet first. A `replace` (like a `reset`) removes the sheet immediately, without the exit animation.
+ *
+ * Pressing the scrim (the area outside the sheet content) closes the sheet with
+ * `navigation.goBack()` only when the sheet opts in with `dismissable`. Dismissal
+ * is opt-in because some sheets must not be abandoned by a stray tap (e.g. a
+ * pending operation whose only exit is a programmatic navigation).
+ *
+ * The Android back button is governed by `closeOnBackButtonPress` alone:
+ * leaving it unset blocks hardware back (the upstream default), while
+ * `closeOnBackButtonPress` lets the navigator handle it. `dismissable` only
+ * controls the scrim and the iOS accessibility escape — it never changes the
+ * back-button behavior. Hardware back is also inert while the sheet animates
+ * out, so a second press cannot race the exit.
  */
 export const BottomSheetWrapper = ({
   children,
   closeOnBackButtonPress,
+  dismissable = false,
 }: {
   children: React.ReactNode;
   closeOnBackButtonPress?: boolean;
+  dismissable?: boolean;
 }) => {
-  if (!closeOnBackButtonPress) {
-    return (
-      <BottomSheetWrapperPreventBack>{children}</BottomSheetWrapperPreventBack>
-    );
-  }
-
-  return <AnimateBottomSheetContainer>{children}</AnimateBottomSheetContainer>;
-};
-
-const BottomSheetWrapperPreventBack = ({
-  children,
-}: {
-  children: React.ReactNode;
-}) => {
-  usePreventAndroidBackButton();
-  return <AnimateBottomSheetContainer>{children}</AnimateBottomSheetContainer>;
+  return (
+    <AnimateBottomSheetContainer
+      dismissable={dismissable}
+      preventBackButtonPress={!closeOnBackButtonPress}>
+      {children}
+    </AnimateBottomSheetContainer>
+  );
 };
 
 const AnimateBottomSheetContainer = ({
   children,
+  dismissable,
+  preventBackButtonPress,
 }: {
   children: React.ReactNode;
+  dismissable: boolean;
+  preventBackButtonPress: boolean;
 }) => {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
 
   const [displayContent, setDisplayContent] = React.useState(true);
+
+  // Back is also blocked while the sheet animates out, same as the scrim:
+  // `displayContent` goes false before the exit window ends.
+  usePreventAndroidBackButton(preventBackButtonPress || !displayContent);
 
   // This effect is used to prevent the bottom sheet from being removed before
   // the animation is complete. RESET and REPLACE are the exception and pass
@@ -72,11 +85,27 @@ const AnimateBottomSheetContainer = ({
 
   return (
     <View
+      accessibilityViewIsModal
+      onAccessibilityEscape={
+        dismissable && displayContent ? () => navigation.goBack() : undefined
+      }
       style={{
         flex: 1,
         justifyContent: 'flex-end',
         backgroundColor: 'rgba(0, 0, 0, 0.1)',
       }}>
+      {/* The scrim is a sibling BELOW the sheet (rendered first): a touch on
+          the sheet content never reaches it — only the exposed area closes
+          the sheet. */}
+      <Pressable
+        testID="SHEET.backdrop"
+        style={StyleSheet.absoluteFill}
+        accessible={false}
+        importantForAccessibility="no"
+        onPress={
+          dismissable && displayContent ? () => navigation.goBack() : undefined
+        }
+      />
       {displayContent && (
         <Animated.View
           style={{

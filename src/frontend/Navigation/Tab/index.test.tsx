@@ -87,7 +87,7 @@ process.env.MAPBOX_ACCESS_TOKEN = 'test-token';
 import * as React from 'react';
 import {NavigationContainer} from '@react-navigation/native';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
-import {View} from 'react-native';
+import {StyleSheet, View} from 'react-native';
 import {
   act,
   render,
@@ -301,6 +301,33 @@ describe('HomeTabs — barra de 5 abas (#32)', () => {
     const menu = await screen.findByTestId('ENTRONCAMENTO.scrn');
     expect(menu.props.style).toEqual(
       expect.objectContaining({backgroundColor: DARK_GREY}),
+    );
+  });
+
+  test('a página de Menu não mostra navbar sólida: header flutuante sem borda (Figma)', async () => {
+    await renderHomeTabs();
+    const user = userEvent.setup();
+
+    // Menu é a superfície inicial: o header não pode ser a barra branca com
+    // borda inferior que as abas de conteúdo usam — no Figma o header flutua
+    // sobre o fundo escuro, sem faixa de navbar acima do conteúdo.
+    await screen.findByTestId('MENU.scrn');
+    const menuHeader = await screen.findByTestId('HOME.header-container');
+    expect(StyleSheet.flatten(menuHeader.props.style)).toEqual(
+      expect.objectContaining({
+        backgroundColor: 'transparent',
+        borderBottomWidth: 0,
+      }),
+    );
+
+    // Escopo: as abas de conteúdo continuam com o header sólido.
+    await user.press(await screen.findByTestId('tabBarButtonPaneiro'));
+    const paneiroHeader = await screen.findByTestId('HOME.header-container');
+    expect(StyleSheet.flatten(paneiroHeader.props.style)).toEqual(
+      expect.objectContaining({
+        backgroundColor: WHITE,
+        borderBottomWidth: 1,
+      }),
     );
   });
 

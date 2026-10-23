@@ -33,6 +33,7 @@ export function HomeHeader({
 
   return (
     <View
+      testID="HOME.header-container"
       style={[
         styles.container,
         {

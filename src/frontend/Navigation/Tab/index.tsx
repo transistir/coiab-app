@@ -72,11 +72,10 @@ export const HomeTabs = ({navigation}: NativeRootNavigationProps<'Home'>) => {
               navega para AppSettings na root stack (ver TabBar). A rota Camera
               segue registrada sem botão na barra (o acesso à câmera vive no
               fluxo de criação de observação). Ver docs/navegacao-coiab.md. */}
-        <Tab.Screen
-          name="Menu"
-          component={MenuScreen}
-          options={{header: headerSolido}}
-        />
+        {/* The Menu page is the initial surface: its header floats over the
+            dark content (Figma) — no solid navbar. It inherits the navigator's
+            transparent header; only content tabs use `headerSolido`. */}
+        <Tab.Screen name="Menu" component={MenuScreen} />
         <Tab.Screen
           name="ObservationsList"
           component={ObservationsList}
