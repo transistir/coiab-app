@@ -127,12 +127,11 @@ describe('withRealNavigator over an unopenable organization seed', () => {
 
     try {
       await findReadyOnProvisioning(one);
-      expect(screen.getByTestId(NAME)).toHaveTextContent(
-        'Test Organization A',
-      );
-      // One organization and early access off: no exit but the retry.
+      expect(screen.getByTestId(NAME)).toHaveTextContent('Test Organization A');
+      // One organization, early access off: no selector (the count rule),
+      // but creation is offered — the drawer's parity, not the flag.
       expect(screen.queryByTestId(SWITCH)).not.toBeOnTheScreen();
-      expect(screen.queryByTestId(CREATE)).not.toBeOnTheScreen();
+      expect(screen.getByTestId(CREATE)).toBeOnTheScreen();
 
       const two = 'flows-orglayer--organization-unavailable-two-organizations';
       await view.rerender(
@@ -141,9 +140,7 @@ describe('withRealNavigator over an unopenable organization seed', () => {
         />,
       );
       await findReadyOnProvisioning(two);
-      expect(screen.getByTestId(NAME)).toHaveTextContent(
-        'Test Organization B',
-      );
+      expect(screen.getByTestId(NAME)).toHaveTextContent('Test Organization B');
       expect(screen.getByTestId(SWITCH)).toBeOnTheScreen();
       expect(screen.getByTestId(CREATE)).toBeOnTheScreen();
 

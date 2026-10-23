@@ -214,7 +214,8 @@ export const FLOW_STATES = {
    * One ready organization the root engine cannot open: A's Alertas link
    * names a project the backend never had. OrganizationProvisioning shows
    * the recovery surface with A's name. Early access off — production's
-   * default — so it offers no creation exit.
+   * default — yet the creation exit is still offered: neither drawer nor
+   * recovery gates it since f12641db.
    */
   oneOrganizationUnavailable: {
     auth: 'authenticated',

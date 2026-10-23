@@ -469,5 +469,8 @@ describe('organization stories (FlowStateScope)', () => {
       ),
     ).toBeOnTheScreen();
     expect(screen.getByTestId('MENU.trocar-organizacao')).toBeOnTheScreen();
+    // The app flag itself was not turned on to get there: the early-access
+    // banner stays absent, so this is the count rule, not a flag leak.
+    expect(screen.queryByText('Early Access ON')).not.toBeOnTheScreen();
   }, 60_000);
 });

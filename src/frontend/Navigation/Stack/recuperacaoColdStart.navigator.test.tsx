@@ -706,7 +706,7 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
     expect(rotas()).toEqual(['OrganizationProvisioning']);
   }, 90_000);
 
-  test('early access desligado: nome sim, Trocar e Criar não', async () => {
+  test('early access desligado: nome sim, e as saídas seguem a paridade do menu', async () => {
     mockEarlyAccess = false;
     const b = await criarParDeProjetos(B_ID, B_NOME);
     semear(
@@ -729,12 +729,14 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
         {timeout: 30_000},
       ),
     ).toHaveTextContent(orgSetup.orgName);
+    // Two organizations and the flag off: both exits are still there —
+    // same predicates as the drawer, early access gates neither.
     expect(
-      screen.queryByTestId('ORG.provisioning-switch-organization-btn'),
-    ).not.toBeOnTheScreen();
+      screen.getByTestId('ORG.provisioning-switch-organization-btn'),
+    ).toBeOnTheScreen();
     expect(
-      screen.queryByTestId('ORG.provisioning-create-organization-btn'),
-    ).not.toBeOnTheScreen();
+      screen.getByTestId('ORG.provisioning-create-organization-btn'),
+    ).toBeOnTheScreen();
     expect(
       screen.getByTestId('ORG.provisioning-retry-activation-btn'),
     ).toBeEnabled();
