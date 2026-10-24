@@ -338,6 +338,34 @@ describe('HomeTabs — barra de 5 abas (#32)', () => {
     );
   });
 
+  test('a aba Menu anima com slide-in rápido da esquerda (#121)', async () => {
+    await renderHomeTabs();
+    await screen.findByTestId('tabBarButtonMenu');
+
+    const menuOptions = mockNavigation.getCurrentOptions();
+    expect(menuOptions).toEqual(
+      expect.objectContaining({
+        headerShown: false,
+        animation: 'shift',
+        sceneStyleInterpolator: expect.any(Function),
+        transitionSpec: expect.objectContaining({animation: 'timing'}),
+      }),
+    );
+
+    // As demais abas mantêm o comportamento atual: nenhum slide horizontal.
+    const user = userEvent.setup();
+    await user.press(await screen.findByTestId('tabBarButtonPaneiro'));
+    await waitFor(() =>
+      expect(mockNavigation.getCurrentRoute()?.name).toBe('ObservationsList'),
+    );
+
+    const paneiroOptions = mockNavigation.getCurrentOptions() as
+      Record<string, unknown> | undefined;
+    expect(paneiroOptions?.animation).not.toBe('shift');
+    expect(paneiroOptions?.sceneStyleInterpolator).toBeUndefined();
+    expect(paneiroOptions?.transitionSpec).toBeUndefined();
+  });
+
   test('Notificações usa fundo do tema e texto branco (#118)', async () => {
     await renderHomeTabs();
     const user = userEvent.setup();

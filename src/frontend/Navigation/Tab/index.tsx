@@ -23,6 +23,7 @@ import {useObservations} from '../../hooks/server/observations';
 import {useTracks} from '../../hooks/server/track';
 import {useAuthContext} from '../../contexts/AuthContext';
 import {OrganizationRepairBanner} from '../../sharedComponents/OrganizationRepairBanner';
+import {MENU_TRANSITION_SPEC, menuSceneInterpolator} from './menuTransition';
 
 const Tab = createBottomTabNavigator<HomeTabsParamsList>();
 
@@ -81,7 +82,15 @@ export const HomeTabs = ({navigation}: NativeRootNavigationProps<'Home'>) => {
         <Tab.Screen
           name="Menu"
           component={MenuScreen}
-          options={{headerShown: false}}
+          options={{
+            headerShown: false,
+            // Slide-in rápido da esquerda (#121): espelha o push do
+            // AppSettings (que entra da direita). Só o Menu declara essa
+            // animação — as demais abas seguem sem slide horizontal.
+            animation: 'shift',
+            sceneStyleInterpolator: menuSceneInterpolator,
+            transitionSpec: MENU_TRANSITION_SPEC,
+          }}
         />
         <Tab.Screen
           name="ObservationsList"
