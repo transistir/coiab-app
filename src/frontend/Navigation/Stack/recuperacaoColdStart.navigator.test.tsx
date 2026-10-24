@@ -401,6 +401,22 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
     ).toBeOnTheScreen();
   }
 
+  /**
+   * Prova que o PROJETO ATIVO do app é o da organização `nome`: a aba Map tem
+   * header project-aware (`HOME.header-title`), cujo valor vem de
+   * `useOrganizacaoAtiva` — que só nomeia a organização enquanto a seleção do
+   * documento é o projeto em operação. A saudação do Menu não cobre isso: ela
+   * só verifica que o documento seleciona uma organização utilizável.
+   */
+  async function provarProjetoAtivoNoHeader(nome: string) {
+    await fireEvent.press(
+      await screen.findByTestId('tabBarButtonMap', {}, {timeout: 15_000}),
+    );
+    expect(
+      await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
+    ).toHaveTextContent(nome);
+  }
+
   test('1 org + early access: recovery mostra nome e "Criar organização", sem "Trocar"; Voltar da introdução retorna', async () => {
     semearDocumentoPronta(
       orgSetup.projectId,
@@ -536,6 +552,7 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
     expect(
       await screen.findByTestId('MENU.greeting-project', {}, {timeout: 15_000}),
     ).toHaveTextContent(C_NOME);
+    await provarProjetoAtivoNoHeader(C_NOME);
 
     // (M4) The raw document: exactly C selected, A preserved BY ID.
     const cru = documentoPersistido();
@@ -895,6 +912,7 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
     expect(
       await screen.findByTestId('MENU.greeting-project', {}, {timeout: 15_000}),
     ).toHaveTextContent(B_NOME);
+    await provarProjetoAtivoNoHeader(B_NOME);
     expect(documentoPersistido().ativa).toEqual({
       organizacaoId: B_ID,
       area: 'monitoramento',
@@ -1137,6 +1155,7 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
     expect(
       await screen.findByTestId('MENU.greeting-project', {}, {timeout: 15_000}),
     ).toHaveTextContent(C_NOME);
+    await provarProjetoAtivoNoHeader(C_NOME);
 
     // (M4) Three organizations: exactly C selected; A and B preserved BY ID.
     const cru = documentoPersistido();

@@ -543,8 +543,8 @@ describe('segunda organização por convite (navigator real)', () => {
       expect(inviteFailures).toEqual([]);
       // The tap is the only way Home opens (SPEC A §4.2 regra 9): the
       // invited organization opens like any other — the generation gate
-      // resets to Home = Entroncamento (tab bar 5 abas, #32) and the
-      // the Menu greeting (no header) shows B.
+      // resets to Home = Entroncamento (tab bar 5 abas, #32) and the Menu
+      // greeting (no header) shows B.
       await fireEvent.press(
         screen.getByTestId('ORG.provisioning-open-organization-btn'),
       );
@@ -560,6 +560,16 @@ describe('segunda organização por convite (navigator real)', () => {
           {},
           {timeout: 15_000},
         ),
+      ).toHaveTextContent(CONVIDADA_NOME);
+      // Prova de que o PROJETO ATIVO do app trocou para o da convidada: o
+      // header da aba Map vem de `useOrganizacaoAtiva` (só nomeia a
+      // organização enquanto o documento seleciona o projeto em operação);
+      // a saudação do Menu só olha o documento.
+      await fireEvent.press(
+        await screen.findByTestId('tabBarButtonMap', {}, {timeout: 15_000}),
+      );
+      expect(
+        await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
       ).toHaveTextContent(CONVIDADA_NOME);
       expect(documentoPersistido().ativa).toEqual({
         organizacaoId: CONVIDADA_ID,
