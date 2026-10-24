@@ -47,18 +47,20 @@ describe('menuTransition — slide-in rápido da esquerda (#121)', () => {
   });
 
   describe('menuSceneInterpolator (adapter do navigator)', () => {
-    // @react-navigation/bottom-tabs usa progress = 0 para a aba focada,
-    // 1 para uma aba à direita e -1 para uma aba à esquerda. O Menu é a
-    // primeira aba, então só precisa de 0 e 1 na prática.
+    // @react-navigation/bottom-tabs 7 usa progress = 0 para a cena focada e
+    // -1/+1 para as desfocadas, conforme `index >= state.index`. O Menu é a
+    // primeira aba (index 0), então em runtime ele só vê 0 (focado) e -1
+    // (qualquer outra aba focada) — o caso -1 é o que casa com a realidade.
+    // O caso 1 fica coberto como extremo do interpolator.
     test('Menu focado (progress 0) fica em repouso', () => {
       expect(translateXAt(0)).toBe(0);
     });
 
-    test('Menu não focado (progress 1) fica fora à esquerda', () => {
+    test('progress 1 (extremo do interpolator) fica fora à esquerda', () => {
       expect(translateXAt(1)).toBe(-screenWidth);
     });
 
-    test('progress -1 também mantém o Menu fora à esquerda', () => {
+    test('Menu desfocado em runtime (progress -1) fica fora à esquerda', () => {
       expect(translateXAt(-1)).toBe(-screenWidth);
     });
   });

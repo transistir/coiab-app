@@ -38,11 +38,19 @@ export function menuSceneTranslateX(
 /**
  * Adapter para o `sceneStyleInterpolator` do @react-navigation/bottom-tabs.
  *
- * O navigator entrega `current.progress` = 0 para a aba focada, 1 para uma
- * aba à direita e -1 para uma aba à esquerda. O Menu é a primeira aba, então
- * na prática só vê 0 (focado) e 1 (outra aba focada). Mapeamos ambos os
- * extremos não focados para fora da tela à esquerda: ao voltar para o Menu a
- * cena entra da esquerda (-largura -> 0) e, ao sair, desliza para a esquerda.
+ * Em bottom-tabs 7.16.1 a cena desfocada recebe
+ * `progress = index >= state.index ? 1 : -1` (`BottomTabView`:
+ * `toValue = index === state.index ? 0 : index >= state.index ? 1 : -1`).
+ * O Menu é a primeira aba (index 0), então enquanto qualquer outra aba está
+ * focada seu progress é sempre -1 — nunca +1. Na prática ele só vê 0 (focado)
+ * e -1 (desfocado).
+ *
+ * O mapeamento é simétrico: `[-1, 0, 1] -> [-w, 0, -w]`. Os dois extremos
+ * caem fora da tela à esquerda, então a cena entra da esquerda (-w -> 0) ao
+ * focar e sai para a esquerda (0 -> -w) ao desfocar. Não estreitar o
+ * `inputRange` para `[0, 1]`: com -1 o `interpolate` extrapola para +w e o
+ * Menu passaria a entrar pela direita. O teste do adapter com -1 guarda isso.
+ *
  * Só o Menu declara interpolator, então nenhuma outra cena se desloca.
  */
 export function menuSceneInterpolator({
