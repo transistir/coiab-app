@@ -69,6 +69,30 @@ v3 a rota inicial é `Menu`; para não reescrever a semântica desses testes
 (reset de contexto, poda de rota, cold start), a `MenuScreen` mantém o testID
 `ENTRONCAMENTO.scrn` no container além do `MENU.scrn`.
 
+### Animação da aba Menu (#121)
+
+Ao selecionar a aba Menu, a cena desliza da esquerda em 180 ms
+(`animation: 'shift'`, `MENU_TRANSITION_SPEC` com `Easing.out(Easing.cubic)`,
+interpolator em `Navigation/Tab/menuTransition.ts`). Só o Menu declara a
+animação; as outras abas não deslizam.
+
+Semântica do `progress` no bottom-tabs 7: a cena desfocada recebe
+`index >= state.index ? 1 : -1`. Com o Menu em `index 0`, enquanto outra aba
+está focada seu progress é sempre `-1`. O mapeamento é simétrico
+(`[-1, 0, 1] → [-w, 0, -w]`), então os dois extremos ficam fora da tela à
+esquerda. Estreitar o `inputRange` para `[0, 1]` faria `-1` extrapolar para
+`+w` e o Menu entraria pela direita — o teste do adapter com `-1` guarda isso.
+
+**Limitação aceita:** durante os primeiros ~180 ms do slide, o Menu se move
+sobre o fundo vazio do container, porque a aba que sai é desanexada pelo
+react-native-screens (`detachInactiveScreens` no Android) antes de a nova cena
+entrar. A decisão do owner foi manter a animação como está (opção (a)) e
+registrar a limitação, em vez de trocar por cross-fade ou snapshot.
+
+**Efeito colateral deliberado:** para poder animar, a cena Menu agora nunca é
+desanexada — ela repousa em `translateX -width`, recortada fora da viewport.
+É o custo de animá-la: a aba permanece montada mesmo quando não está focada.
+
 ## Follow-ups (fases seguintes)
 
 1. **Remodelar a Página de Menu** com os cartões de módulo do Figma "Página

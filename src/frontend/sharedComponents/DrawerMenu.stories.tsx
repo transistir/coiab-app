@@ -28,9 +28,10 @@ import {DrawerMenu} from './DrawerMenu';
  * `AppProviders`/global context, `useManyProjects` by the ambient
  * `ComapeoCoreProvider`, and navigation by `withNavigation`.
  *
- * Readiness marker: reuses the existing `MENU.main-action-button` testID on
- * `DrawerMenu`'s always-rendered footer button, so no app-source change was
- * needed.
+ * Readiness markers (capture manifest): "01 Default" waits on
+ * `MENU.main-action-button`, the footer's always-rendered button;
+ * "02 With Organizations" waits on `MENU.trocar-organizacao`, the entry
+ * that story exists to show. No app-source change was needed.
  */
 function DrawerMenuStory() {
   const activeProjectId = useActiveProjectId();
@@ -64,5 +65,17 @@ export const Default: Story = {
         draftObservation: 'none',
       },
     },
+  },
+};
+
+/**
+ * Two ready organizations with early access off: the "Trocar de
+ * organização" entry is visible on the organization count alone, the way
+ * production shows it.
+ */
+export const WithOrganizations: Story = {
+  name: '02 With Organizations',
+  parameters: {
+    flow: {state: FLOW_STATES.twoOrganizations},
   },
 };

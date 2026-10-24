@@ -19,6 +19,7 @@ menu	flows-menu--map	testID:MAIN.map-screen	10	01 Map
 menu	flows-menu--observations-list	testID:OBS.list-scrn	2	02 Observations List
 menu	flows-menu--map-tracking-open	testID:MAP:track-bottom-sheet	10	04 Map Tracking Open
 menu	menu-drawermenu--default	testID:MENU.main-action-button	2	05 Drawer Menu
+menu	menu-drawermenu--with-organizations	testID:MENU.trocar-organizacao	2	06 With Organizations
 settings	flows-settings--settings-home	route:AppSettings	2	01 Settings Home
 settings	flows-settings--device-name-display	route:DeviceNameDisplay	2	02 Device Name Display
 settings	flows-settings--device-name-edit	route:DeviceNameEdit	2	03 Device Name Edit

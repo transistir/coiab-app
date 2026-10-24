@@ -11,7 +11,6 @@ import {AppStackParamsList} from '../../sharedTypes/navigation';
 import {useCoiabOrganizationsState} from '../../contexts/CoiabOrganizationsStoreContext';
 import {useOrganizationActivationContext} from '../../contexts/OrganizationActivationContext';
 import {useActiveProjectId} from '../../contexts/ActiveProjectIdStoreContext';
-import {useEarlyAccessState} from '../../contexts/EarlyAccessContext';
 import {
   AREAS,
   derivarProjectIdAtivo,
@@ -381,9 +380,10 @@ function DocumentDrivenProvisioning({
           }}
         />
       )}
-      {/* 89 fase 2 (D1/D2): the navigable exits mirror the drawer's own
-      entries and live ONLY in this branch — an organization in preparation,
-      failure or confirmation owns the surface alone (S5a). */}
+      {/* 89 fase 2 (D1/D2): the navigable exits use the same predicates as
+      DrawerMenu and live ONLY in this branch — an organization in
+      preparation, failure or confirmation owns the surface alone (S5a).
+      Early access gates neither since f12641db; parity is the decision. */}
       {indisponivel && trocarOrganizacao && (
         <SecondaryButton
           testID="ORG.provisioning-switch-organization-btn"
@@ -592,17 +592,16 @@ export const OrganizationProvisioning = ({
   const voltarParaAtiva = operandoOutra
     ? () => navigation.popTo('Home', {screen: 'Map'})
     : undefined;
-  // 89 fase 2 (D1/D2): the recovery exits gate on early access and mirror
-  // the drawer's own predicates (DrawerMenu.tsx): the selector needs 2+
-  // organizations and a resolvable active selection, creation only the
-  // latter. `undefined` renders nothing — no disabled control.
-  const isEarly = useEarlyAccessState(state => state.isEarlyAccessEnabled);
+  // 89 fase 2 (D1/D2) / f12641db: the recovery exits mirror the drawer's
+  // own predicates (DrawerMenu.tsx) with no early-access gate: the selector
+  // needs 2+ organizations and a resolvable active selection, creation only
+  // the latter. `undefined` renders nothing — no disabled control.
   const trocarOrganizacao =
-    isEarly && derivado !== null && estado.organizacoes.length >= 2
+    derivado !== null && estado.organizacoes.length >= 2
       ? () => navigation.navigate('Organizations')
       : undefined;
   const criarOrganizacao =
-    isEarly && derivado !== null
+    derivado !== null
       ? () => navigation.navigate('CreateOrganization')
       : undefined;
 

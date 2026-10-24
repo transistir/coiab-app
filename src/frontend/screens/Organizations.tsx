@@ -207,8 +207,13 @@ export const Organizations = ({
     falhaDaTroca &&
     explicacaoDaTroca(falhaDaTroca === 'recusada' ? error : undefined);
 
+  // §5.2:165 — while the activation is in flight the sheet shows only
+  // "Opening organization…" and the backdrop must not dismiss it; once
+  // settled, tapping outside the content closes the selector.
   return (
-    <BottomSheetWrapper closeOnBackButtonPress>
+    <BottomSheetWrapper
+      closeOnBackButtonPress={!ativando}
+      dismissable={!ativando}>
       {ativando ? (
         // §5.2:165 — “Mostrar ‘Abrindo organização…’ sem conteúdo misturado”:
         // the opening state replaces the sheet's content entirely (the rows

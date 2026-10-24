@@ -274,10 +274,12 @@ const BACK_BLOCKED =
 beforeEach(() => {
   jest.clearAllMocks();
   store = createCoiabOrganizationsStore({persist: false});
-  // Early access on by default (89 fase 2): the exits it gates are asserted
-  // per test; S4 turns it off in its own test.
+  // Early access OFF by default (production's default): since f12641db
+  // neither the drawer nor this surface gates its organization exits, so
+  // every exit asserted below proves the flag is irrelevant. S2 turns it ON
+  // to show the same result either way.
   earlyAccess = createEarlyAccessStore({persist: false});
-  earlyAccess.actions.setEarlyAccessEnabled(true);
+  earlyAccess.actions.setEarlyAccessEnabled(false);
   activate.mockResolvedValue(true);
   retryPreparation.mockResolvedValue(true);
   recoverPendingWork.mockResolvedValue(false);
@@ -610,9 +612,10 @@ describe('OrganizationProvisioning', () => {
       expect(screen.queryByText('Segunda')).not.toBeOnTheScreen();
     });
 
-    test('S2: early access + 1 organization — Criar yes, Trocar no; Criar navigates to CreateOrganization', async () => {
+    test('S2: 1 organization, early access ON — Criar yes, Trocar no; Criar navigates to CreateOrganization', async () => {
       seedDocument([prontaAtiva.organizacao], ativaA);
       ativarRecovery('recovery', 'unavailable');
+      earlyAccess.actions.setEarlyAccessEnabled(true);
       const user = userEvent.setup();
       await renderScreen();
 
@@ -620,7 +623,7 @@ describe('OrganizationProvisioning', () => {
       expect(
         screen.queryByTestId('ORG.provisioning-switch-organization-btn'),
       ).not.toBeOnTheScreen();
-      // RED: the exit button does not exist today.
+      // The creation exit exists regardless of the early-access flag.
       await user.press(
         screen.getByTestId('ORG.provisioning-create-organization-btn'),
       );
@@ -628,13 +631,13 @@ describe('OrganizationProvisioning', () => {
       expect(navigationNavigate).toHaveBeenCalledWith('CreateOrganization');
     });
 
-    test('S3: early access + 2 organizations — Trocar navigates to Organizations and Criar to CreateOrganization', async () => {
+    test('S3: 2 organizations, early access OFF — Trocar navigates to Organizations and Criar to CreateOrganization', async () => {
       seedDocument([prontaAtiva.organizacao, segundaPronta()], ativaA);
       ativarRecovery('recovery', 'unavailable');
       const user = userEvent.setup();
       await renderScreen();
 
-      // RED: the exit button does not exist today.
+      // Both exits are present with the flag off (production default).
       await user.press(
         screen.getByTestId('ORG.provisioning-switch-organization-btn'),
       );
@@ -645,23 +648,24 @@ describe('OrganizationProvisioning', () => {
       expect(navigationNavigate).toHaveBeenCalledWith('CreateOrganization');
     });
 
-    test('S4: early access off — name yes, neither exit button', async () => {
+    test('S4: early access OFF — name yes, and creation is still offered', async () => {
       seedDocument([prontaAtiva.organizacao], ativaA);
       ativarRecovery('recovery', 'unavailable');
       earlyAccess.actions.setEarlyAccessEnabled(false);
       await renderScreen();
 
-      // RED: fails on the missing name.
       expect(
         screen.getByTestId('ORG.provisioning-unavailable-name'),
       ).toHaveTextContent('Primeira');
+      // One organization: still no selector.
       expect(
         screen.queryByTestId('ORG.provisioning-switch-organization-btn'),
       ).not.toBeOnTheScreen();
+      // Parity with the drawer: creation needs only a resolvable derivation,
+      // never early access.
       expect(
-        screen.queryByTestId('ORG.provisioning-create-organization-btn'),
-      ).not.toBeOnTheScreen();
-      // Tentar novamente is the only action, and it is tappable.
+        screen.getByTestId('ORG.provisioning-create-organization-btn'),
+      ).toBeOnTheScreen();
       expect(
         screen.getByTestId('ORG.provisioning-retry-activation-btn'),
       ).toBeEnabled();

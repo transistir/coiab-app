@@ -384,7 +384,8 @@ describe('segunda organização (navigator real)', () => {
     });
 
     // The tap is the only way Home opens (SPEC A §4.2 regra 9): the
-    // generation gate resets to Home/Map and the header shows B.
+    // generation gate resets to Home and lands on the Menu tab; the greeting
+    // (no header on that surface) shows B.
     await fireEvent.press(
       screen.getByTestId('ORG.provisioning-open-organization-btn'),
     );
@@ -394,6 +395,15 @@ describe('segunda organização (navigator real)', () => {
     expect(
       mockNavigation.getRootState().routes.map(route => route.name),
     ).toEqual(['Home']);
+    expect(
+      await screen.findByTestId('MENU.greeting-project', {}, {timeout: 15_000}),
+    ).toHaveTextContent(SEGUNDA_NOME);
+    // Prova de que o PROJETO ATIVO do app é o de B: o header da aba Map vem
+    // de `useOrganizacaoAtiva`, que só nomeia a organização enquanto a seleção
+    // do documento é o projeto em operação. A saudação só olha o documento.
+    await fireEvent.press(
+      await screen.findByTestId('tabBarButtonMap', {}, {timeout: 15_000}),
+    );
     expect(
       await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
     ).toHaveTextContent(SEGUNDA_NOME);
@@ -441,8 +451,16 @@ describe('segunda organização (navigator real)', () => {
     expect(
       await screen.findByTestId('MAIN.map-screen', {}, {timeout: 15_000}),
     ).toBeOnTheScreen();
+    // A troca por linha do seletor faz reset com params {screen: 'Map'}: o
+    // header dessa aba (useOrganizacaoAtiva) prova que o projeto ativo do app
+    // voltou a ser o de A.
     expect(
       await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
+    ).toHaveTextContent(orgSetup.orgName);
+    // A saudação do Menu mantém o mesmo nome na superfície sem header.
+    await fireEvent.press(await screen.findByTestId('tabBarButtonMenu'));
+    expect(
+      await screen.findByTestId('MENU.greeting-project', {}, {timeout: 15_000}),
     ).toHaveTextContent(orgSetup.orgName);
     expect(documentoPersistido().ativa).toEqual({
       organizacaoId: orgSetup.orgId,
@@ -501,10 +519,18 @@ describe('segunda organização (navigator real)', () => {
       await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 15_000}),
     ).toBeOnTheScreen();
     expect(
-      await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
+      await screen.findByTestId('MENU.greeting-project', {}, {timeout: 15_000}),
     ).toHaveTextContent(orgSetup.orgName);
     // B's pending confirmation is announced on A's Home.
     expect(screen.getByTestId('HOME.org-repair-btn')).toBeOnTheScreen();
+    // A "Home opera A" é provada pelo header da aba Map (useOrganizacaoAtiva),
+    // não pela saudação: o banner de reparo vive fora das abas e segue visível.
+    await fireEvent.press(
+      await screen.findByTestId('tabBarButtonMap', {}, {timeout: 15_000}),
+    );
+    expect(
+      await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
+    ).toHaveTextContent(orgSetup.orgName);
 
     // The :257 guard still hands the creation route over to B's surface,
     // which now shows B's confirmation — never a buttonless spinner.
@@ -549,8 +575,18 @@ describe('segunda organização (navigator real)', () => {
         ).toEqual(['Home']),
       {timeout: 15_000},
     );
+    // O reset do botão de volta usa a aba Map: o header dessa aba
+    // (useOrganizacaoAtiva) prova que o projeto ativo do app é o de A. A
+    // saudação do Menu mantém o mesmo nome na superfície sem header.
+    await fireEvent.press(
+      await screen.findByTestId('tabBarButtonMap', {}, {timeout: 15_000}),
+    );
     expect(
       await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
+    ).toHaveTextContent(orgSetup.orgName);
+    await fireEvent.press(await screen.findByTestId('tabBarButtonMenu'));
+    expect(
+      await screen.findByTestId('MENU.greeting-project', {}, {timeout: 15_000}),
     ).toHaveTextContent(orgSetup.orgName);
     // No second creation happened and A is untouched.
     const cru = documentoPersistido();
@@ -593,11 +629,19 @@ describe('segunda organização (navigator real)', () => {
     // activation for the landing screen); B's failure is announced there by
     // the repair banner.
     expect(
-      await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
+      await screen.findByTestId('MENU.greeting-project', {}, {timeout: 15_000}),
     ).toHaveTextContent(orgSetup.orgName);
     expect(
       await screen.findByTestId('HOME.org-repair-btn', {}, {timeout: 15_000}),
     ).toBeOnTheScreen();
+    // O projeto ativo do app continua sendo o de A — provado pelo header da
+    // aba Map (useOrganizacaoAtiva), não pela saudação que só olha o documento.
+    await fireEvent.press(
+      await screen.findByTestId('tabBarButtonMap', {}, {timeout: 15_000}),
+    );
+    expect(
+      await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
+    ).toHaveTextContent(orgSetup.orgName);
 
     await act(async () => {
       mockNavigation.navigate('CreateOrganization');
@@ -771,9 +815,21 @@ describe('segunda organização (navigator real)', () => {
         await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 15_000}),
       ).toBeOnTheScreen();
       expect(
-        await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
+        await screen.findByTestId(
+          'MENU.greeting-project',
+          {},
+          {timeout: 15_000},
+        ),
       ).toHaveTextContent(orgSetup.orgName);
       expect(screen.getByTestId('HOME.org-repair-btn')).toBeOnTheScreen();
+      // Home opera A: o header da aba Map (useOrganizacaoAtiva) é a prova do
+      // projeto ativo; o banner de reparo vive fora das abas e segue visível.
+      await fireEvent.press(
+        await screen.findByTestId('tabBarButtonMap', {}, {timeout: 15_000}),
+      );
+      expect(
+        await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
+      ).toHaveTextContent(orgSetup.orgName);
 
       // Banner (M1, CA5): é assim que a superfície de B é alcançada sem
       // reinício — e ela mostra a CONFIRMAÇÃO de B, não o estado

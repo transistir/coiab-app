@@ -23,6 +23,7 @@ import {useObservations} from '../../hooks/server/observations';
 import {useTracks} from '../../hooks/server/track';
 import {useAuthContext} from '../../contexts/AuthContext';
 import {OrganizationRepairBanner} from '../../sharedComponents/OrganizationRepairBanner';
+import {MENU_TRANSITION_SPEC, menuSceneInterpolator} from './menuTransition';
 
 const Tab = createBottomTabNavigator<HomeTabsParamsList>();
 
@@ -72,10 +73,24 @@ export const HomeTabs = ({navigation}: NativeRootNavigationProps<'Home'>) => {
               navega para AppSettings na root stack (ver TabBar). A rota Camera
               segue registrada sem botão na barra (o acesso à câmera vive no
               fluxo de criação de observação). Ver docs/navegacao-coiab.md. */}
+        {/* The Menu page is the initial surface and has NO header at all
+            (`headerShown: false`): the DrawerMenu content owns the top safe
+            area via `insets.top`. No organisation chip may appear on this
+            surface — it duplicated the organisation name already shown in
+            the greeting. Only Map keeps the transparent navigator header
+            (map under the status bar); content tabs use `headerSolido`. */}
         <Tab.Screen
           name="Menu"
           component={MenuScreen}
-          options={{header: headerSolido}}
+          options={{
+            headerShown: false,
+            // Slide-in rápido da esquerda (#121): espelha o push do
+            // AppSettings (que entra da direita). Só o Menu declara essa
+            // animação — as demais abas seguem sem slide horizontal.
+            animation: 'shift',
+            sceneStyleInterpolator: menuSceneInterpolator,
+            transitionSpec: MENU_TRANSITION_SPEC,
+          }}
         />
         <Tab.Screen
           name="ObservationsList"

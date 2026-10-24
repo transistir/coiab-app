@@ -87,7 +87,7 @@ process.env.MAPBOX_ACCESS_TOKEN = 'test-token';
 import * as React from 'react';
 import {NavigationContainer} from '@react-navigation/native';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
-import {View} from 'react-native';
+import {StyleSheet, View} from 'react-native';
 import {
   act,
   render,
@@ -304,6 +304,68 @@ describe('HomeTabs — barra de 5 abas (#32)', () => {
     );
   });
 
+  test('a página de Menu não tem header nenhum (headerShown: false)', async () => {
+    await renderHomeTabs();
+    const user = userEvent.setup();
+
+    // Menu é a superfície inicial e não tem header algum: o DrawerMenu aplica
+    // `insets.top` no topo do conteúdo. Sem HomeHeader não existe o antigo
+    // chip transparente de organização flutuando sobre a saudação.
+    await screen.findByTestId('MENU.scrn');
+    expect(screen.queryByTestId('HOME.header-container')).toBeNull();
+    expect(screen.queryByTestId('HOME.header')).toBeNull();
+    expect(screen.queryByTestId('HOME.header-title')).toBeNull();
+
+    // Escopo: as abas de conteúdo continuam com o header sólido.
+    await user.press(await screen.findByTestId('tabBarButtonPaneiro'));
+    const paneiroHeader = await screen.findByTestId('HOME.header-container');
+    expect(StyleSheet.flatten(paneiroHeader.props.style)).toEqual(
+      expect.objectContaining({
+        backgroundColor: WHITE,
+        borderBottomWidth: 1,
+      }),
+    );
+    expect(await screen.findByTestId('HOME.header-title')).toBeTruthy();
+
+    // Map mantém o header transparente (mapa sob a status bar).
+    await user.press(await screen.findByTestId('tabBarButtonMap'));
+    const mapHeader = await screen.findByTestId('HOME.header-container');
+    expect(StyleSheet.flatten(mapHeader.props.style)).toEqual(
+      expect.objectContaining({
+        backgroundColor: 'transparent',
+        borderBottomWidth: 0,
+      }),
+    );
+  });
+
+  test('a aba Menu anima com slide-in rápido da esquerda (#121)', async () => {
+    await renderHomeTabs();
+    await screen.findByTestId('tabBarButtonMenu');
+
+    const menuOptions = mockNavigation.getCurrentOptions();
+    expect(menuOptions).toEqual(
+      expect.objectContaining({
+        headerShown: false,
+        animation: 'shift',
+        sceneStyleInterpolator: expect.any(Function),
+        transitionSpec: expect.objectContaining({animation: 'timing'}),
+      }),
+    );
+
+    // As demais abas mantêm o comportamento atual: nenhum slide horizontal.
+    const user = userEvent.setup();
+    await user.press(await screen.findByTestId('tabBarButtonPaneiro'));
+    await waitFor(() =>
+      expect(mockNavigation.getCurrentRoute()?.name).toBe('ObservationsList'),
+    );
+
+    const paneiroOptions = mockNavigation.getCurrentOptions() as
+      Record<string, unknown> | undefined;
+    expect(paneiroOptions?.animation).not.toBe('shift');
+    expect(paneiroOptions?.sceneStyleInterpolator).toBeUndefined();
+    expect(paneiroOptions?.transitionSpec).toBeUndefined();
+  });
+
   test('Notificações usa fundo do tema e texto branco (#118)', async () => {
     await renderHomeTabs();
     const user = userEvent.setup();
@@ -332,10 +394,10 @@ describe('HomeTabs — barra de 5 abas (#32)', () => {
     await renderHomeTabs();
     const user = userEvent.setup();
 
-    // Header sólido (Menu, Paneiro, Notificações) e transparente (Map):
-    // nenhum header home mostra mais o hambúrguer que abria a drawer.
+    // Header sólido (Paneiro, Notificações) e transparente (Map): nenhum
+    // header home mostra mais o hambúrguer que abria a drawer. O Menu não tem
+    // header algum (headerShown:false), então fica fora deste loop.
     for (const testID of [
-      'tabBarButtonMenu',
       'tabBarButtonPaneiro',
       'tabBarButtonMap',
       'tabBarButtonNotificacoes',
