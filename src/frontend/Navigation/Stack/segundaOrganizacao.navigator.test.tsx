@@ -384,7 +384,7 @@ describe('segunda organização (navigator real)', () => {
     });
 
     // The tap is the only way Home opens (SPEC A §4.2 regra 9): the
-    // generation gate resets to Home/Map and the header shows B.
+    // generation gate resets to Home/Map and the Menu greeting (no header) shows B.
     await fireEvent.press(
       screen.getByTestId('ORG.provisioning-open-organization-btn'),
     );
@@ -395,7 +395,7 @@ describe('segunda organização (navigator real)', () => {
       mockNavigation.getRootState().routes.map(route => route.name),
     ).toEqual(['Home']);
     expect(
-      await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
+      await screen.findByTestId('MENU.greeting-project', {}, {timeout: 15_000}),
     ).toHaveTextContent(SEGUNDA_NOME);
 
     // The selector now exists (length >= 2) and switches back to A.
@@ -441,8 +441,11 @@ describe('segunda organização (navigator real)', () => {
     expect(
       await screen.findByTestId('MAIN.map-screen', {}, {timeout: 15_000}),
     ).toBeOnTheScreen();
+    // A aba Map está ativa; a evidência do nome da organização aberta vive na
+    // saudação do Menu (aba inicial, que não tem header desde o fix do chip).
+    await fireEvent.press(await screen.findByTestId('tabBarButtonMenu'));
     expect(
-      await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
+      await screen.findByTestId('MENU.greeting-project', {}, {timeout: 15_000}),
     ).toHaveTextContent(orgSetup.orgName);
     expect(documentoPersistido().ativa).toEqual({
       organizacaoId: orgSetup.orgId,
@@ -501,7 +504,7 @@ describe('segunda organização (navigator real)', () => {
       await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 15_000}),
     ).toBeOnTheScreen();
     expect(
-      await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
+      await screen.findByTestId('MENU.greeting-project', {}, {timeout: 15_000}),
     ).toHaveTextContent(orgSetup.orgName);
     // B's pending confirmation is announced on A's Home.
     expect(screen.getByTestId('HOME.org-repair-btn')).toBeOnTheScreen();
@@ -549,8 +552,11 @@ describe('segunda organização (navigator real)', () => {
         ).toEqual(['Home']),
       {timeout: 15_000},
     );
+    // O reset do botão de volta usa a aba Map; o nome de A é evidência da
+    // saudação do Menu (aba inicial, sem header desde o fix do chip).
+    await fireEvent.press(await screen.findByTestId('tabBarButtonMenu'));
     expect(
-      await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
+      await screen.findByTestId('MENU.greeting-project', {}, {timeout: 15_000}),
     ).toHaveTextContent(orgSetup.orgName);
     // No second creation happened and A is untouched.
     const cru = documentoPersistido();
@@ -593,7 +599,7 @@ describe('segunda organização (navigator real)', () => {
     // activation for the landing screen); B's failure is announced there by
     // the repair banner.
     expect(
-      await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
+      await screen.findByTestId('MENU.greeting-project', {}, {timeout: 15_000}),
     ).toHaveTextContent(orgSetup.orgName);
     expect(
       await screen.findByTestId('HOME.org-repair-btn', {}, {timeout: 15_000}),
@@ -771,7 +777,11 @@ describe('segunda organização (navigator real)', () => {
         await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 15_000}),
       ).toBeOnTheScreen();
       expect(
-        await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
+        await screen.findByTestId(
+          'MENU.greeting-project',
+          {},
+          {timeout: 15_000},
+        ),
       ).toHaveTextContent(orgSetup.orgName);
       expect(screen.getByTestId('HOME.org-repair-btn')).toBeOnTheScreen();
 

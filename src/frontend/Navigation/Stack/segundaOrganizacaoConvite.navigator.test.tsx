@@ -544,7 +544,7 @@ describe('segunda organização por convite (navigator real)', () => {
       // The tap is the only way Home opens (SPEC A §4.2 regra 9): the
       // invited organization opens like any other — the generation gate
       // resets to Home = Entroncamento (tab bar 5 abas, #32) and the
-      // header shows B.
+      // the Menu greeting (no header) shows B.
       await fireEvent.press(
         screen.getByTestId('ORG.provisioning-open-organization-btn'),
       );
@@ -555,7 +555,11 @@ describe('segunda organização por convite (navigator real)', () => {
         mockNavigation.getRootState().routes.map(route => route.name),
       ).toEqual(['Home']);
       expect(
-        await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
+        await screen.findByTestId(
+          'MENU.greeting-project',
+          {},
+          {timeout: 15_000},
+        ),
       ).toHaveTextContent(CONVIDADA_NOME);
       expect(documentoPersistido().ativa).toEqual({
         organizacaoId: CONVIDADA_ID,

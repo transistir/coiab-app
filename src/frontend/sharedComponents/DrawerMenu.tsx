@@ -205,7 +205,11 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
           <BodyText style={styles.greeting}>
             {formatMessage(m.greeting)}
           </BodyText>
-          <BodyText style={styles.greetingProject}>{saudacaoNome}</BodyText>
+          <BodyText
+            style={styles.greetingProject}
+            testID="MENU.greeting-project">
+            {saudacaoNome}
+          </BodyText>
         </View>
         {!semOrganizacaoOperavel && <OrganizationAreaAccesses />}
         <View style={styles.listContainer}>

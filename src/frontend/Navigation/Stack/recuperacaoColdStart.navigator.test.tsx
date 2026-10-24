@@ -534,7 +534,7 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
     ).toBeOnTheScreen();
     await waitFor(() => expect(rotas()).toEqual(['Home']), {timeout: 15_000});
     expect(
-      await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
+      await screen.findByTestId('MENU.greeting-project', {}, {timeout: 15_000}),
     ).toHaveTextContent(C_NOME);
 
     // (M4) The raw document: exactly C selected, A preserved BY ID.
@@ -893,7 +893,7 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
       await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 30_000}),
     ).toBeOnTheScreen();
     expect(
-      await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
+      await screen.findByTestId('MENU.greeting-project', {}, {timeout: 15_000}),
     ).toHaveTextContent(B_NOME);
     expect(documentoPersistido().ativa).toEqual({
       organizacaoId: B_ID,
@@ -1135,7 +1135,7 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
     ).toBeOnTheScreen();
     await waitFor(() => expect(rotas()).toEqual(['Home']), {timeout: 15_000});
     expect(
-      await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
+      await screen.findByTestId('MENU.greeting-project', {}, {timeout: 15_000}),
     ).toHaveTextContent(C_NOME);
 
     // (M4) Three organizations: exactly C selected; A and B preserved BY ID.

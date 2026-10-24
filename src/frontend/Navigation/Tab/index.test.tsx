@@ -304,21 +304,17 @@ describe('HomeTabs — barra de 5 abas (#32)', () => {
     );
   });
 
-  test('a página de Menu não mostra navbar sólida: header flutuante sem borda (Figma)', async () => {
+  test('a página de Menu não tem header nenhum (headerShown: false)', async () => {
     await renderHomeTabs();
     const user = userEvent.setup();
 
-    // Menu é a superfície inicial: o header não pode ser a barra branca com
-    // borda inferior que as abas de conteúdo usam — no Figma o header flutua
-    // sobre o fundo escuro, sem faixa de navbar acima do conteúdo.
+    // Menu é a superfície inicial e não tem header algum: o DrawerMenu aplica
+    // `insets.top` no topo do conteúdo. Sem HomeHeader não existe o antigo
+    // chip transparente de organização flutuando sobre a saudação.
     await screen.findByTestId('MENU.scrn');
-    const menuHeader = await screen.findByTestId('HOME.header-container');
-    expect(StyleSheet.flatten(menuHeader.props.style)).toEqual(
-      expect.objectContaining({
-        backgroundColor: 'transparent',
-        borderBottomWidth: 0,
-      }),
-    );
+    expect(screen.queryByTestId('HOME.header-container')).toBeNull();
+    expect(screen.queryByTestId('HOME.header')).toBeNull();
+    expect(screen.queryByTestId('HOME.header-title')).toBeNull();
 
     // Escopo: as abas de conteúdo continuam com o header sólido.
     await user.press(await screen.findByTestId('tabBarButtonPaneiro'));
@@ -327,6 +323,17 @@ describe('HomeTabs — barra de 5 abas (#32)', () => {
       expect.objectContaining({
         backgroundColor: WHITE,
         borderBottomWidth: 1,
+      }),
+    );
+    expect(await screen.findByTestId('HOME.header-title')).toBeTruthy();
+
+    // Map mantém o header transparente (mapa sob a status bar).
+    await user.press(await screen.findByTestId('tabBarButtonMap'));
+    const mapHeader = await screen.findByTestId('HOME.header-container');
+    expect(StyleSheet.flatten(mapHeader.props.style)).toEqual(
+      expect.objectContaining({
+        backgroundColor: 'transparent',
+        borderBottomWidth: 0,
       }),
     );
   });
@@ -359,10 +366,10 @@ describe('HomeTabs — barra de 5 abas (#32)', () => {
     await renderHomeTabs();
     const user = userEvent.setup();
 
-    // Header sólido (Menu, Paneiro, Notificações) e transparente (Map):
-    // nenhum header home mostra mais o hambúrguer que abria a drawer.
+    // Header sólido (Paneiro, Notificações) e transparente (Map): nenhum
+    // header home mostra mais o hambúrguer que abria a drawer. O Menu não tem
+    // header algum (headerShown:false), então fica fora deste loop.
     for (const testID of [
-      'tabBarButtonMenu',
       'tabBarButtonPaneiro',
       'tabBarButtonMap',
       'tabBarButtonNotificacoes',

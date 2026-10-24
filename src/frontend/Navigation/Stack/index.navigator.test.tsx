@@ -776,11 +776,12 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     // Home pós-login é o Entroncamento (tab bar 5 abas, #32): a aba Map
     // e o MAIN.map-screen só existem depois de navegar até ela.
     expect(await screen.findByTestId('ENTRONCAMENTO.scrn')).toBeOnTheScreen();
-    // SPEC B §7: a evidência de organização aberta é o nome no cabeçalho —
+    // SPEC B §7: a evidência de organização aberta é o nome na saudação do
+    // Menu (a aba inicial, que não tem header desde o fix do chip):
     // com espaços das bordas removidos no save.
-    expect(await screen.findByTestId('HOME.header-title')).toHaveTextContent(
-      'Minha Org',
-    );
+    expect(
+      await screen.findByTestId('MENU.greeting-project'),
+    ).toHaveTextContent('Minha Org');
     // A escrita única do toque gravou reconhecimento e seleção juntos.
     const raw = documentoPersistido();
     const organizacaoCriada = raw.organizacoes[0];
