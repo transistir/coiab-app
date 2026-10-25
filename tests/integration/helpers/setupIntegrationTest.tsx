@@ -18,6 +18,12 @@ import React from 'react';
 const ORG_ID = '0123456789abcdef';
 const ORG_NAME = 'Test Org';
 
+// O `keepAliveTimeout` do fastify é de 72s: uma conexão que fica para trás
+// pode segurar o fechamento por todo esse tempo. 30s matava o hook; os 90s
+// ficam acima dos 72s, e o aviso a partir de 20s acusa se a espera voltar.
+const ORCAMENTO_ENCERRAMENTO_MS = 90_000;
+const LIMIAR_LOG_ENCERRAMENTO_MS = 20_000;
+
 /**
  * Runs the teardown steps in order, one at a time, and keeps going after a
  * failure: a failed unmount must not leave the IPC channel, the discovery
@@ -44,6 +50,18 @@ export async function executarEmOrdem(
   }
 }
 
+async function encerrarComRelatorio(ciclo: {encerrar(): Promise<void>}) {
+  const inicio = Date.now();
+  try {
+    await ciclo.encerrar();
+  } finally {
+    const duracao = Date.now() - inicio;
+    if (duracao >= LIMIAR_LOG_ENCERRAMENTO_MS) {
+      console.warn(`[integration] ciclo.encerrar() levou ${duracao}ms`);
+    }
+  }
+}
+
 /** A mounted navigator: its tree and the providers wrapping it. */
 type RenderMontado = {
   // Absent until `render` resolves.
@@ -60,7 +78,8 @@ type RenderMontado = {
  * 2. the real `fetch` swap, before the drain: work still settling after the
  *    unmount (e.g. the icon check's `fetch(url).ok`, which never reads the
  *    body) must not open undici sockets to fastify — a response left
- *    unconsumed keeps fastify's `close()` waiting ~70s;
+ *    unconsumed keeps the close waiting out fastify's `keepAliveTimeout`
+ *    (72s);
  * 3. `ipc.stop()`, which drains the RPCs still in flight;
  * 4. the local peer discovery server (a no-op when it never started);
  * 5. fastify — after the drain, since drained RPCs may need its HTTP routes.
@@ -162,7 +181,7 @@ export function setupIntegrationTest() {
     });
   });
 
-  afterEach(() => ciclo.encerrar(), 30_000);
+  afterEach(() => encerrarComRelatorio(ciclo), ORCAMENTO_ENCERRAMENTO_MS);
 
   const renderNavigation = async ({
     isOnline = true,
@@ -242,7 +261,7 @@ export function setupIntegrationTestWithoutProject() {
     core.pararFastify = () => fastifyController.stop();
   });
 
-  afterEach(() => ciclo.encerrar(), 30_000);
+  afterEach(() => encerrarComRelatorio(ciclo), ORCAMENTO_ENCERRAMENTO_MS);
 
   const renderNavigationAsync = async ({
     isOnline = true,
