@@ -45,6 +45,7 @@ export function HomeHeader({
       ]}>
       <View style={styles.headerRow}>
         <View
+          testID="HOME.header-title-box"
           style={[
             styles.titleBox,
             {backgroundColor: projectDetails.projectColor},
@@ -63,7 +64,7 @@ export function HomeHeader({
             </View>
           )}
         </View>
-        <View style={{paddingLeft: 10}}>
+        <View testID="HOME.header-right" style={styles.headerRight}>
           {options.headerRight?.({canGoBack: false})}
         </View>
       </View>
@@ -91,6 +92,12 @@ const styles = StyleSheet.create({
     paddingLeft: 10,
     paddingRight: 10,
     flexShrink: 1,
+    // Nome longo de organização (#32) trunca aqui, sem espremer o headerRight.
+    maxWidth: '70%',
+  },
+  headerRight: {
+    paddingLeft: 10,
+    flexShrink: 0,
   },
   text: {
     flexShrink: 1,

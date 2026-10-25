@@ -1,5 +1,6 @@
 import * as React from 'react';
-import {render, screen} from '@testing-library/react-native';
+import {View} from 'react-native';
+import {render, screen, within} from '@testing-library/react-native';
 import type {BottomTabHeaderProps} from '@react-navigation/bottom-tabs';
 import type {MapeoManager} from '@comapeo/core';
 import type {ComapeoCoreClientApi} from '@comapeo/ipc';
@@ -76,7 +77,9 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
     ]);
   }, 15_000);
 
-  const renderHeader = async () => {
+  const renderHeader = async (
+    headerRight?: BottomTabHeaderProps['options']['headerRight'],
+  ) => {
     const appProviders = createAppProvidersWrapper({
       mapeoApi: client,
       activeProjectId: projectId,
@@ -86,7 +89,12 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
     const utils = await render(
       <React.Suspense fallback={null}>
         <ActiveProjectProvider activeProjectId={projectId}>
-          <HomeHeader {...baseHeader} backgroundColor="#fff" showBottomBorder />
+          <HomeHeader
+            {...baseHeader}
+            options={{...baseHeader.options, headerRight}}
+            backgroundColor="#fff"
+            showBottomBorder
+          />
         </ActiveProjectProvider>
       </React.Suspense>,
       {wrapper: appProviders.wrapper},
@@ -128,6 +136,43 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
     expect(await screen.findByTestId('HOME.header-title')).toHaveTextContent(
       'Organização B',
     );
+  });
+
+  it('nome longo da organização não espreme o botão de trilha (#32)', async () => {
+    // Layout invariant, not a measurement: the test renderer runs no layout
+    // engine, so no width is computed here and none is faked. What is pinned
+    // are the rules that make an overflowing row give way on the title's
+    // side — the pill is capped at 70% of the row and its text stays on one
+    // line with a tail ellipsis, while the container holding headerRight
+    // never shrinks. That the track button really stays whole next to a long
+    // name can only be measured on an emulator or device.
+    const nomeLongo =
+      'Organização dos Povos Indígenas do Alto Rio Negro e Associação das Comunidades Tradicionais do Médio Solimões';
+    const documento = organizationDocument();
+    const organizacaoB = documento.organizacoes[1];
+    if (!organizacaoB) throw new Error('fixture: organization B missing');
+    organizacaoB.nome = nomeLongo;
+    organizacaoB.materializacao.alertas.projectId = projectId;
+
+    MMKVStoreInitializer.setItem(
+      COIAB_ORGANIZATIONS_STORAGE_KEY,
+      JSON.stringify({
+        state: {...documento, ativa: {organizacaoId: 'B', area: 'alertas'}},
+        version: 1,
+      }),
+    );
+
+    await renderHeader(() => <View testID="header-right-stub" />);
+
+    const titulo = await screen.findByTestId('HOME.header-title');
+    expect(titulo).toHaveTextContent(nomeLongo);
+    expect(titulo.props.numberOfLines).toBe(1);
+    expect(screen.getByTestId('HOME.header-title-box')).toHaveStyle({
+      maxWidth: '70%',
+    });
+    const direita = screen.getByTestId('HOME.header-right');
+    expect(direita).toHaveStyle({flexShrink: 0});
+    expect(within(direita).getByTestId('header-right-stub')).toBeOnTheScreen();
   });
 
   it('não nomeia a organização quando o projeto ativo é outro projeto', async () => {
