@@ -144,11 +144,15 @@ export function TrackMapButton({onPress}: {onPress: () => void}) {
       onPress={onPress}>
       {isTracking && (
         <View style={styles.trackRuntimeWrapper}>
-          <View style={styles.trackIndicator} />
+          <View
+            testID="mapTrackButton.indicator"
+            style={styles.trackIndicator}
+          />
           <BodyText variant="tinyMeta">{timer}</BodyText>
         </View>
       )}
       <TracksIcon
+        testID="mapTrackButton.icon"
         color={isTracking ? COIAB_ORANGE : NEW_DARK_GREY}
         height={22}
       />
