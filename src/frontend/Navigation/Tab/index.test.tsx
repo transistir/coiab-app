@@ -207,6 +207,11 @@ describe('TrackMapButton — estado de gravação (#32)', () => {
     expect(screen.getByLabelText('Track recording')).toBeTruthy();
     expect(screen.getByText('00:01:23')).toBeTruthy();
     expect(screen.getByTestId('mapTrackButton.indicator')).toBeTruthy();
+    expect(
+      StyleSheet.flatten(
+        screen.getByTestId('mapTrackButton.indicator').props.style,
+      ).backgroundColor,
+    ).toBe('#59A553');
     expect(screen.getByTestId('mapTrackButton.icon').props.color).toBe(
       COIAB_ORANGE,
     );
@@ -467,9 +472,11 @@ describe('HomeTabs — barra de 5 abas (#32)', () => {
 
     await user.press(await screen.findByTestId('tabBarButtonMap'));
 
-    // Pelo rótulo de acessibilidade, e é o mesmo elemento do testID.
-    const trackBtn = await screen.findByLabelText('Track recording');
-    expect(await screen.findByTestId('mapTrackButton')).toBe(trackBtn);
+    // Pelo testID primeiro (o ponto de RED do critério de aceite); o rótulo
+    // de acessibilidade aponta para o mesmo elemento.
+    const trackBtn = await screen.findByTestId('mapTrackButton');
+    expect(trackBtn).toBeTruthy();
+    expect(await screen.findByLabelText('Track recording')).toBe(trackBtn);
 
     await user.press(trackBtn);
     expect(await screen.findByText('Ready to record new track?')).toBeTruthy();
