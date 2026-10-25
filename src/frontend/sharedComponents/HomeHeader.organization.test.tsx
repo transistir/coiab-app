@@ -140,12 +140,14 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
 
   it('nome longo da organização não espreme o botão de trilha (#32)', async () => {
     // Layout invariant, not a measurement: the test renderer runs no layout
-    // engine, so no width is computed here and none is faked. What is pinned
-    // are the rules that make an overflowing row give way on the title's
-    // side — the pill is capped at 70% of the row and its text stays on one
-    // line with a tail ellipsis, while the container holding headerRight
-    // never shrinks. That the track button really stays whole next to a long
-    // name can only be measured on an emulator or device.
+    // engine, so no width is computed here and none is faked. An overflowing
+    // row gives way on the title's side: the pill shrinks and its text stays
+    // on one line with a tail ellipsis, while the container holding
+    // headerRight never shrinks. No width cap is needed for that, and one
+    // would cut the name short whenever headerRight renders nothing (the
+    // Paneiro download button with nothing to download). That the track
+    // button really stays whole next to a long name can only be measured on
+    // an emulator or device.
     const nomeLongo =
       'Organização dos Povos Indígenas do Alto Rio Negro e Associação das Comunidades Tradicionais do Médio Solimões';
     const documento = organizationDocument();
@@ -167,8 +169,8 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
     const titulo = await screen.findByTestId('HOME.header-title');
     expect(titulo).toHaveTextContent(nomeLongo);
     expect(titulo.props.numberOfLines).toBe(1);
-    expect(screen.getByTestId('HOME.header-title-box')).toHaveStyle({
-      maxWidth: '70%',
+    expect(screen.getByTestId('HOME.header-title-box')).not.toHaveStyle({
+      maxWidth: expect.anything(),
     });
     const direita = screen.getByTestId('HOME.header-right');
     expect(direita).toHaveStyle({flexShrink: 0});
@@ -177,10 +179,10 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
 
   it('nome longo usa a linha inteira quando não há botão à direita (#32)', async () => {
     // Counterpart of the case above, for tabs with no headerRight (e.g.
-    // Notificações): nothing sits to the right of the pill, so the 70% cap
-    // must not apply — it would cut a long name short beside an empty row.
-    // The name still stays on one line; as above, a layout rule is pinned,
-    // not a measured width.
+    // Notificações): nothing sits to the right of the pill, so it takes the
+    // whole row — no width cap may cut a long name short beside an empty
+    // row. The name still stays on one line; as above, a layout rule is
+    // pinned, not a measured width.
     const nomeLongo =
       'Organização dos Povos Indígenas do Alto Rio Negro e Associação das Comunidades Tradicionais do Médio Solimões';
     const documento = organizationDocument();
@@ -203,7 +205,7 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
     expect(titulo).toHaveTextContent(nomeLongo);
     expect(titulo.props.numberOfLines).toBe(1);
     expect(screen.getByTestId('HOME.header-title-box')).not.toHaveStyle({
-      maxWidth: '70%',
+      maxWidth: expect.anything(),
     });
   });
 

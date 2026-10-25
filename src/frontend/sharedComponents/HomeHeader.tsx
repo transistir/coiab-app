@@ -49,7 +49,6 @@ export function HomeHeader({
           style={[
             styles.titleBox,
             {backgroundColor: projectDetails.projectColor},
-            options.headerRight ? styles.titleBoxWithRight : null,
           ]}>
           <HeaderText
             testID="HOME.header-title"
@@ -94,10 +93,7 @@ const styles = StyleSheet.create({
     paddingRight: 10,
     flexShrink: 1,
   },
-  titleBoxWithRight: {
-    // Nome longo de organização (#32) trunca aqui, sem espremer o headerRight.
-    maxWidth: '70%',
-  },
+  // A pílula encolhe (flexShrink 1 + reticências) e o headerRight nunca (flexShrink 0): o botão mantém a largura com qualquer título.
   headerRight: {
     paddingLeft: 10,
     flexShrink: 0,
