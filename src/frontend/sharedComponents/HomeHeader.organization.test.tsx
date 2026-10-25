@@ -184,8 +184,9 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
     // Counterpart of the case above, for tabs with no headerRight (e.g.
     // Notificações): nothing sits to the right of the pill, so it takes the
     // whole row — no width cap may cut a long name short beside an empty
-    // row. The name still stays on one line; as above, a layout rule is
-    // pinned, not a measured width.
+    // row, and no empty headerRight container is mounted whose paddingLeft
+    // would still take room. The name still stays on one line; as above, a
+    // layout rule is pinned, not a measured width.
     const nomeLongo =
       'Organização dos Povos Indígenas do Alto Rio Negro e Associação das Comunidades Tradicionais do Médio Solimões';
     const documento = organizationDocument();
@@ -210,6 +211,7 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
     expect(screen.getByTestId('HOME.header-title-box')).not.toHaveStyle({
       maxWidth: expect.anything(),
     });
+    expect(screen.queryByTestId('HOME.header-right')).toBeNull();
   });
 
   it('não nomeia a organização quando o projeto ativo é outro projeto', async () => {

@@ -30,6 +30,7 @@ export function HomeHeader({
   const {data} = useStorageReadingQuery();
   const isLow = isLowStorage(data.freeBytes);
   const insets = useSafeAreaInsets();
+  const headerRight = options.headerRight?.({canGoBack: false});
 
   return (
     <View
@@ -64,9 +65,11 @@ export function HomeHeader({
             </View>
           )}
         </View>
-        <View testID="HOME.header-right" style={styles.headerRight}>
-          {options.headerRight?.({canGoBack: false})}
-        </View>
+        {headerRight ? (
+          <View testID="HOME.header-right" style={styles.headerRight}>
+            {headerRight}
+          </View>
+        ) : null}
       </View>
     </View>
   );
