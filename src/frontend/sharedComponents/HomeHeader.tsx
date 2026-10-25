@@ -49,6 +49,7 @@ export function HomeHeader({
           style={[
             styles.titleBox,
             {backgroundColor: projectDetails.projectColor},
+            options.headerRight ? styles.titleBoxWithRight : null,
           ]}>
           <HeaderText
             testID="HOME.header-title"
@@ -92,6 +93,8 @@ const styles = StyleSheet.create({
     paddingLeft: 10,
     paddingRight: 10,
     flexShrink: 1,
+  },
+  titleBoxWithRight: {
     // Nome longo de organização (#32) trunca aqui, sem espremer o headerRight.
     maxWidth: '70%',
   },

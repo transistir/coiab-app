@@ -175,6 +175,38 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
     expect(within(direita).getByTestId('header-right-stub')).toBeOnTheScreen();
   });
 
+  it('nome longo usa a linha inteira quando não há botão à direita (#32)', async () => {
+    // Counterpart of the case above, for tabs with no headerRight (e.g.
+    // Notificações): nothing sits to the right of the pill, so the 70% cap
+    // must not apply — it would cut a long name short beside an empty row.
+    // The name still stays on one line; as above, a layout rule is pinned,
+    // not a measured width.
+    const nomeLongo =
+      'Organização dos Povos Indígenas do Alto Rio Negro e Associação das Comunidades Tradicionais do Médio Solimões';
+    const documento = organizationDocument();
+    const organizacaoB = documento.organizacoes[1];
+    if (!organizacaoB) throw new Error('fixture: organization B missing');
+    organizacaoB.nome = nomeLongo;
+    organizacaoB.materializacao.alertas.projectId = projectId;
+
+    MMKVStoreInitializer.setItem(
+      COIAB_ORGANIZATIONS_STORAGE_KEY,
+      JSON.stringify({
+        state: {...documento, ativa: {organizacaoId: 'B', area: 'alertas'}},
+        version: 1,
+      }),
+    );
+
+    await renderHeader();
+
+    const titulo = await screen.findByTestId('HOME.header-title');
+    expect(titulo).toHaveTextContent(nomeLongo);
+    expect(titulo.props.numberOfLines).toBe(1);
+    expect(screen.getByTestId('HOME.header-title-box')).not.toHaveStyle({
+      maxWidth: '70%',
+    });
+  });
+
   it('não nomeia a organização quando o projeto ativo é outro projeto', async () => {
     // RED case (SPEC A §4.2 regra 5): an untracked switch of the active
     // project — LeaveProject, a create/accept repointing the id
