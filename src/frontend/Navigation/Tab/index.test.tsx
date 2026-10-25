@@ -390,6 +390,19 @@ describe('HomeTabs — barra de 5 abas (#32)', () => {
     expect(await screen.findByTestId('MAIN.map-screen')).toBeTruthy();
   });
 
+  test('o botão de trilha fica acessível dentro do mapa', async () => {
+    await renderHomeTabs();
+    const user = userEvent.setup();
+
+    await user.press(await screen.findByTestId('tabBarButtonMap'));
+
+    const trackBtn = await screen.findByTestId('mapTrackButton');
+    expect(trackBtn).toBeTruthy();
+
+    await user.press(trackBtn);
+    expect(await screen.findByText('Ready to record new track?')).toBeTruthy();
+  });
+
   test('nenhuma aba tem botão de abrir menu (#118)', async () => {
     await renderHomeTabs();
     const user = userEvent.setup();
