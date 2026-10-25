@@ -1,5 +1,5 @@
 import * as React from 'react';
-import {TouchableOpacity} from 'react-native';
+import {StyleSheet, TouchableOpacity, View} from 'react-native';
 import {
   createBottomTabNavigator,
   type BottomTabHeaderProps,
@@ -16,9 +16,13 @@ import {
 import {HomeHeader} from '../../sharedComponents/HomeHeader';
 import {TabBar} from './TabBar';
 import {FullScreenCenteredLoader} from '../../sharedComponents/FullScreenCenteredLoader';
-import {NEW_DARK_GREY, WHITE} from '../../lib/styles';
+import {COIAB_ORANGE, NEW_DARK_GREY, WHITE} from '../../lib/styles';
 import {ProjectRemovalListener} from '../../sharedComponents/ProjectRemovalListener';
 import {DownloadIcon} from '../../sharedComponents/icons';
+import TracksIcon from '../../images/Tracks.svg';
+import {useTracking} from '../../hooks/useTracking';
+import {useTrackTimer} from '../../hooks/useTrackTimer';
+import {BodyText} from '../../sharedComponents/Text/BodyText';
 import {useObservations} from '../../hooks/server/observations';
 import {useTracks} from '../../hooks/server/track';
 import {useAuthContext} from '../../contexts/AuthContext';
@@ -105,7 +109,17 @@ export const HomeTabs = ({navigation}: NativeRootNavigationProps<'Home'>) => {
             header: headerSolido,
           }}
         />
-        <Tab.Screen name="Map" component={MapScreen} />
+        <Tab.Screen
+          name="Map"
+          component={MapScreen}
+          options={({navigation: tabNav}) => ({
+            headerRight: () => (
+              <TrackMapButton
+                onPress={() => tabNav.navigate('Map', {trackingOpen: true})}
+              />
+            ),
+          })}
+        />
         <Tab.Screen
           name="Notificacoes"
           component={Notificacoes}
@@ -116,6 +130,40 @@ export const HomeTabs = ({navigation}: NativeRootNavigationProps<'Home'>) => {
     </>
   );
 };
+
+export function TrackMapButton({onPress}: {onPress: () => void}) {
+  const {isTracking} = useTracking();
+  const timer = useTrackTimer();
+
+  return (
+    <TouchableOpacity
+      testID="mapTrackButton"
+      accessibilityLabel="Track recording"
+      // Rótulo fixo nos dois estados (#32): o leitor de tela distingue
+      // parado/gravando (e ouve o tempo decorrido) pelo valor acessível.
+      accessibilityValue={{
+        text: isTracking ? `Recording, ${timer}` : 'Not recording',
+      }}
+      hitSlop={20}
+      style={styles.trackMapButton}
+      onPress={onPress}>
+      {isTracking && (
+        <View style={styles.trackRuntimeWrapper}>
+          <View
+            testID="mapTrackButton.indicator"
+            style={styles.trackIndicator}
+          />
+          <BodyText variant="tinyMeta">{timer}</BodyText>
+        </View>
+      )}
+      <TracksIcon
+        testID="mapTrackButton.icon"
+        color={isTracking ? COIAB_ORANGE : NEW_DARK_GREY}
+        height={22}
+      />
+    </TouchableOpacity>
+  );
+}
 
 function useShowDownloadIcon() {
   const {data: observations} = useObservations();
@@ -145,3 +193,32 @@ function DownloadObservationsButton({onPress}: {onPress: () => void}) {
     </TouchableOpacity>
   );
 }
+
+const styles = StyleSheet.create({
+  trackMapButton: {
+    marginRight: 10,
+    backgroundColor: WHITE,
+    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  trackRuntimeWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 6,
+  },
+  trackIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#59A553',
+    marginRight: 4,
+  },
+});

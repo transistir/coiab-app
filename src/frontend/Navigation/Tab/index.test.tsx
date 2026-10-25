@@ -82,6 +82,27 @@ jest.mock('../../hooks/server/presets', () => ({
   usePresetsQuery: () => ({data: []}),
 }));
 
+// `jest.mock` is file-scoped, so both tracking hooks delegate to the real
+// implementation by default: the navigator suite keeps running the real
+// track store, and only the TrackMapButton describe pins their return values.
+jest.mock('../../hooks/useTracking', () => {
+  const actual = jest.requireActual<typeof import('../../hooks/useTracking')>(
+    '../../hooks/useTracking',
+  );
+  return {...actual, useTracking: jest.fn(actual.useTracking)};
+});
+jest.mock('../../hooks/useTrackTimer', () => {
+  const actual = jest.requireActual<typeof import('../../hooks/useTrackTimer')>(
+    '../../hooks/useTrackTimer',
+  );
+  return {...actual, useTrackTimer: jest.fn(actual.useTrackTimer)};
+});
+
+// The global SVG mock (src/frontend/__mocks__/svg.tsx) forwards only
+// `testID`. As in ErrorBottomSheet.test.tsx, the track icon becomes a named
+// host component instead, which keeps every prop (`color` included) visible.
+jest.mock('../../images/Tracks.svg', () => 'TracksIcon');
+
 process.env.MAPBOX_ACCESS_TOKEN = 'test-token';
 
 import * as React from 'react';
@@ -108,8 +129,10 @@ import {createAppProvidersWrapper} from '../../../../tests/integration/helpers/r
 import {executarEmOrdem} from '../../../../tests/integration/helpers/setupIntegrationTest';
 import {ActiveProjectProvider} from '../../contexts/ActiveProjectContext';
 import {sleep} from '../../lib/sleep';
-import {DARK_GREY, WHITE} from '../../lib/styles';
-import {HomeTabs} from './index';
+import {COIAB_ORANGE, DARK_GREY, NEW_DARK_GREY, WHITE} from '../../lib/styles';
+import {useTracking} from '../../hooks/useTracking';
+import {useTrackTimer} from '../../hooks/useTrackTimer';
+import {HomeTabs, TrackMapButton} from './index';
 
 type TestStackParamsList = {
   Home: NavigatorScreenParams<HomeTabsParamsList>;
@@ -142,6 +165,67 @@ function StubAppSettings() {
 function StubExport() {
   return <View testID="STUB.export-observations" />;
 }
+
+// Antes do suite do navigator: o último teste dele (câmera) tem de continuar
+// sendo o último do arquivo.
+describe('TrackMapButton — estado de gravação (#32)', () => {
+  const realUseTracking = jest.mocked(useTracking).getMockImplementation()!;
+  const realUseTrackTimer = jest.mocked(useTrackTimer).getMockImplementation()!;
+
+  beforeEach(() => {
+    jest
+      .mocked(useTracking)
+      .mockReturnValue({isTracking: false} as ReturnType<typeof useTracking>);
+    jest.mocked(useTrackTimer).mockReturnValue('00:01:23');
+  });
+
+  afterEach(() => {
+    // Devolve os hooks reais ao suite do navigator.
+    jest.mocked(useTracking).mockImplementation(realUseTracking);
+    jest.mocked(useTrackTimer).mockImplementation(realUseTrackTimer);
+  });
+
+  test('parado: sem cronômetro, sem indicador verde e ícone cinza', async () => {
+    await render(<TrackMapButton onPress={jest.fn()} />);
+
+    expect(screen.getByLabelText('Track recording')).toBeTruthy();
+    // O rótulo é o mesmo nos dois estados: é o valor acessível que diz ao
+    // leitor de tela se há gravação (e, gravando, o tempo decorrido).
+    expect(screen.getByTestId('mapTrackButton')).toHaveAccessibilityValue({
+      text: 'Not recording',
+    });
+    // O hook do cronômetro devolve um valor, mas parado ele não aparece.
+    expect(screen.queryByText('00:01:23')).toBeNull();
+    expect(screen.queryByTestId('mapTrackButton.indicator')).toBeNull();
+    expect(screen.getByTestId('mapTrackButton.icon').props.color).toBe(
+      NEW_DARK_GREY,
+    );
+  });
+
+  test('gravando: cronômetro, indicador verde e ícone laranja', async () => {
+    jest
+      .mocked(useTracking)
+      .mockReturnValue({isTracking: true} as ReturnType<typeof useTracking>);
+
+    await render(<TrackMapButton onPress={jest.fn()} />);
+
+    expect(screen.getByLabelText('Track recording')).toBeTruthy();
+    expect(screen.getByTestId('mapTrackButton')).toHaveAccessibilityValue({
+      text: 'Recording, 00:01:23',
+    });
+    expect(screen.getByText('00:01:23')).toBeTruthy();
+    expect(screen.getByTestId('mapTrackButton.indicator')).toBeTruthy();
+    expect(
+      StyleSheet.flatten(
+        screen.getByTestId('mapTrackButton.indicator').props.style,
+      ).backgroundColor,
+    ).toBe('#59A553');
+    expect(screen.getByTestId('mapTrackButton.icon').props.color).toBe(
+      COIAB_ORANGE,
+    );
+  });
+});
+
 describe('HomeTabs — barra de 5 abas (#32)', () => {
   let manager: MapeoManager;
   let client: ComapeoCoreClientApi;
@@ -388,6 +472,45 @@ describe('HomeTabs — barra de 5 abas (#32)', () => {
     await user.press(await screen.findByTestId('tabBarButtonMap'));
 
     expect(await screen.findByTestId('MAIN.map-screen')).toBeTruthy();
+  });
+
+  test('o botão de trilha fica acessível dentro do mapa', async () => {
+    await renderHomeTabs();
+    const user = userEvent.setup();
+
+    await user.press(await screen.findByTestId('tabBarButtonMap'));
+
+    // Pelo testID primeiro (o ponto de RED do critério de aceite); o rótulo
+    // de acessibilidade aponta para o mesmo elemento.
+    const trackBtn = await screen.findByTestId('mapTrackButton');
+    expect(trackBtn).toBeTruthy();
+    expect(await screen.findByLabelText('Track recording')).toBe(trackBtn);
+
+    await user.press(trackBtn);
+    expect(await screen.findByText('Ready to record new track?')).toBeTruthy();
+  });
+
+  test('o botão de trilha só aparece na aba Map (#32)', async () => {
+    await renderHomeTabs();
+    const user = userEvent.setup();
+
+    // O Map é aberto primeiro: a cena dele continua montada (inativa) ao
+    // trocar de aba, então a ausência nas demais abas não é trivial.
+    await user.press(await screen.findByTestId('tabBarButtonMap'));
+    expect(await screen.findByLabelText('Track recording')).toBeTruthy();
+
+    for (const [tabButton, conteudo] of [
+      ['tabBarButtonPaneiro', 'observationsEmptyView'],
+      ['tabBarButtonNotificacoes', 'NOTIFICACOES.scrn'],
+      ['tabBarButtonMenu', 'MENU.scrn'],
+    ] as const) {
+      await user.press(await screen.findByTestId(tabButton));
+      expect(await screen.findByTestId(conteudo)).toBeTruthy();
+      await waitFor(() =>
+        expect(screen.queryByLabelText('Track recording')).toBeNull(),
+      );
+      expect(screen.queryByTestId('mapTrackButton')).toBeNull();
+    }
   });
 
   test('nenhuma aba tem botão de abrir menu (#118)', async () => {

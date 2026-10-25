@@ -30,6 +30,7 @@ export function HomeHeader({
   const {data} = useStorageReadingQuery();
   const isLow = isLowStorage(data.freeBytes);
   const insets = useSafeAreaInsets();
+  const headerRight = options.headerRight?.({canGoBack: false});
 
   return (
     <View
@@ -45,6 +46,7 @@ export function HomeHeader({
       ]}>
       <View style={styles.headerRow}>
         <View
+          testID="HOME.header-title-box"
           style={[
             styles.titleBox,
             {backgroundColor: projectDetails.projectColor},
@@ -63,9 +65,11 @@ export function HomeHeader({
             </View>
           )}
         </View>
-        <View style={{paddingLeft: 10}}>
-          {options.headerRight?.({canGoBack: false})}
-        </View>
+        {headerRight ? (
+          <View testID="HOME.header-right" style={styles.headerRight}>
+            {headerRight}
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -91,6 +95,11 @@ const styles = StyleSheet.create({
     paddingLeft: 10,
     paddingRight: 10,
     flexShrink: 1,
+  },
+  // A pílula encolhe (flexShrink 1 + reticências) e o headerRight nunca (flexShrink 0): o botão mantém a largura com qualquer título.
+  headerRight: {
+    paddingLeft: 10,
+    flexShrink: 0,
   },
   text: {
     flexShrink: 1,
