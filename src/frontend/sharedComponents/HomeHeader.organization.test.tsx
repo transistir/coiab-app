@@ -172,6 +172,9 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
     expect(screen.getByTestId('HOME.header-title-box')).not.toHaveStyle({
       maxWidth: expect.anything(),
     });
+    expect(screen.getByTestId('HOME.header-title-box')).toHaveStyle({
+      flexShrink: 1,
+    });
     const direita = screen.getByTestId('HOME.header-right');
     expect(direita).toHaveStyle({flexShrink: 0});
     expect(within(direita).getByTestId('header-right-stub')).toBeOnTheScreen();
