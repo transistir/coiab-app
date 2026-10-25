@@ -214,6 +214,16 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
     expect(screen.queryByTestId('HOME.header-right')).toBeNull();
   });
 
+  it('headerRight que devolve null não monta o container (#32)', async () => {
+    // The case above omits headerRight, so it cannot tell an absent option
+    // from one that returns nothing: the container follows what
+    // headerRight(...) returns. An element that renders null (Paneiro's
+    // download button with nothing to download) still mounts it.
+    await renderHeader(() => null);
+    expect(await screen.findByTestId('HOME.header-title')).toBeOnTheScreen();
+    expect(screen.queryByTestId('HOME.header-right')).toBeNull();
+  });
+
   it('não nomeia a organização quando o projeto ativo é outro projeto', async () => {
     // RED case (SPEC A §4.2 regra 5): an untracked switch of the active
     // project — LeaveProject, a create/accept repointing the id
