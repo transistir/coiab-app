@@ -189,6 +189,11 @@ describe('TrackMapButton — estado de gravação (#32)', () => {
     await render(<TrackMapButton onPress={jest.fn()} />);
 
     expect(screen.getByLabelText('Track recording')).toBeTruthy();
+    // O rótulo é o mesmo nos dois estados: é o valor acessível que diz ao
+    // leitor de tela se há gravação (e, gravando, o tempo decorrido).
+    expect(screen.getByTestId('mapTrackButton')).toHaveAccessibilityValue({
+      text: 'Not recording',
+    });
     // O hook do cronômetro devolve um valor, mas parado ele não aparece.
     expect(screen.queryByText('00:01:23')).toBeNull();
     expect(screen.queryByTestId('mapTrackButton.indicator')).toBeNull();
@@ -205,6 +210,9 @@ describe('TrackMapButton — estado de gravação (#32)', () => {
     await render(<TrackMapButton onPress={jest.fn()} />);
 
     expect(screen.getByLabelText('Track recording')).toBeTruthy();
+    expect(screen.getByTestId('mapTrackButton')).toHaveAccessibilityValue({
+      text: 'Recording, 00:01:23',
+    });
     expect(screen.getByText('00:01:23')).toBeTruthy();
     expect(screen.getByTestId('mapTrackButton.indicator')).toBeTruthy();
     expect(

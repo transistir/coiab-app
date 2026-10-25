@@ -139,6 +139,11 @@ export function TrackMapButton({onPress}: {onPress: () => void}) {
     <TouchableOpacity
       testID="mapTrackButton"
       accessibilityLabel="Track recording"
+      // Rótulo fixo nos dois estados (#32): o leitor de tela distingue
+      // parado/gravando (e ouve o tempo decorrido) pelo valor acessível.
+      accessibilityValue={{
+        text: isTracking ? `Recording, ${timer}` : 'Not recording',
+      }}
       hitSlop={20}
       style={styles.trackMapButton}
       onPress={onPress}>
