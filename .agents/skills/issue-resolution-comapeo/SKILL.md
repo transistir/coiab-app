@@ -78,7 +78,10 @@ squash commit is an ancestor of `develop` (`gh pr view <N> --json mergeCommit
 The empty-diff check alone false-negatives once an unrelated commit landed on
 `develop` after the merge; the ancestor check survives that, but only together
 with the head match — the squash commit stays reachable even after a follow-up
-commit lands on the branch, and deleting then loses it.
+commit lands on the branch, and deleting then loses it. Before deleting a local
+`<branch>`, also require `<branch>` and `origin/<branch>` to point at the same
+commit, or run the tree proof against `<branch>` — unpushed local commits are
+invisible to any comparison that only reads `origin/*`.
 
 ## Verification
 
