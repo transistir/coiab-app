@@ -70,7 +70,8 @@ Squash merges do not preserve ancestry: after the PR merges,
 — a stale `origin/develop` makes any comparison meaningless. Then accept one of
 two proofs: the branch tree matches `develop`
 (`git diff --stat origin/develop origin/<branch>` empty), or all three hold:
-`gh pr view <N> --json state` says `MERGED`, its `headRefOid` equals
+`gh pr view <N> --json state,headRefOid` says
+`MERGED`, its `headRefOid` equals
 `git rev-parse origin/<branch>` (no commit was pushed after the merge), and the
 squash commit is an ancestor of `develop` (`gh pr view <N> --json mergeCommit
 -q .mergeCommit.oid`, then `git merge-base --is-ancestor <oid> origin/develop`).
@@ -101,17 +102,18 @@ required names, conclusions and SHA, not just the absence of failures.
 - Integration teardown timeouts: `@comapeo/core`'s `FastifyController.stop()`
   calls `server.close()` + `server.closeIdleConnections()` directly and never
   `fastify.close()`, so fastify's `forceCloseConnections` never applies. A
-  connection that is busy when `stop()` runs becomes idle only after its
-  response finishes, and by then `closeIdleConnections()` has already run, so
-  the socket can sit out fastify's `keepAliveTimeout` (72s in fastify 4.29.1)
-  and a 30s `afterEach` budget dies while every test in the suite passes. The
-  measured ~70s wait is consistent with that path, not proof of it. Budget the
-  hook above 72s (90s) and warn above 20s to record the real duration. Do not
-  force `closeAllConnections()`: the killed connection has a `fetch` in flight
-  and `clienteDeCriacao.ts` has no catch, which trades a timeout flake for an
-  unhandled rejection. Measure before choosing — two ~70s teardowns (70031ms
-  and 70055ms in the #126 warning log) are proof the delay is real; six fast
-  runs are not.
+  teardown measured 70031ms and 70055ms — just under fastify's 72s
+  `keepAliveTimeout` (4.29.1) — so a 30s `afterEach` budget dies while every
+  test in the suite passes. The exact mechanism is unconfirmed: the socket was
+  not counted as idle by `closeIdleConnections()`, and if the 72s timer is the
+  cause, its countdown started just before `encerrar()` — i.e. the response had
+  already finished. An unconsumed response body (see the helper's docblock) is
+  the known suspect. Budget the hook above 72s (90s) and warn above 20s to
+  record the real duration. Do not force `closeAllConnections()`: the killed
+  connection has a `fetch` in flight and `clienteDeCriacao.ts` has no catch,
+  which trades a timeout flake for an unhandled rejection. Measure before
+  choosing — two ~70s teardowns are proof the delay is real; six fast runs are
+  not.
 - A flake that never reproduces locally does not clear the suspect: read the
   failure path in the dependency source (`rpc-reflector` `handleClose` rejects
   all in-flight calls with `ChannelClosedError` at close; `@comapeo/ipc`
