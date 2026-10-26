@@ -6,6 +6,7 @@ description: Resolve COIAB bugs with reproducible regression tests, independent 
 # Comapeo Issue Resolution & PR Workflow
 
 ## Trigger
+
 Fixing COIAB bugs in `transistir/coiab-app`. Read `AGENTS.md` first: all COIAB
 implementation stays here, including work begun in `transistir/comapeo-mobile-1`.
 Never write to `digidem/*`.
@@ -55,6 +56,7 @@ preserved for reference, not presented as files or APIs in this native repo.
    `package.json` scripts and preserve hooks.
 
 ## Branch cleanup
+
 Only delete merged/obsolete branches within authorized cleanup scope, in
 `transistir/coiab-app`. Check spelling variants (comapeco, comapoco) and exact
 refs before deletion. Verify with `git ls-remote origin refs/heads/<ref>`.
@@ -62,13 +64,48 @@ Inspect `git worktree list` and worktree status first; remove clean disposable
 worktrees with `git worktree remove <path>`, never recursively delete a clone
 or force removal to bypass uncommitted work.
 
+Squash merges do not preserve ancestry: after the PR merges,
+`git log origin/develop..HEAD` still lists the branch commits. Confirm the
+content landed with `git diff --stat origin/develop origin/<branch>` returning
+empty before deleting the branch — `git branch --merged` is the wrong check.
+
 ## Verification
+
 PR APIs can lag a push by 1-3 minutes; poll the actual head SHA rather than
 sleeping once and trusting stale results. The historical cloud-app tally was
 15 passed, 6 skipped, 0 failed; do not use that fixed count for COIAB. Check
 required names, conclusions and SHA, not just the absence of failures.
 
+## Flake repro loops
+
+- A single jest run can PASS yet hang forever after the suite ("Jest did not
+  exit"). In a loop, bound every iteration (`--forceExit` or an external
+  `timeout` per run) or the loop stalls ~15 min per run and collects zero
+  evidence. Hang after teardown = open handles surviving teardown — often the
+  same surface as the CI-only flake being chased (case: #97 repro loop,
+  2026-09-29).
+- Integration teardown timeouts: `@comapeo/core`'s `FastifyController.stop()`
+  calls `server.close()` + `server.closeIdleConnections()` directly and never
+  `fastify.close()`, so fastify's `forceCloseConnections` never applies. A
+  connection still serving a response holds the socket for fastify's
+  `keepAliveTimeout` (72s in fastify 4.29.1), so a 30s `afterEach` budget dies
+  while every test in the suite passes. Budget the hook above 72s (90s) and
+  warn above 20s to record the real duration. Do not force
+  `closeAllConnections()`: the killed connection has a `fetch` in flight and
+  `clienteDeCriacao.ts` has no catch, which trades a timeout flake for an
+  unhandled rejection. Measure before choosing — two ~70s teardowns (70031ms
+  and 70055ms in the #126 warning log) are proof; six fast runs are not.
+- A flake that never reproduces locally does not clear the suspect: read the
+  failure path in the dependency source (`rpc-reflector` `handleClose` rejects
+  all in-flight calls with `ChannelClosedError` at close; `@comapeo/ipc`
+  documents in-flight rejections as by-design). If teardown closes the channel
+  while work is pending, the fix is deterministic draining (cancel queries,
+  await in-flight RPCs before close) — never a fixed `sleep(N)` boundary.
+
 ## Pitfalls
+
+- `gh pr view --json merged` is not a field; use `state`, `mergedAt` and
+  `mergeCommit`. The error lists every valid field.
 - Em-dashes in unquoted heredocs produce `\\xE2` GraphQL parse errors — use `--body-file`.
 - `&` in `gh` `--label` args causes shell backgrounding — quote carefully.
 - A branch checked out in a worktree (historically `/tmp/pr172`) cannot be deleted; use the safe cleanup procedure above.
