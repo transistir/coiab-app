@@ -69,12 +69,15 @@ Squash merges do not preserve ancestry: after the PR merges,
 `git branch --merged` is the wrong check. Run `git fetch origin --prune` first
 — a stale `origin/develop` makes any comparison meaningless. Then accept one of
 two proofs: the branch tree matches `develop`
-(`git diff --stat origin/develop origin/<branch>` empty), or the PR is merged
-and its squash commit is an ancestor of `develop` (`gh pr view <N> --json
-state,mergeCommit`, then `git merge-base --is-ancestor <mergeCommit>
-origin/develop`). The empty-diff check alone false-negatives once an unrelated
-commit landed on `develop` after the merge; the ancestor check survives because
-the squash commit stays reachable.
+(`git diff --stat origin/develop origin/<branch>` empty), or all three hold:
+`gh pr view <N> --json state` says `MERGED`, its `headRefOid` equals
+`git rev-parse origin/<branch>` (no commit was pushed after the merge), and the
+squash commit is an ancestor of `develop` (`gh pr view <N> --json mergeCommit
+-q .mergeCommit.oid`, then `git merge-base --is-ancestor <oid> origin/develop`).
+The empty-diff check alone false-negatives once an unrelated commit landed on
+`develop` after the merge; the ancestor check survives that, but only together
+with the head match — the squash commit stays reachable even after a follow-up
+commit lands on the branch, and deleting then loses it.
 
 ## Verification
 
@@ -85,25 +88,30 @@ required names, conclusions and SHA, not just the absence of failures.
 
 ## Flake repro loops
 
-- A single jest run can PASS yet hang forever after the suite ("Jest did not
-  exit"). In a loop, bound every iteration with an external `timeout` per run,
-  or the loop stalls ~15 min per run and collects zero evidence. `--forceExit`
-  also bounds the run but kills Jest before handle cleanup completes, so treat
-  any `--forceExit` run as unable to verify process cleanup — the open handles
-  are the very thing being diagnosed. Hang after teardown = open handles
-  surviving teardown — often the same surface as the CI-only flake being chased
-  (case: #97 repro loop, 2026-09-29).
+- A single jest run can PASS yet hang after the suite ("Jest did not exit")
+  until the surrounding tool timeout kills it (~15 min per run observed). In a
+  loop, bound every iteration with an external `timeout` or the loop collects
+  zero evidence. `--forceExit` is not a substitute: it only forces exit after
+  tests finish, so a hang during tests or teardown still stalls, and it kills
+  Jest before handle cleanup completes — treat any `--forceExit` run as unable
+  to verify process cleanup, since the open handles are the very thing being
+  diagnosed. Hang after teardown = open handles surviving teardown — often the
+  same surface as the CI-only flake being chased (case: #97 repro loop,
+  2026-09-29).
 - Integration teardown timeouts: `@comapeo/core`'s `FastifyController.stop()`
   calls `server.close()` + `server.closeIdleConnections()` directly and never
   `fastify.close()`, so fastify's `forceCloseConnections` never applies. A
-  connection still serving a response holds the socket for fastify's
-  `keepAliveTimeout` (72s in fastify 4.29.1), so a 30s `afterEach` budget dies
-  while every test in the suite passes. Budget the hook above 72s (90s) and
-  warn above 20s to record the real duration. Do not force
-  `closeAllConnections()`: the killed connection has a `fetch` in flight and
-  `clienteDeCriacao.ts` has no catch, which trades a timeout flake for an
+  connection that is busy when `stop()` runs becomes idle only after its
+  response finishes, and by then `closeIdleConnections()` has already run, so
+  the socket can sit out fastify's `keepAliveTimeout` (72s in fastify 4.29.1)
+  and a 30s `afterEach` budget dies while every test in the suite passes. The
+  measured ~70s wait is consistent with that path, not proof of it. Budget the
+  hook above 72s (90s) and warn above 20s to record the real duration. Do not
+  force `closeAllConnections()`: the killed connection has a `fetch` in flight
+  and `clienteDeCriacao.ts` has no catch, which trades a timeout flake for an
   unhandled rejection. Measure before choosing — two ~70s teardowns (70031ms
-  and 70055ms in the #126 warning log) are proof; six fast runs are not.
+  and 70055ms in the #126 warning log) are proof the delay is real; six fast
+  runs are not.
 - A flake that never reproduces locally does not clear the suspect: read the
   failure path in the dependency source (`rpc-reflector` `handleClose` rejects
   all in-flight calls with `ChannelClosedError` at close; `@comapeo/ipc`
