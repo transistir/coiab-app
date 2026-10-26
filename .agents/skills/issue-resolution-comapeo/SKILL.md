@@ -65,9 +65,16 @@ worktrees with `git worktree remove <path>`, never recursively delete a clone
 or force removal to bypass uncommitted work.
 
 Squash merges do not preserve ancestry: after the PR merges,
-`git log origin/develop..HEAD` still lists the branch commits. Confirm the
-content landed with `git diff --stat origin/develop origin/<branch>` returning
-empty before deleting the branch — `git branch --merged` is the wrong check.
+`git log origin/develop..HEAD` still lists the branch commits, and
+`git branch --merged` is the wrong check. Run `git fetch origin --prune` first
+— a stale `origin/develop` makes any comparison meaningless. Then accept one of
+two proofs: the branch tree matches `develop`
+(`git diff --stat origin/develop origin/<branch>` empty), or the PR is merged
+and its squash commit is an ancestor of `develop` (`gh pr view <N> --json
+state,mergeCommit`, then `git merge-base --is-ancestor <mergeCommit>
+origin/develop`). The empty-diff check alone false-negatives once an unrelated
+commit landed on `develop` after the merge; the ancestor check survives because
+the squash commit stays reachable.
 
 ## Verification
 
@@ -79,11 +86,13 @@ required names, conclusions and SHA, not just the absence of failures.
 ## Flake repro loops
 
 - A single jest run can PASS yet hang forever after the suite ("Jest did not
-  exit"). In a loop, bound every iteration (`--forceExit` or an external
-  `timeout` per run) or the loop stalls ~15 min per run and collects zero
-  evidence. Hang after teardown = open handles surviving teardown — often the
-  same surface as the CI-only flake being chased (case: #97 repro loop,
-  2026-09-29).
+  exit"). In a loop, bound every iteration with an external `timeout` per run,
+  or the loop stalls ~15 min per run and collects zero evidence. `--forceExit`
+  also bounds the run but kills Jest before handle cleanup completes, so treat
+  any `--forceExit` run as unable to verify process cleanup — the open handles
+  are the very thing being diagnosed. Hang after teardown = open handles
+  surviving teardown — often the same surface as the CI-only flake being chased
+  (case: #97 repro loop, 2026-09-29).
 - Integration teardown timeouts: `@comapeo/core`'s `FastifyController.stop()`
   calls `server.close()` + `server.closeIdleConnections()` directly and never
   `fastify.close()`, so fastify's `forceCloseConnections` never applies. A
