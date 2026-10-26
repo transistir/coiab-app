@@ -71,10 +71,11 @@ Squash merges do not preserve ancestry: after the PR merges,
 two proofs: the branch tree matches `develop`
 (`git diff --stat origin/develop origin/<branch>` empty), or all three hold:
 `gh pr view <N> --json state,headRefOid` says
-`MERGED`, its `headRefOid` equals
-`git rev-parse origin/<branch>` (no commit was pushed after the merge), and the
-squash commit is an ancestor of `develop` (`gh pr view <N> --json mergeCommit
--q .mergeCommit.oid`, then `git merge-base --is-ancestor <oid> origin/develop`).
+`MERGED`, its `headRefOid` equals the head SHA recorded at merge time — the
+cycle ledger's frozen SHA, not a value read after the fact, because the head ref
+can move independently of the merge — and the squash commit is an ancestor of
+`develop` (`gh pr view <N> --json mergeCommit -q .mergeCommit.oid`, then
+`git merge-base --is-ancestor <oid> origin/develop`).
 The empty-diff check alone false-negatives once an unrelated commit landed on
 `develop` after the merge; the ancestor check survives that, but only together
 with the head match — the squash commit stays reachable even after a follow-up
