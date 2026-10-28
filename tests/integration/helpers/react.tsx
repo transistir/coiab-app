@@ -29,6 +29,44 @@ import {createAppUsageStatsStore} from '../../../src/frontend/contexts/AppUsageS
 import {createUnitSystemStore} from '../../../src/frontend/contexts/UnitSystemStoreContext';
 import {createQADeviceNameStore} from '../../../src/frontend/contexts/QADeviceNameStoreContext';
 import {createOrganizationInviteIdentityStore} from '../../../src/frontend/contexts/OrganizationInviteIdentityStoreContext';
+import {
+  COIAB_USER_PROFILE_STORAGE_KEY,
+  createUserProfileStore,
+  type UserProfileState,
+} from '../../../src/frontend/contexts/UserProfileStoreContext';
+import {MMKVStoreInitializer} from '../../../src/frontend/hooks/persistedState/createPersistedState';
+import {ETHNIC_GROUPS} from '../../../src/frontend/lib/ethnicGroups';
+
+/**
+ * The profile every harness starts with (#128). A complete profile keeps the
+ * empty-document startup branch on `Success`, which is what the suites that
+ * mount the real navigator and assert the create/join fork expect — before
+ * the profile gate, that branch had no prerequisite at all. Pass
+ * `userProfile: null` (or a partial `UserProfileState`) in a test that needs
+ * the onboarding flow instead.
+ */
+export const COMPLETE_USER_PROFILE: UserProfileState = {
+  ethnicGroupId: ETHNIC_GROUPS[0]!.id,
+  village: 'Aldeia de teste',
+};
+
+/**
+ * Writes the profile through the same persisted store production hydrates,
+ * before `AppProviders` creates its singleton (its state initializer reads
+ * MMKV at mount). `null` clears the key, so one test's profile cannot leak
+ * into the next through the durable storage.
+ */
+function seedUserProfile(profile: UserProfileState | null) {
+  MMKVStoreInitializer.removeItem(COIAB_USER_PROFILE_STORAGE_KEY);
+  if (!profile) return;
+  const store = createUserProfileStore({persist: true});
+  if (profile.ethnicGroupId !== null) {
+    store.actions.setEthnicGroup(profile.ethnicGroupId);
+  }
+  if (profile.village !== null) {
+    store.actions.setVillage(profile.village);
+  }
+}
 
 const DEFAULT_LOCAL_DISCOVERY_STATE: LocalDiscoveryState = {
   status: 'started',
@@ -79,12 +117,17 @@ export function createAppProvidersWrapper({
   isOnline = true,
   activeProjectId,
   qaDeviceName,
+  userProfile = COMPLETE_USER_PROFILE,
 }: {
   mapeoApi: ComapeoCoreClientApi;
   isOnline?: boolean;
   activeProjectId?: string;
   qaDeviceName?: string;
+  /** `null` starts the app with the empty onboarding profile. */
+  userProfile?: UserProfileState | null;
 }) {
+  seedUserProfile(userProfile);
+
   const queryClient = new QueryClient({
     // Disable garbage collection, so that no "collect garbage" timers are
     // started, which would otherwise leave an open handle, giving a Jest

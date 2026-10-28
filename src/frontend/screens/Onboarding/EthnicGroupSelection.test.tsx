@@ -74,7 +74,7 @@ describe('EthnicGroupSelection', () => {
 
   test('pre-selects the ethnic group already stored in the profile', async () => {
     const store = createUserProfileStore();
-    const stored = ETHNIC_GROUPS[1];
+    const stored = ETHNIC_GROUPS[1]!;
     store.instance.setState({ethnicGroupId: stored.id});
 
     await renderScreen({store});
@@ -90,7 +90,7 @@ describe('EthnicGroupSelection', () => {
   test('saves the selected group and navigates to VillageEntry', async () => {
     const user = userEvent.setup();
     const {store, navigation} = await renderScreen();
-    const chosen = ETHNIC_GROUPS[0];
+    const chosen = ETHNIC_GROUPS[0]!;
 
     await user.press(screen.getByTestId(`${chosen.id}Button`));
     expect(
@@ -108,7 +108,7 @@ describe('EthnicGroupSelection', () => {
   test('shows an inline error and does not navigate when saving fails', async () => {
     const user = userEvent.setup();
     const store = createUserProfileStore();
-    const chosen = ETHNIC_GROUPS[0];
+    const chosen = ETHNIC_GROUPS[0]!;
     jest.spyOn(store.actions, 'setEthnicGroup').mockImplementation(() => {
       throw new Error('persist-failed');
     });

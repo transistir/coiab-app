@@ -44,6 +44,8 @@ export const EDITING_SCREEN_NAMES: (
   'DataPrivacy',
   'DeviceNaming',
   'OnboardingPrivacyPolicy',
+  'EthnicGroupSelection',
+  'VillageEntry',
   'Success',
   'AuthScreen',
   'ErrorBottomSheet',
