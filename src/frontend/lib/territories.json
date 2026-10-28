@@ -1,0 +1,7 @@
+{
+  "ethnicGroups": [
+    {"id": "dummy-1", "name": "Etnia Dummy 1"},
+    {"id": "dummy-2", "name": "Etnia Dummy 2"},
+    {"id": "dummy-3", "name": "Etnia Dummy 3"}
+  ]
+}
