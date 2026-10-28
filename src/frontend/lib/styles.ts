@@ -42,3 +42,6 @@ export const LIGHT_ORANGE = '#FFF5EB';
 // Página Entroncamento (Figma Kutary App V2, `2668:4539`): cor da saudação
 // "Olá, Parente" e de acentos claros sobre o fundo escuro.
 export const COIAB_SAND = '#DABA8D';
+// Fundo escuro das telas de onboarding do Kutary: bege para títulos e
+// destaques (mesmo valor de COIAB_SAND, nome semântico próprio).
+export const COIAB_BEIGE = '#DABA8D';
