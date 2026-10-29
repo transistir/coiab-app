@@ -29,6 +29,12 @@ type AutocompleteFieldProps = {
   testID?: string;
   maxLength?: number;
   accessibilityLabel?: string;
+  /**
+   * Abre a lista já no primeiro render, sem depender de foco. Só para
+   * stories/testes: o app nunca passa esta prop, então o comportamento padrão
+   * (lista fechada até foco ou edição) continua o mesmo.
+   */
+  defaultOpen?: boolean;
 };
 
 /**
@@ -46,8 +52,9 @@ export const AutocompleteField = ({
   testID,
   maxLength = 100,
   accessibilityLabel,
+  defaultOpen = false,
 }: AutocompleteFieldProps) => {
-  const [focused, setFocused] = React.useState(false);
+  const [focused, setFocused] = React.useState(defaultOpen);
   // Escolher uma sugestão fecha a lista mesmo com o input ainda focado
   // (`keyboardShouldPersistTaps="handled"`). Editar depois da escolha reabre a
   // lista sem depender de um novo `onFocus`.

@@ -55,10 +55,12 @@ function Harness({
   initialValue = '',
   onChangeText = jest.fn(),
   onSelect = jest.fn(),
+  defaultOpen = false,
 }: {
   initialValue?: string;
   onChangeText?: (text: string) => void;
   onSelect?: (name: string) => void;
+  defaultOpen?: boolean;
 }) {
   const [value, setValue] = React.useState(initialValue);
 
@@ -76,6 +78,7 @@ function Harness({
       }}
       testID={TEST_ID}
       placeholder="Digite ou escolha"
+      defaultOpen={defaultOpen}
     />
   );
 }
@@ -102,6 +105,15 @@ afterEach(() => {
 });
 
 describe('AutocompleteField', () => {
+  test('stays closed on first render unless defaultOpen is set', async () => {
+    await render(<Harness initialValue="Al" />);
+    expect(suggestion(TEST_ID, 'Alpha')).toBeNull();
+
+    await render(<Harness initialValue="Al" defaultOpen />);
+    expect(suggestion(TEST_ID, 'Alpha')).toBeOnTheScreen();
+    expect(suggestion(TEST_ID, 'Alpine')).toBeOnTheScreen();
+  });
+
   test('selecting a suggestion fills the field, closes the list and blurs the input', async () => {
     const onSelect = jest.fn();
     const dismiss = jest.spyOn(Keyboard, 'dismiss');

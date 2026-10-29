@@ -1,7 +1,11 @@
 import * as React from 'react';
+import {StyleSheet, View} from 'react-native';
 import type {Meta, StoryObj} from '@storybook/react-native';
 
 import {EthnicGroupSelection} from './EthnicGroupSelection';
+import {AutocompleteField} from '../../sharedComponents/AutocompleteField';
+import {getEthnicitySuggestions} from '../../lib/profileCatalog';
+import {DARK_GREY} from '../../lib/styles';
 import {
   UserProfileStoreProvider,
   createUserProfileStore,
@@ -64,3 +68,35 @@ export const WithSelection: Story = {
     );
   },
 };
+
+/**
+ * Lista de sugestões aberta com o valor "a" (#132): prova visual do filtro
+ * sobre o catálogo de etnias (Kahyana, Katuenayana, Katxuyana, Mawayana,
+ * Tunayana, Txikiyana). A tela abre a lista só com foco, então a story
+ * renderiza o campo direto com a prop story-only `defaultOpen`; nenhum
+ * caminho do app passa essa prop.
+ */
+export const SuggestionsOpen: Story = {
+  render: () => (
+    <View style={styles.storyScreen}>
+      <AutocompleteField
+        value="a"
+        onChangeText={() => {}}
+        suggestions={getEthnicitySuggestions('a')}
+        onSelect={() => {}}
+        placeholder="Digite ou escolha uma opção"
+        defaultOpen
+        testID="ONBOARDING.ethnic-group-inp"
+      />
+    </View>
+  ),
+};
+
+const styles = StyleSheet.create({
+  storyScreen: {
+    flex: 1,
+    backgroundColor: DARK_GREY,
+    paddingHorizontal: 20,
+    paddingTop: 24,
+  },
+});
