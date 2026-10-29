@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {defineMessages, useIntl} from 'react-intl';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 import {BodyText} from '../../sharedComponents/Text/BodyText';
 import {HeaderText} from '../../sharedComponents/Text/HeaderText';
@@ -47,8 +48,12 @@ type ScreenProps = NativeStackScreenProps<
   'EthnicGroupSelection'
 >;
 
+/** Without a notch `insets.top` is 0, so the layout is unchanged there. */
+const CONTENT_TOP_PADDING = 24;
+
 export const EthnicGroupSelection = ({navigation}: ScreenProps) => {
   const {formatMessage: t} = useIntl();
+  const insets = useSafeAreaInsets();
   const {ethnicGroupId} = useUserProfileState();
   const {setEthnicGroup} = useUserProfileActions();
   const [selectedId, setSelectedId] = React.useState(ethnicGroupId);
@@ -79,7 +84,10 @@ export const EthnicGroupSelection = ({navigation}: ScreenProps) => {
   return (
     <View style={styles.container}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          {paddingTop: CONTENT_TOP_PADDING + insets.top},
+        ]}
         keyboardShouldPersistTaps="handled">
         <Image
           source={require('../../images/ekanadyby-wordmark.png')}
@@ -128,7 +136,6 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 20,
-    paddingTop: 24,
     paddingBottom: 16,
     gap: 16,
   },

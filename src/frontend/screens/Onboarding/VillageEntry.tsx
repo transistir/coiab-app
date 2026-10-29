@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {defineMessages, useIntl} from 'react-intl';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import Ionicons from '@react-native-vector-icons/ionicons';
 
 import {BodyText} from '../../sharedComponents/Text/BodyText';
@@ -52,8 +53,12 @@ const m = defineMessages({
 
 type ScreenProps = NativeStackScreenProps<AppStackParamsList, 'VillageEntry'>;
 
+/** Without a notch `insets.top` is 0, so the layout is unchanged there. */
+const HEADER_TOP_PADDING = 12;
+
 export const VillageEntry = ({navigation}: ScreenProps) => {
   const {formatMessage: t} = useIntl();
+  const insets = useSafeAreaInsets();
   const {village} = useUserProfileState();
   const {setVillage} = useUserProfileActions();
   const [text, setText] = React.useState(village ?? '');
@@ -81,7 +86,8 @@ export const VillageEntry = ({navigation}: ScreenProps) => {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior="padding">
-      <View style={styles.header}>
+      <View
+        style={[styles.header, {paddingTop: HEADER_TOP_PADDING + insets.top}]}>
         <TouchableOpacity
           testID="ONBOARDING.village-back-btn"
           accessibilityRole="button"
@@ -148,7 +154,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    paddingTop: 12,
     paddingBottom: 16,
   },
   backButton: {

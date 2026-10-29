@@ -7,6 +7,7 @@ import {
   createUserProfileStore,
 } from '../../contexts/UserProfileStoreContext';
 import {ETHNIC_GROUPS} from '../../lib/ethnicGroups';
+import {withFlowState} from '../../../../.rnstorybook/decorators/withFlowState';
 
 /**
  * The screen takes its navigation from the real stack; these stories are for
@@ -20,6 +21,11 @@ const NoStoryComponent = () => null;
 const meta = {
   title: 'Onboarding/EthnicGroupSelection',
   component: NoStoryComponent,
+  // `scripts/storybook-capture.sh` requires `STORYBOOK.flow-ready.<storyId>`
+  // for every manifest row, including the `testID:` rows below; only the
+  // decorators render it. These stories already supply their own store, so no
+  // `parameters.flow.state` is needed.
+  decorators: [withFlowState],
 } satisfies Meta<typeof NoStoryComponent>;
 
 export default meta;
