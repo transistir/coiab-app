@@ -390,6 +390,86 @@ describe('app.config.js', () => {
     });
   });
 
+  describe('Sentry configuration', () => {
+    const getSentryConfig = (configOverrides: Record<string, unknown> = {}) => {
+      process.env.APP_VARIANT = 'development';
+      delete process.env.APP_VERSION;
+
+      const configFunction = getConfigWithPackageVersion('1.6.0');
+
+      return configFunction({
+        config: {
+          name: 'TestApp',
+          version: '1.0.0',
+          extra: {},
+          ios: {},
+          android: {},
+          ...configOverrides,
+        },
+      });
+    };
+
+    const getComapeoSentry = (result: any) => {
+      const plugin = result.plugins.find(
+        (entry: any) =>
+          Array.isArray(entry) && entry[0] === '@comapeo/core-react-native',
+      );
+      return plugin[1].sentry;
+    };
+
+    const getExpoSentryOptions = (result: any) => {
+      const plugin = result.plugins.find(
+        (entry: any) =>
+          Array.isArray(entry) && entry[0] === '@sentry/react-native/expo',
+      );
+      return plugin[1];
+    };
+
+    it('should default the DSN baked into app.config.js', () => {
+      delete process.env.SENTRY_DSN;
+
+      const result = getSentryConfig();
+
+      expect(getComapeoSentry(result).dsn).toMatch(/\/4512341010677840$/);
+    });
+
+    it('should use SENTRY_DSN when set', () => {
+      process.env.SENTRY_DSN = 'https://example.ingest.sentry.io/9999999';
+
+      const result = getSentryConfig();
+
+      expect(getComapeoSentry(result).dsn).toBe(
+        'https://example.ingest.sentry.io/9999999',
+      );
+    });
+
+    it('should override the Expo plugin organization/project from env', () => {
+      process.env.SENTRY_ORG = 'outra-org';
+      process.env.SENTRY_PROJECT = 'outro-projeto';
+      const {expo} = require('./app.json');
+
+      const result = getSentryConfig({plugins: expo.plugins});
+
+      expect(getExpoSentryOptions(result)).toMatchObject({
+        organization: 'outra-org',
+        project: 'outro-projeto',
+      });
+    });
+
+    it('should fall back to the app.json organization/project', () => {
+      delete process.env.SENTRY_ORG;
+      delete process.env.SENTRY_PROJECT;
+      const {expo} = require('./app.json');
+
+      const result = getSentryConfig({plugins: expo.plugins});
+
+      expect(getExpoSentryOptions(result)).toMatchObject({
+        organization: 'transistir',
+        project: 'coiab-app',
+      });
+    });
+  });
+
   describe('EAS_BUILD_GIT_COMMIT_HASH environment variable', () => {
     it('should use EAS_BUILD_GIT_COMMIT_HASH when available', () => {
       process.env.APP_VARIANT = 'development';

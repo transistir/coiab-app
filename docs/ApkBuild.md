@@ -28,7 +28,7 @@ Pass `--ref <branch>` to build a specific branch.
 ## Get the APK
 
 `gh workflow run` does not print the run it creates, so correlate the
-download with the dispatch in three steps: capture the UTC time *before*
+download with the dispatch in three steps: capture the UTC time _before_
 dispatching, filter the run list to the branch you dispatched on, and take
 the newest run created at or after that timestamp.
 
@@ -64,10 +64,10 @@ The workflow uploads the APK as the `coiab-apk` artifact (30-day retention).
 
 ## Profiles
 
-| Profile | APP variant | Package | Purpose |
-|---------|-------------|---------|---------|
-| `release-candidate` (default) | `releaseCandidate` | `org.coiab.rc` | Candidate APK for internal testing and QA — the MVP demo build |
-| `pre-release` | `preRelease` | `org.coiab.pre` | Early internal feedback |
+| Profile                       | APP variant        | Package         | Purpose                                                        |
+| ----------------------------- | ------------------ | --------------- | -------------------------------------------------------------- |
+| `release-candidate` (default) | `releaseCandidate` | `org.coiab.rc`  | Candidate APK for internal testing and QA — the MVP demo build |
+| `pre-release`                 | `preRelease`       | `org.coiab.pre` | Early internal feedback                                        |
 
 Select with the workflow's `profile` input:
 
@@ -87,18 +87,20 @@ The workflow consumes repository configuration (already present on
 - Variable `COMAPEO_METRICS_URL` and secret `COMAPEO_METRICS_API_KEY` —
   metrics reporting. Placeholder values (`https://metrics.invalid`) are
   acceptable for non-production builds.
-- Secret `SENTRY_AUTH_TOKEN` — uploads the JS source maps and creates the
-  Sentry release. Optional variables `SENTRY_ORG` / `SENTRY_PROJECT` choose
-  the destination (defaults: `transistir` / `coiab-app`).
+- Sentry events go to the `transistir/coiab-app` project. The DSN is baked
+  into `app.config.js`; `SENTRY_DSN` overrides it. Source-map upload is
+  **disabled** (see Notes).
 
 ## Notes
 
 - Builds are release builds with the JS bundle embedded (no Metro dev server).
-- Sentry source-map upload is enabled for this workflow
-  (`SENTRY_DISABLE_AUTO_UPLOAD=false`). It needs the `SENTRY_AUTH_TOKEN`
-  secret; without it the Sentry Gradle task fails the build. `eas.json` sets
-  no default, so local EAS builds without a token must export
-  `SENTRY_DISABLE_AUTO_UPLOAD=true` (see `.env.template`).
+- Sentry source-map upload is **disabled** (`SENTRY_DISABLE_AUTO_UPLOAD=true`,
+  set in `eas.json` and in this workflow). It has not been verified to work in
+  this build path; making it work is tracked as a follow-up. To enable it
+  locally, export `SENTRY_AUTH_TOKEN` and set
+  `SENTRY_DISABLE_AUTO_UPLOAD=false` (see `.env.template`). EAS cloud builds
+  (`build-rc.yml`, `build-release.yml`) also run with upload disabled, since
+  the GitHub `SENTRY_AUTH_TOKEN` secret is not available there.
 - For the upstream release machinery (EAS cloud builds, store submission) see
   [Releases.md](./Releases.md) — this workflow does not replace it; it is the
   lightweight, always-available path to a candidate APK.
