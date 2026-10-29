@@ -91,7 +91,8 @@ jobs:
 
       - name: Build APK
         env:
-          SENTRY_DISABLE_AUTO_UPLOAD: 'true'
+          SENTRY_DISABLE_AUTO_UPLOAD: 'false'
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
           COMAPEO_METRICS_URL: ${{ vars.COMAPEO_METRICS_URL }}
           COMAPEO_METRICS_API_KEY: ${{ secrets.COMAPEO_METRICS_API_KEY }}
