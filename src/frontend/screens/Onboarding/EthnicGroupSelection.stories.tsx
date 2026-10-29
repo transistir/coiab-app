@@ -10,9 +10,10 @@ import {ETHNIC_GROUPS} from '../../lib/ethnicGroups';
 
 /**
  * The screen takes its navigation from the real stack; these stories are for
- * visual review, so the callbacks are inert. The store comes from AppProviders
- * in the in-app Storybook; `WithSelection` adds a nested provider seeded with
- * an ethnic group to expose the pre-selected state.
+ * visual review, so the callbacks are inert. Each story provides its own
+ * non-persisted store: the AppProviders store would read and write the
+ * device's real MMKV. `WithSelection` seeds its store with an ethnic group to
+ * expose the pre-selected state.
  */
 const NoStoryComponent = () => null;
 
@@ -38,7 +39,9 @@ const route = {
 /** Empty profile: no radio selected and the continue button disabled. */
 export const Default: Story = {
   render: () => (
-    <EthnicGroupSelection navigation={navigation} route={route} />
+    <UserProfileStoreProvider store={createUserProfileStore()}>
+      <EthnicGroupSelection navigation={navigation} route={route} />
+    </UserProfileStoreProvider>
   ),
 };
 

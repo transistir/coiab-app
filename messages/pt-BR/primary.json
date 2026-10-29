@@ -597,7 +597,7 @@
     "message": "Continuar"
   },
   "$1screens.Onboarding.EthnicGroupSelection.saveError": {
-    "message": "Não foi possível salvar. Tente novamente."
+    "message": "Não foi possível salvar sua etnia. Tente novamente."
   },
   "$1screens.Onboarding.EthnicGroupSelection.title": {
     "message": "Qual é a sua etnia?"
@@ -633,7 +633,7 @@
     "message": "Digite o nome da aldeia"
   },
   "$1screens.Onboarding.VillageEntry.saveError": {
-    "message": "Informe o nome da aldeia."
+    "message": "Não foi possível salvar a aldeia. Tente novamente."
   },
   "$1screens.Onboarding.VillageEntry.title": {
     "message": "Qual é a sua aldeia?"

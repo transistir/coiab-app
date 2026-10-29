@@ -124,6 +124,13 @@ describe('paleta (styles.ts)', () => {
     expect(chavesTabela).toEqual(chavesArquivo);
   });
 
+  // COIAB_BEIGE é alias intencional de COIAB_SAND (nome semântico do tema). As
+  // duas entradas aparecem na TABELA, mas este caso trava a relação para que
+  // uma mudança futura em uma delas seja vista como mudança de alias.
+  test('COIAB_BEIGE continua alias de COIAB_SAND', () => {
+    expect(styles.COIAB_BEIGE).toBe(styles.COIAB_SAND);
+  });
+
   test.each(Object.entries(TABELA))(
     '(a) %s é o valor da tabela',
     (nome, esperadoHex) => {

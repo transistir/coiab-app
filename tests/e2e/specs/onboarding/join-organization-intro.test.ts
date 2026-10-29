@@ -9,8 +9,10 @@ import {completeEthnicProfileIfNeeded} from './helper/complete-ethnic-profile';
 // screen stays registered but is no longer driven from the fork.
 describe('Onboarding - Join Organization Intro Screen', () => {
   it('should navigate to the waiting screen', async () => {
-    // Runs standalone or after device-naming; only the standalone session
-    // still has the ethnicity/village profile pending.
+    // Runs standalone or after device-naming. Standalone the spec has no
+    // device name yet and lands on IntroToCoMapeo, not on the ethnicity
+    // screen; only after device-naming is the ethnicity/village profile the
+    // next pending step.
     await completeEthnicProfileIfNeeded();
 
     const joinOrgButton = await $(byResourceId('ONBOARDING.join-org-btn'));

@@ -43,5 +43,6 @@ export const LIGHT_ORANGE = '#FFF5EB';
 // "Olá, Parente" e de acentos claros sobre o fundo escuro.
 export const COIAB_SAND = '#DABA8D';
 // Fundo escuro das telas de onboarding do Kutary: bege para títulos e
-// destaques (mesmo valor de COIAB_SAND, nome semântico próprio).
+// destaques. Alias intencional de COIAB_SAND — mesmo valor, mas COIAB_BEIGE é
+// o nome semântico que o tema COIAB usa para essa superfície.
 export const COIAB_BEIGE = '#DABA8D';

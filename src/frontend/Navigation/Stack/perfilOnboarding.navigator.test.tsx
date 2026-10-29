@@ -101,7 +101,7 @@ jest.mock('@comapeo/core-react', () => {
         () => mockMapShares.value,
       ),
     // The invite sheet mounts only after the listener proves it is alive
-    // (case 7); this keeps the real screen renderable without core rows.
+    // (case 5); this keeps the real screen renderable without core rows.
     useSingleInvite: ({inviteId}: {inviteId: string}) => ({
       data: mockSingleInvite(inviteId),
     }),
@@ -260,7 +260,7 @@ async function preencherAldeia(nome = 'Aldeia de teste') {
  * an incomplete profile must open EthnicGroupSelection; while the flow runs,
  * the real PendingInvitesListener and PendingMapSharesListener sit in the
  * navigator layout and must stay silent. Only the join fork after Success
- * proves the listeners are alive (case 7).
+ * proves the listeners are alive (case 5).
  */
 describe('perfil de onboarding no navigator real (#128)', () => {
   const freshSetup = setupIntegrationTestWithoutProject();
@@ -366,7 +366,7 @@ describe('perfil de onboarding no navigator real (#128)', () => {
     });
   }, 30000);
 
-  test('caso 4: convite pendente desde a montagem não interrompe o perfil', async () => {
+  test('caso 4a: convite pendente desde a montagem não interrompe o perfil', async () => {
     setMockInvites([markerInvite('invite-cold-start')]);
 
     await freshSetup.renderNavigationAsync({userProfile: null});
@@ -379,7 +379,7 @@ describe('perfil de onboarding no navigator real (#128)', () => {
     expect(nomesDasRotas()).not.toContain('InviteReceived');
   }, 30000);
 
-  test('caso 4: convite que chega atrasado em cada passo não interrompe o perfil', async () => {
+  test('caso 4b: convite que chega atrasado em cada passo não interrompe o perfil', async () => {
     await freshSetup.renderNavigationAsync({userProfile: null});
     expect(
       await screen.findByText('What is your ethnicity?'),
@@ -400,7 +400,7 @@ describe('perfil de onboarding no navigator real (#128)', () => {
       'VillageEntry',
     ]);
 
-    await preencherAldeia('Aldeia do caso 4');
+    await preencherAldeia('Aldeia do caso 4b');
 
     // Arrives while Success is on screen.
     await act(async () => setMockInvites([plainInvite('invite-no-success')]));
@@ -410,10 +410,10 @@ describe('perfil de onboarding no navigator real (#128)', () => {
     expect(nomesDasRotas()).not.toContain('OrganizationInviteReceived');
   }, 30000);
 
-  test('caso 7: Success retém o convite e JoinOrganizationIntro o libera (listener vivo)', async () => {
+  test('caso 5: Success retém o convite e JoinOrganizationIntro o libera (listener vivo)', async () => {
     await freshSetup.renderNavigationAsync({userProfile: null});
     await escolherEtnia();
-    await preencherAldeia('Aldeia do caso 7');
+    await preencherAldeia('Aldeia do caso 5');
     expect(nomesDasRotas()).toEqual(['Success']);
 
     // Success is a gated screen: the invite stays pending there.

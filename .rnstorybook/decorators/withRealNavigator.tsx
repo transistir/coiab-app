@@ -191,8 +191,8 @@ type ConsumeHardwareBackPressProps = {
  * seeds "named device, no organization" would otherwise land on
  * `EthnicGroupSelection` instead of the create/join fork it declares. Give
  * every flow story a complete profile by default; a story that needs the
- * onboarding flow must render its screens with `withNavigation` instead, as
- * the profile stories already do.
+ * onboarding flow renders its screens with an inert `navigation` prop directly,
+ * as the profile stories do (they do not use `withNavigation`).
  */
 function StoryUserProfileProvider({children}: {children: React.ReactNode}) {
   const [store] = React.useState(() => {

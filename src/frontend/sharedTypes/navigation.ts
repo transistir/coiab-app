@@ -214,7 +214,7 @@ export type OnboardingParamsList = {
   OnboardingPrivacyPolicy: undefined;
   Success: undefined;
   // COIAB onboarding (#128): the two profile screens between the device and
-  // the success screen. Route registration lives in a separate dispatch.
+  // the success screen.
   EthnicGroupSelection: undefined;
   VillageEntry: undefined;
   CreateOrganization: undefined;
