@@ -90,7 +90,9 @@ module.exports = ({config}) => {
         require.resolve('@comapeo/default-categories/dist/comapeo-default-categories.comapeocat'),
       defaultOnlineStyleUrl,
       sentry: {
-        dsn: 'https://e0e02907e05dc72a6da64c3483ed88a6@o4507148235702272.ingest.us.sentry.io/4507170965618688',
+        dsn:
+          process.env.SENTRY_DSN ||
+          'https://b2ea36be0a3b300c97a18bdf3381cd00@o4512340963950592.ingest.de.sentry.io/4512341010677840',
         environment: sentryEnvironment,
         // Trace only outside production (matches the app's prior env-gated
         // tracesSampleRate). The full runtime consent model migrates later.
@@ -101,9 +103,29 @@ module.exports = ({config}) => {
     },
   ]);
 
+  // @sentry/react-native/expo is declared in app.json with the literal
+  // organization/project. SENTRY_ORG/SENTRY_PROJECT override them when set;
+  // otherwise the app.json values are the defaults (so editing app.json keeps
+  // working). Replacing the entry in place keeps a single plugin instance.
+  const plugins = (config.plugins ?? []).map(plugin => {
+    if (!Array.isArray(plugin) || plugin[0] !== '@sentry/react-native/expo') {
+      return plugin;
+    }
+    const [name, sentryOptions] =
+      /** @type {[string, Record<string, unknown>]} */ (plugin);
+    return /** @type {[string, Record<string, unknown>]} */ ([
+      name,
+      {
+        ...sentryOptions,
+        organization: process.env.SENTRY_ORG || sentryOptions.organization,
+        project: process.env.SENTRY_PROJECT || sentryOptions.project,
+      },
+    ]);
+  });
+
   return {
     ...config,
-    plugins: [comapeoPlugin, ...(config.plugins ?? [])],
+    plugins: [comapeoPlugin, ...plugins],
     version: versionName,
     extra: {
       ...config.extra,
