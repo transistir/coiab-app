@@ -2,6 +2,10 @@ onboarding	flows-onboarding--intro	route:IntroToCoMapeo	2	01 Intro
 onboarding	flows-onboarding--data-privacy	route:DataPrivacy	2	02 Data Privacy
 onboarding	flows-onboarding--privacy-policy	route:OnboardingPrivacyPolicy	2	03 Privacy Policy
 onboarding	flows-onboarding--device-naming	route:DeviceNaming	2	04 Device Naming
+onboarding	onboarding-ethnicgroupselection--default	testID:ONBOARDING.ethnic-group-continue-btn	2	04b Ethnic Group
+onboarding	onboarding-ethnicgroupselection--with-selection	testID:ONBOARDING.ethnic-group-continue-btn	2	04c Ethnic Group Selected
+onboarding	onboarding-villageentry--default	testID:ONBOARDING.village-continue-btn	2	04d Village
+onboarding	onboarding-villageentry--prefilled	testID:ONBOARDING.village-continue-btn	2	04e Village Prefilled
 onboarding	flows-onboarding--success	route:Success	2	05 Success
 onboarding	flows-onboarding--join-organization-intro	route:JoinOrganizationIntro	2	06a Join Organization Intro
 onboarding	flows-onboarding--create-organization	route:CreateOrganization	2	06b Create Organization
