@@ -31,7 +31,13 @@ describe('getInitialRoute', () => {
       getInitialRoute(authenticated, undefined, 'pronta', 'ready', true),
     ).toBe('IntroToCoMapeo');
     expect(
-      getInitialRoute(authenticated, undefined, 'preparando', 'preparing', true),
+      getInitialRoute(
+        authenticated,
+        undefined,
+        'preparando',
+        'preparing',
+        true,
+      ),
     ).toBe('IntroToCoMapeo');
   });
 
@@ -71,10 +77,22 @@ describe('getInitialRoute', () => {
       ).toBe('OrganizationProvisioning');
     }
     expect(
-      getInitialRoute(unauthenticated, 'device', 'preparando', 'recovery', true),
+      getInitialRoute(
+        unauthenticated,
+        'device',
+        'preparando',
+        'recovery',
+        true,
+      ),
     ).toBe('AuthScreen');
     expect(
-      getInitialRoute(authenticated, undefined, 'confirmacao', 'recovery', true),
+      getInitialRoute(
+        authenticated,
+        undefined,
+        'confirmacao',
+        'recovery',
+        true,
+      ),
     ).toBe('IntroToCoMapeo');
   });
 

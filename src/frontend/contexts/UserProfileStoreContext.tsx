@@ -80,7 +80,8 @@ function parseUserProfile(
 
   return {
     ethnicGroupId:
-      ethnicGroupId !== null && catalog.some(group => group.id === ethnicGroupId)
+      ethnicGroupId !== null &&
+      catalog.some(group => group.id === ethnicGroupId)
         ? ethnicGroupId
         : null,
     village: aldeia,
@@ -116,9 +117,7 @@ export function createUserProfileStore({
     try {
       initial = parseUserProfile(
         MMKVStoreInitializer.getItem(COIAB_USER_PROFILE_STORAGE_KEY) as
-          | string
-          | null
-          | undefined,
+          string | null | undefined,
         catalog,
       );
     } catch {
@@ -133,9 +132,7 @@ export function createUserProfileStore({
   store.setState = (partial, replace = false) => {
     const current = store.getState();
     const value = typeof partial === 'function' ? partial(current) : partial;
-    const next = replace
-      ? (value as UserProfileState)
-      : {...current, ...value};
+    const next = replace ? (value as UserProfileState) : {...current, ...value};
     if (persist) {
       MMKVStoreInitializer.setItem(
         COIAB_USER_PROFILE_STORAGE_KEY,
@@ -186,9 +183,7 @@ export const UserProfileStoreProvider = ({
   store: UserProfileStore;
 }) => {
   return (
-    <UserProfileStoreContext value={store}>
-      {children}
-    </UserProfileStoreContext>
+    <UserProfileStoreContext value={store}>{children}</UserProfileStoreContext>
   );
 };
 

@@ -79,9 +79,7 @@ describe('EthnicGroupSelection', () => {
 
     await renderScreen({store});
 
-    expect(
-      screen.getByTestId(`${stored.id}Button-selected`),
-    ).toBeOnTheScreen();
+    expect(screen.getByTestId(`${stored.id}Button-selected`)).toBeOnTheScreen();
     expect(
       screen.getByTestId('ONBOARDING.ethnic-group-continue-btn'),
     ).toBeEnabled();

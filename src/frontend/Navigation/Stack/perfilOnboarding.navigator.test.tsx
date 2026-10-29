@@ -290,10 +290,7 @@ describe('perfil de onboarding no navigator real (#128)', () => {
     expect(nomesDasRotas()).toEqual(['EthnicGroupSelection']);
 
     await escolherEtnia();
-    expect(nomesDasRotas()).toEqual([
-      'EthnicGroupSelection',
-      'VillageEntry',
-    ]);
+    expect(nomesDasRotas()).toEqual(['EthnicGroupSelection', 'VillageEntry']);
     expect(screen.getByText('What is your village?')).toBeOnTheScreen();
 
     await preencherAldeia('Aldeia do caso 1');
@@ -392,13 +389,8 @@ describe('perfil de onboarding no navigator real (#128)', () => {
     await escolherEtnia();
 
     // Arrives while the user types the village.
-    await act(async () =>
-      setMockInvites([markerInvite('invite-na-aldeia')]),
-    );
-    expect(nomesDasRotas()).toEqual([
-      'EthnicGroupSelection',
-      'VillageEntry',
-    ]);
+    await act(async () => setMockInvites([markerInvite('invite-na-aldeia')]));
+    expect(nomesDasRotas()).toEqual(['EthnicGroupSelection', 'VillageEntry']);
 
     await preencherAldeia('Aldeia do caso 4b');
 

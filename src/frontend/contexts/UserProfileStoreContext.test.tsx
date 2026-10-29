@@ -39,9 +39,8 @@ function writeRaw(raw: string) {
 }
 
 function readEnvelope() {
-  const raw = MMKVStoreInitializer.getItem(
-    COIAB_USER_PROFILE_STORAGE_KEY,
-  ) as string | null;
+  const raw = MMKVStoreInitializer.getItem(COIAB_USER_PROFILE_STORAGE_KEY) as
+    string | null;
   return raw === null ? null : JSON.parse(raw);
 }
 
@@ -231,7 +230,11 @@ describe('UserProfileStore', () => {
     ],
     ['aldeia nula', {ethnicGroupId: 'etnia-a', village: null}, false],
     ['aldeia vazia', {ethnicGroupId: 'etnia-a', village: ''}, false],
-    ['aldeia só com espaços', {ethnicGroupId: 'etnia-a', village: '   '}, false],
+    [
+      'aldeia só com espaços',
+      {ethnicGroupId: 'etnia-a', village: '   '},
+      false,
+    ],
   ])('isProfileComplete: %s', (_nome, state, expected) => {
     expect(isProfileComplete(state, CATALOG)).toBe(expected);
   });

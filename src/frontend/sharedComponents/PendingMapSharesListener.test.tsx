@@ -9,9 +9,10 @@ jest.mock('@comapeo/core-react', () => ({
 
 const useManyReceivedMapSharesMock = useManyReceivedMapShares as jest.Mock;
 
-function makeShare(
-  overrides: {shareId?: string; status?: string} = {},
-): {shareId: string; status: string} {
+function makeShare(overrides: {shareId?: string; status?: string} = {}): {
+  shareId: string;
+  status: string;
+} {
   return {shareId: 'share-1', status: 'pending', ...overrides};
 }
 

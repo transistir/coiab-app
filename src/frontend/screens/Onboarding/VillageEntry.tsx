@@ -126,7 +126,10 @@ export const VillageEntry = ({navigation}: ScreenProps) => {
           accessibilityState={{disabled: !canContinue}}
           disabled={!canContinue}
           onPress={handleContinue}
-          style={[styles.continueButton, !canContinue && styles.disabledButton]}>
+          style={[
+            styles.continueButton,
+            !canContinue && styles.disabledButton,
+          ]}>
           <HeaderText variant="header5" style={styles.continueLabel}>
             {t(m.continue)}
           </HeaderText>
