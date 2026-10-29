@@ -593,6 +593,15 @@
   "$1screens.Onboarding.CreateOrganization.creationInProgress": {
     "message": "A criação de uma organização já está em andamento."
   },
+  "$1screens.Onboarding.EthnicGroupSelection.continue": {
+    "message": "Continuar"
+  },
+  "$1screens.Onboarding.EthnicGroupSelection.saveError": {
+    "message": "Não foi possível salvar. Tente novamente."
+  },
+  "$1screens.Onboarding.EthnicGroupSelection.title": {
+    "message": "Qual é a sua etnia?"
+  },
   "$1screens.Onboarding.MapOnYourOwnIntro.addAudio": {
     "message": "Adicione gravações de áudio."
   },
@@ -613,6 +622,21 @@
   },
   "$1screens.Onboarding.MapOnYourOwnIntro.trackPaths": {
     "message": "Caminhos percorridos."
+  },
+  "$1screens.Onboarding.VillageEntry.back": {
+    "message": "Voltar"
+  },
+  "$1screens.Onboarding.VillageEntry.continue": {
+    "message": "Continuar"
+  },
+  "$1screens.Onboarding.VillageEntry.placeholder": {
+    "message": "Digite o nome da aldeia"
+  },
+  "$1screens.Onboarding.VillageEntry.saveError": {
+    "message": "Informe o nome da aldeia."
+  },
+  "$1screens.Onboarding.VillageEntry.title": {
+    "message": "Qual é a sua aldeia?"
   },
   "$1screens.OnboardingPrivacyPolicy.shareDiagnostics": {
     "message": "Compartilhar Informações de Diagnóstico"

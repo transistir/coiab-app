@@ -2,6 +2,7 @@ import {expect} from '@wdio/globals';
 import {describe, it} from 'mocha';
 import {byResourceId, byTextMatches, byText} from '../../utils/selectors';
 import {output} from '../../utils/naming';
+import {completeEthnicProfileIfNeeded} from './helper/complete-ethnic-profile';
 
 describe('Onboarding - Device Naming Test', () => {
   it('should navigate to Device Naming screen after tapping "Next"', async () => {
@@ -35,6 +36,11 @@ describe('Onboarding - Device Naming Test', () => {
     // tap lands. Safe no-op when no keyboard is shown (e.g. Android).
     await driver.hideKeyboard().catch(() => {});
     await addNameButton.click();
+
+    // The restart lands on EthnicGroupSelection while the profile is
+    // incomplete; the Success fork only appears after ethnicity + village.
+    await completeEthnicProfileIfNeeded();
+
     const deviceReadyMessage = await $(
       byTextMatches(`${output.names.device} is ready`),
     );

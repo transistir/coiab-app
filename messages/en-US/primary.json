@@ -586,6 +586,30 @@
   "$1screens.Onboarding.CreateOrganization.tooLong": {
     "message": "Organization name is too long"
   },
+  "$1screens.Onboarding.EthnicGroupSelection.continue": {
+    "message": "Continue"
+  },
+  "$1screens.Onboarding.EthnicGroupSelection.saveError": {
+    "message": "Could not save your ethnicity. Please try again."
+  },
+  "$1screens.Onboarding.EthnicGroupSelection.title": {
+    "message": "What is your ethnicity?"
+  },
+  "$1screens.Onboarding.VillageEntry.back": {
+    "message": "Back"
+  },
+  "$1screens.Onboarding.VillageEntry.continue": {
+    "message": "Continue"
+  },
+  "$1screens.Onboarding.VillageEntry.placeholder": {
+    "message": "Village name"
+  },
+  "$1screens.Onboarding.VillageEntry.saveError": {
+    "message": "Could not save your village. Please try again."
+  },
+  "$1screens.Onboarding.VillageEntry.title": {
+    "message": "What is your village?"
+  },
   "$1screens.OnboardingPrivacyPolicy.shareDiagnostics": {
     "message": "Share Diagnostic Information"
   },
