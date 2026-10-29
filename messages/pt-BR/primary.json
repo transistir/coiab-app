@@ -593,6 +593,21 @@
   "$1screens.Onboarding.CreateOrganization.creationInProgress": {
     "message": "A criação de uma organização já está em andamento."
   },
+  "$1screens.Onboarding.EthnicGroupSelection.continue": {
+    "message": "Continuar"
+  },
+  "$1screens.Onboarding.EthnicGroupSelection.placeholder": {
+    "message": "Digite ou escolha uma opção"
+  },
+  "$1screens.Onboarding.EthnicGroupSelection.saveError": {
+    "message": "Não foi possível salvar sua etnia. Tente novamente."
+  },
+  "$1screens.Onboarding.EthnicGroupSelection.subtitle": {
+    "message": "Escolha ou digite sua etnia"
+  },
+  "$1screens.Onboarding.EthnicGroupSelection.title": {
+    "message": "Qual é a sua etnia?"
+  },
   "$1screens.Onboarding.MapOnYourOwnIntro.addAudio": {
     "message": "Adicione gravações de áudio."
   },
@@ -613,6 +628,24 @@
   },
   "$1screens.Onboarding.MapOnYourOwnIntro.trackPaths": {
     "message": "Caminhos percorridos."
+  },
+  "$1screens.Onboarding.VillageEntry.back": {
+    "message": "Voltar"
+  },
+  "$1screens.Onboarding.VillageEntry.continue": {
+    "message": "Continuar"
+  },
+  "$1screens.Onboarding.VillageEntry.placeholder": {
+    "message": "Digite ou escolha uma opção"
+  },
+  "$1screens.Onboarding.VillageEntry.saveError": {
+    "message": "Não foi possível salvar a aldeia. Tente novamente."
+  },
+  "$1screens.Onboarding.VillageEntry.subtitle": {
+    "message": "Escolha ou digite sua aldeia"
+  },
+  "$1screens.Onboarding.VillageEntry.title": {
+    "message": "Qual é a sua aldeia?"
   },
   "$1screens.OnboardingPrivacyPolicy.shareDiagnostics": {
     "message": "Compartilhar Informações de Diagnóstico"
@@ -1061,6 +1094,9 @@
   },
   "$1screens.YourTeam.ReviewOrganizationInvite.youAreInviting": {
     "message": "Você está convidando:"
+  },
+  "$1sharedComponents.AutocompleteField.showSuggestions": {
+    "message": "Mostrar sugestões"
   },
   "$1sharedComponents.ErrorBottomSheet.close": {
     "message": "Fechar"

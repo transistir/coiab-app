@@ -8,6 +8,13 @@ describe('isEditingScreen', () => {
     }
   });
 
+  it('blocks interruptions on the onboarding profile screens (#128)', () => {
+    // Both screens hold unsaved onboarding state: an invite/map-share
+    // interruption or a deep link must wait until the profile flow is done.
+    expect(isEditingScreen('EthnicGroupSelection')).toBe(true);
+    expect(isEditingScreen('VillageEntry')).toBe(true);
+  });
+
   it('should return false for non-editing screen names', () => {
     expect(isEditingScreen('Home')).toBe(false);
     expect(isEditingScreen('Settings')).toBe(false);

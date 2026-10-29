@@ -213,6 +213,10 @@ export type OnboardingParamsList = {
   DeviceNaming: undefined;
   OnboardingPrivacyPolicy: undefined;
   Success: undefined;
+  // COIAB onboarding (#128): the two profile screens between the device and
+  // the success screen.
+  EthnicGroupSelection: undefined;
+  VillageEntry: undefined;
   CreateOrganization: undefined;
   JoinOrganizationIntro: undefined;
   OrganizationProvisioning: undefined;

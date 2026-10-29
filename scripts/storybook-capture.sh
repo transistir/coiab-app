@@ -152,27 +152,116 @@ native_readiness_matches() {
 # dump the caller already has.
 anr_dialog_is_shown() {
   local hierarchy=$1
-  grep -Fq 'resource-id="android:id/aerr_wait"' <<<"$hierarchy"
+  grep -Fq 'resource-id="android:id/aerr_wait"' <<<"$hierarchy" ||
+    grep -Fq 'resource-id="android:id/aerr_close"' <<<"$hierarchy"
 }
 
-# Dismiss the ANR dialog by tapping its "Wait" button and sleeping briefly to
-# let it clear. Returns 0 if a dialog was found and tapped, 1 if no dialog was
-# present in the given hierarchy. The caller re-dumps and re-checks readiness
-# after this returns, since tapping "Wait" takes a moment to dismiss the
-# dialog and the app underneath may need time to settle.
+# Whether the ANR dialog in this dump belongs to the launcher. Only a launcher
+# ANR is safe to close: "Wait" never clears it (the launcher stays wedged, the
+# dialog returns, and repeated "Wait" taps burn the retry budget until the
+# capture aborts), while closing it restarts the launcher and frees the screen.
+# Any other ANR — the Storybook app itself, a crash dialog — may still recover
+# on "Wait", and closing that dialog would kill the very app being captured,
+# so it keeps waiting. The title is already in the hierarchy dump the caller
+# holds, so classifying it costs no extra adb round-trip per attempt.
+#
+# Classification reads the dialog's *own* title only. Grepping the whole dump
+# for "Launcher"/"System UI" let any background text — a screen title, a list
+# row, the captured story itself — classify an app ANR as the launcher's, and
+# closing that kills the app under capture. So isolate the dialog's own nodes
+# (one `<node ...>` per record, matched by their resource-ids) and read only
+# the `text=` of its single `alertTitle`. Anything less certain than exactly
+# one title plus at least one ANR button is "not launcher": the safe default
+# is "Wait", never "Close app".
+anr_dialog_is_from_launcher() {
+  local hierarchy=$1
+  local node
+  local title=
+  local title_count=0
+  local button_count=0
+
+  while IFS= read -r node; do
+    case $node in
+      *'resource-id="android:id/alertTitle"'*)
+        title_count=$((title_count + 1))
+        title=$(grep -oE 'text="[^"]*"' <<<"$node" | head -n1) || title=
+        ;;
+      *'resource-id="android:id/aerr_wait"'* | *'resource-id="android:id/aerr_close"'*)
+        button_count=$((button_count + 1))
+        ;;
+    esac
+  done < <(grep -oE '<node [^>]*>' <<<"$hierarchy")
+
+  # Exactly one dialog title, and it must belong to a dialog that actually has
+  # an ANR button; otherwise the block was not isolated with certainty.
+  (( title_count == 1 && button_count > 0 )) || return 1
+  [[ -n $title ]] || return 1
+
+  # Launcher identity must be in the title itself. The bare Portuguese phrase
+  # "não está respondendo" is deliberately not enough — the app under capture
+  # produces the same wording — it only counts alongside a launcher/system name
+  # in the same title ("Pixel Launcher não está respondendo").
+  grep -qE 'text="[^"]*(Launcher|System UI|SystemUI|interface do sistema)[^"]*"' <<<"$title"
+}
+
+# Dismissals are counted across the whole run: the first ANR gets "Wait", and
+# every later launcher ANR gets "Close app".
+anr_dismiss_count=0
+
+# Dismiss the ANR dialog by tapping its "Wait" button (first attempt, and any
+# later non-launcher dialog) or "Close app" (a launcher ANR from the second
+# attempt onward), then sleeping briefly to let it clear. Returns 0 if a dialog
+# was found and tapped, 1 if no dialog was present in the given hierarchy or
+# its bounds are unusable. The caller re-dumps and re-checks readiness after
+# this returns, since dismissal takes a moment and the app underneath may need
+# time to settle.
 dismiss_anr_dialog_if_present() {
   local hierarchy=$1
   local bounds
+  local button_id='android:id/aerr_wait'
+  local label='Wait'
 
-  grep -Fq 'resource-id="android:id/aerr_wait"' <<<"$hierarchy" || return 1
+  anr_dialog_is_shown "$hierarchy" || return 1
 
-  bounds=$(grep -oE 'resource-id="android:id/aerr_wait"[^>]*bounds="\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]"' <<<"$hierarchy" |
-    grep -oE '\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]' | head -n1)
+  anr_dismiss_count=$((anr_dismiss_count + 1))
+  # First attempt waits (cheapest, non-destructive). From the second attempt
+  # onward only a launcher dialog is closed; everything else keeps waiting.
+  # Fall back to "Close app" only when this dialog revision has no "Wait" —
+  # and even then only for a launcher dialog. Closing any other ANR kills the
+  # app being captured, so with no safe button there is nothing to tap.
+  local has_wait=0
+  local has_close=0
+  local is_launcher=0
+  if grep -Fq 'resource-id="android:id/aerr_wait"' <<<"$hierarchy"; then
+    has_wait=1
+  fi
+  if grep -Fq 'resource-id="android:id/aerr_close"' <<<"$hierarchy"; then
+    has_close=1
+  fi
+  if anr_dialog_is_from_launcher "$hierarchy"; then
+    is_launcher=1
+  fi
+
+  if (( anr_dismiss_count > 1 && is_launcher && has_close )); then
+    button_id='android:id/aerr_close'
+    label='Close app'
+  elif (( !has_wait )); then
+    if (( is_launcher && has_close )); then
+      button_id='android:id/aerr_close'
+      label='Close app'
+    else
+      echo "storybook-capture: an 'isn't responding' dialog has no 'Wait' button and is not the launcher's; leaving it alone" >&2
+      return 1
+    fi
+  fi
+
+  bounds=$(grep -oE "resource-id=\"$button_id\"[^>]*bounds=\"\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]\"" <<<"$hierarchy" |
+    grep -oE '\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]' | head -n1) || bounds=
 
   if [[ $bounds =~ ^\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]$ ]]; then
     local center_x=$(( (BASH_REMATCH[1] + BASH_REMATCH[3]) / 2 ))
     local center_y=$(( (BASH_REMATCH[2] + BASH_REMATCH[4]) / 2 ))
-    echo "storybook-capture: dismissing an 'isn't responding' system dialog (tapping Wait)..." >&2
+    echo "storybook-capture: dismissing an 'isn't responding' system dialog (tapping $label)..." >&2
     adb shell input tap "$center_x" "$center_y" >/dev/null 2>&1
     sleep 1
   else
@@ -254,7 +343,7 @@ assert_current_native_readiness() {
       # rather than accept it, and fail the capture once the dialog survives
       # repeated dismissals — exactly as a stuck keyboard fails it.
       if anr_dialog_is_shown "$hierarchy"; then
-        if (( anr_dismiss_attempts >= 3 )); then
+        if (( anr_dismiss_attempts >= 6 )); then
           write_capture_failure_diagnostics
           echo "storybook-capture: aborting capture for story: $story_id because an 'isn't responding' system dialog kept occluding the screen $timing" >&2
           return 1

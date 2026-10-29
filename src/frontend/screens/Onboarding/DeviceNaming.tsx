@@ -78,10 +78,10 @@ export const DeviceNaming = () => {
         onSuccess: () => {
           // Always restart the app here
           // If the user has toggled off diagnosticEnabled in `OnboardingPrivacyPolicy`
-          // the app need to restart for sending diagnostic to be disabled in the backend.
-          // This guarantees that app restart, while still navigating the user to the
-          // `Success` screen after it has restart - as the navigation sets
-          // the default screen to the success screen when the user has a name set
+          // the app needs to restart for sending diagnostics to be disabled in the backend.
+          // The cold-start gate (`getInitialRoute`) now sends a device whose profile is
+          // incomplete to `EthnicGroupSelection`, not `Success`; only a complete profile
+          // lands on the Success screen after the restart.
           RNRestart.restart();
         },
       },

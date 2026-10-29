@@ -2,6 +2,7 @@ export const output = {
   names: {
     device: 'test phone',
     qaDevice: 'e2e device',
+    village: 'Aldeia Teste',
     editdevice: 'new test phone',
     project: 'test project',
     secondProject: 'second project',

@@ -29,6 +29,54 @@ import {createAppUsageStatsStore} from '../../../src/frontend/contexts/AppUsageS
 import {createUnitSystemStore} from '../../../src/frontend/contexts/UnitSystemStoreContext';
 import {createQADeviceNameStore} from '../../../src/frontend/contexts/QADeviceNameStoreContext';
 import {createOrganizationInviteIdentityStore} from '../../../src/frontend/contexts/OrganizationInviteIdentityStoreContext';
+import {
+  COIAB_USER_PROFILE_STORAGE_KEY,
+  createUserProfileStore,
+  type UserProfileState,
+} from '../../../src/frontend/contexts/UserProfileStoreContext';
+import {MMKVStoreInitializer} from '../../../src/frontend/hooks/persistedState/createPersistedState';
+
+/**
+ * The profile every harness starts with (#128). A complete profile keeps the
+ * empty-document startup branch on `Success`, which is what the suites that
+ * mount the real navigator and assert the create/join fork expect — before
+ * the profile gate, that branch had no prerequisite at all. Pass
+ * `userProfile: null` (or a partial `UserProfileState`) in a test that needs
+ * the onboarding flow instead.
+ */
+export const COMPLETE_USER_PROFILE: UserProfileState = {
+  ethnicity: 'Tunayana',
+  village: 'Aldeia de teste',
+};
+
+/**
+ * How a harness seeds the profile before mounting:
+ * - a `UserProfileState` writes exactly that value;
+ * - `null` clears the key (empty onboarding profile);
+ * - `'keep'` touches nothing, so a remount on the same MMKV proves the
+ *   persisted profile is what hydrates the new store (mid-flow restart).
+ */
+export type UserProfileSeed = UserProfileState | null | 'keep';
+
+/**
+ * Writes the profile through the same persisted store production hydrates,
+ * before `AppProviders` creates its singleton (its state initializer reads
+ * MMKV at mount). `null` clears the key, so one test's profile cannot leak
+ * into the next through the durable storage. `'keep'` is the restart case:
+ * the key is read back by the new store, never rewritten by the harness.
+ */
+function seedUserProfile(profile: UserProfileSeed) {
+  if (profile === 'keep') return;
+  MMKVStoreInitializer.removeItem(COIAB_USER_PROFILE_STORAGE_KEY);
+  if (!profile) return;
+  const store = createUserProfileStore({persist: true});
+  if (profile.ethnicity !== null) {
+    store.actions.setEthnicity(profile.ethnicity);
+  }
+  if (profile.village !== null) {
+    store.actions.setVillage(profile.village);
+  }
+}
 
 const DEFAULT_LOCAL_DISCOVERY_STATE: LocalDiscoveryState = {
   status: 'started',
@@ -79,12 +127,20 @@ export function createAppProvidersWrapper({
   isOnline = true,
   activeProjectId,
   qaDeviceName,
+  userProfile = COMPLETE_USER_PROFILE,
 }: {
   mapeoApi: ComapeoCoreClientApi;
   isOnline?: boolean;
   activeProjectId?: string;
   qaDeviceName?: string;
+  /**
+   * `null` starts the app with the empty onboarding profile; `'keep'` mounts
+   * over whatever MMKV already holds (restart mid-flow).
+   */
+  userProfile?: UserProfileSeed;
 }) {
+  seedUserProfile(userProfile);
+
   const queryClient = new QueryClient({
     // Disable garbage collection, so that no "collect garbage" timers are
     // started, which would otherwise leave an open handle, giving a Jest

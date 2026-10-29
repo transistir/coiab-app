@@ -11,6 +11,10 @@ import {
 } from '@react-navigation/native';
 
 import {RootStackNavigator} from '../../src/frontend/Navigation/Stack';
+import {
+  UserProfileStoreProvider,
+  createUserProfileStore,
+} from '../../src/frontend/contexts/UserProfileStoreContext';
 import type {AppStackParamsList} from '../../src/frontend/sharedTypes/navigation';
 import {
   useFlowState,
@@ -179,6 +183,30 @@ type ConsumeHardwareBackPressProps = {
   enabled: boolean;
   onConsumed?: (reason: string) => void;
 };
+
+/**
+ * Flow stories run against the real navigator (#128): the startup gate reads
+ * the local onboarding profile on the empty-document branch, so a story that
+ * seeds "named device, no organization" would otherwise land on
+ * `EthnicGroupSelection` instead of the create/join fork it declares. Give
+ * every flow story a complete profile by default; a story that needs the
+ * onboarding flow renders its screens with an inert `navigation` prop directly,
+ * as the profile stories do (they do not use `withNavigation`).
+ */
+function StoryUserProfileProvider({children}: {children: React.ReactNode}) {
+  const [store] = React.useState(() => {
+    const profileStore = createUserProfileStore();
+    profileStore.actions.setEthnicity('Tunayana');
+    profileStore.actions.setVillage('Aldeia de teste');
+    return profileStore;
+  });
+
+  return (
+    <UserProfileStoreProvider store={store}>
+      {children}
+    </UserProfileStoreProvider>
+  );
+}
 
 /**
  * Must render as a SIBLING AFTER the NavigationContainer: React completes
@@ -352,29 +380,31 @@ export const withRealNavigator: Decorator = (Story, context) => {
     <View style={{flex: 1}} testID={storyReadyTestId}>
       <View style={{flex: 1}} testID={routeReadyTestId}>
         <FlowStateScope key={`${context.id}:${ready.key}`} resolved={ready}>
-          <NavigationContainer
-            key={`${context.id}:${ready.key}`}
-            ref={navigationRef}
-            initialState={initialState}
-            onReady={announceActiveRoute}
-            onStateChange={state => {
-              console.log(
-                `STORYBOOK: nav state change for story: ${context.id}; index: ${state?.index}; routes: ${JSON.stringify(state?.routes.map(r => r.name))}`,
-              );
-              announceActiveRoute();
-            }}
-            onUnhandledAction={handleUnhandledAction}>
-            <RootStackNavigator />
-          </NavigationContainer>
-          {/* Sibling AFTER the container, inside the same keyed scope so it
-              mounts both together (see the guard's doc comment): child
-              effects run before parent effects, so a
-              guard inside the container would subscribe before it and LIFO
-              dispatch would let the container pop the seeded stack first. */}
-          <ConsumeHardwareBackPress
-            enabled={consumeHardwareBackPress}
-            onConsumed={handleHardwareBackConsumed}
-          />
+          <StoryUserProfileProvider>
+            <NavigationContainer
+              key={`${context.id}:${ready.key}`}
+              ref={navigationRef}
+              initialState={initialState}
+              onReady={announceActiveRoute}
+              onStateChange={state => {
+                console.log(
+                  `STORYBOOK: nav state change for story: ${context.id}; index: ${state?.index}; routes: ${JSON.stringify(state?.routes.map(r => r.name))}`,
+                );
+                announceActiveRoute();
+              }}
+              onUnhandledAction={handleUnhandledAction}>
+              <RootStackNavigator />
+            </NavigationContainer>
+            {/* Sibling AFTER the container, inside the same keyed scope so it
+                mounts both together (see the guard's doc comment): child
+                effects run before parent effects, so a
+                guard inside the container would subscribe before it and LIFO
+                dispatch would let the container pop the seeded stack first. */}
+            <ConsumeHardwareBackPress
+              enabled={consumeHardwareBackPress}
+              onConsumed={handleHardwareBackConsumed}
+            />
+          </StoryUserProfileProvider>
         </FlowStateScope>
       </View>
     </View>

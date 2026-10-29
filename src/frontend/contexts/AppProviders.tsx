@@ -60,6 +60,10 @@ import {
   CoiabOrganizationsStoreProvider,
   createCoiabOrganizationsStore,
 } from './CoiabOrganizationsStoreContext';
+import {
+  UserProfileStoreProvider,
+  createUserProfileStore,
+} from './UserProfileStoreContext';
 import {OrganizationActivationProvider} from './OrganizationActivationContext';
 import {OrganizationMaterializerProvider} from './OrganizationMaterializerContext';
 
@@ -132,6 +136,11 @@ export const AppProviders = ({
   const [coiabOrganizationsStore] = React.useState(() =>
     createCoiabOrganizationsStore({persist: true}),
   );
+  // The onboarding profile (ethnic group + village) is also a durable
+  // singleton: created once per mount and persisted across restarts.
+  const [userProfileStore] = React.useState(() =>
+    createUserProfileStore({persist: true}),
+  );
 
   return (
     <UnitSystemStoreContext value={unitSystemStore}>
@@ -165,16 +174,19 @@ export const AppProviders = ({
                                       value={earlyAccessStore}>
                                       <QADeviceNameStoreContext
                                         value={qaDeviceNameStore}>
-                                        <CoiabOrganizationsStoreProvider
-                                          store={coiabOrganizationsStore}>
-                                          <OrganizationMaterializerProvider>
-                                            <OrganizationActivationProvider>
-                                              <AuthProvider>
-                                                {children}
-                                              </AuthProvider>
-                                            </OrganizationActivationProvider>
-                                          </OrganizationMaterializerProvider>
-                                        </CoiabOrganizationsStoreProvider>
+                                        <UserProfileStoreProvider
+                                          store={userProfileStore}>
+                                          <CoiabOrganizationsStoreProvider
+                                            store={coiabOrganizationsStore}>
+                                            <OrganizationMaterializerProvider>
+                                              <OrganizationActivationProvider>
+                                                <AuthProvider>
+                                                  {children}
+                                                </AuthProvider>
+                                              </OrganizationActivationProvider>
+                                            </OrganizationMaterializerProvider>
+                                          </CoiabOrganizationsStoreProvider>
+                                        </UserProfileStoreProvider>
                                       </QADeviceNameStoreContext>
                                     </EarlyAccessStoreProvider>
                                   </DraftObservationProvider>

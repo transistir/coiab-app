@@ -22,8 +22,14 @@ import {
 import type {ActivationStatus} from '../../lib/organization/activation';
 import {useCoiabOrganizationsState} from '../../contexts/CoiabOrganizationsStoreContext';
 import {useOrganizationActivationContext} from '../../contexts/OrganizationActivationContext';
+import {
+  isProfileComplete,
+  useUserProfileState,
+} from '../../contexts/UserProfileStoreContext';
 import {AuthScreen} from '../../screens/AuthScreen';
 import {Success} from '../../screens/Onboarding/Success';
+import {EthnicGroupSelection} from '../../screens/Onboarding/EthnicGroupSelection';
+import {VillageEntry} from '../../screens/Onboarding/VillageEntry';
 import {CreateOrganization} from '../../screens/Onboarding/CreateOrganization';
 import {JoinOrganizationIntro} from '../../screens/Onboarding/JoinOrganizationIntro';
 import {OrganizationProvisioning} from '../../screens/Onboarding/OrganizationProvisioning';
@@ -80,12 +86,20 @@ const m = defineMessages({
  * RootStackNavigator renders the loader and never calls this while they
  * hold, so the fall-through only guards a direct caller against reaching
  * Home on an unvalidated activation.
+ *
+ * `profileComplete` (#128) gates ONLY the empty document: a device with no
+ * organizations still has one step of onboarding left after the device name,
+ * so an incomplete profile opens the ethnic-group flow instead of the
+ * create/join fork. Every other branch — pending documents, a settled
+ * document's activation, and the auth/device-name guards — is unaffected by
+ * the profile.
  */
 export function getInitialRoute(
   authState: 'authenticated' | 'unauthenticated' | 'obscured',
   deviceName: string | undefined,
   documento: DocumentoGate,
   ativacao: ActivationStatus,
+  profileComplete: boolean,
 ): keyof AppStackParamsList {
   if (authState === 'unauthenticated') {
     return 'AuthScreen';
@@ -97,7 +111,7 @@ export function getInitialRoute(
     return 'OrganizationProvisioning';
   }
   if (documento === 'nenhum') {
-    return 'Success';
+    return profileComplete ? 'Success' : 'EthnicGroupSelection';
   }
   if (ativacao === 'ready') {
     return 'Home';
@@ -135,6 +149,10 @@ const ROTAS_SEM_PROJETO: Record<string, true> = {
   // The stable entry/recovery group registered below (the startup gate's
   // route table plus the organization fork).
   Success: true,
+  // The onboarding profile screens (#128) hold no project context either;
+  // they sit in the same stable group as Success (see the registration).
+  EthnicGroupSelection: true,
+  VillageEntry: true,
   CreateOrganization: true,
   JoinOrganizationIntro: true,
   OrganizationProvisioning: true,
@@ -227,6 +245,10 @@ export const RootStackNavigator = () => {
   // The engine's published selection (SPEC A §5.2): status, generation and
   // the operational project id the provider projects into the active store.
   const {status: ativacao, generation} = useOrganizationActivationContext();
+  // #128: the local onboarding profile decides only the empty-document
+  // branch of the startup gate (see `getInitialRoute`).
+  const profileState = useUserProfileState();
+  const profileComplete = isProfileComplete(profileState);
   const isNotReadyForInvite =
     security.authState !== 'authenticated' ||
     !deviceInfo.name ||
@@ -315,6 +337,7 @@ export const RootStackNavigator = () => {
     deviceInfo.name,
     documento,
     ativacao,
+    profileComplete,
   );
 
   if (aguardandoAbertura) {
@@ -347,6 +370,16 @@ export const RootStackNavigator = () => {
               presentation: 'card',
               headerShown: false,
             }}>
+            <RootStack.Screen
+              name="EthnicGroupSelection"
+              component={EthnicGroupSelection}
+              options={{headerShown: false}}
+            />
+            <RootStack.Screen
+              name="VillageEntry"
+              component={VillageEntry}
+              options={{headerShown: false}}
+            />
             <RootStack.Screen name="Success" component={Success} />
             <RootStack.Screen
               name="CreateOrganization"

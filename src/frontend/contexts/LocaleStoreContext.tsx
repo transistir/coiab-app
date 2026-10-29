@@ -1,4 +1,4 @@
-import {createContext, useContext} from 'react';
+import {createContext, useContext, useState, type ReactNode} from 'react';
 import {getLocales} from 'expo-localization';
 import {createStore, useStore, type StoreApi} from 'zustand';
 import {
@@ -22,7 +22,18 @@ import {
 // Do not change!
 export const STORAGE_KEY = 'locale' as const;
 
-function createInitialState(): LocaleState {
+function createInitialState(initialLanguageTag?: string): LocaleState {
+  // Seeding exists for deterministic stories/tests (e.g. the onboarding
+  // capture must render pt-BR regardless of the device locale). Without a
+  // seed the system preference is used, exactly as before.
+  if (initialLanguageTag) {
+    const usableLanguageTag = getUsableLanguageTag(initialLanguageTag);
+
+    if (usableLanguageTag) {
+      return {languageTag: usableLanguageTag, useSystemPreferences: false};
+    }
+  }
+
   const systemLanguageTags = getLocales().map(l => l.languageTag);
   return {
     languageTag: getUsableLanguageTagFromSystemPreferences(systemLanguageTags),
@@ -51,12 +62,15 @@ function migrate(persistedState: unknown): LocaleState {
   return createInitialState();
 }
 
-export function createLocaleStore({persist} = {persist: false}) {
+export function createLocaleStore({
+  persist = false,
+  initialLanguageTag,
+}: {persist?: boolean; initialLanguageTag?: string} = {}) {
   let store: StoreApi<LocaleState>;
 
   if (persist) {
     store = createStore(
-      createPersistedState(createInitialState, {
+      createPersistedState(() => createInitialState(initialLanguageTag), {
         name: STORAGE_KEY,
         storage: createJSONStorage(() => MMKVStoreInitializer),
         version: 1,
@@ -96,7 +110,7 @@ export function createLocaleStore({persist} = {persist: false}) {
       }),
     );
   } else {
-    store = createStore(createInitialState);
+    store = createStore(() => createInitialState(initialLanguageTag));
   }
 
   const actions = {
@@ -125,6 +139,23 @@ export function createLocaleStore({persist} = {persist: false}) {
 export type LocaleStore = ReturnType<typeof createLocaleStore>;
 
 export const LocaleContext = createContext<LocaleStore | null>(null);
+
+/**
+ * Provider for surfaces that need a deterministic locale (stories, tests).
+ * `initialLanguageTag` seeds the store once; omitting it keeps the existing
+ * behaviour (system preference, persisted when the app supplies its store).
+ */
+export function LocaleStoreProvider({
+  children,
+  initialLanguageTag,
+}: {
+  children: ReactNode;
+  initialLanguageTag?: string;
+}) {
+  const [store] = useState(() => createLocaleStore({initialLanguageTag}));
+
+  return <LocaleContext value={store}>{children}</LocaleContext>;
+}
 
 function useLocaleContext() {
   const value = useContext(LocaleContext);

@@ -23,6 +23,7 @@ const TABELA = {
   COIAB_OCRE: '#A06829',
   COIAB_RED: '#B90B0B',
   COIAB_SAND: '#DABA8D',
+  COIAB_BEIGE: '#DABA8D',
   // ficam como estão
   BLACK: '#000000',
   WHITE: '#ffffff',
@@ -121,6 +122,13 @@ describe('paleta (styles.ts)', () => {
     const chavesTabela = Object.keys(TABELA).sort();
     const chavesArquivo = Object.keys(styles).sort();
     expect(chavesTabela).toEqual(chavesArquivo);
+  });
+
+  // COIAB_BEIGE é alias intencional de COIAB_SAND (nome semântico do tema). As
+  // duas entradas aparecem na TABELA, mas este caso trava a relação para que
+  // uma mudança futura em uma delas seja vista como mudança de alias.
+  test('COIAB_BEIGE continua alias de COIAB_SAND', () => {
+    expect(styles.COIAB_BEIGE).toBe(styles.COIAB_SAND);
   });
 
   test.each(Object.entries(TABELA))(

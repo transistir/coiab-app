@@ -158,12 +158,30 @@ if [[ ${1:-} == exec-out && ${2:-} == uiautomator && ${3:-} == dump ]]; then
   fi
   # An ANR dialog on top of the ready screen (#67): included from the start
   # with FAKE_ANR_DIALOG=1, or from dump N with FAKE_ANR_DIALOG_FROM=N, until
-  # the script taps its "Wait" button (which flips FAKE_ANR_STATE), unless
+  # the script taps one of its buttons (which flips FAKE_ANR_STATE), unless
   # FAKE_ANR_DIALOG_STUCK=1 makes it survive every dismissal.
+  #
+  # The title is what decides "Wait" vs "Close app": the capture script closes
+  # only a launcher ANR. The default title is the app's own ANR (not launcher),
+  # so it keeps waiting; launcher cases set FAKE_ANR_DIALOG_TITLE. The two
+  # buttons have different bounds so the recorded tap proves which one was
+  # chosen: aerr_wait centres on (200,130), aerr_close on (420,130).
+  # Arbitrary background text, printed outside the ANR dialog block: pins
+  # classification to the dialog's own title, not to any text in the dump.
+  if [[ -n ${FAKE_BACKGROUND_TEXT:-} ]]; then
+    printf '<node text="%s" />' "$FAKE_BACKGROUND_TEXT"
+  fi
   if [[ -n ${FAKE_ANR_DIALOG:-} ||
     ( -n ${FAKE_ANR_DIALOG_FROM:-} && dump_count -ge ${FAKE_ANR_DIALOG_FROM} ) ]] &&
     [[ $(<"$FAKE_ANR_STATE") != dismissed ]]; then
-    printf '<node resource-id="android:id/aerr_wait" bounds="[100,100][300,160]" />'
+    printf '<node resource-id="android:id/alertTitle" text="%s" />' \
+      "${FAKE_ANR_DIALOG_TITLE:-CoMapeo is not responding}"
+    # FAKE_ANR_DIALOG_NO_WAIT models a dialog revision that only offers
+    # "Close app" — the fallback that must stay launcher-only (#128 co-review).
+    if [[ -z ${FAKE_ANR_DIALOG_NO_WAIT:-} ]]; then
+      printf '<node resource-id="android:id/aerr_wait" bounds="[100,100][300,160]" />'
+    fi
+    printf '<node resource-id="android:id/aerr_close" bounds="[320,100][520,160]" />'
   fi
   printf '</hierarchy>\n'
   exit 0
@@ -189,8 +207,8 @@ if [[ ${1:-} == shell && ${2:-} == dumpsys && ${3:-} == input_method ]]; then
 fi
 
 if [[ ${1:-} == shell && ${2:-} == input ]]; then
-  # Tapping the fake ANR dialog's "Wait" button dismisses it, unless the
-  # fixture pins it as stuck.
+  # Tapping any button of the fake ANR dialog dismisses it, unless the fixture
+  # pins it as stuck.
   if [[ ${3:-} == tap && -z ${FAKE_ANR_DIALOG_STUCK:-} ]]; then
     printf 'dismissed\n' >"$FAKE_ANR_STATE"
   fi
@@ -286,6 +304,14 @@ assert_call_count() {
   fi
 }
 
+assert_no_taps() {
+  if grep -q '^shell input tap ' "$capture_calls"; then
+    echo 'a dialog button was tapped although no dialog was present' >&2
+    cat "$capture_calls" >&2
+    exit 1
+  fi
+}
+
 assert_frame_written() {
   if [[ ! -s $capture_frame ]]; then
     echo "expected a captured frame at $capture_frame" >&2
@@ -339,6 +365,7 @@ exec-out uiautomator dump /dev/tty
 exec-out uiautomator dump /dev/tty
 shell dumpsys input_method'
 assert_call_count 'shell input keyevent 111' 0
+assert_no_taps
 
 # Readiness markers never appear: time out rather than shoot a wrong screen.
 expect_failure 1 'timed out waiting for current native route: IntroToCoMapeo' \
@@ -531,15 +558,73 @@ exec-out uiautomator dump /dev/tty
 exec-out uiautomator dump /dev/tty
 shell dumpsys input_method'
 
-# A dialog that survives dismissal: exactly three taps, then the capture fails
-# as a stuck keyboard. The sixth dump is write_capture_failure_diagnostics
-# re-reading the hierarchy for the failure artifact.
+# A dialog that survives dismissal: the first attempt taps "Wait" (the only
+# non-destructive choice), every later one taps "Close app" because the title
+# says it is the launcher's — the one ANR "Wait" is known not to clear. Six
+# dismissals exhaust the ceiling and the capture fails. The extra dumps after
+# the sixth are write_capture_failure_diagnostics re-reading the hierarchy for
+# the failure artifact. Discriminators: exactly one aerr_wait tap (200,130) and
+# five aerr_close taps (420,130) — the fake gives the two buttons different
+# bounds, so the recorded coordinates prove which button was pressed.
 expect_failure 1 'kept occluding the screen immediately before screenshot' \
-  run_capture anr-stuck FAKE_ANR_DIALOG_FROM=2 FAKE_ANR_DIALOG_STUCK=1
+  run_capture anr-stuck-launcher FAKE_ANR_DIALOG_FROM=2 \
+  FAKE_ANR_DIALOG_STUCK=1 \
+  FAKE_ANR_DIALOG_TITLE='Pixel Launcher is not responding'
 assert_no_frame_written
 assert_diagnostics_written
-assert_call_count 'shell input tap 200 130' 3
+assert_call_count 'shell input tap 200 130' 1
+assert_call_count 'shell input tap 420 130' 5
 assert_call_count 'shell screencap -p /sdcard/storybook-capture.png' 0
+
+# The same stuck dialog from the app itself (no launcher title): closing it
+# would kill the app being captured, so every attempt keeps tapping "Wait" and
+# only the retry ceiling ends the capture. Zero aerr_close taps is the
+# discriminator against the previous "any second ANR is closed" behaviour.
+expect_failure 1 'kept occluding the screen immediately before screenshot' \
+  run_capture anr-stuck-app FAKE_ANR_DIALOG_FROM=2 FAKE_ANR_DIALOG_STUCK=1
+assert_no_frame_written
+assert_diagnostics_written
+assert_call_count 'shell input tap 200 130' 6
+assert_call_count 'shell input tap 420 130' 0
+assert_call_count 'shell screencap -p /sdcard/storybook-capture.png' 0
+
+# #128 co-review: the screen behind an app ANR also contains the word
+# "Launcher". Pre-fix the classifier grepped the whole dump, called this a
+# launcher ANR and closed it — killing the app under capture. Classification
+# must read the dialog's own title only: six "Wait" taps, zero "Close app".
+expect_failure 1 'kept occluding the screen immediately before screenshot' \
+  run_capture anr-app-with-launcher-background FAKE_ANR_DIALOG_FROM=2 \
+  FAKE_ANR_DIALOG_STUCK=1 \
+  FAKE_BACKGROUND_TEXT='Launcher shortcuts' \
+  FAKE_ANR_DIALOG_TITLE='CoMapeo is not responding'
+assert_no_frame_written
+assert_diagnostics_written
+assert_call_count 'shell input tap 200 130' 6
+assert_call_count 'shell input tap 420 130' 0
+
+# A dialog revision with no "Wait" button. The "Close app" fallback is only
+# allowed for the launcher's dialog, so this app dialog is left untouched and
+# the capture fails on the occlusion ceiling rather than killing the app.
+expect_failure 1 'kept occluding the screen immediately before screenshot' \
+  run_capture anr-app-no-wait FAKE_ANR_DIALOG_FROM=2 \
+  FAKE_ANR_DIALOG_STUCK=1 FAKE_ANR_DIALOG_NO_WAIT=1 \
+  FAKE_ANR_DIALOG_TITLE='CoMapeo is not responding'
+assert_no_frame_written
+assert_diagnostics_written
+assert_call_count 'shell input tap 200 130' 0
+assert_call_count 'shell input tap 420 130' 0
+
+# The same "Close app"-only revision, but this one *is* the launcher's: closing
+# it is the only way to make progress, so the fallback must still act. This
+# pins the fallback as restricted, not removed.
+expect_failure 1 'kept occluding the screen immediately before screenshot' \
+  run_capture anr-launcher-no-wait FAKE_ANR_DIALOG_FROM=2 \
+  FAKE_ANR_DIALOG_STUCK=1 FAKE_ANR_DIALOG_NO_WAIT=1 \
+  FAKE_ANR_DIALOG_TITLE='Pixel Launcher is not responding'
+assert_no_frame_written
+assert_diagnostics_written
+assert_call_count 'shell input tap 200 130' 0
+assert_call_count 'shell input tap 420 130' 6
 
 # An ANR dialog that appears in the irreducible window between the
 # pre-screenshot readiness check and `screencap` itself: the frame on the
