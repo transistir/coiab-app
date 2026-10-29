@@ -150,6 +150,36 @@ describe('selectPendingInviteRoute', () => {
     ).toBeUndefined();
   });
 
+  test('does nothing while the ethnic group selection is open (#128)', () => {
+    // The onboarding profile screens are in EDITING_SCREEN_NAMES: an invite
+    // arriving mid-profile stays pending instead of interrupting it.
+    expect(
+      selectPendingInviteRoute(
+        [makeInvite({projectDescription: MARKER_DESCRIPTION})],
+        'EthnicGroupSelection',
+        [],
+      ),
+    ).toBeUndefined();
+  });
+
+  test('does nothing while the village entry is open (#128)', () => {
+    expect(
+      selectPendingInviteRoute(
+        [makeInvite({projectDescription: MARKER_DESCRIPTION})],
+        'VillageEntry',
+        [],
+      ),
+    ).toBeUndefined();
+  });
+
+  test('routes again once the profile flow reaches the join fork (#128)', () => {
+    // Positive control: only the two profile screens block. The screen after
+    // Success must route again, otherwise the listener would be dead.
+    expect(
+      selectPendingInviteRoute([makeInvite()], 'JoinOrganizationIntro', []),
+    ).toStrictEqual({type: 'plain', inviteId: 'invite-1'});
+  });
+
   test('does nothing with no pending invites', () => {
     expect(
       selectPendingInviteRoute([makeInvite({state: 'joined'})], 'Home', []),

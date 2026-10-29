@@ -51,12 +51,23 @@ export const COMPLETE_USER_PROFILE: UserProfileState = {
 };
 
 /**
+ * How a harness seeds the profile before mounting:
+ * - a `UserProfileState` writes exactly that value;
+ * - `null` clears the key (empty onboarding profile);
+ * - `'keep'` touches nothing, so a remount on the same MMKV proves the
+ *   persisted profile is what hydrates the new store (mid-flow restart).
+ */
+export type UserProfileSeed = UserProfileState | null | 'keep';
+
+/**
  * Writes the profile through the same persisted store production hydrates,
  * before `AppProviders` creates its singleton (its state initializer reads
  * MMKV at mount). `null` clears the key, so one test's profile cannot leak
- * into the next through the durable storage.
+ * into the next through the durable storage. `'keep'` is the restart case:
+ * the key is read back by the new store, never rewritten by the harness.
  */
-function seedUserProfile(profile: UserProfileState | null) {
+function seedUserProfile(profile: UserProfileSeed) {
+  if (profile === 'keep') return;
   MMKVStoreInitializer.removeItem(COIAB_USER_PROFILE_STORAGE_KEY);
   if (!profile) return;
   const store = createUserProfileStore({persist: true});
@@ -123,8 +134,11 @@ export function createAppProvidersWrapper({
   isOnline?: boolean;
   activeProjectId?: string;
   qaDeviceName?: string;
-  /** `null` starts the app with the empty onboarding profile. */
-  userProfile?: UserProfileState | null;
+  /**
+   * `null` starts the app with the empty onboarding profile; `'keep'` mounts
+   * over whatever MMKV already holds (restart mid-flow).
+   */
+  userProfile?: UserProfileSeed;
 }) {
   seedUserProfile(userProfile);
 

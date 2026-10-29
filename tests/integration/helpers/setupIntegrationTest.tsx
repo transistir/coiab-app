@@ -2,7 +2,7 @@ import {render} from '@testing-library/react-native';
 import type {MapeoManager} from '@comapeo/core';
 import type {ComapeoCoreClientApi} from '@comapeo/ipc';
 import {createManager, setUpIPC, useRealFetch} from './core';
-import {createAppProvidersWrapper} from './react';
+import {createAppProvidersWrapper, type UserProfileSeed} from './react';
 import type {ActiveProjectIdStore} from '../../../src/frontend/contexts/ActiveProjectIdStoreContext';
 import {MockedAppNavigator} from './navigation';
 import {sleep} from '../../../src/frontend/lib/sleep';
@@ -186,11 +186,17 @@ export function setupIntegrationTest() {
   const renderNavigation = async ({
     isOnline = true,
     activeProjectId = projectId,
-  }: Readonly<{isOnline?: boolean; activeProjectId?: string}> = {}) => {
+    userProfile,
+  }: Readonly<{
+    isOnline?: boolean;
+    activeProjectId?: string;
+    userProfile?: UserProfileSeed;
+  }> = {}) => {
     const appProviders = createAppProvidersWrapper({
       mapeoApi: client,
       isOnline,
       activeProjectId,
+      userProfile,
     });
     // Registered before `render`: if mounting throws, the providers are
     // still torn down.
@@ -266,11 +272,17 @@ export function setupIntegrationTestWithoutProject() {
   const renderNavigationAsync = async ({
     isOnline = true,
     activeProjectId,
-  }: Readonly<{isOnline?: boolean; activeProjectId?: string}> = {}) => {
+    userProfile,
+  }: Readonly<{
+    isOnline?: boolean;
+    activeProjectId?: string;
+    userProfile?: UserProfileSeed;
+  }> = {}) => {
     const appProviders = createAppProvidersWrapper({
       mapeoApi: client,
       isOnline,
       activeProjectId,
+      userProfile,
     });
     activeProjectIdStore = appProviders.activeProjectIdStore;
     // Registered before `render`: if mounting throws, the providers are
