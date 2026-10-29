@@ -2,17 +2,18 @@ import * as React from 'react';
 import {
   KeyboardAvoidingView,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {defineMessages, useIntl} from 'react-intl';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import Ionicons from '@react-native-vector-icons/ionicons';
 
 import {BodyText} from '../../sharedComponents/Text/BodyText';
 import {HeaderText} from '../../sharedComponents/Text/HeaderText';
+import {AutocompleteField} from '../../sharedComponents/AutocompleteField';
+import {OnboardingCompactHeader} from './OnboardingCompactHeader';
+import {getVillageSuggestions} from '../../lib/profileCatalog';
 import {
   useUserProfileActions,
   useUserProfileState,
@@ -21,21 +22,25 @@ import type {AppStackParamsList} from '../../sharedTypes/navigation';
 import {
   BLACK,
   COIAB_BEIGE,
-  COIAB_GREEN,
   COIAB_ORANGE,
   DARK_GREY,
   RED,
-  WHITE,
 } from '../../lib/styles';
+
+const SUBTITLE_COLOR = '#BFCCBF';
 
 const m = defineMessages({
   title: {
     id: '$1screens.Onboarding.VillageEntry.title',
     defaultMessage: 'What is your village?',
   },
+  subtitle: {
+    id: '$1screens.Onboarding.VillageEntry.subtitle',
+    defaultMessage: 'Choose or type your village',
+  },
   placeholder: {
     id: '$1screens.Onboarding.VillageEntry.placeholder',
-    defaultMessage: 'Village name',
+    defaultMessage: 'Type or choose an option',
   },
   continue: {
     id: '$1screens.Onboarding.VillageEntry.continue',
@@ -53,9 +58,6 @@ const m = defineMessages({
 
 type ScreenProps = NativeStackScreenProps<AppStackParamsList, 'VillageEntry'>;
 
-/** Without a notch `insets.top` is 0, so the layout is unchanged there. */
-const HEADER_TOP_PADDING = 12;
-
 export const VillageEntry = ({navigation}: ScreenProps) => {
   const {formatMessage: t} = useIntl();
   const insets = useSafeAreaInsets();
@@ -64,8 +66,8 @@ export const VillageEntry = ({navigation}: ScreenProps) => {
   const [text, setText] = React.useState(village ?? '');
   const [saveError, setSaveError] = React.useState<string | null>(null);
 
-  const trimmed = text.trim();
-  const canContinue = trimmed.length > 0;
+  const suggestions = getVillageSuggestions(text);
+  const canContinue = text.trim().length > 0;
 
   function handleContinue() {
     if (!canContinue) {
@@ -75,7 +77,7 @@ export const VillageEntry = ({navigation}: ScreenProps) => {
     setSaveError(null);
 
     try {
-      setVillage(trimmed);
+      setVillage(text);
     } catch {
       setSaveError(t(m.saveError));
       return;
@@ -85,38 +87,36 @@ export const VillageEntry = ({navigation}: ScreenProps) => {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior="padding">
-      <View
-        style={[styles.header, {paddingTop: HEADER_TOP_PADDING + insets.top}]}>
-        <TouchableOpacity
-          testID="ONBOARDING.village-back-btn"
-          accessibilityRole="button"
-          accessibilityLabel={t(m.back)}
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-          hitSlop={8}>
-          <Ionicons name="arrow-back" size={24} color={COIAB_BEIGE} />
-        </TouchableOpacity>
+    <KeyboardAvoidingView
+      style={[styles.container, {paddingTop: insets.top}]}
+      behavior="padding">
+      <OnboardingCompactHeader
+        onBack={() => navigation.goBack()}
+        backLabel={t(m.back)}
+        backTestID="ONBOARDING.village-back-btn"
+      />
+
+      <View style={styles.body}>
         <HeaderText variant="header2" style={styles.title}>
           {t(m.title)}
         </HeaderText>
-        <View style={styles.backButton} />
-      </View>
-
-      <View style={styles.body}>
-        <TextInput
-          testID="ONBOARDING.village-inp"
+        <BodyText variant="smallMeta" style={styles.subtitle}>
+          {t(m.subtitle)}
+        </BodyText>
+        <AutocompleteField
           value={text}
           onChangeText={next => {
             setText(next);
             setSaveError(null);
           }}
+          suggestions={suggestions}
+          onSelect={name => {
+            setText(name);
+            setSaveError(null);
+          }}
           placeholder={t(m.placeholder)}
-          placeholderTextColor={COIAB_BEIGE}
-          style={[styles.input, saveError ? styles.inputError : null]}
-          maxLength={100}
-          autoCorrect={false}
-          returnKeyType="done"
+          accessibilityLabel={t(m.title)}
+          testID="ONBOARDING.village-inp"
         />
         {saveError ? (
           <BodyText style={styles.error} testID="ONBOARDING.save-error">
@@ -150,38 +150,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: DARK_GREY,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingBottom: 16,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    flex: 1,
-    color: COIAB_BEIGE,
-    textAlign: 'center',
-  },
   body: {
     paddingHorizontal: 20,
     gap: 12,
   },
-  input: {
-    height: 48,
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    backgroundColor: COIAB_GREEN,
-    color: WHITE,
-    fontSize: 16,
+  title: {
+    color: COIAB_BEIGE,
+    textAlign: 'center',
   },
-  inputError: {
-    borderWidth: 2,
-    borderColor: RED,
+  subtitle: {
+    color: SUBTITLE_COLOR,
+    textAlign: 'center',
   },
   error: {
     color: RED,

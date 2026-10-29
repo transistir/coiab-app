@@ -198,11 +198,10 @@ import {
   COIAB_USER_PROFILE_STORAGE_KEY,
   type UserProfileState,
 } from '../../contexts/UserProfileStoreContext';
-import {ETHNIC_GROUPS} from '../../lib/ethnicGroups';
 import {markerFor} from '../../lib/organization/marker';
 import {setupIntegrationTestWithoutProject} from '../../../../tests/integration/helpers/setupIntegrationTest';
 
-const GRUPO = ETHNIC_GROUPS[0]!;
+const ETNIA = 'Tunayana';
 const ORG_ID = '0123456789abcdef';
 
 function plainInvite(inviteId: string): InviteSnapshot {
@@ -239,7 +238,12 @@ function perfilPersistido(): UserProfileState | null {
 }
 
 async function escolherEtnia() {
-  await fireEvent.press(await screen.findByTestId(`${GRUPO.id}Button`));
+  // Etnia é texto livre: digitar um valor do dataset também exercita o
+  // autocomplete, sem depender do toque numa sugestão.
+  await fireEvent.changeText(
+    await screen.findByTestId('ONBOARDING.ethnic-group-inp'),
+    ETNIA,
+  );
   await fireEvent.press(
     screen.getByTestId('ONBOARDING.ethnic-group-continue-btn'),
   );
@@ -297,7 +301,7 @@ describe('perfil de onboarding no navigator real (#128)', () => {
     // VillageEntry resets the stack: Success is the only route left.
     expect(nomesDasRotas()).toEqual(['Success']);
     expect(perfilPersistido()).toEqual({
-      ethnicGroupId: GRUPO.id,
+      ethnicity: ETNIA,
       village: 'Aldeia do caso 1',
     });
   }, 30000);
@@ -312,13 +316,15 @@ describe('perfil de onboarding no navigator real (#128)', () => {
       await screen.findByText('What is your ethnicity?'),
     ).toBeOnTheScreen();
     expect(nomesDasRotas()).toEqual(['EthnicGroupSelection']);
-    // The selection survives the pop: the screen comes back with the chosen
-    // group marked, and Continuar is enabled again.
-    expect(screen.getByTestId(`${GRUPO.id}Button-selected`)).toBeOnTheScreen();
+    // The typed ethnicity survives the pop: the screen comes back with the
+    // text already filled in, and Continuar is enabled again.
+    expect(screen.getByTestId('ONBOARDING.ethnic-group-inp').props.value).toBe(
+      ETNIA,
+    );
     expect(
       screen.getByTestId('ONBOARDING.ethnic-group-continue-btn'),
     ).toBeEnabled();
-    expect(perfilPersistido()?.ethnicGroupId).toBe(GRUPO.id);
+    expect(perfilPersistido()?.ethnicity).toBe(ETNIA);
   }, 30000);
 
   test('caso 3: reinício no meio hidrata a etnia do MMKV e conclui o fluxo', async () => {
@@ -336,19 +342,21 @@ describe('perfil de onboarding no navigator real (#128)', () => {
     // harness must not rewrite the profile for this remount.
     await desmontar();
     expect(perfilPersistido()).toEqual({
-      ethnicGroupId: GRUPO.id,
+      ethnicity: ETNIA,
       village: null,
     });
 
     await freshSetup.renderNavigationAsync({userProfile: 'keep'});
 
     // Incomplete profile (village still null) → back on the ethnic screen,
-    // with the persisted selection already applied.
+    // with the persisted text already applied.
     expect(
       await screen.findByText('What is your ethnicity?'),
     ).toBeOnTheScreen();
     expect(nomesDasRotas()).toEqual(['EthnicGroupSelection']);
-    expect(screen.getByTestId(`${GRUPO.id}Button-selected`)).toBeOnTheScreen();
+    expect(screen.getByTestId('ONBOARDING.ethnic-group-inp').props.value).toBe(
+      ETNIA,
+    );
 
     await fireEvent.press(
       screen.getByTestId('ONBOARDING.ethnic-group-continue-btn'),
@@ -358,7 +366,7 @@ describe('perfil de onboarding no navigator real (#128)', () => {
 
     expect(nomesDasRotas()).toEqual(['Success']);
     expect(perfilPersistido()).toEqual({
-      ethnicGroupId: GRUPO.id,
+      ethnicity: ETNIA,
       village: 'Aldeia retomada',
     });
   }, 30000);

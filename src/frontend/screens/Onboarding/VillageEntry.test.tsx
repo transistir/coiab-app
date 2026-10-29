@@ -1,5 +1,10 @@
 import * as React from 'react';
-import {render, screen, userEvent} from '@testing-library/react-native';
+import {
+  fireEvent,
+  render,
+  screen,
+  userEvent,
+} from '@testing-library/react-native';
 import {IntlProvider} from 'react-intl';
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 
@@ -9,17 +14,20 @@ import {
   createUserProfileStore,
   type UserProfileStore,
 } from '../../contexts/UserProfileStoreContext';
-import {COIAB_GREEN} from '../../lib/styles';
 import type {AppStackParamsList} from '../../sharedTypes/navigation';
 
 const PT_MESSAGES = {
   '$1screens.Onboarding.VillageEntry.title': 'Qual é a sua aldeia?',
   '$1screens.Onboarding.VillageEntry.continue': 'Continuar',
   '$1screens.Onboarding.VillageEntry.back': 'Voltar',
-  '$1screens.Onboarding.VillageEntry.placeholder': 'Nome da aldeia',
+  '$1screens.Onboarding.VillageEntry.placeholder':
+    'Digite ou escolha uma opção',
   '$1screens.Onboarding.VillageEntry.saveError':
     'Não foi possível salvar a aldeia. Tente novamente.',
 };
+
+const VILLAGE_INPUT = 'ONBOARDING.village-inp';
+const CONTINUE = 'ONBOARDING.village-continue-btn';
 
 type ScreenProps = NativeStackScreenProps<AppStackParamsList, 'VillageEntry'>;
 
@@ -58,32 +66,35 @@ describe('VillageEntry', () => {
 
     expect(screen.getByText('Qual é a sua aldeia?')).toBeOnTheScreen();
 
-    const input = screen.getByTestId('ONBOARDING.village-inp');
-    expect(input).toHaveStyle({
-      backgroundColor: COIAB_GREEN,
-      borderRadius: 8,
-      height: 48,
-    });
+    const input = screen.getByTestId(VILLAGE_INPUT);
+    expect(input).toHaveStyle({fontSize: 16});
     expect(input.props.maxLength).toBe(100);
+
+    // Figma `2181:11109` (`Fields-Search`): outlined 48px field, 2px beige
+    // border, 8px radius, transparent fill and 16px horizontal padding.
+    expect(screen.getByTestId(`${VILLAGE_INPUT}-field`)).toHaveStyle({
+      height: 48,
+      borderRadius: 8,
+      borderWidth: 2,
+      borderColor: '#DABA8D',
+      backgroundColor: 'transparent',
+      paddingHorizontal: 16,
+    });
   });
 
   test('the continue button starts disabled while the field is empty', async () => {
     await renderScreen();
 
-    expect(
-      screen.getByTestId('ONBOARDING.village-continue-btn'),
-    ).toBeDisabled();
+    expect(screen.getByTestId(CONTINUE)).toBeDisabled();
   });
 
   test('the continue button stays disabled for whitespace only', async () => {
     const user = userEvent.setup();
     await renderScreen();
 
-    await user.type(screen.getByTestId('ONBOARDING.village-inp'), '   ');
+    await user.type(screen.getByTestId(VILLAGE_INPUT), '   ');
 
-    expect(
-      screen.getByTestId('ONBOARDING.village-continue-btn'),
-    ).toBeDisabled();
+    expect(screen.getByTestId(CONTINUE)).toBeDisabled();
   });
 
   test('pre-fills the village already stored in the profile', async () => {
@@ -92,20 +103,22 @@ describe('VillageEntry', () => {
 
     await renderScreen({store});
 
-    expect(screen.getByTestId('ONBOARDING.village-inp').props.value).toBe(
+    expect(screen.getByTestId(VILLAGE_INPUT).props.value).toBe(
       'Aldeia Existente',
     );
   });
 
-  test('saves the trimmed village and resets navigation to Success', async () => {
+  test('typing free text enables Continue and resets navigation to Success', async () => {
     const user = userEvent.setup();
     const {store, navigation} = await renderScreen();
 
-    await user.type(
-      screen.getByTestId('ONBOARDING.village-inp'),
+    await fireEvent.changeText(
+      screen.getByTestId(VILLAGE_INPUT),
       '  Nova Aldeia  ',
     );
-    await user.press(screen.getByTestId('ONBOARDING.village-continue-btn'));
+    expect(screen.getByTestId(CONTINUE)).toBeEnabled();
+
+    await user.press(screen.getByTestId(CONTINUE));
 
     expect(store.instance.getState().village).toBe('Nova Aldeia');
     expect(navigation.reset).toHaveBeenCalledWith({
@@ -123,11 +136,11 @@ describe('VillageEntry', () => {
 
     const {navigation} = await renderScreen({store});
 
-    await user.type(
-      screen.getByTestId('ONBOARDING.village-inp'),
+    await fireEvent.changeText(
+      screen.getByTestId(VILLAGE_INPUT),
       'Aldeia Teste',
     );
-    await user.press(screen.getByTestId('ONBOARDING.village-continue-btn'));
+    await user.press(screen.getByTestId(CONTINUE));
 
     expect(
       screen.getByText('Não foi possível salvar a aldeia. Tente novamente.'),

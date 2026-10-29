@@ -7,6 +7,7 @@ import {
   createUserProfileStore,
 } from '../../contexts/UserProfileStoreContext';
 import {withFlowState} from '../../../../.rnstorybook/decorators/withFlowState';
+import {withPtBrLocale} from '../../../../.rnstorybook/decorators/withPtBrLocale';
 
 /**
  * The screen takes its navigation from the real stack; these stories are for
@@ -24,7 +25,7 @@ const meta = {
   // for every manifest row, including the `testID:` rows below; only the
   // decorators render it. These stories already supply their own store, so no
   // `parameters.flow.state` is needed.
-  decorators: [withFlowState],
+  decorators: [withFlowState, withPtBrLocale],
 } satisfies Meta<typeof NoStoryComponent>;
 
 export default meta;

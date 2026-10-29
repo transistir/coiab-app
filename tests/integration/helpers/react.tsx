@@ -35,7 +35,6 @@ import {
   type UserProfileState,
 } from '../../../src/frontend/contexts/UserProfileStoreContext';
 import {MMKVStoreInitializer} from '../../../src/frontend/hooks/persistedState/createPersistedState';
-import {ETHNIC_GROUPS} from '../../../src/frontend/lib/ethnicGroups';
 
 /**
  * The profile every harness starts with (#128). A complete profile keeps the
@@ -46,7 +45,7 @@ import {ETHNIC_GROUPS} from '../../../src/frontend/lib/ethnicGroups';
  * the onboarding flow instead.
  */
 export const COMPLETE_USER_PROFILE: UserProfileState = {
-  ethnicGroupId: ETHNIC_GROUPS[0]!.id,
+  ethnicity: 'Tunayana',
   village: 'Aldeia de teste',
 };
 
@@ -71,8 +70,8 @@ function seedUserProfile(profile: UserProfileSeed) {
   MMKVStoreInitializer.removeItem(COIAB_USER_PROFILE_STORAGE_KEY);
   if (!profile) return;
   const store = createUserProfileStore({persist: true});
-  if (profile.ethnicGroupId !== null) {
-    store.actions.setEthnicGroup(profile.ethnicGroupId);
+  if (profile.ethnicity !== null) {
+    store.actions.setEthnicity(profile.ethnicity);
   }
   if (profile.village !== null) {
     store.actions.setVillage(profile.village);

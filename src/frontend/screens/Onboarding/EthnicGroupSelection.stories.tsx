@@ -6,8 +6,8 @@ import {
   UserProfileStoreProvider,
   createUserProfileStore,
 } from '../../contexts/UserProfileStoreContext';
-import {ETHNIC_GROUPS} from '../../lib/ethnicGroups';
 import {withFlowState} from '../../../../.rnstorybook/decorators/withFlowState';
+import {withPtBrLocale} from '../../../../.rnstorybook/decorators/withPtBrLocale';
 
 /**
  * The screen takes its navigation from the real stack; these stories are for
@@ -25,7 +25,7 @@ const meta = {
   // for every manifest row, including the `testID:` rows below; only the
   // decorators render it. These stories already supply their own store, so no
   // `parameters.flow.state` is needed.
-  decorators: [withFlowState],
+  decorators: [withFlowState, withPtBrLocale],
 } satisfies Meta<typeof NoStoryComponent>;
 
 export default meta;
@@ -42,7 +42,7 @@ const route = {
   name: 'EthnicGroupSelection',
 } as never;
 
-/** Empty profile: no radio selected and the continue button disabled. */
+/** Empty profile: the free-text field is empty and Continue is disabled. */
 export const Default: Story = {
   render: () => (
     <UserProfileStoreProvider store={createUserProfileStore()}>
@@ -51,14 +51,11 @@ export const Default: Story = {
   ),
 };
 
-/** A profile that already stored an ethnic group. */
+/** A profile that already stored an ethnicity. */
 export const WithSelection: Story = {
   render: () => {
     const store = createUserProfileStore();
-    const stored = ETHNIC_GROUPS[1] ?? ETHNIC_GROUPS[0];
-    if (stored) {
-      store.instance.setState({ethnicGroupId: stored.id});
-    }
+    store.instance.setState({ethnicity: 'Tunayana'});
 
     return (
       <UserProfileStoreProvider store={store}>

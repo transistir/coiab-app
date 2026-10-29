@@ -1,7 +1,24 @@
 {
+  "source": "https://terrasindigenas.org.br/en/terras-indigenas/4999",
+  "territories": [
+    {
+      "id": "4999",
+      "name": "Kaxuyana-Tunayana",
+      "states": "PA, AM",
+      "legalStatus": "Homologada",
+      "areaHa": 2183000,
+      "population": 841
+    }
+  ],
   "ethnicGroups": [
-    {"id": "dummy-1", "name": "Etnia Dummy 1"},
-    {"id": "dummy-2", "name": "Etnia Dummy 2"},
-    {"id": "dummy-3", "name": "Etnia Dummy 3"}
-  ]
+    "Kahyana",
+    "Katuenayana",
+    "Katxuyana",
+    "Mawayana",
+    "Tunayana",
+    "Txikiyana",
+    "Xereu-Hixkaryana",
+    "Xereu-Katuena"
+  ],
+  "villages": []
 }

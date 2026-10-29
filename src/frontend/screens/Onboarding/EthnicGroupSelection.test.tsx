@@ -1,10 +1,14 @@
 import * as React from 'react';
-import {render, screen, userEvent} from '@testing-library/react-native';
+import {
+  fireEvent,
+  render,
+  screen,
+  userEvent,
+} from '@testing-library/react-native';
 import {IntlProvider} from 'react-intl';
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 
 import {EthnicGroupSelection} from './EthnicGroupSelection';
-import {ETHNIC_GROUPS} from '../../lib/ethnicGroups';
 import {
   UserProfileStoreProvider,
   createUserProfileStore,
@@ -14,10 +18,15 @@ import type {AppStackParamsList} from '../../sharedTypes/navigation';
 
 const PT_MESSAGES = {
   '$1screens.Onboarding.EthnicGroupSelection.title': 'Qual é a sua etnia?',
+  '$1screens.Onboarding.EthnicGroupSelection.placeholder':
+    'Digite ou escolha uma opção',
   '$1screens.Onboarding.EthnicGroupSelection.continue': 'Continuar',
   '$1screens.Onboarding.EthnicGroupSelection.saveError':
     'Não foi possível salvar a etnia. Tente novamente.',
 };
+
+const ETHNIC_INPUT = 'ONBOARDING.ethnic-group-inp';
+const CONTINUE = 'ONBOARDING.ethnic-group-continue-btn';
 
 type ScreenProps = NativeStackScreenProps<
   AppStackParamsList,
@@ -54,74 +63,95 @@ async function renderScreen({
 }
 
 describe('EthnicGroupSelection', () => {
-  test('renders the title and every ethnic group from the catalog', async () => {
+  test('renders the title and a free-text input with the placeholder', async () => {
     await renderScreen();
 
     expect(screen.getByText('Qual é a sua etnia?')).toBeOnTheScreen();
-
-    for (const group of ETHNIC_GROUPS) {
-      expect(screen.getByText(group.name)).toBeOnTheScreen();
-    }
+    expect(screen.getByTestId(ETHNIC_INPUT)).toBeOnTheScreen();
+    expect(
+      screen.getByPlaceholderText('Digite ou escolha uma opção'),
+    ).toBeOnTheScreen();
   });
 
-  test('the continue button starts disabled without a selection', async () => {
+  test('the continue button starts disabled without text', async () => {
     await renderScreen();
 
-    expect(
-      screen.getByTestId('ONBOARDING.ethnic-group-continue-btn'),
-    ).toBeDisabled();
+    expect(screen.getByTestId(CONTINUE)).toBeDisabled();
   });
 
-  test('pre-selects the ethnic group already stored in the profile', async () => {
+  test('the continue button stays disabled for whitespace only', async () => {
+    await renderScreen();
+
+    await fireEvent.changeText(screen.getByTestId(ETHNIC_INPUT), '   ');
+
+    expect(screen.getByTestId(CONTINUE)).toBeDisabled();
+  });
+
+  test('pre-fills the ethnicity already stored in the profile', async () => {
     const store = createUserProfileStore();
-    const stored = ETHNIC_GROUPS[1]!;
-    store.instance.setState({ethnicGroupId: stored.id});
+    store.instance.setState({ethnicity: 'Tunayana'});
 
     await renderScreen({store});
 
-    expect(screen.getByTestId(`${stored.id}Button-selected`)).toBeOnTheScreen();
-    expect(
-      screen.getByTestId('ONBOARDING.ethnic-group-continue-btn'),
-    ).toBeEnabled();
+    expect(screen.getByTestId(ETHNIC_INPUT).props.value).toBe('Tunayana');
+    expect(screen.getByTestId(CONTINUE)).toBeEnabled();
   });
 
-  test('saves the selected group and navigates to VillageEntry', async () => {
+  test('typing free text outside the dataset enables Continue and persists it', async () => {
     const user = userEvent.setup();
     const {store, navigation} = await renderScreen();
-    const chosen = ETHNIC_GROUPS[0]!;
 
-    await user.press(screen.getByTestId(`${chosen.id}Button`));
-    expect(
-      screen.getByTestId('ONBOARDING.ethnic-group-continue-btn'),
-    ).toBeEnabled();
-
-    await user.press(
-      screen.getByTestId('ONBOARDING.ethnic-group-continue-btn'),
+    await fireEvent.changeText(
+      screen.getByTestId(ETHNIC_INPUT),
+      'Etnia escrita à mão',
     );
+    expect(screen.getByTestId(CONTINUE)).toBeEnabled();
 
-    expect(store.instance.getState().ethnicGroupId).toBe(chosen.id);
+    await user.press(screen.getByTestId(CONTINUE));
+
+    expect(store.instance.getState().ethnicity).toBe('Etnia escrita à mão');
     expect(navigation.navigate).toHaveBeenCalledWith('VillageEntry');
+  });
+
+  test('selecting a suggestion fills the field', async () => {
+    await renderScreen();
+
+    const input = screen.getByTestId(ETHNIC_INPUT);
+    await fireEvent(input, 'focus');
+    await fireEvent.changeText(input, 'kahyana');
+
+    const suggestion = screen.getByTestId(`${ETHNIC_INPUT}-suggestion-Kahyana`);
+    await fireEvent.press(suggestion);
+
+    expect(screen.getByTestId(ETHNIC_INPUT).props.value).toBe('Kahyana');
+    expect(screen.getByTestId(CONTINUE)).toBeEnabled();
+  });
+
+  test('shows no suggestion list for an empty query', async () => {
+    await renderScreen();
+
+    const input = screen.getByTestId(ETHNIC_INPUT);
+    await fireEvent(input, 'focus');
+
+    expect(screen.queryByText('Tunayana')).toBeNull();
   });
 
   test('shows an inline error and does not navigate when saving fails', async () => {
     const user = userEvent.setup();
     const store = createUserProfileStore();
-    const chosen = ETHNIC_GROUPS[0]!;
-    jest.spyOn(store.actions, 'setEthnicGroup').mockImplementation(() => {
+    jest.spyOn(store.actions, 'setEthnicity').mockImplementation(() => {
       throw new Error('persist-failed');
     });
 
     const {navigation} = await renderScreen({store});
 
-    await user.press(screen.getByTestId(`${chosen.id}Button`));
-    await user.press(
-      screen.getByTestId('ONBOARDING.ethnic-group-continue-btn'),
-    );
+    await fireEvent.changeText(screen.getByTestId(ETHNIC_INPUT), 'Tunayana');
+    await user.press(screen.getByTestId(CONTINUE));
 
     expect(
       screen.getByText('Não foi possível salvar a etnia. Tente novamente.'),
     ).toBeOnTheScreen();
     expect(navigation.navigate).not.toHaveBeenCalled();
-    expect(store.instance.getState().ethnicGroupId).toBeNull();
+    expect(store.instance.getState().ethnicity).toBeNull();
   });
 });

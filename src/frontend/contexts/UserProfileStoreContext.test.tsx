@@ -2,7 +2,6 @@ import {act, renderHook} from '@testing-library/react-native';
 import {type ReactNode} from 'react';
 
 import {MMKVStoreInitializer} from '../hooks/persistedState/createPersistedState';
-import {ETHNIC_GROUPS, type EthnicGroup} from '../lib/ethnicGroups';
 import {
   COIAB_USER_PROFILE_STORAGE_KEY,
   UserProfileStoreProvider,
@@ -13,12 +12,7 @@ import {
   type UserProfileStore,
 } from './UserProfileStoreContext';
 
-const EMPTY_PROFILE = {ethnicGroupId: null, village: null};
-
-const CATALOG: EthnicGroup[] = [
-  {id: 'etnia-a', name: 'Etnia A'},
-  {id: 'etnia-b', name: 'Etnia B'},
-];
+const EMPTY_PROFILE = {ethnicity: null, village: null};
 
 function createWrapper(store: UserProfileStore) {
   return ({children}: {children: ReactNode}) => {
@@ -57,31 +51,60 @@ describe('UserProfileStore', () => {
     );
   });
 
-  test('setEthnicGroup e setVillage persistem o envelope {state, version: 1}', () => {
-    const store = createUserProfileStore({persist: true, catalog: CATALOG});
+  test('setEthnicity e setVillage persistem o envelope {state, version: 2}', () => {
+    const store = createUserProfileStore({persist: true});
 
-    store.actions.setEthnicGroup('etnia-a');
+    store.actions.setEthnicity('  Kaxuyana-Tunayana  ');
     store.actions.setVillage('  Aldeia X  ');
 
     expect(store.instance.getState()).toStrictEqual({
-      ethnicGroupId: 'etnia-a',
+      ethnicity: 'Kaxuyana-Tunayana',
       village: 'Aldeia X',
     });
     expect(readEnvelope()).toStrictEqual({
-      state: {ethnicGroupId: 'etnia-a', village: 'Aldeia X'},
-      version: 1,
+      state: {ethnicity: 'Kaxuyana-Tunayana', village: 'Aldeia X'},
+      version: 2,
     });
   });
 
+  test('texto livre fora do dataset é aceito e persistido', () => {
+    const store = createUserProfileStore({persist: true});
+
+    store.actions.setEthnicity('Etnia que não está no catálogo');
+    store.actions.setVillage('Aldeia inventada pela comunidade');
+
+    expect(store.instance.getState()).toStrictEqual({
+      ethnicity: 'Etnia que não está no catálogo',
+      village: 'Aldeia inventada pela comunidade',
+    });
+    expect(readEnvelope()?.state).toStrictEqual({
+      ethnicity: 'Etnia que não está no catálogo',
+      village: 'Aldeia inventada pela comunidade',
+    });
+  });
+
+  test.each(['', '   ', '\n\t '])(
+    'texto só com espaços (%j) vira null',
+    text => {
+      const store = createUserProfileStore({persist: true});
+
+      store.actions.setEthnicity(text);
+      store.actions.setVillage(text);
+
+      expect(store.instance.getState()).toStrictEqual(EMPTY_PROFILE);
+      expect(readEnvelope()?.state).toStrictEqual(EMPTY_PROFILE);
+    },
+  );
+
   test('uma instância nova sobre o mesmo MMKV reidrata o perfil', () => {
-    const primeiro = createUserProfileStore({persist: true, catalog: CATALOG});
-    primeiro.actions.setEthnicGroup('etnia-b');
+    const primeiro = createUserProfileStore({persist: true});
+    primeiro.actions.setEthnicity('Mawayana');
     primeiro.actions.setVillage('Aldeia Y');
 
-    const segundo = createUserProfileStore({persist: true, catalog: CATALOG});
+    const segundo = createUserProfileStore({persist: true});
 
     expect(segundo.instance.getState()).toStrictEqual({
-      ethnicGroupId: 'etnia-b',
+      ethnicity: 'Mawayana',
       village: 'Aldeia Y',
     });
   });
@@ -96,7 +119,7 @@ describe('UserProfileStore', () => {
     let store: UserProfileStore | undefined;
     try {
       expect(() => {
-        store = createUserProfileStore({persist: true, catalog: CATALOG});
+        store = createUserProfileStore({persist: true});
       }).not.toThrow();
     } finally {
       read.mockRestore();
@@ -113,22 +136,35 @@ describe('UserProfileStore', () => {
         throw new Error('mmkv adapter broken');
       });
 
-    const store = createUserProfileStore({persist: true, catalog: CATALOG});
+    const store = createUserProfileStore({persist: true});
     read.mockRestore();
 
-    store.actions.setEthnicGroup('etnia-a');
+    store.actions.setEthnicity('Tunayana');
 
-    expect(store.instance.getState().ethnicGroupId).toBe('etnia-a');
+    expect(store.instance.getState().ethnicity).toBe('Tunayana');
     expect(readEnvelope()).toStrictEqual({
-      state: {ethnicGroupId: 'etnia-a', village: null},
-      version: 1,
+      state: {ethnicity: 'Tunayana', village: null},
+      version: 2,
     });
   });
 
   test('raw não-JSON hidrata vazio', () => {
     writeRaw('{estado: quebrado');
 
-    const store = createUserProfileStore({persist: true, catalog: CATALOG});
+    const store = createUserProfileStore({persist: true});
+
+    expect(store.instance.getState()).toStrictEqual(EMPTY_PROFILE);
+  });
+
+  test('perfil v1 antigo é descartado, sem migração', () => {
+    writeRaw(
+      persistedRaw({
+        state: {ethnicGroupId: 'dummy-1', village: 'Aldeia antiga'},
+        version: 1,
+      }),
+    );
+
+    const store = createUserProfileStore({persist: true});
 
     expect(store.instance.getState()).toStrictEqual(EMPTY_PROFILE);
   });
@@ -139,53 +175,41 @@ describe('UserProfileStore', () => {
     ['raiz string', 'x'],
     ['envelope sem state', {}],
     ['state null', {state: null}],
-    ['state com ethnicGroupId numérico', {state: {ethnicGroupId: 5}}],
+    ['state com ethnicity numérico', {state: {ethnicity: 5}}],
     [
       'state com village não-string',
-      {state: {ethnicGroupId: 'etnia-a', village: 7}},
+      {state: {ethnicity: 'Tunayana', village: 7}},
     ],
     [
       'versão desconhecida',
-      {state: {ethnicGroupId: 'etnia-a', village: 'Aldeia X'}, version: 2},
+      {state: {ethnicity: 'Tunayana', village: 'Aldeia X'}, version: 3},
     ],
   ])('envelope inválido (%s) hidrata vazio', (_nome, value) => {
     writeRaw(persistedRaw(value));
 
-    const store = createUserProfileStore({persist: true, catalog: CATALOG});
+    const store = createUserProfileStore({persist: true});
 
     expect(store.instance.getState()).toStrictEqual(EMPTY_PROFILE);
   });
 
-  test('ethnicGroupId fora do catálogo vira null', () => {
+  test('envelope v2 reidrata texto livre sem validar contra o dataset', () => {
     writeRaw(
       persistedRaw({
-        state: {ethnicGroupId: 'desconhecida', village: 'Aldeia X'},
-        version: 1,
+        state: {ethnicity: 'Etnia livre', village: '  Aldeia livre  '},
+        version: 2,
       }),
     );
 
-    const store = createUserProfileStore({persist: true, catalog: CATALOG});
+    const store = createUserProfileStore({persist: true});
 
     expect(store.instance.getState()).toStrictEqual({
-      ethnicGroupId: null,
-      village: 'Aldeia X',
+      ethnicity: 'Etnia livre',
+      village: 'Aldeia livre',
     });
   });
 
-  test('setEthnicGroup fora do catálogo lança sem publicar', () => {
-    const store = createUserProfileStore({persist: true, catalog: CATALOG});
-    const publish = jest.fn();
-    store.instance.subscribe(publish);
-
-    expect(() => store.actions.setEthnicGroup('desconhecida')).toThrow();
-
-    expect(store.instance.getState()).toStrictEqual(EMPTY_PROFILE);
-    expect(publish).not.toHaveBeenCalled();
-    expect(readEnvelope()).toBeNull();
-  });
-
   test('setItem lançando: estado não é publicado e a ação repassa o erro', () => {
-    const store = createUserProfileStore({persist: true, catalog: CATALOG});
+    const store = createUserProfileStore({persist: true});
     const write = jest
       .spyOn(MMKVStoreInitializer, 'setItem')
       .mockImplementation(() => {
@@ -204,43 +228,24 @@ describe('UserProfileStore', () => {
     expect(publish).not.toHaveBeenCalled();
   });
 
-  test.each(['', '   ', '\n\t '])(
-    'aldeia só com espaços (%j) é rejeitada',
-    text => {
-      const store = createUserProfileStore({persist: true, catalog: CATALOG});
-
-      expect(() => store.actions.setVillage(text)).toThrow();
-
-      expect(store.instance.getState()).toStrictEqual(EMPTY_PROFILE);
-      expect(readEnvelope()).toBeNull();
-    },
-  );
-
   test.each([
     [
-      'etnia válida + aldeia preenchida',
-      {ethnicGroupId: 'etnia-a', village: 'Aldeia X'},
+      'etnia e aldeia preenchidas',
+      {ethnicity: 'Tunayana', village: 'Aldeia X'},
       true,
     ],
-    ['etnia nula', {ethnicGroupId: null, village: 'Aldeia X'}, false],
-    [
-      'etnia fora do catálogo',
-      {ethnicGroupId: 'desconhecida', village: 'Aldeia X'},
-      false,
-    ],
-    ['aldeia nula', {ethnicGroupId: 'etnia-a', village: null}, false],
-    ['aldeia vazia', {ethnicGroupId: 'etnia-a', village: ''}, false],
-    [
-      'aldeia só com espaços',
-      {ethnicGroupId: 'etnia-a', village: '   '},
-      false,
-    ],
+    ['etnia nula', {ethnicity: null, village: 'Aldeia X'}, false],
+    ['etnia vazia', {ethnicity: '', village: 'Aldeia X'}, false],
+    ['etnia só com espaços', {ethnicity: '   ', village: 'Aldeia X'}, false],
+    ['aldeia nula', {ethnicity: 'Tunayana', village: null}, false],
+    ['aldeia vazia', {ethnicity: 'Tunayana', village: ''}, false],
+    ['aldeia só com espaços', {ethnicity: 'Tunayana', village: '   '}, false],
   ])('isProfileComplete: %s', (_nome, state, expected) => {
-    expect(isProfileComplete(state, CATALOG)).toBe(expected);
+    expect(isProfileComplete(state)).toBe(expected);
   });
 
   test('hooks expõem estado e ações sob o provider', async () => {
-    const store = createUserProfileStore({catalog: CATALOG});
+    const store = createUserProfileStore();
     const wrapper = createWrapper(store);
 
     const stateHook = await renderHook(() => useUserProfileState(), {wrapper});
@@ -251,22 +256,13 @@ describe('UserProfileStore', () => {
     expect(stateHook.result.current).toStrictEqual(EMPTY_PROFILE);
 
     await act(async () => {
-      actionsHook.result.current.setEthnicGroup('etnia-b');
+      actionsHook.result.current.setEthnicity('Mawayana');
       actionsHook.result.current.setVillage('Aldeia W');
     });
 
     expect(stateHook.result.current).toStrictEqual({
-      ethnicGroupId: 'etnia-b',
+      ethnicity: 'Mawayana',
       village: 'Aldeia W',
     });
-  });
-
-  test('catálogo padrão é o ETHNIC_GROUPS', () => {
-    const store = createUserProfileStore({persist: true});
-    const [primeiraEtnia] = ETHNIC_GROUPS;
-
-    store.actions.setEthnicGroup(primeiraEtnia!.id);
-
-    expect(store.instance.getState().ethnicGroupId).toBe(primeiraEtnia!.id);
   });
 });

@@ -6,10 +6,9 @@ import {output} from '../../../utils/naming';
 // `EthnicGroupSelection`. A later spec in the same session already starts from
 // `Success`, so the helper is a no-op there instead of failing.
 //
-// It is also idempotent across runs: if an earlier run already stored an
-// ethnicity, that row's testID is swapped to `-selected`, so clicking
-// `dummy-1Button` unconditionally would miss. Pick any still-unselected row.
-const ETHNIC_GROUP_IDS = ['dummy-1', 'dummy-2', 'dummy-3'] as const;
+// Ethnicity is free text with local autocomplete: typing a value from the
+// dataset is enough and stays valid even if the picker UI changes again.
+const ETHNICITY = 'Tunayana';
 
 export async function completeEthnicProfileIfNeeded() {
   const ethnicContinue = await $(
@@ -32,15 +31,11 @@ export async function completeEthnicProfileIfNeeded() {
     return;
   }
 
-  // First entry that is not selected yet. `SelectOne` exposes the selected row
-  // as `<id>Button-selected`, so the plain testID only exists for the others.
-  for (const id of ETHNIC_GROUP_IDS) {
-    const option = await $(byResourceId(`${id}Button`));
-    if (await option.isDisplayed()) {
-      await option.click();
-      break;
-    }
-  }
+  const ethnicInput = await $(byResourceId('ONBOARDING.ethnic-group-inp'));
+  await ethnicInput.waitForDisplayed({timeout: 15000, interval: 500});
+  await ethnicInput.setValue(ETHNICITY);
+  // On iOS the software keyboard overlays the button.
+  await driver.hideKeyboard().catch(() => {});
   await ethnicContinue.click();
 
   const villageInput = await $(byResourceId('ONBOARDING.village-inp'));

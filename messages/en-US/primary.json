@@ -589,8 +589,14 @@
   "$1screens.Onboarding.EthnicGroupSelection.continue": {
     "message": "Continue"
   },
+  "$1screens.Onboarding.EthnicGroupSelection.placeholder": {
+    "message": "Type or choose an option"
+  },
   "$1screens.Onboarding.EthnicGroupSelection.saveError": {
     "message": "Could not save your ethnicity. Please try again."
+  },
+  "$1screens.Onboarding.EthnicGroupSelection.subtitle": {
+    "message": "Choose or type your ethnicity"
   },
   "$1screens.Onboarding.EthnicGroupSelection.title": {
     "message": "What is your ethnicity?"
@@ -602,10 +608,13 @@
     "message": "Continue"
   },
   "$1screens.Onboarding.VillageEntry.placeholder": {
-    "message": "Village name"
+    "message": "Type or choose an option"
   },
   "$1screens.Onboarding.VillageEntry.saveError": {
     "message": "Could not save your village. Please try again."
+  },
+  "$1screens.Onboarding.VillageEntry.subtitle": {
+    "message": "Choose or type your village"
   },
   "$1screens.Onboarding.VillageEntry.title": {
     "message": "What is your village?"

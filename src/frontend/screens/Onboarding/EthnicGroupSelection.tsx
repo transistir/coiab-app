@@ -1,19 +1,14 @@
 import * as React from 'react';
-import {
-  Image,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import {ScrollView, StyleSheet, TouchableOpacity, View} from 'react-native';
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {defineMessages, useIntl} from 'react-intl';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 import {BodyText} from '../../sharedComponents/Text/BodyText';
 import {HeaderText} from '../../sharedComponents/Text/HeaderText';
-import {SelectOne} from '../../sharedComponents/SelectOne';
-import {ETHNIC_GROUPS} from '../../lib/ethnicGroups';
+import {AutocompleteField} from '../../sharedComponents/AutocompleteField';
+import {OnboardingCompactHeader} from './OnboardingCompactHeader';
+import {getEthnicitySuggestions} from '../../lib/profileCatalog';
 import {
   useUserProfileActions,
   useUserProfileState,
@@ -25,13 +20,22 @@ import {
   COIAB_ORANGE,
   DARK_GREY,
   RED,
-  WHITE,
 } from '../../lib/styles';
+
+const SUBTITLE_COLOR = '#BFCCBF';
 
 const m = defineMessages({
   title: {
     id: '$1screens.Onboarding.EthnicGroupSelection.title',
     defaultMessage: 'What is your ethnicity?',
+  },
+  subtitle: {
+    id: '$1screens.Onboarding.EthnicGroupSelection.subtitle',
+    defaultMessage: 'Choose or type your ethnicity',
+  },
+  placeholder: {
+    id: '$1screens.Onboarding.EthnicGroupSelection.placeholder',
+    defaultMessage: 'Type or choose an option',
   },
   continue: {
     id: '$1screens.Onboarding.EthnicGroupSelection.continue',
@@ -48,31 +52,26 @@ type ScreenProps = NativeStackScreenProps<
   'EthnicGroupSelection'
 >;
 
-/** Without a notch `insets.top` is 0, so the layout is unchanged there. */
-const CONTENT_TOP_PADDING = 24;
-
 export const EthnicGroupSelection = ({navigation}: ScreenProps) => {
   const {formatMessage: t} = useIntl();
   const insets = useSafeAreaInsets();
-  const {ethnicGroupId} = useUserProfileState();
-  const {setEthnicGroup} = useUserProfileActions();
-  const [selectedId, setSelectedId] = React.useState(ethnicGroupId);
+  const {ethnicity} = useUserProfileState();
+  const {setEthnicity} = useUserProfileActions();
+  const [text, setText] = React.useState(ethnicity ?? '');
   const [saveError, setSaveError] = React.useState<string | null>(null);
 
-  const options = React.useMemo(
-    () => ETHNIC_GROUPS.map(group => ({value: group.id, label: group.name})),
-    [],
-  );
+  const suggestions = getEthnicitySuggestions(text);
+  const canContinue = text.trim().length > 0;
 
   function handleContinue() {
-    if (!selectedId) {
+    if (!canContinue) {
       return;
     }
 
     setSaveError(null);
 
     try {
-      setEthnicGroup(selectedId);
+      setEthnicity(text);
     } catch {
       setSaveError(t(m.saveError));
       return;
@@ -82,30 +81,32 @@ export const EthnicGroupSelection = ({navigation}: ScreenProps) => {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, {paddingTop: insets.top}]}>
+      <OnboardingCompactHeader />
       <ScrollView
-        contentContainerStyle={[
-          styles.content,
-          {paddingTop: CONTENT_TOP_PADDING + insets.top},
-        ]}
+        contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled">
-        <Image
-          source={require('../../images/ekanadyby-wordmark.png')}
-          style={styles.logo}
-          resizeMode="contain"
-          accessibilityLabel="Ekanadyby"
-        />
         <HeaderText variant="header2" style={styles.title}>
           {t(m.title)}
         </HeaderText>
-        <View style={styles.listCard}>
-          <SelectOne
-            value={selectedId}
-            onChange={next => setSelectedId(next)}
-            options={options}
-            color={COIAB_ORANGE}
-          />
-        </View>
+        <BodyText variant="smallMeta" style={styles.subtitle}>
+          {t(m.subtitle)}
+        </BodyText>
+        <AutocompleteField
+          value={text}
+          onChangeText={next => {
+            setText(next);
+            setSaveError(null);
+          }}
+          suggestions={suggestions}
+          onSelect={name => {
+            setText(name);
+            setSaveError(null);
+          }}
+          placeholder={t(m.placeholder)}
+          accessibilityLabel={t(m.title)}
+          testID="ONBOARDING.ethnic-group-inp"
+        />
         {saveError ? (
           <BodyText style={styles.error} testID="ONBOARDING.save-error">
             {saveError}
@@ -116,10 +117,13 @@ export const EthnicGroupSelection = ({navigation}: ScreenProps) => {
         <TouchableOpacity
           testID="ONBOARDING.ethnic-group-continue-btn"
           accessibilityRole="button"
-          accessibilityState={{disabled: !selectedId}}
-          disabled={!selectedId}
+          accessibilityState={{disabled: !canContinue}}
+          disabled={!canContinue}
           onPress={handleContinue}
-          style={[styles.continueButton, !selectedId && styles.disabledButton]}>
+          style={[
+            styles.continueButton,
+            !canContinue && styles.disabledButton,
+          ]}>
           <HeaderText variant="header5" style={styles.continueLabel}>
             {t(m.continue)}
           </HeaderText>
@@ -137,28 +141,22 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
     paddingBottom: 16,
-    gap: 16,
-  },
-  logo: {
-    width: 180,
-    height: 48,
-    alignSelf: 'center',
+    gap: 12,
   },
   title: {
     color: COIAB_BEIGE,
     textAlign: 'center',
   },
-  listCard: {
-    backgroundColor: WHITE,
-    borderRadius: 12,
-    overflow: 'hidden',
-    paddingHorizontal: 8,
+  subtitle: {
+    color: SUBTITLE_COLOR,
+    textAlign: 'center',
   },
   error: {
     color: RED,
     textAlign: 'center',
   },
   actions: {
+    marginTop: 'auto',
     paddingHorizontal: 20,
     paddingVertical: 20,
   },

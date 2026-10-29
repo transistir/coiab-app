@@ -11,7 +11,6 @@ import {
 } from '@react-navigation/native';
 
 import {RootStackNavigator} from '../../src/frontend/Navigation/Stack';
-import {ETHNIC_GROUPS} from '../../src/frontend/lib/ethnicGroups';
 import {
   UserProfileStoreProvider,
   createUserProfileStore,
@@ -197,11 +196,8 @@ type ConsumeHardwareBackPressProps = {
 function StoryUserProfileProvider({children}: {children: React.ReactNode}) {
   const [store] = React.useState(() => {
     const profileStore = createUserProfileStore();
-    const group = ETHNIC_GROUPS[0];
-    if (group) {
-      profileStore.actions.setEthnicGroup(group.id);
-      profileStore.actions.setVillage('Aldeia de teste');
-    }
+    profileStore.actions.setEthnicity('Tunayana');
+    profileStore.actions.setVillage('Aldeia de teste');
     return profileStore;
   });
 

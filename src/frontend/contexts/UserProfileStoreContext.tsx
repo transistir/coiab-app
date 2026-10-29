@@ -2,10 +2,9 @@ import {createContext, ReactNode, useContext} from 'react';
 import {createStore, useStore} from 'zustand';
 
 import {MMKVStoreInitializer} from '../hooks/persistedState/createPersistedState';
-import {ETHNIC_GROUPS, type EthnicGroup} from '../lib/ethnicGroups';
 
 /**
- * Perfil local de onboarding (#128): etnia do catálogo local e aldeia. É um
+ * Perfil local de onboarding (#128): etnia e aldeia em texto livre. É um
  * documento pequeno e versionado — a mesma forma de envelope usada pelo
  * documento de organizações — para que uma mudança futura de esquema possa
  * reconhecer a versão em vez de adivinhar o formato.
@@ -15,25 +14,30 @@ import {ETHNIC_GROUPS, type EthnicGroup} from '../lib/ethnicGroups';
 export const COIAB_USER_PROFILE_STORAGE_KEY = 'CoiabUserProfile' as const;
 
 export type UserProfileState = {
-  ethnicGroupId: string | null;
+  ethnicity: string | null;
   village: string | null;
 };
 
-const PROFILE_VERSION = 1;
+const PROFILE_VERSION = 2;
 
 function emptyProfile(): UserProfileState {
-  return {ethnicGroupId: null, village: null};
+  return {ethnicity: null, village: null};
+}
+
+function normalizeText(value: string | null): string | null {
+  if (value === null) {
+    return null;
+  }
+  return value.trim() || null;
 }
 
 /**
  * Hidratação tolerante: storage quebrado, JSON ilegível ou envelope de outra
- * versão/forma resultam no perfil vazio, nunca em exceção. Um ethnicGroupId
- * que não existe no catálogo é descartado; a aldeia já digitada é preservada.
+ * versão/forma resultam no perfil vazio, nunca em exceção. Etnia e aldeia são
+ * texto livre — não há validação contra o dataset, que só alimenta o
+ * autocomplete.
  */
-function parseUserProfile(
-  raw: string | null | undefined,
-  catalog: EthnicGroup[],
-): UserProfileState {
+function parseUserProfile(raw: string | null | undefined): UserProfileState {
   if (typeof raw !== 'string') {
     return emptyProfile();
   }
@@ -63,12 +67,12 @@ function parseUserProfile(
     return emptyProfile();
   }
 
-  const {ethnicGroupId, village} = state as {
-    ethnicGroupId?: unknown;
+  const {ethnicity, village} = state as {
+    ethnicity?: unknown;
     village?: unknown;
   };
 
-  if (ethnicGroupId !== null && typeof ethnicGroupId !== 'string') {
+  if (ethnicity !== null && typeof ethnicity !== 'string') {
     return emptyProfile();
   }
 
@@ -76,36 +80,21 @@ function parseUserProfile(
     return emptyProfile();
   }
 
-  const aldeia = village === null ? null : village.trim() || null;
-
   return {
-    ethnicGroupId:
-      ethnicGroupId !== null &&
-      catalog.some(group => group.id === ethnicGroupId)
-        ? ethnicGroupId
-        : null,
-    village: aldeia,
+    ethnicity: normalizeText(ethnicity),
+    village: normalizeText(village),
   };
 }
 
-/** Perfil completo = etnia válida no catálogo + aldeia não vazia. */
-export function isProfileComplete(
-  state: UserProfileState,
-  catalog: EthnicGroup[] = ETHNIC_GROUPS,
-): boolean {
-  return (
-    !!state.ethnicGroupId &&
-    catalog.some(group => group.id === state.ethnicGroupId) &&
-    !!state.village?.trim()
-  );
+/** Perfil completo = etnia e aldeia não vazias após trim. */
+export function isProfileComplete(state: UserProfileState): boolean {
+  return !!state.ethnicity?.trim() && !!state.village?.trim();
 }
 
 export function createUserProfileStore({
   persist = false,
-  catalog = ETHNIC_GROUPS,
 }: {
   persist?: boolean;
-  catalog?: EthnicGroup[];
 } = {}) {
   let initial = emptyProfile();
   if (persist) {
@@ -118,7 +107,6 @@ export function createUserProfileStore({
       initial = parseUserProfile(
         MMKVStoreInitializer.getItem(COIAB_USER_PROFILE_STORAGE_KEY) as
           string | null | undefined,
-        catalog,
       );
     } catch {
       initial = emptyProfile();
@@ -138,7 +126,7 @@ export function createUserProfileStore({
         COIAB_USER_PROFILE_STORAGE_KEY,
         JSON.stringify({
           state: {
-            ethnicGroupId: next.ethnicGroupId,
+            ethnicity: next.ethnicity,
             village: next.village,
           },
           version: PROFILE_VERSION,
@@ -149,19 +137,11 @@ export function createUserProfileStore({
   };
 
   const actions = {
-    setEthnicGroup: (id: string) => {
-      // Um id fora do catálogo nunca entra no perfil persistido.
-      if (!catalog.some(group => group.id === id)) {
-        throw new Error('invalid-ethnic-group');
-      }
-      store.setState({ethnicGroupId: id});
+    setEthnicity: (text: string) => {
+      store.setState({ethnicity: text.trim() || null});
     },
     setVillage: (text: string) => {
-      const village = text.trim();
-      if (!village) {
-        throw new Error('invalid-village');
-      }
-      store.setState({village});
+      store.setState({village: text.trim() || null});
     },
   };
 
