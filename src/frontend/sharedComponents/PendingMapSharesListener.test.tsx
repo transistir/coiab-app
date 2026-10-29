@@ -50,7 +50,7 @@ describe('PendingMapSharesListener', () => {
     useManyReceivedMapSharesMock.mockReturnValue([makeShare()]);
     const navigateToMapShareScreen = jest.fn();
 
-    render(
+    await render(
       <PendingMapSharesListener
         currentRouteName="JoinOrganizationIntro"
         navigateToMapShareScreen={navigateToMapShareScreen}
@@ -67,7 +67,7 @@ describe('PendingMapSharesListener', () => {
     useManyReceivedMapSharesMock.mockReturnValue([makeShare()]);
     const navigateToMapShareScreen = jest.fn();
 
-    render(
+    await render(
       <PendingMapSharesListener
         currentRouteName="MapReceivedBottomSheet"
         navigateToMapShareScreen={navigateToMapShareScreen}
@@ -86,7 +86,7 @@ describe('PendingMapSharesListener', () => {
     ]);
     const navigateToMapShareScreen = jest.fn();
 
-    render(
+    await render(
       <PendingMapSharesListener
         currentRouteName="JoinOrganizationIntro"
         navigateToMapShareScreen={navigateToMapShareScreen}
@@ -103,7 +103,7 @@ describe('PendingMapSharesListener', () => {
     useManyReceivedMapSharesMock.mockReturnValue([makeShare()]);
     const navigateToMapShareScreen = jest.fn();
 
-    render(
+    await render(
       <PendingMapSharesListener
         currentRouteName={undefined}
         navigateToMapShareScreen={navigateToMapShareScreen}
