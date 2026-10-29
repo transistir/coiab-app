@@ -87,12 +87,18 @@ The workflow consumes repository configuration (already present on
 - Variable `COMAPEO_METRICS_URL` and secret `COMAPEO_METRICS_API_KEY` —
   metrics reporting. Placeholder values (`https://metrics.invalid`) are
   acceptable for non-production builds.
+- Secret `SENTRY_AUTH_TOKEN` — uploads the JS source maps and creates the
+  Sentry release. Optional variables `SENTRY_ORG` / `SENTRY_PROJECT` choose
+  the destination (defaults: `transistir` / `coiab-app`).
 
 ## Notes
 
 - Builds are release builds with the JS bundle embedded (no Metro dev server).
-- Sentry upload is disabled (`SENTRY_DISABLE_AUTO_UPLOAD=true`, also set in
-  `eas.json`).
+- Sentry source-map upload is enabled for this workflow
+  (`SENTRY_DISABLE_AUTO_UPLOAD=false`). It needs the `SENTRY_AUTH_TOKEN`
+  secret; without it the Sentry Gradle task fails the build. `eas.json` sets
+  no default, so local EAS builds without a token must export
+  `SENTRY_DISABLE_AUTO_UPLOAD=true` (see `.env.template`).
 - For the upstream release machinery (EAS cloud builds, store submission) see
   [Releases.md](./Releases.md) — this workflow does not replace it; it is the
   lightweight, always-available path to a candidate APK.

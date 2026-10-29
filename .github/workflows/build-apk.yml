@@ -39,6 +39,9 @@ on:
         default: false
         type: boolean
 
+permissions:
+  contents: read
+
 jobs:
   apk:
     name: Build APK (EAS local)

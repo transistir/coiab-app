@@ -103,9 +103,29 @@ module.exports = ({config}) => {
     },
   ]);
 
+  // @sentry/react-native/expo is declared in app.json with the literal
+  // organization/project. Override them here so source-map upload targets the
+  // same Sentry project as SENTRY_DSN instead of always going to
+  // transistir/coiab-app. Replacing the entry in place keeps a single plugin
+  // instance.
+  const plugins = (config.plugins ?? []).map(plugin => {
+    if (!Array.isArray(plugin) || plugin[0] !== '@sentry/react-native/expo') {
+      return plugin;
+    }
+    const [name, options] = plugin;
+    return /** @type {[string, Record<string, unknown>]} */ ([
+      name,
+      {
+        ...options,
+        organization: process.env.SENTRY_ORG || 'transistir',
+        project: process.env.SENTRY_PROJECT || 'coiab-app',
+      },
+    ]);
+  });
+
   return {
     ...config,
-    plugins: [comapeoPlugin, ...(config.plugins ?? [])],
+    plugins: [comapeoPlugin, ...plugins],
     version: versionName,
     extra: {
       ...config.extra,

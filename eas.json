@@ -13,9 +13,6 @@
       "ios": {
         "image": "latest",
         "node": "24.13.0"
-      },
-      "env": {
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     },
     "development": {
