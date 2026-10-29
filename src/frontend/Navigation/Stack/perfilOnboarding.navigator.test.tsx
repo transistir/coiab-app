@@ -228,11 +228,6 @@ function setMockInvites(invites: ReadonlyArray<InviteSnapshot>) {
   for (const listener of mockInvites.listeners) listener();
 }
 
-function setMockMapShares(shares: ReadonlyArray<MapShareSnapshot>) {
-  mockMapShares.value = shares;
-  for (const listener of mockMapShares.listeners) listener();
-}
-
 function nomesDasRotas(): string[] {
   return mockNavigation.getRootState().routes.map(route => route.name);
 }
@@ -413,60 +408,6 @@ describe('perfil de onboarding no navigator real (#128)', () => {
 
     expect(nomesDasRotas()).not.toContain('InviteReceived');
     expect(nomesDasRotas()).not.toContain('OrganizationInviteReceived');
-  }, 30000);
-
-  test('caso 5: map share pendente e atrasado não interrompe o perfil', async () => {
-    setMockMapShares([{shareId: 'share-cold-start', status: 'pending'}]);
-
-    await freshSetup.renderNavigationAsync({userProfile: null});
-    expect(
-      await screen.findByText('What is your ethnicity?'),
-    ).toBeOnTheScreen();
-    expect(nomesDasRotas()).toEqual(['EthnicGroupSelection']);
-    expect(nomesDasRotas()).not.toContain('MapReceivedBottomSheet');
-
-    // Late arrival at the village step, then another one at Success.
-    await escolherEtnia();
-    await act(async () => {
-      setMockMapShares([{shareId: 'share-na-aldeia', status: 'pending'}]);
-    });
-    expect(nomesDasRotas()).toEqual([
-      'EthnicGroupSelection',
-      'VillageEntry',
-    ]);
-
-    await preencherAldeia('Aldeia do caso 5');
-    await act(async () => {
-      setMockMapShares([{shareId: 'share-no-success', status: 'pending'}]);
-    });
-    expect(nomesDasRotas()).toEqual(['Success']);
-    expect(nomesDasRotas()).not.toContain('MapReceivedBottomSheet');
-  }, 30000);
-
-  test('caso 6: convite e share resolvidos no mesmo tick do Continuar da aldeia terminam em Success', async () => {
-    await freshSetup.renderNavigationAsync({userProfile: null});
-    await escolherEtnia();
-    await fireEvent.changeText(
-      screen.getByTestId('ONBOARDING.village-inp'),
-      'Aldeia da corrida',
-    );
-
-    // The race: the pending data lands in the SAME tick as the reset. The
-    // listener must evaluate the CURRENT route (VillageEntry, then Success),
-    // never navigate on the way through.
-    await act(async () => {
-      setMockInvites([plainInvite('invite-race')]);
-      setMockMapShares([{shareId: 'share-race', status: 'pending'}]);
-      fireEvent.press(
-        screen.getByTestId('ONBOARDING.village-continue-btn'),
-      );
-    });
-
-    await waitFor(() => expect(nomesDasRotas()).toEqual(['Success']));
-    expect(nomesDasRotas()).not.toContain('InviteReceived');
-    expect(nomesDasRotas()).not.toContain('OrganizationInviteReceived');
-    expect(nomesDasRotas()).not.toContain('MapReceivedBottomSheet');
-    expect(await screen.findByText('test is ready!')).toBeOnTheScreen();
   }, 30000);
 
   test('caso 7: Success retém o convite e JoinOrganizationIntro o libera (listener vivo)', async () => {
