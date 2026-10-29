@@ -1,5 +1,12 @@
 import * as React from 'react';
-import {ScrollView, StyleSheet, TouchableOpacity, View} from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {defineMessages, useIntl} from 'react-intl';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
@@ -81,7 +88,9 @@ export const EthnicGroupSelection = ({navigation}: ScreenProps) => {
   }
 
   return (
-    <View style={[styles.container, {paddingTop: insets.top}]}>
+    <KeyboardAvoidingView
+      style={[styles.container, {paddingTop: insets.top}]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <OnboardingCompactHeader />
       <ScrollView
         contentContainerStyle={styles.content}
@@ -129,7 +138,7 @@ export const EthnicGroupSelection = ({navigation}: ScreenProps) => {
           </HeaderText>
         </TouchableOpacity>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 

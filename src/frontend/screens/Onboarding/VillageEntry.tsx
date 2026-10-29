@@ -1,6 +1,7 @@
 import * as React from 'react';
 import {
   KeyboardAvoidingView,
+  Platform,
   StyleSheet,
   TouchableOpacity,
   View,
@@ -89,7 +90,7 @@ export const VillageEntry = ({navigation}: ScreenProps) => {
   return (
     <KeyboardAvoidingView
       style={[styles.container, {paddingTop: insets.top}]}
-      behavior="padding">
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <OnboardingCompactHeader
         onBack={() => navigation.goBack()}
         backLabel={t(m.back)}

@@ -5,6 +5,7 @@ import {
   screen,
   userEvent,
 } from '@testing-library/react-native';
+import {KeyboardAvoidingView, Platform} from 'react-native';
 import {IntlProvider} from 'react-intl';
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 
@@ -28,6 +29,17 @@ const PT_MESSAGES = {
 
 const VILLAGE_INPUT = 'ONBOARDING.village-inp';
 const CONTINUE = 'ONBOARDING.village-continue-btn';
+
+/**
+ * `KeyboardAvoidingView` keeps the `behavior` prop only on the composite
+ * instance (the inner View drops it), so the structural assertion inspects
+ * the instance that rendered — not the host tree.
+ */
+function keyboardAvoidingBehavior(renderSpy: jest.SpyInstance) {
+  const instancia = renderSpy.mock.contexts.at(-1) as
+    {props?: {behavior?: string}} | undefined;
+  return instancia?.props?.behavior;
+}
 
 type ScreenProps = NativeStackScreenProps<AppStackParamsList, 'VillageEntry'>;
 
@@ -61,6 +73,10 @@ async function renderScreen({
 }
 
 describe('VillageEntry', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   test('renders the title and a village input with the COIAB styling', async () => {
     await renderScreen();
 
@@ -86,6 +102,28 @@ describe('VillageEntry', () => {
     await renderScreen();
 
     expect(screen.getByTestId(CONTINUE)).toBeDisabled();
+  });
+
+  test('wraps the layout in a KeyboardAvoidingView using iOS padding', async () => {
+    jest.replaceProperty(Platform, 'OS', 'ios');
+    const renderSpy = jest.spyOn(KeyboardAvoidingView.prototype, 'render');
+
+    await renderScreen();
+
+    // The footer (Continuar) sits inside the wrapper, so iOS pushes it above
+    // the software keyboard while the free-text field is focused.
+    expect(keyboardAvoidingBehavior(renderSpy)).toBe('padding');
+  });
+
+  test('leaves the Android frame untouched by using no keyboard behavior', async () => {
+    jest.replaceProperty(Platform, 'OS', 'android');
+    const renderSpy = jest.spyOn(KeyboardAvoidingView.prototype, 'render');
+
+    await renderScreen();
+
+    // Android resizes the window itself; an extra padding behavior would
+    // shift the footer and change the captured frame.
+    expect(keyboardAvoidingBehavior(renderSpy)).toBeUndefined();
   });
 
   test('the continue button stays disabled for whitespace only', async () => {

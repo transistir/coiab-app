@@ -175,6 +175,14 @@ jest.mock('../../screens/MapScreen/CurrentTrack/UserTooltipMarker', () => ({
   UserTooltipMarker: () => null,
 }));
 
+// The positive control asserts the ROUTE the map-share listener pushes; the
+// sheet's body needs a real received-share row in core, which this suite does
+// not create. Only the screen body is stubbed — the route and the listener
+// stay real.
+jest.mock('../../screens/BackgroundMaps/MapReceivedBottomSheet.tsx', () => ({
+  MapReceivedBottomSheet: () => null,
+}));
+
 jest.mock('../../hooks/useStorageReadingQuery', () => {
   const LOW = 500 * 1024 * 1024;
   return {
@@ -199,10 +207,21 @@ import {
   type UserProfileState,
 } from '../../contexts/UserProfileStoreContext';
 import {markerFor} from '../../lib/organization/marker';
-import {setupIntegrationTestWithoutProject} from '../../../../tests/integration/helpers/setupIntegrationTest';
+import {
+  semearDocumentoPronta,
+  setupIntegrationTest,
+  setupIntegrationTestWithoutProject,
+} from '../../../../tests/integration/helpers/setupIntegrationTest';
 
 const ETNIA = 'Tunayana';
 const ORG_ID = '0123456789abcdef';
+
+// One share id reused by every case below, so the four onboarding cases and
+// the positive control provably talk about the SAME pending share.
+const PENDING_MAP_SHARE: MapShareSnapshot = {
+  shareId: 'share-pendente',
+  status: 'pending',
+};
 
 function plainInvite(inviteId: string): InviteSnapshot {
   return {
@@ -225,6 +244,22 @@ function markerInvite(inviteId: string): InviteSnapshot {
 function setMockInvites(invites: ReadonlyArray<InviteSnapshot>) {
   mockInvites.value = invites;
   for (const listener of mockInvites.listeners) listener();
+}
+
+function setMockMapShares(shares: ReadonlyArray<MapShareSnapshot>) {
+  mockMapShares.value = shares;
+  for (const listener of mockMapShares.listeners) listener();
+}
+
+/**
+ * A received map share cannot reach the screen while the profile is
+ * incomplete: the onboarding routes are in `EDITING_SCREEN_NAMES` (the
+ * listener refuses them) and `MapReceivedBottomSheet` is an app screen not
+ * registered in the empty-document tree. Every "blocked" case asserts both
+ * the absence of the route and the screen the user is still on.
+ */
+function destinoDoShareNaPilha(): boolean {
+  return nomesDasRotas().includes('MapReceivedBottomSheet');
 }
 
 function nomesDasRotas(): string[] {
@@ -430,6 +465,101 @@ describe('perfil de onboarding no navigator real (#128)', () => {
         'JoinOrganizationIntro',
         'InviteReceived',
       ]),
+    );
+  }, 30000);
+
+  // --- Map shares: two cases per profile screen, both with a NON-EMPTY list.
+  // They prove the share destination never enters the stack while the profile
+  // is incomplete. The positive control after this describe proves the same
+  // share does navigate once the profile is done and app screens exist.
+
+  test('caso 6a: share de mapa pendente desde a montagem não interrompe a etnia', async () => {
+    setMockMapShares([PENDING_MAP_SHARE]);
+
+    await freshSetup.renderNavigationAsync({userProfile: null});
+
+    expect(
+      await screen.findByText('What is your ethnicity?'),
+    ).toBeOnTheScreen();
+    expect(nomesDasRotas()).toEqual(['EthnicGroupSelection']);
+    expect(destinoDoShareNaPilha()).toBe(false);
+  }, 30000);
+
+  test('caso 6b: share que chega atrasado enquanto a etnia é escolhida não navega', async () => {
+    await freshSetup.renderNavigationAsync({userProfile: null});
+    expect(
+      await screen.findByText('What is your ethnicity?'),
+    ).toBeOnTheScreen();
+
+    await act(async () => setMockMapShares([PENDING_MAP_SHARE]));
+
+    expect(nomesDasRotas()).toEqual(['EthnicGroupSelection']);
+    expect(destinoDoShareNaPilha()).toBe(false);
+  }, 30000);
+
+  test('caso 6c: share pendente desde a montagem não interrompe a aldeia', async () => {
+    setMockMapShares([PENDING_MAP_SHARE]);
+
+    await freshSetup.renderNavigationAsync({userProfile: null});
+    await escolherEtnia();
+
+    expect(nomesDasRotas()).toEqual(['EthnicGroupSelection', 'VillageEntry']);
+    expect(screen.getByText('What is your village?')).toBeOnTheScreen();
+    expect(destinoDoShareNaPilha()).toBe(false);
+  }, 30000);
+
+  test('caso 6d: share que chega atrasado enquanto a aldeia é digitada não navega', async () => {
+    await freshSetup.renderNavigationAsync({userProfile: null});
+    await escolherEtnia();
+    await fireEvent.changeText(
+      screen.getByTestId('ONBOARDING.village-inp'),
+      'Aldeia com share',
+    );
+
+    await act(async () => setMockMapShares([PENDING_MAP_SHARE]));
+
+    expect(nomesDasRotas()).toEqual(['EthnicGroupSelection', 'VillageEntry']);
+    expect(screen.getByText('What is your village?')).toBeOnTheScreen();
+    expect(destinoDoShareNaPilha()).toBe(false);
+  }, 30000);
+});
+
+/**
+ * Positive control for the four cases above: with the profile saved and a
+ * ready organization seeded (so the app screens, including
+ * MapReceivedBottomSheet, are registered), the SAME pending share navigates.
+ * Without it, the blocked cases would also pass with a dead listener.
+ */
+describe('share de mapa pendente com o perfil concluído (controle positivo)', () => {
+  const orgSetup = setupIntegrationTest();
+
+  beforeEach(() => {
+    mockMapShares.value = [];
+    mockMapShares.listeners.clear();
+    MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
+  });
+
+  afterEach(() => {
+    MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
+  });
+
+  test('o mesmo share pendente navega para MapReceivedBottomSheet', async () => {
+    semearDocumentoPronta(
+      orgSetup.projectId,
+      orgSetup.alertasProjectId,
+      orgSetup.orgId,
+      orgSetup.orgName,
+    );
+
+    // Default harness profile is complete; the document decides Home.
+    await orgSetup.renderNavigation();
+    expect(await screen.findByTestId('ENTRONCAMENTO.scrn')).toBeOnTheScreen();
+    expect(nomesDasRotas()).toEqual(['Home']);
+
+    await act(async () => setMockMapShares([PENDING_MAP_SHARE]));
+
+    await waitFor(() =>
+      expect(nomesDasRotas()).toEqual(['Home', 'MapReceivedBottomSheet']),
     );
   }, 30000);
 });

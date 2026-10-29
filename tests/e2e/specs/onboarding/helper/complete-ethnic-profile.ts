@@ -34,18 +34,18 @@ export async function completeEthnicProfileIfNeeded() {
   const ethnicInput = await $(byResourceId('ONBOARDING.ethnic-group-inp'));
   await ethnicInput.waitForDisplayed({timeout: 15000, interval: 500});
   await ethnicInput.setValue(ETHNICITY);
-  // On iOS the software keyboard overlays the button.
-  await driver.hideKeyboard().catch(() => {});
+  // Deliberately keeps the keyboard open: the screen's KeyboardAvoidingView
+  // (iOS) / window resize (Android) must leave Continuar reachable. Hiding
+  // the keyboard here would mask the exact regression this flow guards.
   await ethnicContinue.click();
 
   const villageInput = await $(byResourceId('ONBOARDING.village-inp'));
   await villageInput.waitForDisplayed({timeout: 15000, interval: 500});
   await villageInput.setValue(output.names.village);
-  // On iOS the software keyboard overlays the button.
-  await driver.hideKeyboard().catch(() => {});
 
   const villageContinue = await $(
     byResourceId('ONBOARDING.village-continue-btn'),
   );
+  // Same rule as above: Continuar is tapped with the keyboard still open.
   await villageContinue.click();
 }
