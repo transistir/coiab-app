@@ -19,11 +19,16 @@ export async function completeEthnicProfileIfNeeded() {
   // Anchor present on both landing screens: the pending profile shows the
   // ethnicity continue button, a completed flow shows the join button. Waiting
   // on either avoids burning the full timeout when there is nothing to do.
+  //
+  // Standalone this is NOT true: with no device name yet the app lands on
+  // IntroToCoMapeo, where neither anchor exists, so the wait runs to its full
+  // timeout. Run the calling specs after device-naming (or with a saved
+  // profile) — this helper cannot complete onboarding by itself.
   await driver.waitUntil(
     async () =>
       (await ethnicContinue.isDisplayed()) ||
       (await joinOrgButton.isDisplayed()),
-    {timeout: 15000, interval: 500},
+    {timeout: 30000, interval: 500},
   );
 
   // Profile already saved (Success screen): nothing to fill in.

@@ -1,8 +1,13 @@
 import * as React from 'react';
 import {Keyboard} from 'react-native';
 import {fireEvent, render, screen} from '@testing-library/react-native';
+import {IntlProvider} from 'react-intl';
 
 import {AutocompleteField} from './AutocompleteField';
+
+const MESSAGES = {
+  '$1sharedComponents.AutocompleteField.showSuggestions': 'Mostrar sugestões',
+};
 
 const mockBlur = jest.fn();
 const mockFocus = jest.fn();
@@ -65,21 +70,23 @@ function Harness({
   const [value, setValue] = React.useState(initialValue);
 
   return (
-    <AutocompleteField
-      value={value}
-      onChangeText={next => {
-        setValue(next);
-        onChangeText(next);
-      }}
-      suggestions={filterSuggestions(value)}
-      onSelect={name => {
-        setValue(name);
-        onSelect(name);
-      }}
-      testID={TEST_ID}
-      placeholder="Digite ou escolha"
-      defaultOpen={defaultOpen}
-    />
+    <IntlProvider locale="pt-BR" messages={MESSAGES}>
+      <AutocompleteField
+        value={value}
+        onChangeText={next => {
+          setValue(next);
+          onChangeText(next);
+        }}
+        suggestions={filterSuggestions(value)}
+        onSelect={name => {
+          setValue(name);
+          onSelect(name);
+        }}
+        testID={TEST_ID}
+        placeholder="Digite ou escolha"
+        defaultOpen={defaultOpen}
+      />
+    </IntlProvider>
   );
 }
 
@@ -200,6 +207,32 @@ describe('AutocompleteField', () => {
 
     await fireEvent.press(screen.getByTestId(`${TEST_ID}-toggle`));
     expect(suggestion(TEST_ID, 'Alpha')).toBeOnTheScreen();
+  });
+
+  test('the chevron exposes a translated accessibility label', async () => {
+    await render(<Harness />);
+
+    const toggle = screen.getByTestId(`${TEST_ID}-toggle`);
+
+    expect(toggle.props.accessibilityRole).toBe('button');
+    expect(toggle.props.accessibilityLabel).toBe('Mostrar sugestões');
+  });
+
+  test('a cancelled suggestion touch does not block the blur from closing the list', async () => {
+    await render(<Harness />);
+
+    const input = screen.getByTestId(TEST_ID);
+    await focusAndType(input, 'Al');
+    const option = screen.getByTestId(`${TEST_ID}-suggestion-Alpha`);
+
+    // Touch down then lift outside the option: onPress never runs, so only
+    // onPressOut can clear the "selecting" guard. Without that reset the next
+    // blur would be ignored and the list would stay on screen forever.
+    await fireEvent(option, 'pressIn');
+    await fireEvent(option, 'pressOut');
+    await fireEvent(input, 'blur');
+
+    expect(suggestion(TEST_ID, 'Alpha')).toBeNull();
   });
 
   test('blurring closes the list', async () => {

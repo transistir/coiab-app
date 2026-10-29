@@ -30,7 +30,7 @@ describe('PendingMapSharesListener', () => {
       useManyReceivedMapSharesMock.mockReturnValue([makeShare()]);
       const navigateToMapShareScreen = jest.fn();
 
-      render(
+      await render(
         <PendingMapSharesListener
           currentRouteName={currentRouteName}
           navigateToMapShareScreen={navigateToMapShareScreen}

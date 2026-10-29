@@ -417,6 +417,22 @@ describe('perfil de onboarding no navigator real (#128)', () => {
     expect(nomesDasRotas()).toEqual(['EthnicGroupSelection']);
     expect(nomesDasRotas()).not.toContain('OrganizationInviteReceived');
     expect(nomesDasRotas()).not.toContain('InviteReceived');
+
+    // Positive control: the SAME marker invite still routes once the profile
+    // hands off to the join fork. Without it the blocked assertions above
+    // would also pass with a listener that never fires at all.
+    await escolherEtnia();
+    await preencherAldeia('Aldeia do caso 4a');
+    expect(nomesDasRotas()).toEqual(['Success']);
+
+    await fireEvent.press(screen.getByTestId('ONBOARDING.join-org-btn'));
+    await waitFor(() =>
+      expect(nomesDasRotas()).toEqual([
+        'Success',
+        'JoinOrganizationIntro',
+        'OrganizationInviteReceived',
+      ]),
+    );
   }, 30000);
 
   test('caso 4b: convite que chega atrasado em cada passo não interrompe o perfil', async () => {
@@ -443,6 +459,21 @@ describe('perfil de onboarding no navigator real (#128)', () => {
 
     expect(nomesDasRotas()).not.toContain('InviteReceived');
     expect(nomesDasRotas()).not.toContain('OrganizationInviteReceived');
+
+    // Positive control: a marker invite pending on Success stays held (Success
+    // is a profile screen) and routes as soon as the join fork is on screen —
+    // proving the gates exercised above are scoped, not a dead listener.
+    await act(async () => setMockInvites([markerInvite('invite-no-join')]));
+    expect(nomesDasRotas()).toEqual(['Success']);
+
+    await fireEvent.press(screen.getByTestId('ONBOARDING.join-org-btn'));
+    await waitFor(() =>
+      expect(nomesDasRotas()).toEqual([
+        'Success',
+        'JoinOrganizationIntro',
+        'OrganizationInviteReceived',
+      ]),
+    );
   }, 30000);
 
   test('caso 5: Success retém o convite e JoinOrganizationIntro o libera (listener vivo)', async () => {

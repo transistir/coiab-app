@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import Ionicons from '@react-native-vector-icons/ionicons';
+import {defineMessages, useIntl} from 'react-intl';
 
 import {BodyText} from './Text/BodyText';
 import {COIAB_BEIGE, WHITE} from '../lib/styles';
@@ -19,6 +20,13 @@ const FIELD_BORDER = '#DABA8D';
 const SUGGESTION_BACKGROUND = '#293833';
 const SUGGESTION_BORDER = '#668073';
 const PLACEHOLDER_COLOR = 'rgba(255, 255, 255, 0.5)';
+
+const m = defineMessages({
+  showSuggestions: {
+    id: '$1sharedComponents.AutocompleteField.showSuggestions',
+    defaultMessage: 'Show suggestions',
+  },
+});
 
 type AutocompleteFieldProps = {
   value: string;
@@ -54,6 +62,7 @@ export const AutocompleteField = ({
   accessibilityLabel,
   defaultOpen = false,
 }: AutocompleteFieldProps) => {
+  const {formatMessage: t} = useIntl();
   const [focused, setFocused] = React.useState(defaultOpen);
   // Escolher uma sugestão fecha a lista mesmo com o input ainda focado
   // (`keyboardShouldPersistTaps="handled"`). Editar depois da escolha reabre a
@@ -126,6 +135,7 @@ export const AutocompleteField = ({
         <TouchableOpacity
           testID={testID ? `${testID}-toggle` : undefined}
           accessibilityRole="button"
+          accessibilityLabel={t(m.showSuggestions)}
           onPress={handleToggleSuggestions}
           hitSlop={8}>
           <Ionicons
@@ -140,6 +150,7 @@ export const AutocompleteField = ({
         <View style={styles.suggestionList}>
           <ScrollView
             keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
             style={styles.suggestionScroll}>
             {suggestions.map(name => (
               <TouchableOpacity
@@ -149,6 +160,13 @@ export const AutocompleteField = ({
                 accessibilityLabel={name}
                 onPressIn={() => {
                   selecting.current = true;
+                }}
+                // onPressOut always runs, including for a cancelled touch that
+                // never reaches onPress. Without this reset a cancelled tap
+                // would leave the flag set forever and the next blur would be
+                // ignored, freezing the suggestion list on screen.
+                onPressOut={() => {
+                  selecting.current = false;
                 }}
                 onPress={() => handleSelect(name)}
                 style={styles.suggestionItem}>

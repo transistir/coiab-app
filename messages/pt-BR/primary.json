@@ -1095,6 +1095,9 @@
   "$1screens.YourTeam.ReviewOrganizationInvite.youAreInviting": {
     "message": "Você está convidando:"
   },
+  "$1sharedComponents.AutocompleteField.showSuggestions": {
+    "message": "Mostrar sugestões"
+  },
   "$1sharedComponents.ErrorBottomSheet.close": {
     "message": "Fechar"
   },

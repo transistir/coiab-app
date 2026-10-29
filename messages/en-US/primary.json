@@ -1023,6 +1023,9 @@
   "$1screens.obsDetail.date": {
     "message": "Date"
   },
+  "$1sharedComponents.AutocompleteField.showSuggestions": {
+    "message": "Show suggestions"
+  },
   "$1sharedComponents.ErrorBottomSheet.close": {
     "message": "Close"
   },

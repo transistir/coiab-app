@@ -156,19 +156,30 @@ anr_dialog_is_shown() {
     grep -Fq 'resource-id="android:id/aerr_close"' <<<"$hierarchy"
 }
 
+# Whether the ANR dialog in this dump belongs to the launcher. Only a launcher
+# ANR is safe to close: "Wait" never clears it (the launcher stays wedged, the
+# dialog returns, and repeated "Wait" taps burn the retry budget until the
+# capture aborts), while closing it restarts the launcher and frees the screen.
+# Any other ANR — the Storybook app itself, a crash dialog — may still recover
+# on "Wait", and closing that dialog would kill the very app being captured,
+# so it keeps waiting. The title is already in the hierarchy dump the caller
+# holds, so classifying it costs no extra adb round-trip per attempt.
+anr_dialog_is_from_launcher() {
+  local hierarchy=$1
+  grep -qE 'text="[^"]*(Launcher|System UI)[^"]*"' <<<"$hierarchy"
+}
+
 # Dismissals are counted across the whole run: the first ANR gets "Wait", and
-# every later one gets "Close app". A launcher ANR does not clear on "Wait" —
-# the launcher stays wedged, the dialog returns, and repeated "Wait" taps burn
-# the retry budget until the capture aborts. Closing it restarts the launcher
-# and frees the screen.
+# every later launcher ANR gets "Close app".
 anr_dismiss_count=0
 
-# Dismiss the ANR dialog by tapping its "Wait" button (first attempt) or
-# "Close app" (second attempt onward), then sleeping briefly to let it clear.
-# Returns 0 if a dialog was found and tapped, 1 if no dialog was present in
-# the given hierarchy or its bounds are unusable. The caller re-dumps and
-# re-checks readiness after this returns, since dismissal takes a moment and
-# the app underneath may need time to settle.
+# Dismiss the ANR dialog by tapping its "Wait" button (first attempt, and any
+# later non-launcher dialog) or "Close app" (a launcher ANR from the second
+# attempt onward), then sleeping briefly to let it clear. Returns 0 if a dialog
+# was found and tapped, 1 if no dialog was present in the given hierarchy or
+# its bounds are unusable. The caller re-dumps and re-checks readiness after
+# this returns, since dismissal takes a moment and the app underneath may need
+# time to settle.
 dismiss_anr_dialog_if_present() {
   local hierarchy=$1
   local bounds
@@ -178,10 +189,11 @@ dismiss_anr_dialog_if_present() {
   anr_dialog_is_shown "$hierarchy" || return 1
 
   anr_dismiss_count=$((anr_dismiss_count + 1))
-  # First attempt waits (cheapest, non-destructive); from the second onward
-  # tapping "Wait" is known not to clear a launcher ANR, so close the app
-  # instead. Fall back to whichever button this dialog revision actually has.
+  # First attempt waits (cheapest, non-destructive). From the second attempt
+  # onward only a launcher dialog is closed; everything else keeps waiting.
+  # Fall back to whichever button this dialog revision actually has.
   if (( anr_dismiss_count > 1 )) &&
+    anr_dialog_is_from_launcher "$hierarchy" &&
     grep -Fq 'resource-id="android:id/aerr_close"' <<<"$hierarchy"; then
     button_id='android:id/aerr_close'
     label='Close app'

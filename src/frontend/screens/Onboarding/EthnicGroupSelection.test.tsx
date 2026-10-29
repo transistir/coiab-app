@@ -19,11 +19,13 @@ import type {AppStackParamsList} from '../../sharedTypes/navigation';
 
 const PT_MESSAGES = {
   '$1screens.Onboarding.EthnicGroupSelection.title': 'Qual é a sua etnia?',
+  '$1screens.Onboarding.EthnicGroupSelection.subtitle':
+    'Escolha ou digite sua etnia',
   '$1screens.Onboarding.EthnicGroupSelection.placeholder':
     'Digite ou escolha uma opção',
   '$1screens.Onboarding.EthnicGroupSelection.continue': 'Continuar',
   '$1screens.Onboarding.EthnicGroupSelection.saveError':
-    'Não foi possível salvar a etnia. Tente novamente.',
+    'Não foi possível salvar sua etnia. Tente novamente.',
 };
 
 const ETHNIC_INPUT = 'ONBOARDING.ethnic-group-inp';
@@ -83,6 +85,7 @@ describe('EthnicGroupSelection', () => {
     await renderScreen();
 
     expect(screen.getByText('Qual é a sua etnia?')).toBeOnTheScreen();
+    expect(screen.getByText('Escolha ou digite sua etnia')).toBeOnTheScreen();
     expect(screen.getByTestId(ETHNIC_INPUT)).toBeOnTheScreen();
     expect(
       screen.getByPlaceholderText('Digite ou escolha uma opção'),
@@ -187,7 +190,7 @@ describe('EthnicGroupSelection', () => {
     await user.press(screen.getByTestId(CONTINUE));
 
     expect(
-      screen.getByText('Não foi possível salvar a etnia. Tente novamente.'),
+      screen.getByText('Não foi possível salvar sua etnia. Tente novamente.'),
     ).toBeOnTheScreen();
     expect(navigation.navigate).not.toHaveBeenCalled();
     expect(store.instance.getState().ethnicity).toBeNull();
