@@ -1,5 +1,6 @@
 import * as React from 'react';
 import {
+  Keyboard,
   ScrollView,
   StyleSheet,
   TextInput,
@@ -33,7 +34,8 @@ type AutocompleteFieldProps = {
 /**
  * Campo de texto livre com sugestões locais (#128). Digitar continua
  * permitindo qualquer valor: a lista é um atalho, não uma validação. A lista
- * só aparece com foco e texto não vazio; sem sugestões não ocupa espaço.
+ * só aparece com foco (ou edição desde a última escolha) e texto não vazio;
+ * sem sugestões não ocupa espaço.
  */
 export const AutocompleteField = ({
   value,
@@ -46,17 +48,47 @@ export const AutocompleteField = ({
   accessibilityLabel,
 }: AutocompleteFieldProps) => {
   const [focused, setFocused] = React.useState(false);
+  // Escolher uma sugestão fecha a lista mesmo com o input ainda focado
+  // (`keyboardShouldPersistTaps="handled"`). Editar depois da escolha reabre a
+  // lista sem depender de um novo `onFocus`.
+  const [editedSinceSelect, setEditedSinceSelect] = React.useState(false);
+  const inputRef = React.useRef<TextInput>(null);
   // No toque da sugestão o TextInput perde o foco antes do onPress; marcar
   // "selecionando" no onPressIn evita desmontar a lista no meio do toque.
   const selecting = React.useRef(false);
 
   const showSuggestions =
-    focused && value.trim().length > 0 && suggestions.length > 0;
+    (focused || editedSinceSelect) &&
+    value.trim().length > 0 &&
+    suggestions.length > 0;
+
+  function handleChangeText(text: string) {
+    // Edição é uma fonte de visibilidade independente do foco: apagar tudo
+    // fecha a lista, qualquer texto reabre com as sugestões filtradas.
+    setEditedSinceSelect(text.trim().length > 0);
+    onChangeText(text);
+  }
+
+  function closeSuggestions() {
+    setFocused(false);
+    setEditedSinceSelect(false);
+    inputRef.current?.blur();
+  }
 
   function handleSelect(name: string) {
     selecting.current = false;
-    setFocused(false);
+    closeSuggestions();
+    Keyboard.dismiss();
     onSelect(name);
+  }
+
+  function handleToggleSuggestions() {
+    if (showSuggestions) {
+      closeSuggestions();
+      return;
+    }
+    setFocused(true);
+    inputRef.current?.focus();
   }
 
   return (
@@ -65,14 +97,16 @@ export const AutocompleteField = ({
         testID={testID ? `${testID}-field` : undefined}
         style={styles.inputRow}>
         <TextInput
+          ref={inputRef}
           testID={testID}
           accessibilityLabel={accessibilityLabel}
           value={value}
-          onChangeText={onChangeText}
+          onChangeText={handleChangeText}
           onFocus={() => setFocused(true)}
           onBlur={() => {
             if (!selecting.current) {
               setFocused(false);
+              setEditedSinceSelect(false);
             }
           }}
           placeholder={placeholder}
@@ -82,12 +116,18 @@ export const AutocompleteField = ({
           autoCorrect={false}
           returnKeyType="done"
         />
-        <Ionicons
-          name="chevron-down"
-          size={20}
-          color={COIAB_BEIGE}
-          style={styles.chevron}
-        />
+        <TouchableOpacity
+          testID={testID ? `${testID}-toggle` : undefined}
+          accessibilityRole="button"
+          onPress={handleToggleSuggestions}
+          hitSlop={8}>
+          <Ionicons
+            name="chevron-down"
+            size={20}
+            color={COIAB_BEIGE}
+            style={styles.chevron}
+          />
+        </TouchableOpacity>
       </View>
       {showSuggestions ? (
         <View style={styles.suggestionList}>
