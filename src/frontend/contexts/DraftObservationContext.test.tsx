@@ -683,6 +683,142 @@ describe('useDraftObservationActions()', () => {
     });
   });
 
+  describe('observer tags (#133)', () => {
+    function makePreset(overrides: Partial<Preset> = {}): Preset {
+      return {...mockPreset, ...overrides};
+    }
+
+    test('createDraft(undefined, tags) aplica as tags iniciais no mesmo setState', async () => {
+      const store = createDraftObservationStore({persist: false});
+      const wrapper = createWrapper(store);
+
+      const actionsHook = await renderHook(() => useDraftObservationActions(), {
+        wrapper,
+      });
+      const stateHook = await renderHook(() => useDraftObservationState(), {
+        wrapper,
+      });
+
+      await act(async () => {
+        actionsHook.result.current.createDraft(undefined, {
+          'coiab:etnia': 'Mawayana',
+          'coiab:aldeia': 'Aldeia Nova',
+        });
+      });
+
+      expect(stateHook.result.current.id).toBeNull();
+      expect(stateHook.result.current.value?.tags).toStrictEqual({
+        notes: '',
+        'coiab:etnia': 'Mawayana',
+        'coiab:aldeia': 'Aldeia Nova',
+      });
+    });
+
+    test('createDraft(observation) mantém obs.tags e ignora as tags iniciais', async () => {
+      const store = createDraftObservationStore({persist: false});
+      const wrapper = createWrapper(store);
+
+      const actionsHook = await renderHook(() => useDraftObservationActions(), {
+        wrapper,
+      });
+      const stateHook = await renderHook(() => useDraftObservationState(), {
+        wrapper,
+      });
+
+      const existingObservation = {
+        docId: 'obs-1',
+        versionId: 'v1',
+        originalVersionId: 'v1',
+        schemaName: 'observation' as const,
+        lat: 1,
+        lon: 2,
+        metadata: {manualLocation: false},
+        tags: {notes: 'antiga', 'coiab:etnia': 'Etnia antiga'},
+        attachments: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        links: [],
+        deleted: false,
+        createdBy: 'test-device',
+      };
+
+      await act(async () => {
+        actionsHook.result.current.createDraft(existingObservation, {
+          'coiab:etnia': 'Etnia de quem edita',
+          'coiab:aldeia': 'Aldeia de quem edita',
+        });
+      });
+
+      // Edição nunca aplica o perfil de quem edita (CA5).
+      expect(stateHook.result.current.value?.tags).toStrictEqual({
+        notes: 'antiga',
+        'coiab:etnia': 'Etnia antiga',
+      });
+    });
+
+    test('updatePreset preserva coiab:* ao escolher o primeiro preset', async () => {
+      const store = createDraftObservationStore({persist: false});
+      const wrapper = createWrapper(store);
+
+      const actionsHook = await renderHook(() => useDraftObservationActions(), {
+        wrapper,
+      });
+      const stateHook = await renderHook(() => useDraftObservationState(), {
+        wrapper,
+      });
+
+      await act(async () => {
+        actionsHook.result.current.createDraft(undefined, {
+          'coiab:etnia': 'Mawayana',
+        });
+        actionsHook.result.current.updatePreset(makePreset());
+      });
+
+      expect(stateHook.result.current.value?.tags).toStrictEqual({
+        notes: '',
+        category: 'test',
+        addedTag: 'added',
+        'coiab:etnia': 'Mawayana',
+      });
+    });
+
+    test('updatePreset preserva coiab:* ao trocar de preset', async () => {
+      const store = createDraftObservationStore({persist: false});
+      const wrapper = createWrapper(store);
+
+      const actionsHook = await renderHook(() => useDraftObservationActions(), {
+        wrapper,
+      });
+      const stateHook = await renderHook(() => useDraftObservationState(), {
+        wrapper,
+      });
+
+      const secondPreset = makePreset({
+        docId: 'preset-2',
+        versionId: 'v2',
+        name: 'Second Preset',
+        tags: {category: 'second'},
+        addTags: {},
+      });
+
+      await act(async () => {
+        actionsHook.result.current.createDraft(undefined, {
+          'coiab:etnia': 'Mawayana',
+          'coiab:aldeia': 'Aldeia Nova',
+        });
+        actionsHook.result.current.updatePreset(makePreset());
+        actionsHook.result.current.updatePreset(secondPreset);
+      });
+
+      expect(stateHook.result.current.value?.tags).toStrictEqual({
+        notes: '',
+        category: 'second',
+        'coiab:etnia': 'Mawayana',
+        'coiab:aldeia': 'Aldeia Nova',
+      });
+    });
+  });
+
   describe('clearDraft() after modifications', () => {
     test('clears all state including attachments', async () => {
       const store = createDraftObservationStore({persist: false});

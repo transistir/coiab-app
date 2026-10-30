@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -158,6 +159,33 @@ beforeEach(() => {
   mockNavigation.navigate.mockClear();
   mockNavigation.goBack.mockClear();
   jest.mocked(Sentry.captureException).mockClear();
+});
+
+describe('tags do observador no payload da edição (#133)', () => {
+  test('apara as pontas sem injetar o perfil de quem edita', async () => {
+    const {draftStore} = await setup('A-m');
+
+    await act(async () => {
+      draftStore.actions.updateTag('coiab:etnia', '  Mawayana  ');
+      draftStore.actions.updateTag('coiab:aldeia', '  Aldeia Nova  ');
+    });
+
+    await fireEvent.press(screen.getByTestId('OBS.edit-save-btn'));
+
+    await waitFor(() => {
+      expect(mockUpdateObservationAsync).toHaveBeenCalledTimes(1);
+    });
+
+    const payload = mockUpdateObservationAsync.mock.calls[0][0] as {
+      value: {tags: Record<string, unknown>};
+    };
+
+    expect(payload.value.tags).toStrictEqual({
+      notes: 'obs de A',
+      'coiab:etnia': 'Mawayana',
+      'coiab:aldeia': 'Aldeia Nova',
+    });
+  });
 });
 
 describe('assertOrigin no handler real de edição da observação (review round 2)', () => {

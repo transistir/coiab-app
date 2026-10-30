@@ -37,6 +37,11 @@ import {AudioSavedThumbnail} from '../../sharedComponents/Thumbnails/AudioSavedT
 import {useCanEditOrDelete} from '../../hooks/server/useCanEditOrDelete.ts';
 import {useDraftObservationActions} from '../../contexts/DraftObservationContext.tsx';
 import {SavedPhoto} from '../../sharedTypes/index.ts';
+import {useSingleMember} from '@comapeo/core-react';
+import {useActiveProject} from '../../contexts/ActiveProjectContext';
+import {OBSERVER_TAG_KEYS, hasObserverTags} from '../../lib/observerProfile';
+import {ObserverDetails} from '../../sharedComponents/ObserverDetails';
+import {Observation} from '@comapeo/schema';
 
 const m = defineMessages({
   title: {
@@ -46,6 +51,37 @@ const m = defineMessages({
       'Title of observation screen showing (non-editable) view of observation with map and answered questions',
   },
 });
+
+function tagText(
+  value: Observation['tags'][string] | undefined,
+): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+/**
+ * Etnia, aldeia e aparelho que registrou. O hook do membro usa suspense, por
+ * isso vive num componente filho com `Suspense` próprio: uma consulta lenta
+ * não trava a tela inteira (mesmo padrão de TrackAccordian).
+ */
+function ObserverSection({
+  createdBy,
+  tags,
+}: {
+  createdBy: string;
+  tags: Observation['tags'];
+}) {
+  const {projectId} = useActiveProject();
+  const {data: member} = useSingleMember({projectId, deviceId: createdBy});
+
+  return (
+    <ObserverDetails
+      style={{paddingHorizontal: 20}}
+      ethnicity={tagText(tags[OBSERVER_TAG_KEYS.ethnicity])}
+      village={tagText(tags[OBSERVER_TAG_KEYS.village])}
+      authorName={member.name}
+    />
+  );
+}
 
 export const ObservationScreen: NativeNavigationComponent<'Observation'> = ({
   route,
@@ -184,6 +220,17 @@ export const ObservationScreen: NativeNavigationComponent<'Observation'> = ({
               tags={observation.tags}
               fields={fields}
             />
+          </>
+        )}
+        {hasObserverTags(observation.tags) && (
+          <>
+            <Divider />
+            <React.Suspense fallback={null}>
+              <ObserverSection
+                createdBy={observation.createdBy}
+                tags={observation.tags}
+              />
+            </React.Suspense>
           </>
         )}
         <View style={styles.divider} />

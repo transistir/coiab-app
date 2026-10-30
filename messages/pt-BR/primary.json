@@ -521,8 +521,20 @@
   "$1screens.Observation.location": {
     "message": "Localização:"
   },
+  "$1screens.Observation.observerEthnicity": {
+    "message": "Etnia do observador",
+    "description": "Label for the observer ethnicity in the observation view"
+  },
+  "$1screens.Observation.observerVillage": {
+    "message": "Aldeia do observador",
+    "description": "Label for the observer village in the observation view"
+  },
   "$1screens.Observation.precision": {
     "message": "Precisão:"
+  },
+  "$1screens.Observation.recordedBy": {
+    "message": "Registrado por",
+    "description": "Label for the device that recorded the observation"
   },
   "$1screens.Observation.shareMediaTitle": {
     "message": "Compartilhando imagem",
@@ -538,6 +550,18 @@
   "$1screens.Observation.title": {
     "message": "Observação",
     "description": "Title of observation screen showing (non-editable) view of observation with map and answered questions"
+  },
+  "$1screens.ObservationCreate.observerEthnicity": {
+    "message": "Etnia do observador",
+    "description": "Label for the observer ethnicity field in create/edit observation"
+  },
+  "$1screens.ObservationCreate.observerFieldsHelper": {
+    "message": "Vem do seu perfil. Edite ou deixe em branco.",
+    "description": "Helper text explaining the observer fields come from the local profile"
+  },
+  "$1screens.ObservationCreate.observerVillage": {
+    "message": "Aldeia do observador",
+    "description": "Label for the observer village field in create/edit observation"
   },
   "$1screens.ObservationDetails.done": {
     "message": "Concluído",

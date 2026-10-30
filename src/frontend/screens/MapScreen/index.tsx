@@ -38,10 +38,8 @@ import {LowStorageBanner} from '../../sharedComponents/Storage/LowStorageBanner'
 import {useAppUsageStatsStore} from '../../contexts/AppUsageStatsContext';
 import {useShouldShowAppUsagePrompt} from '../../hooks/useShouldShowAppUsagePrompt';
 import {useTrackState} from '../../contexts/TrackStoreContext';
-import {
-  useDraftObservationActions,
-  useDraftObservationState,
-} from '../../contexts/DraftObservationContext';
+import {useDraftObservationState} from '../../contexts/DraftObservationContext';
+import {useNewObservationDraft} from '../../hooks/useNewObservationDraft';
 
 // This is the default zoom used when the map first loads, and also the zoom
 // that the map will zoom to if the user clicks the "Locate" button and the
@@ -66,7 +64,7 @@ export const MapScreen = ({
   const [isFinishedLoadingStyle, setIsFinishedLoadingStyle] =
     React.useState(false);
   const {dimensions, mapKey, onLayout} = useResetMapLayout();
-  const {createDraft} = useDraftObservationActions();
+  const createDraft = useNewObservationDraft();
   const {navigate} = useNavigationFromHomeTabs();
   const {isTracking} = useTracking();
   const location = useLocationState(store =>

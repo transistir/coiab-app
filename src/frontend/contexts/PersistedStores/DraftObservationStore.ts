@@ -298,7 +298,17 @@ export function createDraftObservationStore({persist}: {persist: boolean}) {
     instance.setState(createEmptyStoreState(), true);
   }
 
-  function createDraft(observation?: ObservationWithPreset) {
+  /**
+   * @param observation observação existente (edição). Quando presente, as
+   *   `initialTags` são ignoradas — editar nunca aplica o perfil de quem edita
+   *   ao registro de outra pessoa (CA5).
+   * @param initialTags tags semeadas no rascunho novo (ex.: etnia e aldeia do
+   *   observador). Aplicadas no mesmo `setState` da criação.
+   */
+  function createDraft(
+    observation?: ObservationWithPreset,
+    initialTags?: Observation['tags'],
+  ) {
     if (observation) {
       instance.setState(
         {
@@ -311,10 +321,14 @@ export function createDraftObservationStore({persist}: {persist: boolean}) {
         true,
       );
     } else {
+      const value = createEmptyObservationValue();
+
       instance.setState(
         {
           ...newWorkOrigin(getProjectId()),
-          value: createEmptyObservationValue(),
+          value: initialTags
+            ? {...value, tags: {...value.tags, ...initialTags}}
+            : value,
           id: null,
           unsavedAttachments: [],
           initialPosition: null,

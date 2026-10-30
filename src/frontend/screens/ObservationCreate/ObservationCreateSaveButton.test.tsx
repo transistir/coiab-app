@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -147,6 +148,53 @@ beforeEach(() => {
   mockNavigation.navigate.mockClear();
   mockNavigation.popTo.mockClear();
   jest.mocked(Sentry.captureException).mockClear();
+});
+
+describe('tags do observador no payload salvo (#133)', () => {
+  async function setupWithTags(tags: Record<string, string>) {
+    const result = await setup('A-m');
+    await act(async () => {
+      for (const [key, tagValue] of Object.entries(tags)) {
+        result.draftStore.actions.updateTag(key, tagValue);
+      }
+    });
+    await fireEvent.press(screen.getByTestId('OBS.edit-save-btn'));
+    await waitFor(() => {
+      expect(mockCreateObservationAsync).toHaveBeenCalledTimes(1);
+    });
+    return mockCreateObservationAsync.mock.calls[0][0] as {
+      value: {tags: Record<string, unknown>};
+    };
+  }
+
+  test('apara as pontas e remove a chave que ficou vazia', async () => {
+    const payload = await setupWithTags({
+      'coiab:etnia': '  Mawayana  ',
+      'coiab:aldeia': '   ',
+    });
+
+    expect(payload.value.tags).toStrictEqual({
+      notes: '',
+      'coiab:etnia': 'Mawayana',
+    });
+    // CA2 vale para as duas chaves do observador; `notes` é uma tag normal e
+    // pode continuar vazia no payload.
+    expect(payload.value.tags['coiab:etnia']).not.toBe('');
+    expect(payload.value.tags).not.toHaveProperty('coiab:aldeia');
+  });
+
+  test('preserva espaço interno e não toca nas demais tags', async () => {
+    const payload = await setupWithTags({
+      'coiab:aldeia': '  Aldeia Nova  ',
+      outraTag: '  valor cru  ',
+    });
+
+    expect(payload.value.tags).toStrictEqual({
+      notes: '',
+      'coiab:aldeia': 'Aldeia Nova',
+      outraTag: '  valor cru  ',
+    });
+  });
 });
 
 describe('assertOrigin no handler real de salvamento da observação (FIX-F)', () => {

@@ -11,6 +11,7 @@ import {useProjectRoleAndDetails} from '../../hooks/useProjectRoleAndDetails';
 import {HeaderText} from '../../sharedComponents/Text/HeaderText';
 import {PresetView} from '../../sharedComponents/PresetView';
 import {DescriptionField} from '../../sharedComponents/DescriptionField';
+import {ObserverFields} from '../../sharedComponents/ObserverFields';
 import {HorizontalScrollView} from '../../sharedComponents/HorizontalScrollView';
 import {
   GAP,
@@ -112,6 +113,7 @@ export const ObservationEdit = ({
           updateTag('notes', newVal);
         }}
       />
+      <ObserverFields />
       {(savedAttachments || attachments) && (
         <HorizontalScrollView
           shouldShowLastItems={true}
