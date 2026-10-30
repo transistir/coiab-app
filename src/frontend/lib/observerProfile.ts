@@ -25,6 +25,16 @@ function normalizedText(value: unknown): string | null {
 }
 
 /**
+ * Texto de apresentação de uma tag: aparado quando é string, `null` para
+ * qualquer outro tipo (número, array, boolean). Usado na tela de observação;
+ * não serve para o valor controlado de um `TextInput`, que precisa preservar o
+ * texto cru enquanto o usuário digita.
+ */
+export function observerTagText(value: unknown): string | null {
+  return normalizedText(value);
+}
+
+/**
  * Retrato do perfil no momento da criação. Valores vazios (ou só espaços) não
  * viram chave: nem `''` nem `null` chegam ao rascunho.
  */
@@ -46,8 +56,10 @@ export function observerTags(profile: UserProfileState): Observation['tags'] {
 
 /**
  * Normalização do commit (save): as pontas das duas chaves do observador são
- * aparadas e a chave que ficou vazia é removida. Espaços internos e todas as
- * demais tags permanecem intactos. Não muta o objeto recebido.
+ * aparadas quando o valor é string e a chave que ficou vazia é removida.
+ * Valor não-string (número, array, boolean) permanece intacto — nunca é
+ * removido. Espaços internos e todas as demais tags também permanecem
+ * intactos. Não muta o objeto recebido.
  */
 export function normalizeObserverTags(
   tags: Observation['tags'],
@@ -59,9 +71,16 @@ export function normalizeObserverTags(
       continue;
     }
 
-    const value = normalizedText(normalized[key]);
+    const raw = normalized[key];
 
-    if (value === null) {
+    // Só string é aparada. Um valor não-string é preservado como veio.
+    if (typeof raw !== 'string') {
+      continue;
+    }
+
+    const value = raw.trim();
+
+    if (value === '') {
       delete normalized[key];
     } else {
       normalized[key] = value;

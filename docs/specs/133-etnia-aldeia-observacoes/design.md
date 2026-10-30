@@ -85,8 +85,12 @@ export function normalizeObserverTags(tags: Observation['tags']) {
   valor apareceria sem rótulo).
 - Cada `TextInput` com `accessibilityLabel` próprio (RN não associa rótulo a
   campo), `testID` próprio (`OBS.observer-ethnicity-inp`,
-  `OBS.observer-village-inp`) e `returnKeyType="next"`.
-- Texto de apoio curto indicando que vem do perfil e é opcional.
+  `OBS.observer-village-inp`) e cadeia de foco: "next" no primeiro campo foca
+  o segundo; "done" no segundo.
+- Texto de apoio depende do modo (`mode: 'create' | 'edit'`): na criação
+  "Vem do seu perfil. Edite ou deixe em branco."; na edição "Dados do
+  observador." — na edição os valores são do autor original, não de quem
+  edita.
 - Autofill ao iniciar rascunho novo: `createDraft(undefined, observerTags)`
   aplica os valores num único `setState`.
 
@@ -101,19 +105,16 @@ export function normalizeObserverTags(tags: Observation['tags']) {
 
 ### Visualização (`Observation`)
 
-- `ObservationDetails` (componente de apresentação, testável como
-  `FieldDetails.test.tsx`) renderiza:
-  - "Etnia do observador" / "Aldeia do observador" (só as presentes);
-  - "Registrado por": nome do aparelho.
+- `ObserverSection` (componente próprio) renderiza:
+  - `ObserverDetails` com "Etnia do observador" / "Aldeia do observador",
+    lendo as tags **fora de qualquer boundary** — os dados já estão na
+    observação e aparecem mesmo se o membro ainda não resolveu;
+  - "Registrado por" num componente filho com `useSingleMember`, isolado em
+    `<ErrorBoundary fallback={null}><Suspense fallback={null}>` (o hook usa
+    suspense e pode falhar com membro ainda não sincronizado).
 - **Regra da seção:** renderiza **somente se houver ao menos uma tag
   `coiab:*`**. Observação antiga não ganha seção só com o autor.
-- Nome do autor: componente filho com `useSingleMember({projectId, deviceId})`
-  dentro de `<React.Suspense fallback={null}>` próprio (o hook usa suspense;
-  isolar evita travar a tela inteira, como já é feito com `TrackAccordian`,
-  `Observation/index.tsx:128-130`).
-- `useSingleMember` pode devolver `name: undefined` (membro removido/ainda não
-  sincronizado): nesse caso a linha "Registrado por" é omitida; etnia e aldeia
-  continuam visíveis.
+- Autor sem nome: linha omitida; etnia e aldeia permanecem.
 
 ### Textos e traduções
 

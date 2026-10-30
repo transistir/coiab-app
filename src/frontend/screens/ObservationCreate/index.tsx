@@ -113,7 +113,7 @@ export const ObservationCreate = ({
           updateTag('notes', newVal);
         }}
       />
-      <ObserverFields />
+      <ObserverFields mode="create" />
       {attachments && (
         <HorizontalScrollView
           shouldShowLastItems={true}

@@ -5,6 +5,7 @@ import {StyleSheet, View} from 'react-native';
 import {HeaderText} from './Text/HeaderText';
 import {BodyText} from './Text/BodyText';
 import {ViewStyleProp} from '../sharedTypes';
+import {observerTagText} from '../lib/observerProfile';
 
 const m = defineMessages({
   ethnicity: {
@@ -25,21 +26,11 @@ const m = defineMessages({
 });
 
 type ObserverDetailsProps = {
-  ethnicity?: string;
-  village?: string;
-  authorName?: string;
+  ethnicity?: unknown;
+  village?: unknown;
+  authorName?: unknown;
   style?: ViewStyleProp;
 };
-
-function present(value: string | undefined): string | null {
-  if (typeof value !== 'string') {
-    return null;
-  }
-
-  const trimmed = value.trim();
-
-  return trimmed || null;
-}
 
 /**
  * Apresentação pura dos dados do observador (etnia, aldeia e aparelho que
@@ -53,9 +44,9 @@ export const ObserverDetails = ({
 }: ObserverDetailsProps) => {
   const {formatMessage} = useIntl();
 
-  const ethnicityValue = present(ethnicity);
-  const villageValue = present(village);
-  const authorValue = present(authorName);
+  const ethnicityValue = observerTagText(ethnicity);
+  const villageValue = observerTagText(village);
+  const authorValue = observerTagText(authorName);
 
   if (!ethnicityValue && !villageValue && !authorValue) {
     return null;

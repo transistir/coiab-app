@@ -113,7 +113,7 @@ export const ObservationEdit = ({
           updateTag('notes', newVal);
         }}
       />
-      <ObserverFields />
+      <ObserverFields mode="edit" />
       {(savedAttachments || attachments) && (
         <HorizontalScrollView
           shouldShowLastItems={true}

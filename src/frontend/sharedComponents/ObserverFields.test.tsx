@@ -1,6 +1,7 @@
 import * as React from 'react';
 import {fireEvent, render, screen} from '@testing-library/react-native';
 import {IntlProvider} from 'react-intl';
+import {TextInput} from 'react-native';
 import {createStore} from 'zustand';
 import {PermissionStatus} from 'expo-location';
 
@@ -29,6 +30,8 @@ const MESSAGES = {
   '$1screens.ObservationCreate.observerVillage': 'Aldeia do observador',
   '$1screens.ObservationCreate.observerFieldsHelper':
     'Vem do seu perfil. Edite ou deixe em branco.',
+  '$1screens.ObservationCreate.observerFieldsExistingHelper':
+    'Dados do observador.',
 };
 
 const ETHNICITY_TEST_ID = 'OBS.observer-ethnicity-inp';
@@ -49,11 +52,14 @@ function createMockLocationStore() {
   }));
 }
 
-function renderFields(draftStore: DraftObservationStore) {
+function renderFields(
+  draftStore: DraftObservationStore,
+  mode: 'create' | 'edit' = 'create',
+) {
   return render(
     <IntlProvider locale="pt-BR" messages={MESSAGES}>
       <DraftObservationProvider draftObservationStore={draftStore}>
-        <ObserverFields />
+        <ObserverFields mode={mode} />
       </DraftObservationProvider>
     </IntlProvider>,
   );
@@ -148,8 +154,46 @@ describe('ObserverFields', () => {
     expect(ethnicity.props.testID).toBe(ETHNICITY_TEST_ID);
     expect(village.props.testID).toBe(VILLAGE_TEST_ID);
     expect(ethnicity.props.returnKeyType).toBe('next');
-    expect(village.props.returnKeyType).toBe('next');
+    expect(village.props.returnKeyType).toBe('done');
     expect(ethnicity.props.multiline).not.toBe(true);
     expect(village.props.multiline).not.toBe(true);
+  });
+
+  test('modo create mostra o texto de apoio de perfil', async () => {
+    const draftStore = createDraftObservationStore({persist: false});
+    draftStore.actions.createDraft();
+
+    await renderFields(draftStore, 'create');
+
+    expect(
+      screen.getByText('Vem do seu perfil. Edite ou deixe em branco.'),
+    ).toBeOnTheScreen();
+    expect(screen.queryByText('Dados do observador.')).not.toBeOnTheScreen();
+  });
+
+  test('modo edit mostra o texto de apoio de dados existentes', async () => {
+    const draftStore = createDraftObservationStore({persist: false});
+    draftStore.actions.createDraft();
+
+    await renderFields(draftStore, 'edit');
+
+    expect(screen.getByText('Dados do observador.')).toBeOnTheScreen();
+    expect(
+      screen.queryByText('Vem do seu perfil. Edite ou deixe em branco.'),
+    ).not.toBeOnTheScreen();
+  });
+
+  test('submit do campo de etnia foca o campo de aldeia', async () => {
+    const draftStore = createDraftObservationStore({persist: false});
+    draftStore.actions.createDraft();
+
+    const focusMock = (TextInput.prototype as unknown as {focus: jest.Mock})
+      .focus;
+    focusMock.mockClear();
+
+    await renderFields(draftStore, 'create');
+    await fireEvent(screen.getByTestId(ETHNICITY_TEST_ID), 'submitEditing');
+
+    expect(focusMock).toHaveBeenCalledTimes(1);
   });
 });

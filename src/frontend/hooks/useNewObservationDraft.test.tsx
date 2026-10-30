@@ -149,4 +149,40 @@ describe('useNewObservationDraft()', () => {
       'Mawayana',
     );
   });
+
+  test('cada chamada usa o perfil do momento em que foi feita', async () => {
+    const draftStore = createDraftObservationStore({persist: false});
+    const profileStore = createUserProfileStore();
+    profileStore.actions.setEthnicity('Mawayana');
+
+    const {result, rerender} = await renderHook(
+      () => useNewObservationDraft(),
+      {
+        wrapper: createWrapper(draftStore, profileStore),
+      },
+    );
+
+    await act(async () => {
+      result.current();
+    });
+    expect(draftStore.instance.getState().value?.tags).toStrictEqual({
+      notes: '',
+      'coiab:etnia': 'Mawayana',
+    });
+
+    await act(async () => {
+      profileStore.actions.setEthnicity('Baniwa');
+      profileStore.actions.setVillage('Aldeia Nova');
+    });
+    await rerender({});
+
+    await act(async () => {
+      result.current();
+    });
+    expect(draftStore.instance.getState().value?.tags).toStrictEqual({
+      notes: '',
+      'coiab:etnia': 'Baniwa',
+      'coiab:aldeia': 'Aldeia Nova',
+    });
+  });
 });

@@ -114,13 +114,17 @@ const existingObservation = {
   createdBy: 'test-device',
 };
 
-async function setup(activeProjectId: string, origemDoRascunho = 'A-m') {
+async function setup(
+  activeProjectId: string,
+  origemDoRascunho = 'A-m',
+  existingTags: Record<string, string> = {notes: 'obs de A'},
+) {
   mockActiveProjectId = activeProjectId;
   const draftStore = createDraftObservationStore({persist: false});
   // Rascunho de edição carimbado com a origem informada (projeto ativo quando
   // a edição começou), como faz Observation/index.tsx via createDraft().
   draftStore.setProjectResolver(() => origemDoRascunho);
-  draftStore.actions.createDraft(existingObservation);
+  draftStore.actions.createDraft({...existingObservation, tags: existingTags});
   draftStore.instance.setState(() => ({
     unsavedAttachments: [unsavedPhoto, unsavedAudio],
   }));
@@ -185,6 +189,34 @@ describe('tags do observador no payload da edição (#133)', () => {
       'coiab:etnia': 'Mawayana',
       'coiab:aldeia': 'Aldeia Nova',
     });
+  });
+
+  test('limpar um valor existente remove a chave do payload', async () => {
+    const {draftStore} = await setup('A-m', 'A-m', {
+      notes: 'obs de A',
+      'coiab:etnia': 'Mawayana',
+      'coiab:aldeia': 'Aldeia Nova',
+    });
+
+    await act(async () => {
+      draftStore.actions.updateTag('coiab:etnia', '');
+    });
+
+    await fireEvent.press(screen.getByTestId('OBS.edit-save-btn'));
+
+    await waitFor(() => {
+      expect(mockUpdateObservationAsync).toHaveBeenCalledTimes(1);
+    });
+
+    const payload = mockUpdateObservationAsync.mock.calls[0][0] as {
+      value: {tags: Record<string, unknown>};
+    };
+
+    expect(payload.value.tags).toStrictEqual({
+      notes: 'obs de A',
+      'coiab:aldeia': 'Aldeia Nova',
+    });
+    expect(payload.value.tags).not.toHaveProperty('coiab:etnia');
   });
 });
 

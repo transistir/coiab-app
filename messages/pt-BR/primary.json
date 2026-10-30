@@ -555,6 +555,10 @@
     "message": "Etnia do observador",
     "description": "Label for the observer ethnicity field in create/edit observation"
   },
+  "$1screens.ObservationCreate.observerFieldsExistingHelper": {
+    "message": "Dados do observador.",
+    "description": "Helper text for the observer fields when editing an existing observation"
+  },
   "$1screens.ObservationCreate.observerFieldsHelper": {
     "message": "Vem do seu perfil. Edite ou deixe em branco.",
     "description": "Helper text explaining the observer fields come from the local profile"

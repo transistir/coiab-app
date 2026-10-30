@@ -1,9 +1,11 @@
-# #133 — Etnia e aldeia no metadado das observações (Opção B)
+# #133 — Etnia e aldeia no metadado das observações (histórico: Opção B → C)
 
 - **Autor:** luandro (decisão de produto) / agente orquestrador (levantamento)
 - **Data:** 2026-10-30
 - **Issue:** transistir/coiab-app#133
-- **Status:** brainstorm — decisões de owner em aberto
+- **Status:** **superado** — mantido como histórico. A decisão final é a
+  Opção C (tags + UI própria), registrada em `design.md`. As seções sobre
+  "campos de preset" e backfill descrevem a hipótese B, abandonada.
 
 ## Problema
 

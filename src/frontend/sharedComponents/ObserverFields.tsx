@@ -29,6 +29,12 @@ const m = defineMessages({
     description:
       'Helper text explaining the observer fields come from the local profile',
   },
+  existingHelper: {
+    id: '$1screens.ObservationCreate.observerFieldsExistingHelper',
+    defaultMessage: 'Observer data.',
+    description:
+      'Helper text for the observer fields when editing an existing observation',
+  },
 });
 
 export const OBSERVER_FIELDS_TEST_IDS = {
@@ -40,10 +46,19 @@ function tagText(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
-export const ObserverFields = () => {
+type ObserverFieldsProps = {
+  /**
+   * `create` semeia os campos com o perfil local; `edit` mostra os dados já
+   * salvos na observação. O texto de apoio muda, os campos são os mesmos.
+   */
+  mode: 'create' | 'edit';
+};
+
+export const ObserverFields = ({mode}: ObserverFieldsProps) => {
   const {formatMessage} = useIntl();
   const tags = useDraftObservationState(store => store.value?.tags);
   const {updateTag} = useDraftObservationActions();
+  const villageRef = React.useRef<TextInput>(null);
 
   const ethnicityLabel = formatMessage(m.ethnicity);
   const villageLabel = formatMessage(m.village);
@@ -51,7 +66,7 @@ export const ObserverFields = () => {
   return (
     <View style={styles.container}>
       <BodyText variant="smallMeta" style={styles.helper}>
-        {formatMessage(m.helper)}
+        {formatMessage(mode === 'edit' ? m.existingHelper : m.helper)}
       </BodyText>
 
       <View style={styles.field}>
@@ -60,6 +75,7 @@ export const ObserverFields = () => {
           style={styles.textInput}
           value={tagText(tags?.[OBSERVER_TAG_KEYS.ethnicity])}
           onChangeText={next => updateTag(OBSERVER_TAG_KEYS.ethnicity, next)}
+          onSubmitEditing={() => villageRef.current?.focus()}
           accessibilityLabel={ethnicityLabel}
           testID={OBSERVER_FIELDS_TEST_IDS.ethnicity}
           returnKeyType="next"
@@ -69,12 +85,13 @@ export const ObserverFields = () => {
       <View style={styles.field}>
         <Text style={styles.label}>{villageLabel}</Text>
         <TextInput
+          ref={villageRef}
           style={styles.textInput}
           value={tagText(tags?.[OBSERVER_TAG_KEYS.village])}
           onChangeText={next => updateTag(OBSERVER_TAG_KEYS.village, next)}
           accessibilityLabel={villageLabel}
           testID={OBSERVER_FIELDS_TEST_IDS.village}
-          returnKeyType="next"
+          returnKeyType="done"
         />
       </View>
     </View>
