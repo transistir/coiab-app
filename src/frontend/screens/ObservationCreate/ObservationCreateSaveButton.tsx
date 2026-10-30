@@ -29,6 +29,7 @@ import {
   isUnsavedAudioAttachment,
   isUnsavedPhotoAttachment,
 } from '../../lib/attachmentTypeChecks';
+import {normalizeObserverTags} from '../../lib/observerProfile';
 
 const MAXIMUM_ACCURACY = 10;
 
@@ -193,6 +194,7 @@ export const ObservationCreateSaveButton = () => {
       const createdObservation = await createObservationAsync({
         value: {
           ...value,
+          tags: normalizeObserverTags(value.tags),
           attachments: [...value.attachments, ...newAttachments],
           presetRef: preset
             ? {docId: preset.docId, versionId: preset.versionId}

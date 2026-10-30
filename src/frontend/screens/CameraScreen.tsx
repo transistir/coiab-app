@@ -6,13 +6,15 @@ import {CameraView} from '../sharedComponents/CameraView';
 import {NativeHomeTabsNavigationProps} from '../sharedTypes/navigation';
 import {PhotoMetadata} from '../contexts/PersistedStores/DraftObservationStore';
 import {useDraftObservationActions} from '../contexts/DraftObservationContext';
+import {useNewObservationDraft} from '../hooks/useNewObservationDraft';
 import {PhotoFile} from 'react-native-vision-camera';
 
 export const CameraScreen = ({
   navigation,
 }: NativeHomeTabsNavigationProps<'Camera'>) => {
   const isFocused = useIsFocused();
-  const {createDraft, addPhoto} = useDraftObservationActions();
+  const createDraft = useNewObservationDraft();
+  const {addPhoto} = useDraftObservationActions();
 
   function handleAddPress(capture: {
     photo: PhotoFile;

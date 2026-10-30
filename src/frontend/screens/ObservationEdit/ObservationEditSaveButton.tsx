@@ -23,6 +23,7 @@ import {
   isUnsavedPhotoAttachment,
 } from '../../lib/attachmentTypeChecks';
 import {toError} from '../../utils/errors';
+import {normalizeObserverTags} from '../../lib/observerProfile';
 
 export const ObservationEditSaveButton = () => {
   const value = useDraftObservationState(store => store.value);
@@ -113,6 +114,7 @@ export const ObservationEditSaveButton = () => {
         versionId: versionId,
         value: {
           ...value,
+          tags: normalizeObserverTags(value.tags),
           attachments: [...value.attachments, ...newAttachments],
           presetRef: preset
             ? {docId: preset.docId, versionId: preset.versionId}
