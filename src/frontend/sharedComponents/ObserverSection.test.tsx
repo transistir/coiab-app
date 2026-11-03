@@ -149,6 +149,9 @@ describe('ObserverSection', () => {
     expect(screen.getByText('Mawayana')).toBeOnTheScreen();
     expect(screen.getByText('Aldeia Nova')).toBeOnTheScreen();
     expect(captureExceptionMock).toHaveBeenCalledTimes(1);
+    expect(captureExceptionMock).toHaveBeenCalledWith(expect.any(Error), {
+      contexts: {react: {componentStack: expect.any(String)}},
+    });
   });
 
   test('membro resolvido mostra o nome de quem registrou', async () => {
