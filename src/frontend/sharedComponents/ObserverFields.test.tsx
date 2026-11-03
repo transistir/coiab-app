@@ -195,5 +195,10 @@ describe('ObserverFields', () => {
     await fireEvent(screen.getByTestId(ETHNICITY_TEST_ID), 'submitEditing');
 
     expect(focusMock).toHaveBeenCalledTimes(1);
+    // Contagem sozinha passaria com o `ref` no campo errado. O `this` da
+    // chamada precisa ser o host component do campo de aldeia.
+    const focusedInstance = focusMock.mock.instances[0] as
+      {props: {testID?: string}} | undefined;
+    expect(focusedInstance?.props.testID).toBe(VILLAGE_TEST_ID);
   });
 });
