@@ -618,8 +618,14 @@
     "message": "Adicionar observações",
     "description": "Title of observation list view when the user has not yet recorded observations"
   },
+  "$1screens.Onboarding.CreateOrganization.creating": {
+    "message": "Criando território…"
+  },
   "$1screens.Onboarding.CreateOrganization.creationInProgress": {
     "message": "A criação de um território já está em andamento."
+  },
+  "$1screens.Onboarding.CreateOrganization.tooLong": {
+    "message": "Nome do território é muito longo"
   },
   "$1screens.Onboarding.EthnicGroupSelection.continue": {
     "message": "Continuar"
@@ -832,6 +838,9 @@
   },
   "$1screens.PhotoPreviewModal.headerButtonText": {
     "message": "Excluir foto"
+  },
+  "$1screens.RemoteArchive.AddRemoteArchive.orgHint": {
+    "message": "Este arquivo será adicionado aos dois projetos do território."
   },
   "$1screens.RemovedFromProjectBottomSheet.close": {
     "message": "Fechar"
@@ -1151,6 +1160,9 @@
   "$1sharedComponents.OrganizationAreaAccesses.pendingWork": {
     "message": "Conclua ou descarte o registro antes de trocar de território",
     "description": "Blocked area switch (SPEC A §4.4:149 canonical pending-work string)"
+  },
+  "$1sharedComponents.OrganizationRepairBanner.needsAttention": {
+    "message": "Um território neste dispositivo precisa de atenção"
   },
   "$1soloProject.startNewProject.title": {
     "message": "Começar um novo projeto"

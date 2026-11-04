@@ -402,7 +402,7 @@ describe('Organizations (SPEC A §6.1, consult Phase 13)', () => {
     await renderScreen();
 
     // None of the retired creation entries the journeys used to carry.
-    expect(screen.queryByText('Create territory')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Create Territory')).not.toBeOnTheScreen();
     expect(screen.queryByText('New Collaboration')).not.toBeOnTheScreen();
   });
 });
