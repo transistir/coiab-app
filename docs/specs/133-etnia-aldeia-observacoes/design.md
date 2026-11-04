@@ -99,11 +99,13 @@ export function normalizeObserverTags(tags: Observation['tags']) {
 
 ### Edição (`ObservationEdit`)
 
-- Editar **não altera nem adiciona** tags do observador: não há campos, e
-  `createDraft(observation)` nunca aplica o perfil.
+- Editar **não aplica o perfil atual nem adiciona** tags do perfil; não há
+  preenchimento manual. A normalização no save (`normalizeObserverTags`) continua
+  rodando e pode aparar valores existentes e remover chaves vazias.
 - Editar uma observação antiga não pode atribuir a etnia de quem edita ao
   registro de outra pessoa.
-- Coordenador edita a observação, mas isso não toca nas tags `coiab:*`.
+- Coordenador edita a observação; a normalização no save vale igualmente para
+  as tags `coiab:*` já existentes.
 
 ### Visualização (`Observation`)
 
@@ -164,17 +166,17 @@ dados sem aparecer na UI.
 
 ## Casos de borda
 
-| Caso                                | Comportamento                                                             |
-| ----------------------------------- | ------------------------------------------------------------------------- |
-| Perfil vazio                        | Salvar funciona; nenhuma tag do observador é gravada                      |
-| Só etnia preenchida                 | Só `coiab:etnia` é gravada                                                |
-| Valor vazio ou só espaços no perfil | Normalização remove a chave; nada de `''`                                 |
-| Espaços internos ("Aldeia Nova")    | Preservados; só as pontas são aparadas no save                            |
-| Observação antiga sem tags          | Sem seção de observador; editar não adiciona tags                         |
-| Membro removido/sem nome            | Seção inteira omitida (nada de "Registrado por")                          |
-| Troca de categoria no rascunho      | `updatePreset` preserva tags que não vieram do preset (teste obrigatório) |
-| Offline                             | Nada muda: tags seguem o fluxo normal de observação                       |
-| Cliente CoMapeo genérico            | Mostra a chave crua; o dado não se perde                                  |
+| Caso                                | Comportamento                                                                                                        |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Perfil vazio                        | Salvar funciona; nenhuma tag do observador é gravada                                                                 |
+| Só etnia preenchida                 | Só `coiab:etnia` é gravada                                                                                           |
+| Valor vazio ou só espaços no perfil | Normalização remove a chave; nada de `''`                                                                            |
+| Espaços internos ("Aldeia Nova")    | Preservados; só as pontas são aparadas no save                                                                       |
+| Observação antiga sem tags          | Tags permanecem ausentes; a seção depende de `createdBy` e do nome do membro ser resolvido; editar não adiciona tags |
+| Membro removido/sem nome            | Seção inteira omitida (nada de "Registrado por")                                                                     |
+| Troca de categoria no rascunho      | `updatePreset` preserva tags que não vieram do preset (teste obrigatório)                                            |
+| Offline                             | Nada muda: tags seguem o fluxo normal de observação                                                                  |
+| Cliente CoMapeo genérico            | Mostra a chave crua; o dado não se perde                                                                             |
 
 ## Alternativas consideradas
 
@@ -242,8 +244,9 @@ Sem mudança em: `assets/categorias/*`, `manifestos.generated.json`,
 14. `npm run lint` (prettier + eslint + `tsc --noEmit`), `npm run test:jest`,
     `npm run test:scripts`.
 15. **Verificação manual Android**: observação nova com perfil completo grava
-    as tags sem exibir campos; observação antiga não ganha seção só com autor;
-    membro sem nome não deixa `Divider` solto.
+    as tags sem exibir campos; observação antiga **pode** mostrar `Divider` +
+    "Registrado por" quando o autor resolve — etnia e aldeia nunca aparecem;
+    sem nome de membro, nada é renderizado.
 
 ## Critérios de aceite
 
@@ -255,8 +258,9 @@ Sem mudança em: `assets/categorias/*`, `manifestos.generated.json`,
 - **CA4** Mudar o perfil depois não altera observações salvas (garantido por
   construção: perfil só é lido no `createDraft` novo; teste do store cobre a
   edição).
-- **CA5** Editar observação nunca injeta o perfil de quem edita nem altera ou
-  adiciona as tags `coiab:*`; não há preenchimento manual.
+- **CA5** Editar observação não aplica o perfil atual nem adiciona tags do
+  perfil; não há preenchimento manual, mas a normalização no save continua
+  rodando e pode aparar valores existentes e remover chaves vazias.
 - **CA6** A tela mostra só "Registrado por" quando o membro tem nome; sem nome
   (ou membro não sincronizado) não há seção; etnia e aldeia nunca aparecem.
 - **CA7** `git diff --stat develop -- assets/categorias src/frontend/lib/organization`
