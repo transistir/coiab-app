@@ -136,8 +136,10 @@ unexplained test failures. Copy the file to a path outside the worktree
 - **`@testing-library/react-native` v14 `render` is async.** Always
 `await render(...)`. Un-awaited renders make Suspense/pending assertions
 flaky: the suite passes in isolation and fails when run with siblings.
-- **`check:message-catalog` asserts a clean tree.** It compares the generated
-catalog against git state; run it after committing, not with dirty changes.
+- **`check:message-catalog` only requires a clean `messages/`.** It runs
+`git status --porcelain -- messages/`, so any staged, unstaged or untracked
+change under `messages/` fails even when the generator output is correct —
+commit or revert it first. Changes elsewhere in the tree do not affect it.
 - **`/tmp` is a ~1.9 GB tmpfs on this box.** APKs (85-190 MB each), jest
 caches and onnxruntime temp dirs fill it and cause `No space left on device`
 mid-run. Keep artifacts and harness logs under `/root/dev/`; `df -h /tmp`
