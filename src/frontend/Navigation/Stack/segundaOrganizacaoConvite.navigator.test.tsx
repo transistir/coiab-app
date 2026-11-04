@@ -498,7 +498,7 @@ describe('segunda organização por convite (navigator real)', () => {
         {timeout: 15_000},
       );
       expect(
-        await screen.findByText('Organization created', undefined, {
+        await screen.findByText('Territory created', undefined, {
           timeout: 15_000,
         }),
       ).toBeOnTheScreen();

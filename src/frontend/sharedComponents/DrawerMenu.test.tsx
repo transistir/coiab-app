@@ -357,7 +357,7 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     expect(
       await screen.findByTestId('MENU.trocar-organizacao'),
     ).toBeOnTheScreen();
-    expect(screen.getByText('Trocar de organização')).toBeOnTheScreen();
+    expect(screen.getByText('Trocar de território')).toBeOnTheScreen();
   });
 
   test('acesso antecipado ligado, uma única organização: a entrada de troca não existe', async () => {
@@ -406,7 +406,7 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     expect(
       await screen.findByTestId('MENU.criar-organizacao'),
     ).toBeOnTheScreen();
-    expect(screen.getByText('Criar organização')).toBeOnTheScreen();
+    expect(screen.getByText('Criar território')).toBeOnTheScreen();
   });
 
   test('acesso antecipado desligado, uma única organização operável: criar existe e troca não', async () => {
@@ -542,7 +542,7 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     });
     await renderDrawer(true, {earlyAccess: true});
 
-    for (const texto of ['Trocar de organização', 'Criar organização']) {
+    for (const texto of ['Trocar de território', 'Criar território']) {
       expect(screen.getByText(texto).props.style).toEqual(
         expect.arrayContaining([expect.objectContaining({color: WHITE})]),
       );

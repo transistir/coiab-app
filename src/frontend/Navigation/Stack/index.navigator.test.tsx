@@ -452,7 +452,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       // create form's own button and on the route stack, not on the
       // fork's copy.)
       expect(screen.getByTestId('ORG.create-name-inp')).toBeOnTheScreen();
-      expect(screen.getByText('Creating Organization…')).toBeOnTheScreen();
+      expect(screen.getByText('Creating Territory…')).toBeOnTheScreen();
       expect(screen.queryByTestId('ORG.create-btn')).not.toBeOnTheScreen();
       // "Nothing bounced to Home" covers the whole Home screen — under the
       // 5-tab bar (#32) its initial tab is Entroncamento, not the Map.
@@ -472,7 +472,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       );
       // While the refresh was gated the document had already published the
       // confirmation; nothing bounced to Home and nothing offers creation.
-      expect(await screen.findByText('Organization created')).toBeOnTheScreen();
+      expect(await screen.findByText('Territory created')).toBeOnTheScreen();
       // The tap is the ONLY way Home opens (SPEC A §4.2 regra 9).
       await fireEvent.press(
         screen.getByTestId('ORG.provisioning-open-organization-btn'),
@@ -544,9 +544,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       await orgSetup.renderNavigation();
       // A janela de carregamento: loader canônico na tela e NENHUMA rota
       // registrada — a bifurcação (Success) nunca chega a montar.
-      expect(
-        await screen.findByText('Loading organization…'),
-      ).toBeOnTheScreen();
+      expect(await screen.findByText('Loading territory…')).toBeOnTheScreen();
       // #118 ciclo 5: a janela de carregamento é a TelaCarregamento do tema
       // escuro — o rótulo canônico e o testID dela coexistem na mesma árvore.
       expect(screen.getByTestId('CARREGAMENTO.scrn')).toBeOnTheScreen();
@@ -731,7 +729,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       // reconstruído: a confirmação pendente é a superfície de abertura e,
       // com 5b-1, renderiza a visão guiada pelo documento (a confirmação),
       // não o texto genérico de preparação da era fanout.
-      expect(await screen.findByText('Organization created')).toBeOnTheScreen();
+      expect(await screen.findByText('Territory created')).toBeOnTheScreen();
       // Nenhum escritor projetou o slot por baixo da confirmação pendente:
       // o id legado segue exatamente o valor semeado.
       expect(freshSetup.activeProjectId).toBe(standaloneProjectId);
@@ -765,7 +763,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     // no core: dois projetos + imports + conferência): o default de 1000 ms
     // é insuficiente sob carga — precedente JoinProjectIntro.
     expect(
-      await screen.findByText('Organization created', undefined, {
+      await screen.findByText('Territory created', undefined, {
         timeout: 15_000,
       }),
     ).toBeOnTheScreen();
@@ -819,7 +817,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     // Aguarda a publicação pronta SEM tocar em Abrir organização. Espera de
     // I/O real (materialização no core): o default de 1000 ms é insuficiente
     // sob carga — precedente JoinProjectIntro.
-    await screen.findByText('Organization created', undefined, {
+    await screen.findByText('Territory created', undefined, {
       timeout: 15_000,
     });
 
@@ -829,7 +827,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     await freshSetup.renderNavigationAsync();
 
     // A confirmação é reapresentada — não a preparação, não a Home.
-    expect(await screen.findByText('Organization created')).toBeOnTheScreen();
+    expect(await screen.findByText('Territory created')).toBeOnTheScreen();
     expect(
       await screen.findByTestId('ORG.provisioning-open-organization-btn'),
     ).toBeOnTheScreen();

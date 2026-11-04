@@ -43,18 +43,18 @@ import type {AppStackParamsList} from '../../sharedTypes/navigation';
 // message (flag #14) is preserved as-is and asserted by its English
 // defaultMessage below.
 const PT_MESSAGES = {
-  '$1screens.OrganizationSetup.createOrganization': 'Criar organização',
+  '$1screens.OrganizationSetup.createOrganization': 'Criar território',
   '$1screens.OrganizationSetup.createIntroBody':
-    'Sua organização terá Monitoramento e Alertas, com categorias prontas para usar. Você pode criá-la sem internet.',
+    'Seu território terá Monitoramento e Alertas, com categorias prontas para usar. Você pode criá-lo sem internet.',
   '$1screens.OrganizationSetup.continueButton': 'Continuar',
-  '$1screens.OrganizationSetup.nameLabel': 'Nome da organização',
+  '$1screens.OrganizationSetup.nameLabel': 'Nome do território',
   '$1screens.OrganizationSetup.nameGuidance':
-    'Escolha um nome para sua organização.',
+    'Escolha um nome para seu território.',
   '$1screens.OrganizationSetup.nameNotIdentity':
-    'Usar o mesmo nome de outra organização não conecta os dispositivos. Para participar de uma organização existente, aguarde um convite.',
-  '$1screens.OrganizationSetup.emptyName': 'Informe o nome da organização.',
+    'Usar o mesmo nome de outro território não conecta os dispositivos. Para participar de um território existente, aguarde um convite.',
+  '$1screens.OrganizationSetup.emptyName': 'Informe o nome do território.',
   '$1screens.Onboarding.CreateOrganization.creationInProgress':
-    'Já existe uma criação de organização em andamento.',
+    'Já existe uma criação de território em andamento.',
 };
 
 jest.mock('../../contexts/OrganizationMaterializerContext', () => ({
@@ -244,10 +244,10 @@ describe('CreateOrganization', () => {
   test('the intro step renders the SPEC B :54 copy and leads to the name step', async () => {
     await renderScreen();
 
-    expect(screen.getByText('Criar organização')).toBeOnTheScreen();
+    expect(screen.getByText('Criar território')).toBeOnTheScreen();
     expect(
       screen.getByText(
-        'Sua organização terá Monitoramento e Alertas, com categorias prontas para usar. Você pode criá-la sem internet.',
+        'Seu território terá Monitoramento e Alertas, com categorias prontas para usar. Você pode criá-lo sem internet.',
       ),
     ).toBeOnTheScreen();
     expect(
@@ -258,11 +258,11 @@ describe('CreateOrganization', () => {
     await irParaEtapaNome();
 
     expect(
-      screen.getByText('Escolha um nome para sua organização.'),
+      screen.getByText('Escolha um nome para seu território.'),
     ).toBeOnTheScreen();
     expect(
       screen.getByText(
-        'Usar o mesmo nome de outra organização não conecta os dispositivos. Para participar de uma organização existente, aguarde um convite.',
+        'Usar o mesmo nome de outro território não conecta os dispositivos. Para participar de um território existente, aguarde um convite.',
       ),
     ).toBeOnTheScreen();
     expect(screen.getByTestId('ORG.create-name-inp')).toBeOnTheScreen();
@@ -292,10 +292,10 @@ describe('CreateOrganization', () => {
 
     expect(screen.getByTestId('ORG.create-name-inp')).toHaveProp(
       'placeholder',
-      'Nome da organização',
+      'Nome do território',
     );
     expect(screen.getByTestId('ORG.create-btn')).toHaveTextContent(
-      'Criar organização',
+      'Criar território',
     );
   });
 
@@ -307,9 +307,7 @@ describe('CreateOrganization', () => {
     await irParaEtapaNome();
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
-    expect(
-      screen.getByText('Informe o nome da organização.'),
-    ).toBeOnTheScreen();
+    expect(screen.getByText('Informe o nome do território.')).toBeOnTheScreen();
     expect(iniciar).not.toHaveBeenCalled();
 
     // A whitespace-only name is equally rejected (trim).
@@ -318,12 +316,10 @@ describe('CreateOrganization', () => {
       '   ',
     );
     expect(
-      screen.queryByText('Informe o nome da organização.'),
+      screen.queryByText('Informe o nome do território.'),
     ).not.toBeOnTheScreen();
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
-    expect(
-      screen.getByText('Informe o nome da organização.'),
-    ).toBeOnTheScreen();
+    expect(screen.getByText('Informe o nome do território.')).toBeOnTheScreen();
     expect(iniciar).not.toHaveBeenCalled();
   });
 
@@ -361,7 +357,7 @@ describe('CreateOrganization', () => {
     );
     expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
     expect(
-      screen.queryByText('Organization name is too long'),
+      screen.queryByText('Territory name is too long'),
     ).not.toBeOnTheScreen();
 
     // One more char makes the marker overflow 60 — the button is disabled
@@ -371,7 +367,7 @@ describe('CreateOrganization', () => {
       'a'.repeat(MAX_ENCODED_NAME + 1),
     );
     expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
-    expect(screen.getByText('Organization name is too long')).toBeOnTheScreen();
+    expect(screen.getByText('Territory name is too long')).toBeOnTheScreen();
   });
 
   test('an accented name is guarded by its encoded length, not the raw one', async () => {
@@ -405,7 +401,7 @@ describe('CreateOrganization', () => {
         ),
     );
     expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
-    expect(screen.getByText('Organization name is too long')).toBeOnTheScreen();
+    expect(screen.getByText('Territory name is too long')).toBeOnTheScreen();
   });
 
   test('an emoji name is guarded by its encoded length', async () => {
@@ -426,7 +422,7 @@ describe('CreateOrganization', () => {
       '🌴'.repeat(3),
     );
     expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
-    expect(screen.getByText('Organization name is too long')).toBeOnTheScreen();
+    expect(screen.getByText('Territory name is too long')).toBeOnTheScreen();
   });
 
   test('the character counter reads the encoded length against the guard bound', async () => {

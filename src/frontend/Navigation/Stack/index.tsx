@@ -66,7 +66,7 @@ const m = defineMessages({
   // navigator registers no route, so no project screen can mount behind it.
   loadingOrganization: {
     id: '$1screens.OrganizationSetup.loadingOrganization',
-    defaultMessage: 'Loading organization…',
+    defaultMessage: 'Loading territory…',
   },
 });
 

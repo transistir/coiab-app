@@ -67,7 +67,7 @@ function StoryHost({context}: {context: StoryContext}) {
   return withRealNavigator(story, context);
 }
 
-const TITLE = 'Could not open your organization';
+const TITLE = 'Could not open your territory';
 const NAME = 'ORG.provisioning-unavailable-name';
 const RETRY = 'ORG.provisioning-retry-activation-btn';
 const SWITCH = 'ORG.provisioning-switch-organization-btn';
@@ -127,7 +127,7 @@ describe('withRealNavigator over an unopenable organization seed', () => {
 
     try {
       await findReadyOnProvisioning(one);
-      expect(screen.getByTestId(NAME)).toHaveTextContent('Test Organization A');
+      expect(screen.getByTestId(NAME)).toHaveTextContent('Test Territory A');
       // One organization, early access off: no selector (the count rule),
       // but creation is offered — the drawer's parity, not the flag.
       expect(screen.queryByTestId(SWITCH)).not.toBeOnTheScreen();
@@ -140,7 +140,7 @@ describe('withRealNavigator over an unopenable organization seed', () => {
         />,
       );
       await findReadyOnProvisioning(two);
-      expect(screen.getByTestId(NAME)).toHaveTextContent('Test Organization B');
+      expect(screen.getByTestId(NAME)).toHaveTextContent('Test Territory B');
       expect(screen.getByTestId(SWITCH)).toBeOnTheScreen();
       expect(screen.getByTestId(CREATE)).toBeOnTheScreen();
 

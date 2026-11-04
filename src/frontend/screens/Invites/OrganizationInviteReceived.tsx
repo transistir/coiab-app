@@ -24,7 +24,7 @@ import {useAcceptOrganizationBundle} from '../../hooks/organization/useAcceptOrg
 const m = defineMessages({
   joinOrganization: {
     id: '$1screens.OrganizationInviteReceived.joinOrganization',
-    defaultMessage: 'Join Organization',
+    defaultMessage: 'Join Territory',
   },
   decline: {
     id: '$1screens.OrganizationInviteReceived.decline',
@@ -61,7 +61,7 @@ const m = defineMessages({
   },
   organizationName: {
     id: '$1screens.OrganizationInviteReceived.organizationName',
-    defaultMessage: 'Organization',
+    defaultMessage: 'Territory',
   },
 });
 

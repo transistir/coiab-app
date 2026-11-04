@@ -94,7 +94,7 @@ describe('Onboarding Screens', () => {
     await user.press(waitInviteButton);
     expect(
       await screen.findByText(
-        'Ask a person responsible for the Organization to invite this device.',
+        'Ask a person responsible for the Territory to invite this device.',
       ),
     ).toBeVisible();
 
@@ -153,7 +153,7 @@ describe('Onboarding Screens', () => {
     // findByText fails and so does the test.
     expect(
       await screen.findByText(
-        /Could not finish creating the organization\.|Organization created|Preparing your organization…/,
+        /Could not finish creating the territory\.|Territory created|Preparing your territory…/,
         undefined,
         {timeout: 30_000},
       ),

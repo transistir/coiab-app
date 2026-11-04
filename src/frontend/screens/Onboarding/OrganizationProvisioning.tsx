@@ -30,11 +30,11 @@ const m = defineMessages({
   // and the open/recovery states.
   preparingTitle: {
     id: '$1screens.OrganizationSetup.preparingTitle',
-    defaultMessage: 'Preparing your organization…',
+    defaultMessage: 'Preparing your territory…',
   },
   preparingStepA11y: {
     id: '$1screens.OrganizationSetup.preparingStepA11y',
-    defaultMessage: 'Preparing your organization',
+    defaultMessage: 'Preparing your territory',
   },
   preparingSlowNotice: {
     id: '$1screens.OrganizationSetup.preparingSlowNotice',
@@ -69,7 +69,7 @@ const m = defineMessages({
   },
   failureTitle: {
     id: '$1screens.OrganizationSetup.failureTitle',
-    defaultMessage: 'Could not finish creating the organization.',
+    defaultMessage: 'Could not finish creating the territory.',
   },
   failureBody: {
     id: '$1screens.OrganizationSetup.failureBody',
@@ -81,7 +81,7 @@ const m = defineMessages({
   },
   createdTitle: {
     id: '$1screens.OrganizationSetup.createdTitle',
-    defaultMessage: 'Organization created',
+    defaultMessage: 'Territory created',
   },
   createdBody: {
     id: '$1screens.OrganizationSetup.createdBody',
@@ -90,7 +90,7 @@ const m = defineMessages({
   },
   openOrganizationButton: {
     id: '$1screens.OrganizationSetup.openOrganizationButton',
-    defaultMessage: 'Open organization',
+    defaultMessage: 'Open territory',
   },
   backButton: {
     id: '$1screens.OrganizationSetup.backButton',
@@ -99,7 +99,7 @@ const m = defineMessages({
   },
   unavailableTitle: {
     id: '$1screens.OrganizationSetup.unavailableTitle',
-    defaultMessage: 'Could not open your organization',
+    defaultMessage: 'Could not open your territory',
     description:
       'A settled organization the engine could not open (SPEC B §4.4:120 / SPEC A §6.2:214, “Organização indisponível”)',
   },
@@ -111,8 +111,7 @@ const m = defineMessages({
   },
   pendingWork: {
     id: '$1screens.OrganizationSetup.pendingWork',
-    defaultMessage:
-      'Finish or discard the record before switching organization',
+    defaultMessage: 'Finish or discard the record before switching territory',
     description:
       'Blocked boot with work in progress (SPEC A §4.4:149 canonical pending-work string, CA15)',
   },
@@ -122,13 +121,13 @@ const m = defineMessages({
   backBlocked: {
     id: '$1screens.OrganizationSetup.backBlocked',
     defaultMessage:
-      'You cannot leave this screen while an organization operation is in progress.',
+      'You cannot leave this screen while a territory operation is in progress.',
     description:
       'Shown when a back attempt is prevented (SPEC B §3.2:64/:68, Fase 5)',
   },
   switchOrganization: {
     id: '$1Navigation.Menu.switchOrganization',
-    defaultMessage: 'Switch organization',
+    defaultMessage: 'Switch territory',
     // SPEC A §6.1:201 — opens the modal Organizations selector (§7:226).
     // pt-BR ships the verbatim §6.1 string "Trocar de organização".
     description: 'Drawer menu entry that opens the organization selector',
@@ -139,7 +138,7 @@ const m = defineMessages({
   // onboarding title.
   createOrganization: {
     id: '$1screens.OrganizationSetup.createOrganization',
-    defaultMessage: 'Create Organization',
+    defaultMessage: 'Create Territory',
   },
 });
 

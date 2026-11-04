@@ -189,7 +189,7 @@ describe('ReviewOrganizationInvite', () => {
     mockOrganization(undefined);
     await renderScreen();
 
-    expect(screen.getByText('No Organization found')).toBeOnTheScreen();
+    expect(screen.getByText('No Territory found')).toBeOnTheScreen();
     expect(screen.queryByTestId('ORG.send-invite-btn')).not.toBeOnTheScreen();
   });
 
@@ -197,7 +197,7 @@ describe('ReviewOrganizationInvite', () => {
     mockOrganization(incompleteOrganization);
     await renderScreen();
 
-    expect(screen.getByText('No Organization found')).toBeOnTheScreen();
+    expect(screen.getByText('No Territory found')).toBeOnTheScreen();
     expect(screen.queryByTestId('ORG.send-invite-btn')).not.toBeOnTheScreen();
   });
 

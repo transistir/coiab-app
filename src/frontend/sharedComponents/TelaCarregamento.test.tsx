@@ -35,9 +35,9 @@ test('T7a: o fundo de CARREGAMENTO.scrn é DARK_GREY (#1C2A27)', async () => {
 });
 
 test('T7b: com label, o texto fica branco e o LoadingIndicator recebe color={WHITE}', async () => {
-  await render(<TelaCarregamento label="Carregando organização…" />);
+  await render(<TelaCarregamento label="Carregando território…" />);
 
-  expect(screen.getByText('Carregando organização…')).toHaveStyle({
+  expect(screen.getByText('Carregando território…')).toHaveStyle({
     color: WHITE,
   });
   expect(screen.getByTestId('LoadingIndicatorProbe').props.probeColor).toBe(
@@ -59,10 +59,10 @@ test('T7c: StatusBar estático — light-content ao montar, dark-content no unmo
 });
 
 test('T7d: com label, o rótulo é HeaderText header4 presente (fontSize 18)', async () => {
-  await render(<TelaCarregamento label="Carregando organização…" />);
+  await render(<TelaCarregamento label="Carregando território…" />);
 
   // header4 do HeaderText = {fontFamily: rubik-medium, fontSize: 18}
-  expect(screen.getByText('Carregando organização…')).toHaveStyle({
+  expect(screen.getByText('Carregando território…')).toHaveStyle({
     fontFamily: 'Rubik_500Medium',
     fontSize: 18,
   });
@@ -70,7 +70,7 @@ test('T7d: com label, o rótulo é HeaderText header4 presente (fontSize 18)', a
 
 test('T7e: nenhuma Image no tree (apenas fundo, spinner e rótulo textual)', async () => {
   const json = (
-    await render(<TelaCarregamento label="Carregando organização…" />)
+    await render(<TelaCarregamento label="Carregando território…" />)
   ).toJSON();
   expect(json).not.toBeNull();
 

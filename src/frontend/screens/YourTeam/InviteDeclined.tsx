@@ -22,7 +22,7 @@ const m = defineMessages({
   inviteDeclinedOrganizationDes: {
     id: '$1screens.Settings.YourTeam.inviteDeclinedOrganizationDes',
     defaultMessage:
-      'This device has declined your invitation. They have not joined the Organization.',
+      'This device has declined your invitation. They have not joined the Territory.',
   },
   close: {
     id: '$1screens.Settings.YourTeam.close',

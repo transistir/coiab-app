@@ -25,18 +25,18 @@ const m = defineMessages({
   noOrganizationBody: {
     id: '$1screens.OrganizationSetup.noOrganizationBody',
     // SPEC A :142 (§4.4 glossary).
-    defaultMessage: 'Your device is not yet part of an Organization',
+    defaultMessage: 'Your device is not yet part of a Territory',
   },
   noOrganizationGuidance: {
     id: '$1screens.OrganizationSetup.noOrganizationGuidance',
     // SPEC B :53.
     defaultMessage:
-      'Create an Organization or wait for an invitation to join an existing one.',
+      'Create a Territory or wait for an invitation to join an existing one.',
   },
   createOrganization: {
     id: '$1screens.OrganizationSetup.createOrganization',
     // SPEC B :53 — the PRIMARY action, not the legacy join-first order.
-    defaultMessage: 'Create Organization',
+    defaultMessage: 'Create Territory',
   },
   waitInviteButton: {
     id: '$1screens.OrganizationSetup.waitInviteButton',

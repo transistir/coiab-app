@@ -26,10 +26,10 @@ const ProjectCoordinatorIcon = jest.requireMock(
 const PT_MESSAGES = {
   '$1screens.DeviceNaming.Success.deviceReady': '{deviceName} está pronto!',
   '$1screens.OrganizationSetup.noOrganizationBody':
-    'Seu dispositivo ainda não está em uma organização',
+    'Seu dispositivo ainda não está em um território',
   '$1screens.OrganizationSetup.noOrganizationGuidance':
-    'Crie uma organização ou aguarde um convite para participar de uma existente.',
-  '$1screens.OrganizationSetup.createOrganization': 'Criar organização',
+    'Crie um território ou aguarde um convite para participar de um existente.',
+  '$1screens.OrganizationSetup.createOrganization': 'Criar território',
   '$1screens.OrganizationSetup.waitInviteButton': 'Aguardar convite',
 };
 
@@ -68,11 +68,11 @@ describe('Success (the "sem organização" state, SPEC A §6.2)', () => {
       await screen.findByText('Aparelho Teste está pronto!'),
     ).toBeOnTheScreen();
     expect(
-      screen.getByText('Seu dispositivo ainda não está em uma organização'),
+      screen.getByText('Seu dispositivo ainda não está em um território'),
     ).toBeOnTheScreen();
     expect(
       screen.getByText(
-        'Crie uma organização ou aguarde um convite para participar de uma existente.',
+        'Crie um território ou aguarde um convite para participar de um existente.',
       ),
     ).toBeOnTheScreen();
   });
@@ -81,7 +81,7 @@ describe('Success (the "sem organização" state, SPEC A §6.2)', () => {
     await renderScreen();
 
     const createButton = await screen.findByTestId('ONBOARDING.create-org-btn');
-    expect(createButton).toHaveTextContent('Criar organização');
+    expect(createButton).toHaveTextContent('Criar território');
 
     await fireEvent.press(createButton);
 

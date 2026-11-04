@@ -275,7 +275,7 @@ describe('organization stories (FlowStateScope)', () => {
     ).toBeOnTheScreen();
     expect(screen.getByText('Field Device')).toBeOnTheScreen();
     expect(screen.getByTestId('ORG.send-invite-btn')).toBeOnTheScreen();
-    expect(screen.queryByText('No Organization found')).not.toBeOnTheScreen();
+    expect(screen.queryByText('No Territory found')).not.toBeOnTheScreen();
   }, 60_000);
 
   test('the selector row: the story opens both organizations, the active one listed first', async () => {
@@ -408,7 +408,7 @@ describe('organization stories (FlowStateScope)', () => {
 
     expect(
       await screen.findByText(
-        'Preparing your organization…',
+        'Preparing your territory…',
         {},
         {timeout: 30_000},
       ),

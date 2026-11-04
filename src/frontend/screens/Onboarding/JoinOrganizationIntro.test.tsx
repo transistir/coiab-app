@@ -17,7 +17,7 @@ import type {AppStackParamsList} from '../../sharedTypes/navigation';
 const PT_MESSAGES = {
   '$1screens.OrganizationSetup.waitInviteTitle': 'Aguardar convite',
   '$1screens.OrganizationSetup.waitInviteBody':
-    'Peça a uma pessoa responsável pela organização para convidar este dispositivo.',
+    'Peça a uma pessoa responsável pelo território para convidar este dispositivo.',
   '$1screens.OrganizationSetup.backButton': 'Voltar',
 };
 
@@ -51,7 +51,7 @@ describe('JoinOrganizationIntro', () => {
     expect(await screen.findByText('Aguardar convite')).toBeOnTheScreen();
     expect(
       screen.getByText(
-        'Peça a uma pessoa responsável pela organização para convidar este dispositivo.',
+        'Peça a uma pessoa responsável pelo território para convidar este dispositivo.',
       ),
     ).toBeOnTheScreen();
     expect(screen.getByTestId('ORG.join-intro-back-btn')).toBeOnTheScreen();

@@ -184,7 +184,7 @@ describe('AddRemoteArchive', () => {
 
     expect(
       screen.getByText(
-        'This archive will be added to both projects of the Organization.',
+        'This archive will be added to both projects of the Territory.',
       ),
     ).toBeOnTheScreen();
 
@@ -251,7 +251,7 @@ describe('AddRemoteArchive', () => {
 
     expect(
       screen.queryByText(
-        'This archive will be added to both projects of the Organization.',
+        'This archive will be added to both projects of the Territory.',
       ),
     ).not.toBeOnTheScreen();
 
@@ -288,7 +288,7 @@ describe('AddRemoteArchive', () => {
     // active project stays on the legacy single-project add.
     expect(
       screen.queryByText(
-        'This archive will be added to both projects of the Organization.',
+        'This archive will be added to both projects of the Territory.',
       ),
     ).not.toBeOnTheScreen();
 

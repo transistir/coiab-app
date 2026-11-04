@@ -18,7 +18,7 @@ import {NativeRootNavigationProps} from '../sharedTypes/navigation';
 const m = defineMessages({
   title: {
     id: '$1screens.Organizations.title',
-    defaultMessage: 'Organizations',
+    defaultMessage: 'Territories',
     // SPEC A §6.1:201 — the modal selector opened by "Trocar de organização"
     // (the drawer entry is wired in the next delivery).
     description: 'Title of the organization selector modal',
@@ -37,22 +37,22 @@ const m = defineMessages({
   // descriptor OrganizationProvisioning already ships for it.
   preparingState: {
     id: '$1screens.OrganizationSetup.preparingTitle',
-    defaultMessage: 'Preparing your organization…',
+    defaultMessage: 'Preparing your territory…',
   },
   failureState: {
     id: '$1screens.OrganizationSetup.failureTitle',
-    defaultMessage: 'Could not finish creating the organization.',
+    defaultMessage: 'Could not finish creating the territory.',
   },
   createdState: {
     id: '$1screens.OrganizationSetup.createdTitle',
-    defaultMessage: 'Organization created',
+    defaultMessage: 'Territory created',
   },
   // SPEC A §5.2:165 (step 3, "Preparar B"): while an activation is pending
   // the sheet shows “Abrindo organização…” alone — no mixed content from the
   // organizations the list shows, no change to the persisted selection.
   openingOrganization: {
     id: '$1screens.OrganizationSetup.openingOrganization',
-    defaultMessage: 'Opening organization…',
+    defaultMessage: 'Opening territory…',
     description:
       'The selector sheet while an activation is in flight (SPEC A §5.2:165, “Abrindo organização…”)',
   },
@@ -65,7 +65,7 @@ const m = defineMessages({
   // §4.4:148 / SPEC B §4.1:120 — “Não foi possível abrir sua organização”.
   unavailableTitle: {
     id: '$1screens.OrganizationSetup.unavailableTitle',
-    defaultMessage: 'Could not open your organization',
+    defaultMessage: 'Could not open your territory',
     description:
       'A settled organization the engine could not open (SPEC B §4.4:120 / SPEC A §6.2:214, “Organização indisponível”)',
   },
@@ -73,8 +73,7 @@ const m = defineMessages({
   // antes de trocar de organização”.
   pendingWork: {
     id: '$1screens.OrganizationSetup.pendingWork',
-    defaultMessage:
-      'Finish or discard the record before switching organization',
+    defaultMessage: 'Finish or discard the record before switching territory',
     description:
       'Blocked boot with work in progress (SPEC A §4.4:149 canonical pending-work string, CA15)',
   },

@@ -12,7 +12,7 @@ import {organizacaoEmPreparo} from '../lib/organization/coiabOrganizations';
 const m = defineMessages({
   needsAttention: {
     id: '$1sharedComponents.OrganizationRepairBanner.needsAttention',
-    defaultMessage: 'An Organization on this device needs attention',
+    defaultMessage: 'A Territory on this device needs attention',
   },
 });
 

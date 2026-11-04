@@ -26,7 +26,7 @@ describe('Onboarding - Join Organization Intro Screen', () => {
     await expect(
       $(
         byTextMatches(
-          'Ask a person responsible for the Organization to invite this device',
+          'Ask a person responsible for the Territory to invite this device',
         ),
       ),
     ).toBeDisplayed();

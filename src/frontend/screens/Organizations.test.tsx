@@ -240,10 +240,10 @@ describe('Organizations (SPEC A §6.1, consult Phase 13)', () => {
     ).toEqual({selected: true});
     expect(screen.getByText('Current')).toBeOnTheScreen();
     // Incomplete/unavailable organizations are identified with their state.
-    expect(screen.getByText('Organization created')).toBeOnTheScreen();
-    expect(screen.getByText('Preparing your organization…')).toBeOnTheScreen();
+    expect(screen.getByText('Territory created')).toBeOnTheScreen();
+    expect(screen.getByText('Preparing your territory…')).toBeOnTheScreen();
     expect(
-      screen.getByText('Could not finish creating the organization.'),
+      screen.getByText('Could not finish creating the territory.'),
     ).toBeOnTheScreen();
   });
 
@@ -369,7 +369,7 @@ describe('Organizations (SPEC A §6.1, consult Phase 13)', () => {
     });
     await renderScreen();
 
-    await fireEvent.press(screen.getByText('Organizations'));
+    await fireEvent.press(screen.getByText('Territories'));
     await fireEvent.press(screen.getByTestId('ORGANIZATIONS.list'));
 
     expect(mockSheetGoBack).not.toHaveBeenCalled();
@@ -386,7 +386,7 @@ describe('Organizations (SPEC A §6.1, consult Phase 13)', () => {
     await renderScreen();
 
     await user.press(screen.getByTestId('ORGANIZATIONS.row-id-a'));
-    expect(screen.getByText('Opening organization…')).toBeOnTheScreen();
+    expect(screen.getByText('Opening territory…')).toBeOnTheScreen();
 
     await fireEvent.press(screen.getByTestId('SHEET.backdrop'));
 
@@ -402,16 +402,16 @@ describe('Organizations (SPEC A §6.1, consult Phase 13)', () => {
     await renderScreen();
 
     // None of the retired creation entries the journeys used to carry.
-    expect(screen.queryByText('Create organization')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Create Territory')).not.toBeOnTheScreen();
     expect(screen.queryByText('New Collaboration')).not.toBeOnTheScreen();
   });
 });
 
 /** SPEC A §4.4:148 — “Não foi possível abrir sua organização”. */
-const INDISPONIVEL = 'Could not open your organization';
+const INDISPONIVEL = 'Could not open your territory';
 /** SPEC A §4.4:149 — “Conclua ou descarte o registro antes de trocar de organização”. */
 const TRABALHO_PENDENTE =
-  'Finish or discard the record before switching organization';
+  'Finish or discard the record before switching territory';
 /** SPEC A §5.2:167 — “A sincronização precisa ser iniciada novamente.” */
 const REINICIAR_SINCRONIZACAO = 'Sync needs to be started again.';
 /** Every explanation the sheet can give for a switch that did not go through. */
@@ -437,7 +437,7 @@ describe('Organizations (SPEC A §5.2:165/§6.2:215 — feedback da troca)', () 
 
     // The canonical opening state (SPEC A §5.2:165, "Abrindo organização…")
     // stands ALONE — no mixed content from the organizations the list shows.
-    expect(screen.getByText('Opening organization…')).toBeOnTheScreen();
+    expect(screen.getByText('Opening territory…')).toBeOnTheScreen();
     expect(screen.queryByTestId('ORGANIZATIONS.list')).not.toBeOnTheScreen();
     expect(
       screen.queryByTestId('ORGANIZATIONS.row-id-a'),

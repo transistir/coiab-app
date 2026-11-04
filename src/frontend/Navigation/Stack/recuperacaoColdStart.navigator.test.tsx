@@ -395,7 +395,7 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
 
   async function abrirRecoveryAteOTitulo() {
     expect(
-      await screen.findByText('Could not open your organization', undefined, {
+      await screen.findByText('Could not open your territory', undefined, {
         timeout: 30_000,
       }),
     ).toBeOnTheScreen();
@@ -461,7 +461,7 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
     // The introduction itself is up: its §B :54 title (the provisioning's
     // own exit button below the modal carries the same words, aria-hidden).
     expect(
-      await screen.findByText('Create Organization', {}, {timeout: 15_000}),
+      await screen.findByText('Create Territory', {}, {timeout: 15_000}),
     ).toBeOnTheScreen();
     expect(
       await screen.findByTestId(
@@ -533,7 +533,7 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
     // preparation (the handover replace leaves provisioning twice on the
     // stack — R1's shape), then its confirmation.
     expect(
-      await screen.findAllByText('Organization created', {}, {timeout: 30_000}),
+      await screen.findAllByText('Territory created', {}, {timeout: 30_000}),
     ).not.toHaveLength(0);
     await fireEvent.press(
       (
@@ -857,7 +857,7 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
       documentoPersistido().organizacoes.find(org => org.id === B_ID)?.estado,
     ).toBe('preparando');
     expect(
-      screen.queryByText('Could not open your organization'),
+      screen.queryByText('Could not open your territory'),
     ).not.toBeOnTheScreen();
     expect(
       screen.queryByTestId('ORG.provisioning-unavailable-name'),
@@ -887,7 +887,7 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
       {timeout: 60_000},
     );
     expect(
-      await screen.findAllByText('Organization created', {}, {timeout: 30_000}),
+      await screen.findAllByText('Territory created', {}, {timeout: 30_000}),
     ).not.toHaveLength(0);
     expect(
       screen.queryByTestId('ORG.provisioning-switch-organization-btn'),
@@ -960,7 +960,7 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
     // string; the engine keeps recovery with the refusal code.
     expect(
       await screen.findByText(
-        'Finish or discard the record before switching organization',
+        'Finish or discard the record before switching territory',
         undefined,
         {timeout: 15_000},
       ),
@@ -1024,7 +1024,7 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
     );
     expect(
       await screen.findByText(
-        'Could not open your organization',
+        'Could not open your territory',
         {includeHiddenElements: true},
         {timeout: 30_000},
       ),
@@ -1136,7 +1136,7 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
     );
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
     expect(
-      await screen.findAllByText('Organization created', {}, {timeout: 30_000}),
+      await screen.findAllByText('Territory created', {}, {timeout: 30_000}),
     ).not.toHaveLength(0);
     await fireEvent.press(
       (
@@ -1320,7 +1320,7 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
     // first render already — this is materializar.ts's settled state, not
     // something the new button creates.
     expect(
-      await screen.findByText('Organization created', undefined, {
+      await screen.findByText('Territory created', undefined, {
         timeout: 30_000,
       }),
     ).toBeOnTheScreen();
@@ -1346,7 +1346,7 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
       generation: 0,
     });
     expect(
-      await screen.findByText('Organization created', undefined, {
+      await screen.findByText('Territory created', undefined, {
         timeout: 30_000,
       }),
     ).toBeOnTheScreen();
