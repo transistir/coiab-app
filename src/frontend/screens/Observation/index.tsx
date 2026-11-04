@@ -37,7 +37,6 @@ import {AudioSavedThumbnail} from '../../sharedComponents/Thumbnails/AudioSavedT
 import {useCanEditOrDelete} from '../../hooks/server/useCanEditOrDelete.ts';
 import {useDraftObservationActions} from '../../contexts/DraftObservationContext.tsx';
 import {SavedPhoto} from '../../sharedTypes/index.ts';
-import {hasObserverTags} from '../../lib/observerProfile';
 import {ObserverSection} from '../../sharedComponents/ObserverSection';
 
 const m = defineMessages({
@@ -188,15 +187,7 @@ export const ObservationScreen: NativeNavigationComponent<'Observation'> = ({
             />
           </>
         )}
-        {hasObserverTags(observation.tags) && (
-          <>
-            <Divider />
-            <ObserverSection
-              createdBy={observation.createdBy}
-              tags={observation.tags}
-            />
-          </>
-        )}
+        <ObserverSection createdBy={observation.createdBy} />
         <View style={styles.divider} />
         <ButtonFields observationId={observationId} fields={fields} />
       </>
