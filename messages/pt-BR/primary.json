@@ -29,7 +29,7 @@
     "message": "Ferramentas do coordenador"
   },
   "$1Navigation.Menu.criarOrganizacao": {
-    "message": "Criar organização",
+    "message": "Criar território",
     "description": "Menu list entry that opens the organization creation flow"
   },
   "$1Navigation.Menu.earlyAccessOn": {
@@ -58,14 +58,14 @@
     "message": "Participante"
   },
   "$1Navigation.Menu.switchOrganization": {
-    "message": "Trocar de organização"
+    "message": "Trocar de território"
   },
   "$1Navigation.Menu.switchOrganizationSubtitle": {
-    "message": "Escolher outra org",
+    "message": "Escolher outro território",
     "description": "Subtitle of the organization selector menu entry"
   },
   "$1Navigation.Menu.switchOrganizationTitle": {
-    "message": "Trocar de organização",
+    "message": "Trocar de território",
     "description": "Menu list entry that opens the organization selector"
   },
   "$1Navigation.Menu.team": {
@@ -162,7 +162,7 @@
     "message": "Acesso Antecipado ATIVADO"
   },
   "$1Screens.Settings.AppSettings.organization": {
-    "message": "Organização",
+    "message": "Território",
     "description": "Section header for the migrated menu entries"
   },
   "$1Screens.Settings.AppSettings.projectSettings": {
@@ -619,7 +619,7 @@
     "description": "Title of observation list view when the user has not yet recorded observations"
   },
   "$1screens.Onboarding.CreateOrganization.creationInProgress": {
-    "message": "A criação de uma organização já está em andamento."
+    "message": "A criação de um território já está em andamento."
   },
   "$1screens.Onboarding.EthnicGroupSelection.continue": {
     "message": "Continuar"
@@ -697,10 +697,10 @@
     "message": "Entrar como {role}?"
   },
   "$1screens.OrganizationInviteReceived.joinOrganization": {
-    "message": "Entrar na organização"
+    "message": "Entrar no território"
   },
   "$1screens.OrganizationInviteReceived.organizationName": {
-    "message": "Organização"
+    "message": "Território"
   },
   "$1screens.OrganizationInviteReceived.participantRole": {
     "message": "participante"
@@ -712,7 +712,7 @@
     "message": "Este dispositivo sairá dos projetos desta configuração. Os outros membros verão que este dispositivo saiu dos projetos. Se este dispositivo for o único coordenador de um projeto, nenhum outro dispositivo poderá adicionar ou remover dispositivos, ajustar as informações do projeto ou atualizar o conjunto de categorias. As observações deste dispositivo que ainda não foram sincronizadas não estarão mais disponíveis aqui; exporte primeiro todos os dados importantes. Os outros membros manterão os projetos e suas cópias."
   },
   "$1screens.OrganizationProvisioning.skippedJoinPending": {
-    "message": "Um convite para esta organização ainda está sincronizando. Tente novamente quando ele terminar."
+    "message": "Um convite para este território ainda está sincronizando. Tente novamente quando ele terminar."
   },
   "$1screens.OrganizationSetup.alertsRow": {
     "message": "Alertas"
@@ -730,7 +730,7 @@
     "message": "Aguardando"
   },
   "$1screens.OrganizationSetup.backBlocked": {
-    "message": "Não é possível sair desta tela enquanto uma operação de organização está em andamento."
+    "message": "Não é possível sair desta tela enquanto uma operação de território está em andamento."
   },
   "$1screens.OrganizationSetup.backButton": {
     "message": "Voltar"
@@ -739,16 +739,16 @@
     "message": "Continuar"
   },
   "$1screens.OrganizationSetup.createIntroBody": {
-    "message": "Sua organização terá Monitoramento e Alertas, com categorias prontas para usar. Você pode criá-la sem internet."
+    "message": "Seu território terá Monitoramento e Alertas, com categorias prontas para usar. Você pode criá-lo sem internet."
   },
   "$1screens.OrganizationSetup.createOrganization": {
-    "message": "Criar organização"
+    "message": "Criar território"
   },
   "$1screens.OrganizationSetup.createdBody": {
-    "message": "{organizationName} está pronta. Monitoramento e Alertas já estão disponíveis."
+    "message": "{organizationName} está pronto. Monitoramento e Alertas já estão disponíveis."
   },
   "$1screens.OrganizationSetup.createdTitle": {
-    "message": "Organização criada"
+    "message": "Território criado"
   },
   "$1screens.OrganizationSetup.failureBody": {
     "message": "O que já foi preparado está salvo. Tente novamente para concluir."
@@ -757,49 +757,49 @@
     "message": "Não foi possível concluir a criação."
   },
   "$1screens.OrganizationSetup.emptyName": {
-    "message": "Informe o nome da organização."
+    "message": "Informe o nome do território."
   },
   "$1screens.OrganizationSetup.loadingOrganization": {
-    "message": "Carregando organização…"
+    "message": "Carregando território…"
   },
   "$1screens.OrganizationSetup.monitoringRow": {
     "message": "Monitoramento"
   },
   "$1screens.OrganizationSetup.nameGuidance": {
-    "message": "Escolha um nome para sua organização."
+    "message": "Escolha um nome para seu território."
   },
   "$1screens.OrganizationSetup.nameLabel": {
-    "message": "Nome da organização"
+    "message": "Nome do território"
   },
   "$1screens.OrganizationSetup.nameNotIdentity": {
-    "message": "Usar o mesmo nome de outra organização não conecta os dispositivos. Para participar de uma organização existente, aguarde um convite."
+    "message": "Usar o mesmo nome de outro território não conecta os dispositivos. Para participar de um território existente, aguarde um convite."
   },
   "$1screens.OrganizationSetup.noOrganizationBody": {
-    "message": "Seu dispositivo ainda não está em uma organização"
+    "message": "Seu dispositivo ainda não está em um território"
   },
   "$1screens.OrganizationSetup.noOrganizationGuidance": {
-    "message": "Crie uma organização ou aguarde um convite para participar de uma existente."
+    "message": "Crie um território ou aguarde um convite para participar de um existente."
   },
   "$1screens.OrganizationSetup.pacoteNaoAprovado": {
     "message": "Não foi possível preparar os arquivos necessários neste aparelho. Nada foi criado."
   },
   "$1screens.OrganizationSetup.openOrganizationButton": {
-    "message": "Abrir organização"
+    "message": "Abrir território"
   },
   "$1screens.OrganizationSetup.openingOrganization": {
-    "message": "Abrindo organização…"
+    "message": "Abrindo território…"
   },
   "$1screens.OrganizationSetup.pendingWork": {
-    "message": "Conclua ou descarte o registro antes de trocar de organização"
+    "message": "Conclua ou descarte o registro antes de trocar de território"
   },
   "$1screens.OrganizationSetup.preparingSlowNotice": {
     "message": "A preparação está demorando. Se não continuar, feche e abra o aplicativo."
   },
   "$1screens.OrganizationSetup.preparingStepA11y": {
-    "message": "Preparando sua organização"
+    "message": "Preparando seu território"
   },
   "$1screens.OrganizationSetup.preparingTitle": {
-    "message": "Preparando sua organização…"
+    "message": "Preparando seu território…"
   },
   "$1screens.OrganizationSetup.retryActivationButton": {
     "message": "Tentar novamente"
@@ -811,10 +811,10 @@
     "message": "A sincronização precisa ser iniciada novamente."
   },
   "$1screens.OrganizationSetup.unavailableTitle": {
-    "message": "Não foi possível abrir sua organização"
+    "message": "Não foi possível abrir seu território"
   },
   "$1screens.OrganizationSetup.waitInviteBody": {
-    "message": "Peça a uma pessoa responsável pela organização para convidar este dispositivo."
+    "message": "Peça a uma pessoa responsável pelo território para convidar este dispositivo."
   },
   "$1screens.OrganizationSetup.waitInviteButton": {
     "message": "Aguardar convite"
@@ -827,7 +827,7 @@
     "description": "Badge naming the organization this device operates in right now"
   },
   "$1screens.Organizations.title": {
-    "message": "Organizações",
+    "message": "Territórios",
     "description": "Title of the organization selector modal"
   },
   "$1screens.PhotoPreviewModal.headerButtonText": {
@@ -895,7 +895,7 @@
     "message": "Concluído"
   },
   "$1screens.Setting.ProjectSettings.YourTeam.InviteAccepted.partOfOrganization": {
-    "message": "<bold>{deviceName}</bold> agora faz parte da sua organização."
+    "message": "<bold>{deviceName}</bold> agora faz parte do seu território."
   },
   "$1screens.Setting.ProjectSettings.YourTeam.InviteAccepted.partOfProject": {
     "message": "<bold>{deviceName}</bold> agora faz parte do seu projeto."
@@ -1030,7 +1030,7 @@
     "message": "Fechar"
   },
   "$1screens.Settings.YourTeam.inviteDeclinedOrganizationDes": {
-    "message": "Este dispositivo recusou seu convite. Ele não entrou na organização."
+    "message": "Este dispositivo recusou seu convite. Ele não entrou no território."
   },
   "$1screens.ShareProjectStats.shareProjectStats": {
     "message": "Compartilhar Estatísticas do Projeto"
@@ -1103,13 +1103,13 @@
     "message": "Voltar"
   },
   "$1screens.YourTeam.ReviewOrganizationInvite.noOrganization": {
-    "message": "Nenhuma organização encontrada"
+    "message": "Nenhum território encontrado"
   },
   "$1screens.YourTeam.ReviewOrganizationInvite.retry": {
     "message": "Convidar novamente"
   },
   "$1screens.YourTeam.ReviewOrganizationInvite.sendInvite": {
-    "message": "Convidar para a organização"
+    "message": "Convidar para o território"
   },
   "$1screens.YourTeam.ReviewOrganizationInvite.timer": {
     "message": "Convite enviado há {seconds}s"
@@ -1149,7 +1149,7 @@
     "description": "Chip de detalhes do card (Figma 2668:4539)"
   },
   "$1sharedComponents.OrganizationAreaAccesses.pendingWork": {
-    "message": "Conclua ou descarte o registro antes de trocar de organização",
+    "message": "Conclua ou descarte o registro antes de trocar de território",
     "description": "Blocked area switch (SPEC A §4.4:149 canonical pending-work string)"
   },
   "$1soloProject.startNewProject.title": {

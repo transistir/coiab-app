@@ -37,13 +37,13 @@ const m = defineMessages({
   // allowed by the extraction gate).
   createOrganization: {
     id: '$1screens.OrganizationSetup.createOrganization',
-    defaultMessage: 'Create Organization',
+    defaultMessage: 'Create Territory',
   },
   createIntroBody: {
     id: '$1screens.OrganizationSetup.createIntroBody',
     // SPEC B :54 — verbatim.
     defaultMessage:
-      'Your Organization will have Monitoramento and Alertas, with categories ready to use. You can create it without internet.',
+      'Your Territory will have Monitoramento and Alertas, with categories ready to use. You can create it without internet.',
   },
   continueButton: {
     id: '$1screens.OrganizationSetup.continueButton',
@@ -53,34 +53,34 @@ const m = defineMessages({
   nameLabel: {
     id: '$1screens.OrganizationSetup.nameLabel',
     // SPEC B :55 (also the :94 table) — the field label.
-    defaultMessage: 'Organization name',
+    defaultMessage: 'Territory name',
   },
   nameGuidance: {
     id: '$1screens.OrganizationSetup.nameGuidance',
     // SPEC B :55 — verbatim.
-    defaultMessage: 'Choose a name for your Organization.',
+    defaultMessage: 'Choose a name for your Territory.',
   },
   nameNotIdentity: {
     id: '$1screens.OrganizationSetup.nameNotIdentity',
     // SPEC B :55 — verbatim.
     defaultMessage:
-      'Using the same name as another Organization does not connect the devices. To join an existing Organization, wait for an invitation.',
+      'Using the same name as another Territory does not connect the devices. To join an existing Territory, wait for an invitation.',
   },
   emptyName: {
     id: '$1screens.OrganizationSetup.emptyName',
     // SPEC B :252 — verbatim.
-    defaultMessage: 'Enter the Organization name.',
+    defaultMessage: 'Enter the Territory name.',
   },
   creating: {
     id: '$1screens.Onboarding.CreateOrganization.creating',
-    defaultMessage: 'Creating Organization…',
+    defaultMessage: 'Creating Territory…',
   },
   // ⚑ SPEC (A4): there is no canonical copy for the materializer's typed
   // refusal (SPEC B §5.5 guard) — this minimal factual descriptor fills
   // the gap. COPY PENDING A SPEC DECISION.
   creationInProgress: {
     id: '$1screens.Onboarding.CreateOrganization.creationInProgress',
-    defaultMessage: 'An Organization creation is already in progress.',
+    defaultMessage: 'A Territory creation is already in progress.',
   },
   // ⚑ SPEC (A4): there is no canonical string yet for a package failure
   // BEFORE any write — `$1screens.OrganizationSetup.failureBody`
@@ -97,7 +97,7 @@ const m = defineMessages({
   // message is preserved as-is until a marker v2 lands.
   tooLong: {
     id: '$1screens.Onboarding.CreateOrganization.tooLong',
-    defaultMessage: 'Organization name is too long',
+    defaultMessage: 'Territory name is too long',
   },
 });
 

@@ -23,7 +23,7 @@ const m = defineMessages({
     id: '$1screens.OrganizationSetup.waitInviteBody',
     // SPEC B :60 — verbatim.
     defaultMessage:
-      'Ask a person responsible for the Organization to invite this device.',
+      'Ask a person responsible for the Territory to invite this device.',
   },
   back: {
     id: '$1screens.OrganizationSetup.backButton',

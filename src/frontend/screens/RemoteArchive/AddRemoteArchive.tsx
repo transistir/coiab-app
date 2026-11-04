@@ -60,7 +60,7 @@ const m = defineMessages({
   orgHint: {
     id: '$1screens.RemoteArchive.AddRemoteArchive.orgHint',
     defaultMessage:
-      'This archive will be added to both projects of the Organization.',
+      'This archive will be added to both projects of the Territory.',
   },
 });
 

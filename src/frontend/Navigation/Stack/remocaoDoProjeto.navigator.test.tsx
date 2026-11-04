@@ -188,7 +188,7 @@ describe('remoção do dispositivo de um projeto (navigator real)', () => {
       // the explanation names the removed slot.
       expect(
         await screen.findByText(
-          'Could not open your organization',
+          'Could not open your territory',
           {includeHiddenElements: true},
           {timeout: 15_000},
         ),
@@ -224,7 +224,7 @@ describe('remoção do dispositivo de um projeto (navigator real)', () => {
         {timeout: 15_000},
       );
       expect(
-        await screen.findByText('Could not open your organization'),
+        await screen.findByText('Could not open your territory'),
       ).toBeOnTheScreen();
     } finally {
       unsubscribe();

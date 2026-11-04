@@ -33,8 +33,7 @@ const m = defineMessages({
   },
   pendingWork: {
     id: '$1sharedComponents.OrganizationAreaAccesses.pendingWork',
-    defaultMessage:
-      'Finish or discard the record before switching organization',
+    defaultMessage: 'Finish or discard the record before switching territory',
     description:
       'Blocked area switch (SPEC A §4.4:149 canonical pending-work string)',
   },

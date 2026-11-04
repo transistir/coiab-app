@@ -33,7 +33,7 @@ const m = defineMessages({
   },
   sendInvite: {
     id: '$1screens.YourTeam.ReviewOrganizationInvite.sendInvite',
-    defaultMessage: 'Invite to Organization',
+    defaultMessage: 'Invite to Territory',
   },
   waiting: {
     id: '$1screens.YourTeam.ReviewOrganizationInvite.waiting',
@@ -45,7 +45,7 @@ const m = defineMessages({
   },
   noOrganization: {
     id: '$1screens.YourTeam.ReviewOrganizationInvite.noOrganization',
-    defaultMessage: 'No Organization found',
+    defaultMessage: 'No Territory found',
   },
   goBack: {
     id: '$1screens.YourTeam.ReviewOrganizationInvite.goBack',

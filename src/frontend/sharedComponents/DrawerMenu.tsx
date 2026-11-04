@@ -44,14 +44,14 @@ const m = defineMessages({
   },
   switchOrganizationTitle: {
     id: '$1Navigation.Menu.switchOrganizationTitle',
-    defaultMessage: 'Trocar de organização',
+    defaultMessage: 'Trocar de território',
     // SPEC A §6.1:201 — pt-BR ships the verbatim string; a nova página usa
     // id próprio para não divergir da duplicata canônica do seletor.
     description: 'Menu list entry that opens the organization selector',
   },
   switchOrganizationSubtitle: {
     id: '$1Navigation.Menu.switchOrganizationSubtitle',
-    defaultMessage: 'Escolher outra org',
+    defaultMessage: 'Escolher outro território',
     description: 'Subtitle of the organization selector menu entry',
   },
   convidar: {
@@ -66,7 +66,7 @@ const m = defineMessages({
   },
   criarOrganizacao: {
     id: '$1Navigation.Menu.criarOrganizacao',
-    defaultMessage: 'Criar organização',
+    defaultMessage: 'Criar território',
     description: 'Menu list entry that opens the organization creation flow',
   },
   exchange: {
@@ -228,7 +228,7 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
               titulo={m.switchOrganizationTitle}
               subtitulo={m.switchOrganizationSubtitle}
               icone="swap-horiz"
-              accessibilityLabel="Open the organization selector."
+              accessibilityLabel="Open the territory selector."
             />
           )}
           {/* O acesso à equipe fica COORD-only nesta página; participants
@@ -240,7 +240,7 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
               titulo={m.convidar}
               subtitulo={m.convidarSubtitle}
               icone="person-add"
-              accessibilityLabel="Invite people to the organization."
+              accessibilityLabel="Invite people to the territory."
             />
           )}
           {/* Same owner decision (f12641db): the create entry is part of
@@ -256,7 +256,7 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
               }}
               titulo={m.criarOrganizacao}
               icone="business"
-              accessibilityLabel="Open the organization creation flow."
+              accessibilityLabel="Open the territory creation flow."
             />
           )}
         </View>

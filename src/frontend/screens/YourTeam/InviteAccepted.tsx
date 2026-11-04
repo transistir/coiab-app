@@ -28,8 +28,7 @@ const m = defineMessages({
   },
   partOfOrganization: {
     id: '$1screens.Setting.ProjectSettings.YourTeam.InviteAccepted.partOfOrganization',
-    defaultMessage:
-      '<bold>{deviceName}</bold> is now part of your Organization.',
+    defaultMessage: '<bold>{deviceName}</bold> is now part of your Territory.',
   },
 });
 

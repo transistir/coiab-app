@@ -121,7 +121,7 @@ const m = defineMessages({
   },
   organization: {
     id: '$1Screens.Settings.AppSettings.organization',
-    defaultMessage: 'Organization',
+    defaultMessage: 'Territory',
     description: 'Section header for the migrated menu entries',
   },
   backgroundMaps: {

@@ -11,7 +11,7 @@ describe('Onboarding - Create Organization Journey', () => {
     const createOrgButton = await $(byResourceId('ONBOARDING.create-org-btn'));
     await createOrgButton.click();
 
-    const title = await $(byTextMatches('Create Organization'));
+    const title = await $(byTextMatches('Create Territory'));
     await expect(title).toBeDisplayed();
 
     const introBody = await $(
@@ -32,7 +32,7 @@ describe('Onboarding - Create Organization Journey', () => {
     const createButton = await $(byResourceId('ORG.create-btn'));
     await createButton.click();
 
-    const emptyError = await $(byTextMatches('Enter the Organization name'));
+    const emptyError = await $(byTextMatches('Enter the Territory name'));
     await expect(emptyError).toBeDisplayed();
   });
 

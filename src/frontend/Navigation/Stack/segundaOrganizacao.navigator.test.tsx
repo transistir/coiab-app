@@ -362,7 +362,7 @@ describe('segunda organização (navigator real)', () => {
     // B materialized for real: 2/2 verified → pending confirmation, with
     // the confirmation naming B (not A).
     expect(
-      await screen.findByText('Organization created', undefined, {
+      await screen.findByText('Territory created', undefined, {
         timeout: 15_000,
       }),
     ).toBeOnTheScreen();
@@ -560,7 +560,7 @@ describe('segunda organização (navigator real)', () => {
       screen.getByTestId('ORG.provisioning-open-organization-btn'),
     ).toBeOnTheScreen();
     expect(
-      screen.queryByText('Preparing your organization…'),
+      screen.queryByText('Preparing your territory…'),
     ).not.toBeOnTheScreen();
 
     // The way back to the operating organization: the surface returns to
@@ -756,7 +756,7 @@ describe('segunda organização (navigator real)', () => {
       // geração 0 — ou seja, a recuperação está em voo (o boot bloqueado
       // não valida papel). B segue intacta e nenhum projeto novo existe.
       expect(
-        await screen.findByText('Loading organization…', undefined, {
+        await screen.findByText('Loading territory…', undefined, {
           timeout: 15_000,
         }),
       ).toBeOnTheScreen();

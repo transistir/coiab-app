@@ -269,7 +269,7 @@ const SLOW_NOTICE =
 
 /** Exact English text of the blocked-back notice (Fase 5, ⚑ COPY PENDING). */
 const BACK_BLOCKED =
-  'You cannot leave this screen while an organization operation is in progress.';
+  'You cannot leave this screen while a territory operation is in progress.';
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -312,7 +312,7 @@ describe('OrganizationProvisioning', () => {
 
       await renderScreen();
 
-      expect(screen.getByText('Organization created')).toBeOnTheScreen();
+      expect(screen.getByText('Territory created')).toBeOnTheScreen();
       expect(
         screen.getByText(
           'Primeira is ready. Monitoring and Alerts are already available.',
@@ -387,7 +387,7 @@ describe('OrganizationProvisioning', () => {
       await renderScreen();
 
       expect(
-        screen.getByText('Could not finish creating the organization.'),
+        screen.getByText('Could not finish creating the territory.'),
       ).toBeOnTheScreen();
       expect(
         screen.getByText(
@@ -421,9 +421,7 @@ describe('OrganizationProvisioning', () => {
       ]);
       await renderScreen();
 
-      expect(
-        screen.getByText('Preparing your organization…'),
-      ).toBeOnTheScreen();
+      expect(screen.getByText('Preparing your territory…')).toBeOnTheScreen();
       expect(screen.getByText('Monitoring')).toBeOnTheScreen();
       expect(screen.getByText('Preparing')).toBeOnTheScreen();
       expect(screen.getByText('Alerts')).toBeOnTheScreen();
@@ -465,9 +463,7 @@ describe('OrganizationProvisioning', () => {
       ]);
       await renderScreen();
 
-      expect(
-        screen.getByText('Preparing your organization…'),
-      ).toBeOnTheScreen();
+      expect(screen.getByText('Preparing your territory…')).toBeOnTheScreen();
       // B's rows: one preparing, one waiting.
       expect(screen.getByText('Monitoring')).toBeOnTheScreen();
       expect(screen.getByText('Preparing')).toBeOnTheScreen();
@@ -510,7 +506,7 @@ describe('OrganizationProvisioning', () => {
         await renderScreen();
 
         expect(
-          screen.getByText('Could not open your organization'),
+          screen.getByText('Could not open your territory'),
         ).toBeOnTheScreen();
         // The failed open is not the confirmation (no Abrir organização)
         // and not a preparation retry.
@@ -717,7 +713,7 @@ describe('OrganizationProvisioning', () => {
       },
       {
         linha: 'B ready with pending confirmation',
-        textoVisivel: 'Organization created',
+        textoVisivel: 'Territory created',
         montar: () => {
           seedDocument(
             [prontaAtiva.organizacao, segundaProntaComConfirmacao()],
@@ -730,8 +726,7 @@ describe('OrganizationProvisioning', () => {
       },
       {
         linha: 'unavailable + pending-work',
-        textoVisivel:
-          'Finish or discard the record before switching organization',
+        textoVisivel: 'Finish or discard the record before switching territory',
         montar: () => {
           seedDocument([prontaAtiva.organizacao, segundaPronta()], ativaA);
           ativarRecovery('unavailable', 'pending-work');
@@ -921,7 +916,7 @@ describe('OrganizationProvisioning', () => {
       // The fallback entry owns the rows and the title, but the name is the
       // SELECTION's — and 'org-fantasma' resolves to nothing.
       expect(
-        screen.getByText('Could not open your organization'),
+        screen.getByText('Could not open your territory'),
       ).toBeOnTheScreen();
       expect(
         screen.queryByTestId('ORG.provisioning-unavailable-name'),
@@ -968,7 +963,7 @@ describe('OrganizationProvisioning', () => {
 
       expect(
         screen.getByText(
-          'Finish or discard the record before switching organization',
+          'Finish or discard the record before switching territory',
         ),
       ).toBeOnTheScreen();
       expect(recoverPendingWork).toHaveBeenCalledTimes(1);
@@ -1270,7 +1265,7 @@ describe('OrganizationProvisioning', () => {
           </EarlyAccessStoreProvider>
         </IntlProvider>,
       );
-      await screen.findByText('Preparing your organization…');
+      await screen.findByText('Preparing your territory…');
 
       await act(async () => {
         navigationRef.reset({index: 0, routes: [{name: 'Home'}]});
@@ -1278,7 +1273,7 @@ describe('OrganizationProvisioning', () => {
 
       expect(screen.getByText('HOME-REACHED')).toBeOnTheScreen();
       expect(
-        screen.queryByText('Preparing your organization…'),
+        screen.queryByText('Preparing your territory…'),
       ).not.toBeOnTheScreen();
     });
   });
@@ -1321,9 +1316,7 @@ describe('OrganizationProvisioning', () => {
       await renderScreen();
 
       // The surface stays the owner of B's preparation…
-      expect(
-        screen.getByText('Preparing your organization…'),
-      ).toBeOnTheScreen();
+      expect(screen.getByText('Preparing your territory…')).toBeOnTheScreen();
       // …so the validated pair (ready + matching ids) must not bounce Home.
       expect(navigationReset).not.toHaveBeenCalled();
     });
@@ -1360,11 +1353,9 @@ describe('OrganizationProvisioning', () => {
       const user = userEvent.setup();
       await renderScreen();
 
+      expect(screen.getByText('Preparing your territory…')).toBeOnTheScreen();
       expect(
-        screen.getByText('Preparing your organization…'),
-      ).toBeOnTheScreen();
-      expect(
-        screen.queryByLabelText('Preparing your organization'),
+        screen.queryByLabelText('Preparing your territory'),
       ).not.toBeOnTheScreen();
       expect(backHandlerMock.default.addEventListener).not.toHaveBeenCalled();
       expect(
@@ -1418,7 +1409,7 @@ describe('OrganizationProvisioning', () => {
       await renderScreen();
 
       expect(
-        screen.getByLabelText('Preparing your organization'),
+        screen.getByLabelText('Preparing your territory'),
       ).toBeOnTheScreen();
       expect(
         screen.queryByTestId('ORG.provisioning-back-to-active-btn'),

@@ -111,8 +111,8 @@ export type ResolvedFlowState = {
  * name, so the selector only lists B first if it really leads with the active
  * organization (SPEC A §6.1).
  */
-const ORGANIZATION_A = {id: 'aaaaaaaaaaaaaaaa', name: 'Test Organization A'};
-const ORGANIZATION_B = {id: 'bbbbbbbbbbbbbbbb', name: 'Test Organization B'};
+const ORGANIZATION_A = {id: 'aaaaaaaaaaaaaaaa', name: 'Test Territory A'};
+const ORGANIZATION_B = {id: 'bbbbbbbbbbbbbbbb', name: 'Test Territory B'};
 const PERSISTED_ORGANIZATION_ID = '0123456789abcdef';
 
 export const FLOW_STATES = {
@@ -135,20 +135,20 @@ export const FLOW_STATES = {
     auth: 'authenticated',
     deviceName: 'Test Device',
     project: 'none',
-    organization: {name: 'Test Organization', observations: 5},
+    organization: {name: 'Test Territory', observations: 5},
   },
   namedWithOrganization: {
     auth: 'authenticated',
     deviceName: 'Test Device',
     project: 'none',
-    organization: {name: 'Test Organization'},
+    organization: {name: 'Test Territory'},
     draftObservation: 'none',
   },
   orgProvisioning: {
     auth: 'authenticated',
     deviceName: 'Test Device',
     project: 'none',
-    organization: {name: 'Test Organization', slots: 'monitoramento'},
+    organization: {name: 'Test Territory', slots: 'monitoramento'},
   },
   /**
    * Two ready organizations with early access off (the production default):
