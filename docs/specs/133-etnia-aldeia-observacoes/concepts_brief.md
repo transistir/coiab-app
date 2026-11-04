@@ -1,5 +1,10 @@
 # #133 — Etnia e aldeia no metadado das observações (histórico: Opção B → C)
 
+> **Atualização (2026-11-04):** a decisão final do owner foi esconder etnia e
+> aldeia da UI (#136). O dado continua nas tags, semeado do perfil. O desenho
+> abaixo registra a discussão original; o estado atual está em
+> [design.md](./design.md).
+
 - **Autor:** luandro (decisão de produto) / agente orquestrador (levantamento)
 - **Data:** 2026-10-30
 - **Issue:** transistir/coiab-app#133
@@ -118,6 +123,7 @@ materializados por organização via `OrganizationMaterializerContext` →
 ## Decisões de owner em aberto
 
 **D1 — Origem do conteúdo do pacote**
+
 - (a) Adicionar etnia/aldeia às fixtures interinas agora e fixar contrato com
   a #30 para que os pacotes aprovados já tragam os dois campos. Entrega
   funciona em `development`/`releaseCandidate`; produção continua bloqueada
@@ -128,6 +134,7 @@ materializados por organização via `OrganizationMaterializerContext` →
   escolhida e do modelo "pacote é a fonte da verdade".
 
 **D2 — Quais presets recebem os campos**
+
 - (a) Todos os presets de observação dos dois pacotes (hoje: Árvore e Fogo) —
   toda observação pergunta os dois valores.
 - (b) Todos os presets, inclusive de trilha.
@@ -136,6 +143,7 @@ materializados por organização via `OrganizationMaterializerContext` →
 
 **D3 — Backfill de organizações existentes** (o item 4 da issue contradiz o
 spec atual)
+
 - (a) Sem backfill: só organizações novas. Simples; organizações em uso nunca
   ganham os campos.
 - (b) Reimportar pacote v2 nos projetos existentes: apaga e recria todos os
@@ -146,6 +154,7 @@ spec atual)
   de escopo declarado.
 
 **D4 — Chaves, rótulos e tipo**
+
 - `tagKey`: `etnia` / `aldeia`? O mapa de tags é único e indexado por chave;
   gravar a mesma chave sobrescreve o valor (`DraftObservationStore.ts:366`).
   Se o campo representa o **observador**, reservar namespace estável (ex.:
@@ -156,6 +165,7 @@ spec atual)
   mudar sem mudar a chave; a chave é contrato.
 
 **D5 — Perfil incompleto**
+
 - (a) perguntas aparecem vazias e o usuário pode pular.
 - (b) tag vazia não é gravada.
 - (c) bloqueia salvar até preencher.

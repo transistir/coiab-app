@@ -6,6 +6,8 @@
 - **Brief:** [concepts_brief.md](./concepts_brief.md)
 - **Status:** design revisado por Goldfish (Opus 5.5 + GPT-6.1-Sol); P1/P2 aplicados
 
+**Atualização (2026-11-04):** etnia e aldeia deixaram de ser exibidas e editáveis na #136 (PR #137, merge `ecaac7dd`); as tags continuam automáticas.
+
 ## Decisões fechadas pelo owner
 
 - **D6:** o dado é **só do observador** (quem usa o aparelho), nunca da
@@ -13,7 +15,16 @@
 - **D5:** não existem usuários pré-#128. Perfil incompleto só ocorre por
   estado corrompido; campo vazio não bloqueia e não grava tag.
 - **Opção C confirmada:** etnia e aldeia como **tags da observação**, com UI
-  própria no app, sem tocar no pacote `.comapeocat`.
+  própria no app, sem tocar no pacote `.comapeocat`. _(Revista em 2026-11-04:
+  a UI foi removida; ver seção de atualização abaixo.)_
+
+## Atualização (2026-11-04) — decisão revista pelo owner
+
+O owner reviu a Opção C: o dado deve existir sem o usuário perceber, então não
+é campo de formulário. Etnia e aldeia continuam nas tags, semeadas do perfil
+local na criação do rascunho, mas deixaram de ser exibidas e editáveis na UI
+(#136, PR #137). As seções abaixo registram o desenho original e onde ele foi
+ajustado.
 
 ## Problema
 
@@ -24,10 +35,10 @@ eles não replicam e não aparecem para o resto da organização.
 ## Objetivos
 
 1. Toda observação nova carrega etnia e aldeia do observador em `tags`.
-2. Os valores são preenchidos a partir do perfil local, **visíveis e
-   editáveis na tela de criação**, antes de salvar.
-3. A visualização da observação mostra etnia, aldeia e o nome do aparelho que
-   registrou.
+2. Os valores vêm automaticamente do perfil local, sem campo visível nem
+   edição: o rascunho nasce com as tags e o usuário não percebe.
+3. A visualização da observação mostra apenas "Registrado por" (nome do
+   aparelho que registrou); etnia e aldeia não aparecem na tela.
 4. Funciona em organização existente, sem migração e sem reimportar pacote.
 
 ## Não-objetivos
@@ -40,10 +51,10 @@ eles não replicam e não aparecem para o resto da organização.
 
 ## Modelo de dados
 
-| Chave | Valor | Origem |
-|---|---|---|
-| `coiab:etnia` | string, sem espaços nas pontas, não vazia | perfil local `ethnicity` |
-| `coiab:aldeia` | string, sem espaços nas pontas, não vazia | perfil local `village` |
+| Chave          | Valor                                     | Origem                   |
+| -------------- | ----------------------------------------- | ------------------------ |
+| `coiab:etnia`  | string, sem espaços nas pontas, não vazia | perfil local `ethnicity` |
+| `coiab:aldeia` | string, sem espaços nas pontas, não vazia | perfil local `village`   |
 
 - `@comapeo/schema` aceita qualquer chave em `tags` (sem `propertyNames`) e
   valor string; `field.tagKey` exige só `minLength: 1`, então `coiab:*`
@@ -55,9 +66,10 @@ eles não replicam e não aparecem para o resto da organização.
 
 ### Normalização (P1 do review)
 
-O rascunho guarda o texto **como digitado** — nada de `trim()` a cada tecla,
-senão "Aldeia Nova" perde o espaço intermediário. A limpeza acontece no
-**save**, nos dois botões, através de uma função pura:
+Não há mais texto digitado na UI: os valores do perfil já entram aparados por
+`observerTags`, e o rascunho nasce com eles. A limpeza continua no **save**, nos
+dois botões, através de uma função pura, para garantir o contrato do payload em
+qualquer rascunho (retomada, edição, teste):
 
 ```ts
 // observerProfile.ts
@@ -70,66 +82,55 @@ export function normalizeObserverTags(tags: Observation['tags']) {
   `tags: normalizeObserverTags(value.tags)` antes de `createObservation` /
   `updateObservation`.
 - Espelha o padrão do onboarding: texto local + normalização no commit
-  (`VillageEntry.tsx:67`, `UserProfileStoreContext.tsx:141-144`).
-- Não é criada action nova no store; o rascunho pode conter `''` até salvar,
-  e o save nunca persiste vazio.
+  (`VillageEntry`, `UserProfileStoreContext`).
+- Não é criada action nova no store; o save nunca persiste `''` nem chave
+  vazia.
 
 ## Frontend
 
 ### Criação (`ObservationCreate`)
 
-- `ObserverFields` logo abaixo de `DescriptionField`
-  (`ObservationCreate/index.tsx:109-114`): dois campos single-line.
-- **Rótulo permanente acima do campo** (não usar o rótulo flutuante do
-  `DescriptionField`, que só aparece com o teclado aberto — com autofill o
-  valor apareceria sem rótulo).
-- Cada `TextInput` com `accessibilityLabel` próprio (RN não associa rótulo a
-  campo), `testID` próprio (`OBS.observer-ethnicity-inp`,
-  `OBS.observer-village-inp`) e cadeia de foco: "next" no primeiro campo foca
-  o segundo; "done" no segundo.
-- Texto de apoio depende do modo (`mode: 'create' | 'edit'`): na criação
-  "Vem do seu perfil. Edite ou deixe em branco."; na edição "Dados do
-  observador." — na edição os valores são do autor original, não de quem
-  edita.
-- Autofill ao iniciar rascunho novo: `createDraft(undefined, observerTags)`
-  aplica os valores num único `setState`.
+- **Não há campos** de etnia/aldeia: nem em `ObservationCreate`, nem em
+  `ObservationEdit` (`ObserverFields` foi removido com o teste).
+- O rascunho nasce com as tags do perfil: `useNewObservationDraft()` chama
+  `createDraft(undefined, observerTags(profile))` num único `setState`.
+- O usuário não vê nem edita os valores; a tela segue só com a descrição e os
+  campos do preset.
 
 ### Edição (`ObservationEdit`)
 
-- Mesmos campos, com os valores existentes do rascunho.
-- **Sem autofill**: `createDraft(observation)` nunca aplica perfil. Editar uma
-  observação antiga não pode atribuir a etnia de quem edita ao registro de
-  outra pessoa.
-- Coordenador pode editar os valores de outra pessoa — consequência aceita de
-  D6 e da permissão que já existe em `useCanEditOrDelete`.
+- Editar **não altera nem adiciona** tags do observador: não há campos, e
+  `createDraft(observation)` nunca aplica o perfil.
+- Editar uma observação antiga não pode atribuir a etnia de quem edita ao
+  registro de outra pessoa.
+- Coordenador edita a observação, mas isso não toca nas tags `coiab:*`.
 
 ### Visualização (`Observation`)
 
-- `ObserverSection` (componente próprio) renderiza:
-  - `ObserverDetails` com "Etnia do observador" / "Aldeia do observador",
-    lendo as tags **fora de qualquer boundary** — os dados já estão na
-    observação e aparecem mesmo se o membro ainda não resolveu;
-  - "Registrado por" num componente filho com `useSingleMember`, isolado em
-    `<ErrorBoundary fallback={null}><Suspense fallback={null}>` (o hook usa
-    suspense e pode falhar com membro ainda não sincronizado).
-- **Regra da seção:** renderiza **somente se houver ao menos uma tag
-  `coiab:*`**. Observação antiga não ganha seção só com o autor.
-- Autor sem nome: linha omitida; etnia e aldeia permanecem.
+- `ObserverSection` recebe só `createdBy` e renderiza `<Divider />` +
+  `ObserverDetails` **apenas quando** o membro tem nome; sem autor (ou sem
+  nome), retorna `null` e a seção inteira não aparece.
+- `ObserverDetails` recebe só `authorName` e mostra "Registrado por"; etnia e
+  aldeia não são lidas nem exibidas a partir das tags.
+- A consulta do membro usa `useSingleMember` (com suspense) e fica isolada num
+  `ObserverErrorBoundary` local + `<React.Suspense fallback={null}>`. Membro
+  ainda não sincronizado (`NotFoundError`) renderiza `null` sem virar evento
+  no Sentry; erros inesperados continuam sendo reportados.
 
 ### Textos e traduções
 
-Novas mensagens via `defineMessages`:
+Mensagem via `defineMessages`:
 
-- `screens.ObservationCreate.observerEthnicity`
-- `screens.ObservationCreate.observerVillage`
-- `screens.Observation.observerEthnicity`
-- `screens.Observation.observerVillage`
 - `screens.Observation.recordedBy`
-- texto de apoio dos campos
+
+As mensagens de etnia/aldeia não existem mais: o catálogo
+`messages/en-US/primary.json` foi regenerado após a remoção dos campos. Os
+rótulos do Figma ("Dados sobre Grupo ou Etnia" / "Dados sobre Aldeia Atual")
+foram abandonados junto com a UI; a decisão de 2026-10-30 de usar "Etnia do
+observador" / "Aldeia do observador" fica registrada apenas como histórico.
 
 **Fluxo real (o review corrigiu o design anterior):** `build:translations`
-apenas compila catálogos; não extrai nem traduz (`scripts/build-translations.mjs:45-48`).
-O processo é:
+apenas compila catálogos; não extrai nem traduz. O processo é:
 
 1. `npm run extract-messages` (gera/atualiza chaves);
 2. adicionar as entradas em `messages/en-US/primary.json` **e**
@@ -139,10 +140,6 @@ O processo é:
 
 Sem o passo 2 a UI mostra inglês em pt-BR.
 
-Rótulos do Figma ("Dados sobre Grupo ou Etnia" / "Dados sobre Aldeia Atual")
-são ambíguos à luz de D6. **Decisão do owner (2026-10-30):** usar
-"Etnia do observador" / "Aldeia do observador".
-
 ## Fluxo
 
 ```
@@ -150,10 +147,10 @@ Onboarding (#128)                 Perfil local (MMKV)
         │                                │
         ▼                                ▼
   abrir câmera/mapa  ──►  useNewObservationDraft()
-                                 │ createDraft(undefined, tags)  (1 setState)
+                                 │ createDraft(undefined, observerTags(profile))
                                  ▼
-                        ObservationCreate (2 campos visíveis)
-                                 │ usuário edita/limpa
+                    ObservationCreate (sem campos de observador)
+                                 │ usuário descreve a observação
                                  ▼
              save: normalizeObserverTags(value.tags)
                                  ▼
@@ -162,19 +159,22 @@ Onboarding (#128)                 Perfil local (MMKV)
               sync ──► membros do mesmo projeto
 ```
 
+A tela `Observation` exibe só "Registrado por"; as tags `coiab:*` viajam nos
+dados sem aparecer na UI.
+
 ## Casos de borda
 
-| Caso | Comportamento |
-|---|---|
-| Perfil vazio | Campos vazios; salvar funciona; nenhuma tag |
-| Só etnia preenchida | Só `coiab:etnia` é gravada |
-| Campo limpo antes de salvar | Normalização remove a chave; nada de `''` |
-| Espaços internos ("Aldeia Nova") | Preservados; só as pontas são aparadas no save |
-| Observação antiga sem tags | Sem seção de observador; edição mostra campos vazios |
-| Membro removido/sem nome | Linha "Registrado por" omitida; etnia/aldeia permanecem |
-| Troca de categoria no rascunho | `updatePreset` preserva tags que não vieram do preset (teste obrigatório) |
-| Offline | Nada muda: tags seguem o fluxo normal de observação |
-| Cliente CoMapeo genérico | Mostra a chave crua; o dado não se perde |
+| Caso                                | Comportamento                                                             |
+| ----------------------------------- | ------------------------------------------------------------------------- |
+| Perfil vazio                        | Salvar funciona; nenhuma tag do observador é gravada                      |
+| Só etnia preenchida                 | Só `coiab:etnia` é gravada                                                |
+| Valor vazio ou só espaços no perfil | Normalização remove a chave; nada de `''`                                 |
+| Espaços internos ("Aldeia Nova")    | Preservados; só as pontas são aparadas no save                            |
+| Observação antiga sem tags          | Sem seção de observador; editar não adiciona tags                         |
+| Membro removido/sem nome            | Seção inteira omitida (nada de "Registrado por")                          |
+| Troca de categoria no rascunho      | `updatePreset` preserva tags que não vieram do preset (teste obrigatório) |
+| Offline                             | Nada muda: tags seguem o fluxo normal de observação                       |
+| Cliente CoMapeo genérico            | Mostra a chave crua; o dado não se perde                                  |
 
 ## Alternativas consideradas
 
@@ -193,21 +193,19 @@ Onboarding (#128)                 Perfil local (MMKV)
 
 ### Arquivos
 
-| Arquivo | Mudança |
-|---|---|
-| `src/frontend/lib/observerProfile.ts` (novo) | `OBSERVER_TAG_KEYS`, `observerTags(profile)`, `normalizeObserverTags(tags)`, `hasObserverTags(tags)` |
-| `src/frontend/hooks/useNewObservationDraft.ts` (novo) | devolve callback: `createDraft(undefined, observerTags(profile))` |
-| `src/frontend/contexts/PersistedStores/DraftObservationStore.ts` | `createDraft(observation?, initialTags?)` — tags iniciais no mesmo `setState` |
-| `src/frontend/sharedComponents/ObserverFields.tsx` (novo) | dois inputs com rótulo permanente, a11y, testID |
-| `src/frontend/sharedComponents/ObserverDetails.tsx` (novo) | apresentação pura (etnia/aldeia/autor) |
-| `src/frontend/screens/ObservationCreate/index.tsx` | renderiza `ObserverFields` |
-| `src/frontend/screens/ObservationEdit/index.tsx` | renderiza `ObserverFields` (sem autofill) |
-| `src/frontend/screens/Observation/index.tsx` | seção + Suspense do autor |
-| `src/frontend/screens/CameraScreen.tsx` | usa `useNewObservationDraft()` |
-| `src/frontend/screens/MapScreen/index.tsx` | usa `useNewObservationDraft()` |
-| `src/frontend/screens/ObservationCreate/ObservationCreateSaveButton.tsx` | normaliza tags no payload |
-| `src/frontend/screens/ObservationEdit/ObservationEditSaveButton.tsx` | normaliza tags no payload |
-| `messages/en-US/primary.json`, `messages/pt-BR/primary.json` | novas mensagens |
+| Arquivo                                                                  | Mudança                                                                                               |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `src/frontend/lib/observerProfile.ts` (novo)                             | `OBSERVER_TAG_KEYS`, `observerTags(profile)`, `normalizeObserverTags(tags)`, `observerTagText(value)` |
+| `src/frontend/hooks/useNewObservationDraft.ts` (novo)                    | devolve callback: `createDraft(undefined, observerTags(profile))`                                     |
+| `src/frontend/contexts/PersistedStores/DraftObservationStore.ts`         | `createDraft(observation?, initialTags?)` — tags iniciais no mesmo `setState`                         |
+| `src/frontend/sharedComponents/ObserverDetails.tsx`                      | apresentação pura do autor (`screens.Observation.recordedBy`)                                         |
+| `src/frontend/sharedComponents/ObserverSection.tsx`                      | boundary + Suspense do autor; `Divider` e detalhes só com nome                                        |
+| `src/frontend/screens/Observation/index.tsx`                             | renderiza `ObserverSection` com `createdBy`                                                           |
+| `src/frontend/screens/CameraScreen.tsx`                                  | usa `useNewObservationDraft()`                                                                        |
+| `src/frontend/screens/MapScreen/index.tsx`                               | usa `useNewObservationDraft()`                                                                        |
+| `src/frontend/screens/ObservationCreate/ObservationCreateSaveButton.tsx` | normaliza tags no payload                                                                             |
+| `src/frontend/screens/ObservationEdit/ObservationEditSaveButton.tsx`     | normaliza tags no payload                                                                             |
+| `messages/en-US/primary.json`                                            | `screens.Observation.recordedBy` (catálogo regenerado)                                                |
 
 Sem mudança em: `assets/categorias/*`, `manifestos.generated.json`,
 `pacotes*.ts`, `materializar.ts`, `entrada.ts`.
@@ -216,7 +214,7 @@ Sem mudança em: `assets/categorias/*`, `manifestos.generated.json`,
 
 1. **RED** `observerProfile.test.ts`: chaves; trim de pontas; espaço interno
    preservado; vazio removido; perfil completo/parcial/vazio; demais tags
-   intactas; `hasObserverTags`.
+   intactas; `observerTagText` (string aparada, não-string → `null`).
 2. **GREEN** `observerProfile.ts`.
 3. **RED** `DraftObservationContext.test.tsx` (convenção do repo; store real,
    `persist: false`):
@@ -228,40 +226,39 @@ Sem mudança em: `assets/categorias/*`, `manifestos.generated.json`,
 5. **RED** `useNewObservationDraft.test.tsx`: perfil completo preenche as duas;
    parcial preenche uma; vazio não grava nada.
 6. **GREEN** hook + troca dos dois call sites.
-7. **RED** `ObserverFields.test.tsx`: digita caractere a caractere com espaço
-   intermediário; limpar campo; valores iniciais; a11y/testID.
-8. **GREEN** componente.
-9. **RED** `ObservationCreateSaveButton.test.tsx` (arquivo já existe):
-   payload com tags aparadas e **sem** chave vazia; CA1 e CA2 verificados aqui.
-10. **GREEN** normalização nos dois botões.
-11. **RED** `ObserverDetails.test.tsx` (como `FieldDetails.test.tsx`): só
-    etnia; só aldeia; ambas; autor ausente; nenhum dado → nada.
-12. **GREEN** `ObserverDetails` + seção na tela.
-13. Mensagens: `extract-messages` → catálogos en-US/pt-BR → `build:translations`
+7. **RED** `ObserverDetails.test.tsx`: autor presente mostra "Registrado por";
+   autor ausente ou nome vazio não renderiza nada; etnia/aldeia nunca
+   aparecem.
+8. **GREEN** `ObserverDetails`.
+9. **RED** `ObserverSection.test.tsx`: membro com nome → `Divider` + detalhes;
+   sem nome → `null`; `NotFoundError` não vira evento no Sentry.
+10. **GREEN** `ObserverSection` e uso na tela `Observation`.
+11. **RED** `ObservationCreateSaveButton.test.tsx` (arquivo já existe):
+    payload com tags aparadas e **sem** chave vazia; CA1 e CA2 verificados
+    aqui. `ObservationEditSaveButton.test.tsx` cobre o mesmo na edição.
+12. **GREEN** normalização nos dois botões.
+13. Mensagens: `extract-messages` → catálogo en-US → `build:translations`
     → `check:message-catalog`.
 14. `npm run lint` (prettier + eslint + `tsc --noEmit`), `npm run test:jest`,
     `npm run test:scripts`.
-15. **Verificação manual Android** (tela pequena, fonte ampliada): teclado não
-    cobre o segundo campo, `ActionsRow` não bloqueia, salvar com teclado
-    aberto normaliza. Se cobrir, aplicar `KeyboardAvoidingView` no mesmo
-    padrão de `VillageEntry.tsx:91`.
+15. **Verificação manual Android**: observação nova com perfil completo grava
+    as tags sem exibir campos; observação antiga não ganha seção só com autor;
+    membro sem nome não deixa `Divider` solto.
 
 ## Critérios de aceite
 
 - **CA1** Observação nova, perfil completo, nasce com `coiab:etnia` e
-  `coiab:aldeia`; os dois valores estão **visíveis** na criação antes de
-  salvar.
+  `coiab:aldeia` nos dados; nada é exibido nem editável na criação.
 - **CA2** Payload salvo não contém `''` nem espaços nas pontas nas duas
   chaves (teste no save button).
 - **CA3** Perfil parcial grava só o valor existente.
 - **CA4** Mudar o perfil depois não altera observações salvas (garantido por
   construção: perfil só é lido no `createDraft` novo; teste do store cobre a
   edição).
-- **CA5** Editar observação nunca injeta o perfil de quem edita; preencher
-  manualmente é permitido.
-- **CA6** A tela mostra etnia/aldeia e autor quando existem; **não** mostra
-  seção vazia em observação antiga; autor sem nome é omitido sem esconder os
-  demais dados.
+- **CA5** Editar observação nunca injeta o perfil de quem edita nem altera ou
+  adiciona as tags `coiab:*`; não há preenchimento manual.
+- **CA6** A tela mostra só "Registrado por" quando o membro tem nome; sem nome
+  (ou membro não sincronizado) não há seção; etnia e aldeia nunca aparecem.
 - **CA7** `git diff --stat develop -- assets/categorias src/frontend/lib/organization`
   vazio; roteiro manual: organização criada antes do branch + observação
   conferida num segundo aparelho após sync.
@@ -271,13 +268,15 @@ Sem mudança em: `assets/categorias/*`, `manifestos.generated.json`,
 ## Riscos e dívidas
 
 - **LGPD art. 5º, II:** origem étnica é dado sensível; herda o consentimento
-  do onboarding, mas falta aviso específico antes de compartilhar.
+  do onboarding, mas falta aviso específico antes de compartilhar. O dado é
+  replicado nas tags e visível em export/sync, mas não na UI.
 - **Sem remoção real:** banco append-only com tombstone; corrigir não apaga
   cópias sincronizadas.
 - **Cliente genérico** mostra a chave crua.
 - **Dívida B:** quando o pacote canônico da #30 chegar, adicionar os campos
   com as mesmas chaves e rótulos nativos, sem migração.
-- **Vocabulário livre:** o #132 já tem `AutocompleteField` com sugestões de
-  etnia/aldeia; reusar é follow-up (o estilo do onboarding não é o do
-  formulário).
-- **Sem tela de edição de perfil:** follow-up, não bloqueio (D5).
+- **Vocabulário livre:** continua texto livre semeado do perfil (sem sugestões
+  do `AutocompleteField` da #132); agregar valores é follow-up de dados, não de
+  UI.
+- **Sem tela de edição de perfil:** follow-up, não bloqueio (D5); sem ela, o
+  autofill reflete apenas o que o onboarding gravou.
