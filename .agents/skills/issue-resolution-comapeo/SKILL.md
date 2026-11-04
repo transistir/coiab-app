@@ -125,6 +125,42 @@ required names, conclusions and SHA, not just the absence of failures.
   while work is pending, the fix is deterministic draining (cancel queries,
   await in-flight RPCs before close) — never a fixed `sleep(N)` boundary.
 
+## Harness and environment pitfalls
+
+- **Never undo a mutation test with `git checkout -- <file>`.** That restores
+the HEAD version and silently discards uncommitted delegated work — in the
+#136 round it wiped an entire rewritten component and produced five
+unexplained test failures. Copy the file to a path outside the worktree
+(`cp x.tsx /root/backup-x.tsx`), mutate, run, then copy back, and check
+`git diff --stat` afterwards.
+- **`@testing-library/react-native` v14 `render` is async.** Always
+`await render(...)`. Un-awaited renders make Suspense/pending assertions
+flaky: the suite passes in isolation and fails when run with siblings.
+- **`check:message-catalog` only requires a clean `messages/`.** It runs
+`git status --porcelain -- messages/`, so any staged, unstaged or untracked
+change under `messages/` fails even when the generator output is correct —
+commit or revert it first. Changes elsewhere in the tree do not affect it.
+- **`/tmp` is a ~1.9 GB tmpfs on this box.** APKs (85-190 MB each), jest
+caches and onnxruntime temp dirs fill it and cause `No space left on device`
+mid-run. Keep artifacts and harness logs under `/root/dev/`; `df -h /tmp`
+reports the tmpfs, not the root disk.
+- **`gh api graphql` intermittently answers with HTML** (`502 Bad Gateway`,
+then `invalid character '<'`). Transient: sleep 5-20s and retry; it is not an
+auth or permission failure.
+- **Resolve bot threads, do not just reply.** After fixing, call
+`addPullRequestReviewThreadReply` and then `resolveReviewThread`, and verify
+`unresolved == 0` via GraphQL. A reply alone leaves the PR blocked.
+- **`develop` protection requires only `all` + `frontend`**, with no mandatory
+reviewer. `mergeStateStatus: CLEAN` with an empty `reviewDecision` is ready,
+not awaiting approval.
+- **Verify post-merge CI on the merge commit itself.** A green PR proves the
+PR head; only the post-merge run proves the merge result. Doc-only PRs still
+run `all` and `frontend`.
+- **Verify every documented behavior claim against source.** In the #138 doc
+PR, four claims copied from an implementation summary were false: editing
+still normalizes tags, and the observer section depends on the author
+resolving, not on tags. Read the component before writing what it does.
+
 ## Pitfalls
 
 - `gh pr view --json merged` is not a field; use `state`, `mergedAt` and
