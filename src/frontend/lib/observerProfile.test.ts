@@ -3,7 +3,6 @@ import type {Observation} from '@comapeo/schema';
 import type {UserProfileState} from '../contexts/UserProfileStoreContext';
 import {
   OBSERVER_TAG_KEYS,
-  hasObserverTags,
   normalizeObserverTags,
   observerTags,
 } from './observerProfile';
@@ -109,30 +108,32 @@ describe('normalizeObserverTags()', () => {
     });
   });
 
+  test('valor não-string nas chaves do observador sobrevive ao save', () => {
+    const tags: Observation['tags'] = {
+      'coiab:etnia': 42,
+      'coiab:aldeia': ['x'],
+      'coiab:outra': '',
+    };
+
+    expect(normalizeObserverTags(tags)).toStrictEqual({
+      'coiab:etnia': 42,
+      'coiab:aldeia': ['x'],
+      'coiab:outra': '',
+    });
+
+    // Só as chaves do observador são normalizadas: uma string vazia/só
+    // espaços numa delas continua sendo removida.
+    expect(
+      normalizeObserverTags({
+        'coiab:etnia': '   ',
+        'coiab:aldeia': '',
+      }),
+    ).toStrictEqual({});
+  });
+
   test('não muta o objeto de tags original', () => {
     const tags: Observation['tags'] = {'coiab:etnia': '  Mawayana  '};
     normalizeObserverTags(tags);
     expect(tags['coiab:etnia']).toBe('  Mawayana  ');
-  });
-});
-
-describe('hasObserverTags()', () => {
-  test('true quando só etnia está presente e não vazia', () => {
-    expect(hasObserverTags({'coiab:etnia': 'Mawayana'})).toBe(true);
-  });
-
-  test('true quando só aldeia está presente e não vazia', () => {
-    expect(hasObserverTags({'coiab:aldeia': 'Aldeia X'})).toBe(true);
-  });
-
-  test('false quando nenhuma das chaves existe', () => {
-    expect(hasObserverTags({notes: 'nota'})).toBe(false);
-    expect(hasObserverTags({})).toBe(false);
-  });
-
-  test('false quando as chaves estão vazias ou só com espaços', () => {
-    expect(hasObserverTags({'coiab:etnia': '', 'coiab:aldeia': '   '})).toBe(
-      false,
-    );
   });
 });

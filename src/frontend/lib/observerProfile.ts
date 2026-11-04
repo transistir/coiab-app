@@ -89,16 +89,3 @@ export function normalizeObserverTags(
 
   return normalized;
 }
-
-/** True quando ao menos uma das chaves do observador tem valor não vazio. */
-export function hasObserverTags(
-  tags: Observation['tags'] | undefined,
-): boolean {
-  if (!tags) {
-    return false;
-  }
-
-  return OBSERVER_TAG_KEY_VALUES.some(
-    key => normalizedText(tags[key]) !== null,
-  );
-}

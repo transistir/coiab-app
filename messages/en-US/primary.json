@@ -508,14 +508,6 @@
   "$1screens.Observation.location": {
     "message": "Location:"
   },
-  "$1screens.Observation.observerEthnicity": {
-    "message": "Observer ethnicity",
-    "description": "Label for the observer ethnicity in the observation view"
-  },
-  "$1screens.Observation.observerVillage": {
-    "message": "Observer village",
-    "description": "Label for the observer village in the observation view"
-  },
   "$1screens.Observation.precision": {
     "message": "Precision:"
   },
@@ -537,22 +529,6 @@
   "$1screens.Observation.title": {
     "message": "Observation",
     "description": "Title of observation screen showing (non-editable) view of observation with map and answered questions"
-  },
-  "$1screens.ObservationCreate.observerEthnicity": {
-    "message": "Observer ethnicity",
-    "description": "Label for the observer ethnicity field in create/edit observation"
-  },
-  "$1screens.ObservationCreate.observerFieldsExistingHelper": {
-    "message": "Observer data.",
-    "description": "Helper text for the observer fields when editing an existing observation"
-  },
-  "$1screens.ObservationCreate.observerFieldsHelper": {
-    "message": "From your profile. Edit or leave blank.",
-    "description": "Helper text explaining the observer fields come from the local profile"
-  },
-  "$1screens.ObservationCreate.observerVillage": {
-    "message": "Observer village",
-    "description": "Label for the observer village field in create/edit observation"
   },
   "$1screens.ObservationDetails.done": {
     "message": "Done",

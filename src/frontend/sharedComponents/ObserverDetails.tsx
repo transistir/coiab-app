@@ -8,16 +8,6 @@ import {ViewStyleProp} from '../sharedTypes';
 import {observerTagText} from '../lib/observerProfile';
 
 const m = defineMessages({
-  ethnicity: {
-    id: '$1screens.Observation.observerEthnicity',
-    defaultMessage: 'Observer ethnicity',
-    description: 'Label for the observer ethnicity in the observation view',
-  },
-  village: {
-    id: '$1screens.Observation.observerVillage',
-    defaultMessage: 'Observer village',
-    description: 'Label for the observer village in the observation view',
-  },
   recordedBy: {
     id: '$1screens.Observation.recordedBy',
     defaultMessage: 'Recorded by',
@@ -26,58 +16,31 @@ const m = defineMessages({
 });
 
 type ObserverDetailsProps = {
-  ethnicity?: unknown;
-  village?: unknown;
   authorName?: unknown;
   style?: ViewStyleProp;
 };
 
 /**
- * Apresentação pura dos dados do observador (etnia, aldeia e aparelho que
- * registrou). Só renderiza o que existe.
+ * Apresentação pura do aparelho que registrou a observação. Só renderiza
+ * quando há um autor; etnia e aldeia não são exibidas.
  */
-export const ObserverDetails = ({
-  ethnicity,
-  village,
-  authorName,
-  style,
-}: ObserverDetailsProps) => {
+export const ObserverDetails = ({authorName, style}: ObserverDetailsProps) => {
   const {formatMessage} = useIntl();
 
-  const ethnicityValue = observerTagText(ethnicity);
-  const villageValue = observerTagText(village);
   const authorValue = observerTagText(authorName);
 
-  if (!ethnicityValue && !villageValue && !authorValue) {
+  if (!authorValue) {
     return null;
   }
 
   return (
     <View>
-      {ethnicityValue ? (
-        <View style={[styles.section, style]}>
-          <HeaderText variant="header3" style={styles.title}>
-            {formatMessage(m.ethnicity)}
-          </HeaderText>
-          <BodyText>{ethnicityValue}</BodyText>
-        </View>
-      ) : null}
-      {villageValue ? (
-        <View style={[styles.section, style]}>
-          <HeaderText variant="header3" style={styles.title}>
-            {formatMessage(m.village)}
-          </HeaderText>
-          <BodyText>{villageValue}</BodyText>
-        </View>
-      ) : null}
-      {authorValue ? (
-        <View style={[styles.section, style]}>
-          <HeaderText variant="header3" style={styles.title}>
-            {formatMessage(m.recordedBy)}
-          </HeaderText>
-          <BodyText>{authorValue}</BodyText>
-        </View>
-      ) : null}
+      <View style={[styles.section, style]}>
+        <HeaderText variant="header3" style={styles.title}>
+          {formatMessage(m.recordedBy)}
+        </HeaderText>
+        <BodyText>{authorValue}</BodyText>
+      </View>
     </View>
   );
 };
