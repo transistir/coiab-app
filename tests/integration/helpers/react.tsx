@@ -47,6 +47,8 @@ import {MMKVStoreInitializer} from '../../../src/frontend/hooks/persistedState/c
 export const COMPLETE_USER_PROFILE: UserProfileState = {
   ethnicity: 'Tunayana',
   village: 'Aldeia de teste',
+  coordinationRole: null,
+  pendingArchives: [],
 };
 
 /**
@@ -75,6 +77,12 @@ function seedUserProfile(profile: UserProfileSeed) {
   }
   if (profile.village !== null) {
     store.actions.setVillage(profile.village);
+  }
+  if (profile.coordinationRole !== null) {
+    store.actions.setCoordinationRole(profile.coordinationRole);
+  }
+  for (const intent of profile.pendingArchives) {
+    store.actions.addPendingArchiveIntent(intent);
   }
 }
 

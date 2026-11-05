@@ -252,10 +252,10 @@ describe('organization stories (FlowStateScope)', () => {
       await screen.findByTestId('MAIN.map-screen', {}, {timeout: 30_000}),
     ).toBeOnTheScreen();
     expect(
-      screen.queryByTestId('ONBOARDING.create-org-btn'),
+      screen.queryByTestId('ONBOARDING.role-coordinator-btn'),
     ).not.toBeOnTheScreen();
     expect(
-      screen.queryByTestId('ONBOARDING.join-org-btn'),
+      screen.queryByTestId('ONBOARDING.role-participant-btn'),
     ).not.toBeOnTheScreen();
     expect(
       JSON.parse(

@@ -618,6 +618,15 @@
     "message": "Adicionar observações",
     "description": "Title of observation list view when the user has not yet recorded observations"
   },
+  "$1screens.Onboarding.CreateOrganization.archiveUrlInvalid": {
+    "message": "Informe uma URL HTTPS válida"
+  },
+  "$1screens.Onboarding.CreateOrganization.archiveUrlLabel": {
+    "message": "Endereço do arquivo remoto"
+  },
+  "$1screens.Onboarding.CreateOrganization.archiveUrlPlaceholder": {
+    "message": "https://…"
+  },
   "$1screens.Onboarding.CreateOrganization.creating": {
     "message": "Criando território…"
   },
@@ -812,6 +821,15 @@
   },
   "$1screens.OrganizationSetup.retryPreparationButton": {
     "message": "Tentar novamente"
+  },
+  "$1screens.OrganizationSetup.roleCoordinatorButton": {
+    "message": "Sim, sou coordenador(a)"
+  },
+  "$1screens.OrganizationSetup.roleParticipantButton": {
+    "message": "Não, sou participante"
+  },
+  "$1screens.OrganizationSetup.roleQuestion": {
+    "message": "Você é coordenador(a)?"
   },
   "$1screens.OrganizationSetup.syncRestartRequired": {
     "message": "A sincronização precisa ser iniciada novamente."

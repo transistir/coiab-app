@@ -2,14 +2,16 @@ import {expect} from '@wdio/globals';
 import {describe, it} from 'mocha';
 import {byResourceId, byTextMatches} from '../../utils/selectors';
 
-// SPEC 10.1: the onboarding fork is organization-first — the legacy
-// map-on-your-own solo path is gone from the fork. This spec drives the
-// Create Organization journey (the fork's primary path), which lands on the
-// Map screen the same way the old solo journey did.
+// SPEC 10.1 / #129: the onboarding fork asks whether the person is a
+// coordinator; only the coordinator path reaches Create Organization, where
+// the Territory comes from the predefined list and a remote archive URL is
+// required.
 describe('Onboarding - Create Organization Journey', () => {
   it('should navigate to the Create Organization intro', async () => {
-    const createOrgButton = await $(byResourceId('ONBOARDING.create-org-btn'));
-    await createOrgButton.click();
+    const coordinatorButton = await $(
+      byResourceId('ONBOARDING.role-coordinator-btn'),
+    );
+    await coordinatorButton.click();
 
     const title = await $(byTextMatches('Create Territory'));
     await expect(title).toBeDisplayed();
@@ -24,21 +26,30 @@ describe('Onboarding - Create Organization Journey', () => {
     );
     await continueButton.click();
 
-    const nameInput = await $(byResourceId('ORG.create-name-inp'));
-    await expect(nameInput).toBeDisplayed();
+    const nameSelect = await $(byResourceId('ORG.create-name-select'));
+    await expect(nameSelect).toBeDisplayed();
   });
 
-  it('should reject an empty submit with the required-name message', async () => {
+  it('should keep Create disabled without a valid archive URL', async () => {
     const createButton = await $(byResourceId('ORG.create-btn'));
-    await createButton.click();
+    await expect(createButton).toBeDisabled();
 
-    const emptyError = await $(byTextMatches('Enter the Territory name'));
-    await expect(emptyError).toBeDisplayed();
+    const urlInput = await $(byResourceId('ORG.create-archive-url-inp'));
+    await urlInput.setValue('not a url');
+
+    const invalidError = await $(
+      byResourceId('ORG.create-archive-url-invalid'),
+    );
+    await expect(invalidError).toBeDisplayed();
+    await expect(createButton).toBeDisabled();
   });
 
   it('should create the Organization and navigate to the map', async () => {
-    const nameInput = await $(byResourceId('ORG.create-name-inp'));
-    await nameInput.setValue('Test Org');
+    const option = await $(byResourceId('ORG.create-name-option-4999'));
+    await option.click();
+
+    const urlInput = await $(byResourceId('ORG.create-archive-url-inp'));
+    await urlInput.setValue('https://exemplo.org/');
 
     // On iOS the software keyboard overlays the button; dismiss it so the tap
     // lands. Safe no-op when no keyboard is shown (e.g. Android).
@@ -46,8 +57,14 @@ describe('Onboarding - Create Organization Journey', () => {
     const createButton = await $(byResourceId('ORG.create-btn'));
     await createButton.click();
 
-    // Provisioning fans out two projects — wait on the map actually showing
-    // up instead of a fixed sleep.
+    // Provisioning fans out two projects and shows the confirmation; the tap
+    // on "Abrir território" is the only path to Home.
+    const openButton = await $(
+      byResourceId('ORG.provisioning-open-organization-btn'),
+    );
+    await openButton.waitForDisplayed({timeout: 30000, interval: 1000});
+    await openButton.click();
+
     const mapScreen = await $(byResourceId('MAIN.map-screen'));
     await mapScreen.waitForDisplayed({timeout: 30000, interval: 1000});
     await expect(mapScreen).toBeDisplayed();

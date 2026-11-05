@@ -328,7 +328,8 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
   const B_ID = 'fedcba9876543210';
   const B_NOME = 'Organização B';
   const C_ID = 'cdef0123456789ab';
-  const C_NOME = 'Organização C';
+  // #129: the name now comes from the predefined territory selector.
+  const C_NOME = 'Kaxuyana-Tunayana';
 
   beforeEach(() => {
     // The teardown of a FAILED test cannot be awaited by the next one; the
@@ -523,9 +524,10 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
         },
       ),
     );
+    await fireEvent.press(screen.getByTestId('ORG.create-name-option-4999'));
     await fireEvent.changeText(
-      screen.getByTestId('ORG.create-name-inp'),
-      C_NOME,
+      screen.getByTestId('ORG.create-archive-url-inp'),
+      'https://exemplo.org/',
     );
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
@@ -1130,9 +1132,10 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
         },
       ),
     );
+    await fireEvent.press(screen.getByTestId('ORG.create-name-option-4999'));
     await fireEvent.changeText(
-      screen.getByTestId('ORG.create-name-inp'),
-      C_NOME,
+      screen.getByTestId('ORG.create-archive-url-inp'),
+      'https://exemplo.org/',
     );
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
     expect(
@@ -1227,9 +1230,10 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
         },
       ),
     );
+    await fireEvent.press(screen.getByTestId('ORG.create-name-option-4999'));
     await fireEvent.changeText(
-      screen.getByTestId('ORG.create-name-inp'),
-      C_NOME,
+      screen.getByTestId('ORG.create-archive-url-inp'),
+      'https://exemplo.org/',
     );
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 

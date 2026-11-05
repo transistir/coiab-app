@@ -45,7 +45,11 @@ export const JoinOrganizationIntro = ({
   function handleBackPress() {
     if (navigation.canGoBack()) {
       navigation.goBack();
+      return;
     }
+    // Cold start: this route is the initial one, so there is no history to
+    // pop. Back must still reach the role question instead of doing nothing.
+    navigation.replace('Success');
   }
 
   return (

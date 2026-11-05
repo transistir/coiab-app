@@ -7,10 +7,17 @@ const unauthenticated = 'unauthenticated' as const;
 describe('getInitialRoute', () => {
   test('unauthenticated goes to AuthScreen regardless of everything else', () => {
     expect(
-      getInitialRoute(unauthenticated, undefined, 'nenhum', 'ready', false),
+      getInitialRoute(
+        unauthenticated,
+        undefined,
+        'nenhum',
+        'ready',
+        false,
+        null,
+      ),
     ).toBe('AuthScreen');
     expect(
-      getInitialRoute(unauthenticated, 'device', 'pronta', 'ready', true),
+      getInitialRoute(unauthenticated, 'device', 'pronta', 'ready', true, null),
     ).toBe('AuthScreen');
     expect(
       getInitialRoute(
@@ -19,16 +26,24 @@ describe('getInitialRoute', () => {
         'confirmacao',
         'recovery',
         false,
+        null,
       ),
     ).toBe('AuthScreen');
   });
 
   test('no device name goes to IntroToCoMapeo', () => {
     expect(
-      getInitialRoute(authenticated, undefined, 'nenhum', 'absent', false),
+      getInitialRoute(
+        authenticated,
+        undefined,
+        'nenhum',
+        'absent',
+        false,
+        null,
+      ),
     ).toBe('IntroToCoMapeo');
     expect(
-      getInitialRoute(authenticated, undefined, 'pronta', 'ready', true),
+      getInitialRoute(authenticated, undefined, 'pronta', 'ready', true, null),
     ).toBe('IntroToCoMapeo');
     expect(
       getInitialRoute(
@@ -37,6 +52,7 @@ describe('getInitialRoute', () => {
         'preparando',
         'preparing',
         true,
+        null,
       ),
     ).toBe('IntroToCoMapeo');
   });
@@ -55,6 +71,7 @@ describe('getInitialRoute', () => {
           'preparando',
           'loading',
           profileComplete,
+          null,
         ),
       ).toBe('OrganizationProvisioning');
       expect(
@@ -64,6 +81,7 @@ describe('getInitialRoute', () => {
           'confirmacao',
           'opening',
           profileComplete,
+          null,
         ),
       ).toBe('OrganizationProvisioning');
       expect(
@@ -73,6 +91,7 @@ describe('getInitialRoute', () => {
           'confirmacao',
           'ready',
           profileComplete,
+          null,
         ),
       ).toBe('OrganizationProvisioning');
     }
@@ -83,6 +102,7 @@ describe('getInitialRoute', () => {
         'preparando',
         'recovery',
         true,
+        null,
       ),
     ).toBe('AuthScreen');
     expect(
@@ -92,6 +112,7 @@ describe('getInitialRoute', () => {
         'confirmacao',
         'recovery',
         true,
+        null,
       ),
     ).toBe('IntroToCoMapeo');
   });
@@ -103,25 +124,77 @@ describe('getInitialRoute', () => {
     // the last step before the fork: without ethnicity and village the cold
     // start must open the profile flow, never Success.
     expect(
-      getInitialRoute(authenticated, 'device', 'nenhum', 'absent', false),
+      getInitialRoute(authenticated, 'device', 'nenhum', 'absent', false, null),
     ).toBe('EthnicGroupSelection');
     expect(
-      getInitialRoute(authenticated, 'device', 'nenhum', 'ready', false),
+      getInitialRoute(authenticated, 'device', 'nenhum', 'ready', false, null),
     ).toBe('EthnicGroupSelection');
     expect(
-      getInitialRoute(authenticated, 'device', 'nenhum', 'absent', true),
+      getInitialRoute(authenticated, 'device', 'nenhum', 'absent', true, null),
     ).toBe('Success');
     expect(
-      getInitialRoute(authenticated, 'device', 'nenhum', 'ready', true),
+      getInitialRoute(authenticated, 'device', 'nenhum', 'ready', true, null),
     ).toBe('Success');
+  });
+
+  test('an empty document routes the three coordination-role states (#129)', () => {
+    // The role answered on Success splits the post-profile fork: a
+    // coordinator goes straight to creation, a participant to the
+    // invitation intro, and an unanswered role back to the question. Only
+    // the `nenhum` document consults it.
+    expect(
+      getInitialRoute(
+        authenticated,
+        'device',
+        'nenhum',
+        'absent',
+        true,
+        'coordinator',
+      ),
+    ).toBe('CreateOrganization');
+    expect(
+      getInitialRoute(
+        authenticated,
+        'device',
+        'nenhum',
+        'absent',
+        true,
+        'participant',
+      ),
+    ).toBe('JoinOrganizationIntro');
+    expect(
+      getInitialRoute(authenticated, 'device', 'nenhum', 'absent', true, null),
+    ).toBe('Success');
+    // An incomplete profile always wins over a persisted role.
+    expect(
+      getInitialRoute(
+        authenticated,
+        'device',
+        'nenhum',
+        'absent',
+        false,
+        'coordinator',
+      ),
+    ).toBe('EthnicGroupSelection');
+    // A settled document never consults the role.
+    expect(
+      getInitialRoute(
+        authenticated,
+        'device',
+        'pronta',
+        'ready',
+        true,
+        'participant',
+      ),
+    ).toBe('Home');
   });
 
   test('a settled document opens Home only on a validated activation', () => {
     expect(
-      getInitialRoute(authenticated, 'device', 'pronta', 'ready', false),
+      getInitialRoute(authenticated, 'device', 'pronta', 'ready', false, null),
     ).toBe('Home');
     expect(
-      getInitialRoute(authenticated, 'device', 'pronta', 'ready', true),
+      getInitialRoute(authenticated, 'device', 'pronta', 'ready', true, null),
     ).toBe('Home');
   });
 
@@ -139,6 +212,7 @@ describe('getInitialRoute', () => {
           'pronta',
           'recovery',
           profileComplete,
+          null,
         ),
       ).toBe('OrganizationProvisioning');
       expect(
@@ -148,6 +222,7 @@ describe('getInitialRoute', () => {
           'pronta',
           'unavailable',
           profileComplete,
+          null,
         ),
       ).toBe('OrganizationProvisioning');
       expect(
@@ -157,6 +232,7 @@ describe('getInitialRoute', () => {
           'pronta',
           'selection',
           profileComplete,
+          null,
         ),
       ).toBe('OrganizationProvisioning');
     }
@@ -178,6 +254,7 @@ describe('getInitialRoute', () => {
             'pronta',
             ativacao,
             profileComplete,
+            null,
           ),
         ).not.toBe('Home');
       }

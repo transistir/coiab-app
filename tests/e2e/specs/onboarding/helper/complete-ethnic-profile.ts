@@ -14,10 +14,13 @@ export async function completeEthnicProfileIfNeeded() {
   const ethnicContinue = await $(
     byResourceId('ONBOARDING.ethnic-group-continue-btn'),
   );
-  const joinOrgButton = await $(byResourceId('ONBOARDING.join-org-btn'));
+  const participantButton = await $(
+    byResourceId('ONBOARDING.role-participant-btn'),
+  );
 
   // Anchor present on both landing screens: the pending profile shows the
-  // ethnicity continue button, a completed flow shows the join button. Waiting
+  // ethnicity continue button, a completed flow shows the role question.
+  // Waiting
   // on either avoids burning the full timeout when there is nothing to do.
   //
   // Standalone this is NOT true: with no device name yet the app lands on
@@ -27,7 +30,7 @@ export async function completeEthnicProfileIfNeeded() {
   await driver.waitUntil(
     async () =>
       (await ethnicContinue.isDisplayed()) ||
-      (await joinOrgButton.isDisplayed()),
+      (await participantButton.isDisplayed()),
     {timeout: 30000, interval: 500},
   );
 

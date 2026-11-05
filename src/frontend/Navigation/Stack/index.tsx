@@ -25,6 +25,7 @@ import {useOrganizationActivationContext} from '../../contexts/OrganizationActiv
 import {
   isProfileComplete,
   useUserProfileState,
+  type CoordinationRole,
 } from '../../contexts/UserProfileStoreContext';
 import {AuthScreen} from '../../screens/AuthScreen';
 import {Success} from '../../screens/Onboarding/Success';
@@ -35,6 +36,7 @@ import {JoinOrganizationIntro} from '../../screens/Onboarding/JoinOrganizationIn
 import {OrganizationProvisioning} from '../../screens/Onboarding/OrganizationProvisioning';
 import {Organizations} from '../../screens/Organizations';
 import {ActiveProjectProvider} from '../../contexts/ActiveProjectContext';
+import {usePendingArchiveResume} from '../../hooks/organization/usePendingArchiveResume';
 import {RootStack} from './RootStack';
 import {InviteSuccessfullyAccepted} from '../../screens/Invites/InviteSuccessfullyAccepted';
 import {ErrorBottomSheet} from '../../sharedComponents/ErrorBottomSheet';
@@ -90,9 +92,11 @@ const m = defineMessages({
  * `profileComplete` (#128) gates ONLY the empty document: a device with no
  * organizations still has one step of onboarding left after the device name,
  * so an incomplete profile opens the ethnic-group flow instead of the
- * create/join fork. Every other branch — pending documents, a settled
- * document's activation, and the auth/device-name guards — is unaffected by
- * the profile.
+ * create/join fork. `coordinationRole` (#129) then splits that fork: a
+ * coordinator opens the creation form, a participant the invitation intro,
+ * and an unanswered role the question on Success. Every other branch —
+ * pending documents, a settled document's activation, and the
+ * auth/device-name guards — is unaffected by the profile.
  */
 export function getInitialRoute(
   authState: 'authenticated' | 'unauthenticated' | 'obscured',
@@ -100,6 +104,7 @@ export function getInitialRoute(
   documento: DocumentoGate,
   ativacao: ActivationStatus,
   profileComplete: boolean,
+  coordinationRole: CoordinationRole,
 ): keyof AppStackParamsList {
   if (authState === 'unauthenticated') {
     return 'AuthScreen';
@@ -111,7 +116,10 @@ export function getInitialRoute(
     return 'OrganizationProvisioning';
   }
   if (documento === 'nenhum') {
-    return profileComplete ? 'Success' : 'EthnicGroupSelection';
+    if (!profileComplete) return 'EthnicGroupSelection';
+    if (coordinationRole === 'coordinator') return 'CreateOrganization';
+    if (coordinationRole === 'participant') return 'JoinOrganizationIntro';
+    return 'Success';
   }
   if (ativacao === 'ready') {
     return 'Home';
@@ -216,6 +224,11 @@ export function GenerationTransitionGate({
 }
 
 export const RootStackNavigator = () => {
+  // #129/P1: ONE lifecycle-safe owner for the pending remote archive. Home
+  // and OrganizationProvisioning are both screens of this navigator, so the
+  // root is the always-mounted point — a per-screen mount would duplicate the
+  // application when the stack keeps Home underneath the provisioning surface.
+  usePendingArchiveResume();
   const security = useAuthContext();
   const {data: deviceInfo} = useOwnDeviceInfo();
   const activeProjectId = useActiveProjectId();
@@ -338,6 +351,7 @@ export const RootStackNavigator = () => {
     documento,
     ativacao,
     profileComplete,
+    profileState.coordinationRole,
   );
 
   if (aguardandoAbertura) {

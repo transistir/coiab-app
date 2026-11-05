@@ -45,6 +45,12 @@ import {
 } from '../lib/organization/fixtures';
 import type {OrganizacaoLocal} from '../lib/organization/coiabOrganizations';
 import {DEFAULT_PROJECT_COLOR} from '../constants';
+import {
+  createUserProfileStore,
+  UserProfileStoreProvider,
+  type CoordinationRole,
+  type UserProfileStore,
+} from '../contexts/UserProfileStoreContext';
 
 import {DrawerMenu} from './DrawerMenu';
 import {COIAB_ORANGE, COIAB_RED, DARK_GREY, ORANGE, WHITE} from '../lib/styles';
@@ -174,9 +180,11 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
   function Providers({
     store,
     earlyAccessStore,
+    profileStore,
   }: {
     store: CoiabOrganizationsStore;
     earlyAccessStore: EarlyAccessStore;
+    profileStore: UserProfileStore;
   }) {
     return (
       <QueryClientProvider client={queryClient}>
@@ -185,13 +193,15 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
             <ActiveProjectIdStoreProvider store={createActiveProjectIdStore()}>
               <EarlyAccessStoreProvider value={earlyAccessStore}>
                 <CoiabOrganizationsStoreProvider store={store}>
-                  <OrganizationMaterializerProvider>
-                    <OrganizationActivationProvider>
-                      <IntlProvider locale="en" messages={{}}>
-                        <DrawerMenu closeMenu={closeMenu} />
-                      </IntlProvider>
-                    </OrganizationActivationProvider>
-                  </OrganizationMaterializerProvider>
+                  <UserProfileStoreProvider store={profileStore}>
+                    <OrganizationMaterializerProvider>
+                      <OrganizationActivationProvider>
+                        <IntlProvider locale="en" messages={{}}>
+                          <DrawerMenu closeMenu={closeMenu} />
+                        </IntlProvider>
+                      </OrganizationActivationProvider>
+                    </OrganizationMaterializerProvider>
+                  </UserProfileStoreProvider>
                 </CoiabOrganizationsStoreProvider>
               </EarlyAccessStoreProvider>
             </ActiveProjectIdStoreProvider>
@@ -207,10 +217,12 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
       earlyAccess = false,
       organizacoes,
       ativa,
+      coordinationRole = null,
     }: {
       earlyAccess?: boolean;
       organizacoes?: OrganizacaoLocal[];
       ativa?: {organizacaoId: string; area: 'monitoramento' | 'alertas'};
+      coordinationRole?: CoordinationRole;
     } = {},
   ) {
     const earlyAccessStore = createEarlyAccessStore({persist: false});
@@ -226,10 +238,16 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
         true,
       );
     }
+    const profileStore = createUserProfileStore();
+    profileStore.actions.setCoordinationRole(coordinationRole);
     await render(
-      <Providers store={store} earlyAccessStore={earlyAccessStore} />,
+      <Providers
+        store={store}
+        earlyAccessStore={earlyAccessStore}
+        profileStore={profileStore}
+      />,
     );
-    return {store};
+    return {store, profileStore};
   }
 
   test('com organização operável: os dois cards substituem as linhas de área', async () => {
@@ -428,6 +446,26 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     expect(
       screen.queryByTestId('MENU.criar-organizacao'),
     ).not.toBeOnTheScreen();
+  });
+
+  test('participante (papel do perfil) não vê a entrada de criar território', async () => {
+    await renderDrawer(true, {coordinationRole: 'participant'});
+
+    await screen.findByTestId('MENU.area-monitoramento');
+    expect(
+      screen.queryByTestId('MENU.criar-organizacao'),
+    ).not.toBeOnTheScreen();
+    expect(screen.queryByText('Criar território')).not.toBeOnTheScreen();
+    // The rest of the page is unchanged.
+    expect(screen.getByTestId('MENU.main-action-button')).toBeOnTheScreen();
+  });
+
+  test('coordenador (papel do perfil) vê a entrada de criar território', async () => {
+    await renderDrawer(true, {coordinationRole: 'coordinator'});
+
+    expect(
+      await screen.findByTestId('MENU.criar-organizacao'),
+    ).toBeOnTheScreen();
   });
 
   test('toque em criar: fecha o menu e abre CreateOrganization', async () => {

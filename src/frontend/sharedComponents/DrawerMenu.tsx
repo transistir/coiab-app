@@ -34,6 +34,7 @@ import {useEarlyAccessState} from '../contexts/EarlyAccessContext';
 import {useCoiabOrganizationsState} from '../contexts/CoiabOrganizationsStoreContext';
 import {derivarProjectIdAtivo} from '../lib/organization/coiabOrganizations';
 import {OrganizationAreaAccesses} from './OrganizationAreaAccesses.tsx';
+import {useUserProfileState} from '../contexts/UserProfileStoreContext';
 
 const m = defineMessages({
   greeting: {
@@ -146,6 +147,11 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
   const {projectId} = useActiveProject();
   const {role, projectHeader} = useProjectRoleAndDetails(projectId);
   const estadoOrganizacoes = useCoiabOrganizationsState();
+  // P1-1: only coordinators may create a territory. The entry is absent for
+  // participants (no disabled control), mirroring the create screen's own
+  // redirect guard.
+  const {coordinationRole} = useUserProfileState();
+  const podeCriar = coordinationRole !== 'participant';
   // SEM organização operável (solo/sem doc): os cards não existem — a
   // página mostra saudação + lista (paridade com o comportamento anterior
   // que retornava null).
@@ -247,7 +253,7 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
               the normal app and early access gates it no longer. It exists
               whenever there is an operating organization; without one it
               does not exist (no hidden or disabled control). */}
-          {!semOrganizacaoOperavel && (
+          {!semOrganizacaoOperavel && podeCriar && (
             <MenuListItem
               testID="MENU.criar-organizacao"
               onPress={() => {

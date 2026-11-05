@@ -11,7 +11,7 @@ function profile(
   ethnicity: string | null,
   village: string | null,
 ): UserProfileState {
-  return {ethnicity, village};
+  return {ethnicity, village, coordinationRole: null, pendingArchives: []};
 }
 
 describe('OBSERVER_TAG_KEYS', () => {

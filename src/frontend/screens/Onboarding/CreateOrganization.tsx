@@ -3,6 +3,7 @@ import {
   BackHandler,
   Keyboard,
   KeyboardAvoidingView,
+  Pressable,
   StyleSheet,
   TextInput,
   TouchableWithoutFeedback,
@@ -15,7 +16,7 @@ import {HeaderText} from '../../sharedComponents/Text/HeaderText';
 import {BodyText} from '../../sharedComponents/Text/BodyText';
 import {PrimaryButton} from '../../sharedComponents/Buttons';
 import {LoadingIndicator} from '../../sharedComponents/LoadingIndicator';
-import {BLACK, LIGHT_GREY} from '../../lib/styles';
+import {BLACK, COMAPEO_BLUE, LIGHT_GREY} from '../../lib/styles';
 import {useOrganizationMaterializer} from '../../contexts/OrganizationMaterializerContext';
 import {
   useCoiabOrganizationsState,
@@ -29,6 +30,12 @@ import {markerFor} from '../../lib/organization/marker';
 import {ErroPacote} from '../../lib/organization/pacotes';
 import {OrganizationOperationError} from '../../lib/organization/fanout';
 import {AppStackParamsList} from '../../sharedTypes/navigation';
+import territoriesData from '../../lib/territories.json';
+import {normalizeRemoteArchiveUrl} from '../../utils/normalizeRemoteArchiveUrl';
+import {
+  useUserProfileActions,
+  useUserProfileState,
+} from '../../contexts/UserProfileStoreContext';
 
 const m = defineMessages({
   // SPEC B :54/:55: both stages share the title and the submit button
@@ -66,10 +73,17 @@ const m = defineMessages({
     defaultMessage:
       'Using the same name as another Territory does not connect the devices. To join an existing Territory, wait for an invitation.',
   },
-  emptyName: {
-    id: '$1screens.OrganizationSetup.emptyName',
-    // SPEC B :252 — verbatim.
-    defaultMessage: 'Enter the Territory name.',
+  archiveUrlLabel: {
+    id: '$1screens.Onboarding.CreateOrganization.archiveUrlLabel',
+    defaultMessage: 'Remote archive URL',
+  },
+  archiveUrlPlaceholder: {
+    id: '$1screens.Onboarding.CreateOrganization.archiveUrlPlaceholder',
+    defaultMessage: 'https://…',
+  },
+  archiveUrlInvalid: {
+    id: '$1screens.Onboarding.CreateOrganization.archiveUrlInvalid',
+    defaultMessage: 'Enter a valid HTTPS URL',
   },
   creating: {
     id: '$1screens.Onboarding.CreateOrganization.creating',
@@ -125,13 +139,29 @@ function toError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
 
+/**
+ * #129/P1-B: the intent identity. It scopes every later write, so a
+ * completion can never touch an intent created by another attempt. Hermes has
+ * no guaranteed `crypto.randomUUID`, hence the fallback.
+ */
+function novoIntentId(): string {
+  const cripto = (globalThis as {crypto?: {randomUUID?: () => string}}).crypto;
+  if (cripto?.randomUUID) return cripto.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
 export const CreateOrganization = ({
   navigation,
 }: NativeStackScreenProps<AppStackParamsList, 'CreateOrganization'>) => {
   // SPEC B §3.1/D13: the journey is ONE screen with two local stages —
   // the intro (B :54) and the name form (B :55) — never routes.
   const [etapa, setEtapa] = React.useState<'introducao' | 'nome'>('introducao');
-  const [name, setName] = React.useState('');
+  // #129: the name is picked from the predefined territory catalog — never
+  // typed — and the remote archive URL is required to create.
+  const [selectedTerritoryId, setSelectedTerritoryId] = React.useState<
+    string | null
+  >(null);
+  const [archiveUrl, setArchiveUrl] = React.useState('');
   const {formatMessage: t} = useIntl();
   // The root-owned materialization engine (SPEC B §5.4): the screen only
   // starts it and hands the journey over to the document — the promise
@@ -139,6 +169,20 @@ export const CreateOrganization = ({
   const {instance} = useCoiabOrganizationsStoreContext();
   const estado = useCoiabOrganizationsState();
   const materializador = useOrganizationMaterializer();
+  // P1-1: creation belongs to coordinators. A participant reaching this route
+  // (drawer, provisioning, direct navigation) is sent to the waiting screen.
+  const {coordinationRole} = useUserProfileState();
+  const {addPendingArchiveIntent} = useUserProfileActions();
+  // The id of the intent created by THIS screen, handed to the provisioning
+  // route so only that screen pins the target. It is set only once this
+  // attempt PROVED the organization in the document belongs to it (the start
+  // resolved, or it registered the organization before failing recoverably),
+  // so a handover caused by another creation never carries it.
+  const [intentIdConfirmado, setIntentIdConfirmado] = React.useState<
+    string | null
+  >(null);
+  // One-shot guard: the redirect must land once even if the effect re-runs.
+  const redirecionouParticipanteRef = React.useRef(false);
   // SPEC B §3.3 items 2-3 and §5.5: a document with a creation in flight
   // (or a pending confirmation) outranks the form — the provisioning
   // surface owns its recovery and its confirmation — and a settled
@@ -160,7 +204,6 @@ export const CreateOrganization = ({
   // navigation state no longer contains (the mount crash this screen had).
   const [startResolvido, setStartResolvido] = React.useState(false);
   const [erro, setErro] = React.useState<Error | null>(null);
-  const [emptyNameError, setEmptyNameError] = React.useState(false);
   // A synchronous re-entry guard: a state check alone would let a second
   // press slip through before the rerender publishes the loading UI.
   const iniciandoRef = React.useRef(false);
@@ -168,6 +211,15 @@ export const CreateOrganization = ({
   // The layer's typed refusal (SPEC B §5.5) surfaces as a blocked state:
   // the form stays, explains, and re-arms — never crash, never silence.
   const [bloqueado, setBloqueado] = React.useState(false);
+
+  // P1-1: participants never see the form. The replace is guarded so a
+  // re-render (or a redirect loop) cannot dispatch it twice.
+  React.useEffect(() => {
+    if (coordinationRole !== 'participant') return;
+    if (redirecionouParticipanteRef.current) return;
+    redirecionouParticipanteRef.current = true;
+    navigation.replace('JoinOrganizationIntro');
+  }, [coordinationRole, navigation]);
 
   // SPEC B §3.2:64/:68 (Fase 5, fix round 3): while a start is in flight,
   // Back cannot remove this screen — the one state §3.2 names ("durante
@@ -249,11 +301,43 @@ export const CreateOrganization = ({
   // and navigation is the external system.
   React.useEffect(() => {
     if (!deveTrocar) return;
-    navigation.replace('OrganizationProvisioning');
-  }, [deveTrocar, navigation]);
+    // P1-1: a participant's destination is the waiting screen, never the
+    // provisioning surface.
+    if (coordinationRole === 'participant') return;
+    // The intent of THIS creation travels with the route: the provisioning
+    // surface pins only it, so a different territory can never inherit the
+    // URL (P1-A). Only an attempt that PROVED the organization belongs to it
+    // may carry the id; a handover caused by another creation's document
+    // must not carry this screen's orphan id.
+    if (intentIdConfirmado) {
+      navigation.replace('OrganizationProvisioning', {
+        intentId: intentIdConfirmado,
+      });
+    } else {
+      navigation.replace('OrganizationProvisioning');
+    }
+  }, [deveTrocar, coordinationRole, intentIdConfirmado, navigation]);
 
-  const trimmedName = name.trim();
-  const tooLong = isNameTooLong(name);
+  const territoryOptions = territoriesData.territories;
+  const selectedTerritory = territoryOptions.find(
+    territory => territory.id === selectedTerritoryId,
+  );
+  const trimmedName = selectedTerritory?.name.trim() ?? '';
+  const tooLong = trimmedName.length > 0 && isNameTooLong(trimmedName);
+  // The archive URL is validated on every change and only as FORMAT (no
+  // reachability): a normalized URL is the sole valid state.
+  const normalizedArchiveUrl = React.useMemo(() => {
+    if (!archiveUrl.trim()) return null;
+    try {
+      return normalizeRemoteArchiveUrl(archiveUrl);
+    } catch {
+      return null;
+    }
+  }, [archiveUrl]);
+  const archiveUrlInvalid =
+    archiveUrl.trim().length > 0 && normalizedArchiveUrl === null;
+  const canCreate =
+    !!selectedTerritory && normalizedArchiveUrl !== null && !tooLong;
 
   // SPEC B :54/:55: Back from the name stage returns to the intro and
   // creates nothing; from the intro, Back pops to the choice (Success).
@@ -270,10 +354,20 @@ export const CreateOrganization = ({
     return unsubscribe;
   }, [etapa, navigation]);
 
-  function handleNameChange(value: string) {
-    setName(value);
-    setEmptyNameError(false);
-  }
+  // Cold start: this route may be the initial one, so the hardware Back has
+  // no history to pop and would exit the app. The intro stage is the choice
+  // fork's child, so Back there still belongs to the role question. With
+  // history the navigator's own handler owns the pop (this listener is not
+  // registered), and during a live operation the hold below wins.
+  React.useEffect(() => {
+    if (etapa !== 'introducao' || iniciando) return;
+    if (navigation.canGoBack()) return;
+    const hardware = BackHandler.addEventListener('hardwareBackPress', () => {
+      navigation.replace('Success');
+      return true;
+    });
+    return () => hardware.remove();
+  }, [etapa, iniciando, navigation]);
 
   // A rejection means NOTHING was persisted (the materializer routes every
   // mid-materialization failure into the document as `falha_recuperavel`
@@ -293,14 +387,9 @@ export const CreateOrganization = ({
     if (iniciandoRef.current || deveTrocar) {
       return;
     }
-    if (trimmedName.length === 0) {
-      // SPEC B :252: an empty (or whitespace-only) name is rejected BEFORE
-      // persisting the intent — the message explains; the core is never
-      // called. (B :253's over-long bound keeps the button disabled.)
-      setEmptyNameError(true);
-      return;
-    }
-    if (tooLong) {
+    if (!selectedTerritory || !normalizedArchiveUrl || tooLong) {
+      // The button is disabled in these states; the guard keeps a stale
+      // press from calling the core anyway.
       return;
     }
     if (!materializador) {
@@ -308,6 +397,23 @@ export const CreateOrganization = ({
       setErro(new Error('materialization-unavailable'));
       return;
     }
+    // #129/P1-2: record the normalized URL + target BEFORE the start. The
+    // global resume hook is the only owner of the network add. A failed
+    // persistence must not arm the latch: the form stays usable and explains
+    // the existing error path instead of trapping a press that was never
+    // recorded.
+    const intentId = novoIntentId();
+    try {
+      addPendingArchiveIntent({
+        id: intentId,
+        url: normalizedArchiveUrl,
+        organizationId: null,
+      });
+    } catch (error) {
+      setErro(toError(error));
+      return;
+    }
+    setIntentIdConfirmado(null);
     iniciandoRef.current = true;
     // The blocked state re-arms HERE, at the start of a new attempt (the
     // state's own contract): a message that survived into a fresh press
@@ -316,6 +422,13 @@ export const CreateOrganization = ({
     // leaves it cleared.
     setBloqueado(false);
     setIniciando(true);
+    // Organization ids already in the document when THIS start began. A
+    // rejection may then tell which un-settled entries are ours (new ids) and
+    // which belong to another creation/pending work (pre-existing ids) —
+    // only the former may receive this attempt's intent.
+    const organizacoesAntes = new Set(
+      instance.getState().organizacoes.map(organizacao => organizacao.id),
+    );
     materializador
       .iniciar(trimmedName)
       .then(() => {
@@ -330,6 +443,7 @@ export const CreateOrganization = ({
         // creation the predicate has already replaced this screen (no
         // selection ⇒ null ⇒ no spurious second replace). `.then` before
         // `.catch`: a refusal must never navigate.
+        setIntentIdConfirmado(intentId);
         setStartResolvido(true);
       })
       .catch((error: unknown) => {
@@ -351,7 +465,24 @@ export const CreateOrganization = ({
         // exists") is what makes a document un-creatable-over. PRE-MERGE
         // 4: this is the SAME predicate as the error-sheet effect's gate
         // above — the twin gates must evolve together.
-        if (organizacaoEmPreparo(instance.getState())) {
+        const estadoAtual = instance.getState();
+        const registradaAqui = estadoAtual.organizacoes.find(
+          organizacao =>
+            !organizacoesAntes.has(organizacao.id) &&
+            (organizacao.estado !== 'pronta' ||
+              organizacao.confirmacaoPendente),
+        );
+        if (registradaAqui) {
+          // The start failed AFTER registering the organization: the document
+          // entry is this attempt's, so the intent may be pinned to it by the
+          // provisioning surface.
+          setIntentIdConfirmado(intentId);
+          return;
+        }
+        if (organizacaoEmPreparo(estadoAtual)) {
+          // The un-settled organization predates this attempt (another
+          // creation or pending work). Its surface owns the handover and this
+          // attempt's intent must NOT travel with it.
           return;
         }
         const falha = toError(error);
@@ -373,6 +504,11 @@ export const CreateOrganization = ({
         iniciandoRef.current = false;
         setIniciando(false);
       });
+  }
+  // P1-1: the form is never rendered for a participant — the effect above
+  // replaces this route with the waiting screen.
+  if (coordinationRole === 'participant') {
+    return null;
   }
   if (etapa === 'introducao') {
     return (
@@ -418,29 +554,52 @@ export const CreateOrganization = ({
             <BodyText style={styles.body}>{t(m.nameGuidance)}</BodyText>
             <BodyText style={styles.body}>{t(m.nameNotIdentity)}</BodyText>
             <View style={styles.nameForm}>
-              <TextInput
-                testID="ORG.create-name-inp"
-                style={styles.textInput}
-                value={name}
-                onChangeText={handleNameChange}
-                maxLength={MARKER_MAX_LENGTH}
-                placeholderTextColor={LIGHT_GREY}
-                placeholder={t(m.nameLabel)}
-                autoCapitalize="none"
-              />
-              {emptyNameError && (
-                <BodyText variant="smallMeta" testID="ORG.create-name-empty">
-                  {t(m.emptyName)}
-                </BodyText>
-              )}
+              <BodyText variant="smallMeta">{t(m.nameLabel)}</BodyText>
+              {/* #129: closed selector over the predefined territory list —
+                  the name is never free text. */}
+              <View testID="ORG.create-name-select" style={styles.nameSelect}>
+                {territoryOptions.map(territory => {
+                  const selected = territory.id === selectedTerritoryId;
+                  return (
+                    <Pressable
+                      key={territory.id}
+                      testID={`ORG.create-name-option-${territory.id}`}
+                      accessibilityRole="button"
+                      accessibilityState={{selected}}
+                      style={[
+                        styles.nameOption,
+                        selected && styles.nameOptionSelected,
+                      ]}
+                      onPress={() => setSelectedTerritoryId(territory.id)}>
+                      <BodyText>{territory.name}</BodyText>
+                    </Pressable>
+                  );
+                })}
+              </View>
               {tooLong && (
                 <BodyText variant="smallMeta" testID="ORG.create-name-too-long">
                   {t(m.tooLong)}
                 </BodyText>
               )}
-              <BodyText variant="smallMeta" style={styles.counterText}>
-                {`${encodedNameLength(name)}/${MAX_ENCODED_NAME_LENGTH}`}
-              </BodyText>
+              <BodyText variant="smallMeta">{t(m.archiveUrlLabel)}</BodyText>
+              <TextInput
+                testID="ORG.create-archive-url-inp"
+                style={styles.textInput}
+                value={archiveUrl}
+                onChangeText={setArchiveUrl}
+                placeholderTextColor={LIGHT_GREY}
+                placeholder={t(m.archiveUrlPlaceholder)}
+                autoCapitalize="none"
+                keyboardType="url"
+                autoCorrect={false}
+              />
+              {archiveUrlInvalid && (
+                <BodyText
+                  variant="smallMeta"
+                  testID="ORG.create-archive-url-invalid">
+                  {t(m.archiveUrlInvalid)}
+                </BodyText>
+              )}
             </View>
           </View>
           <View style={styles.buttonContainer}>
@@ -459,7 +618,7 @@ export const CreateOrganization = ({
                 testID="ORG.create-btn"
                 fullSize
                 text={t(m.createOrganization)}
-                disabled={tooLong}
+                disabled={!canCreate}
                 onPress={handleCreatePress}
               />
             )}
@@ -501,8 +660,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     paddingHorizontal: 16,
   },
-  counterText: {
-    alignSelf: 'flex-end',
+  nameSelect: {
+    width: '100%',
+    gap: 8,
+  },
+  nameOption: {
+    borderWidth: 1,
+    borderColor: LIGHT_GREY,
+    borderRadius: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  nameOptionSelected: {
+    borderColor: COMAPEO_BLUE,
+    borderWidth: 2,
   },
   buttonContainer: {
     paddingVertical: 20,

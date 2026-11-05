@@ -22,6 +22,7 @@ import {
 } from '@react-navigation/native-stack';
 
 import {OrganizationProvisioning} from './OrganizationProvisioning';
+import {PendingArchiveResume} from '../../hooks/organization/usePendingArchiveResume';
 import {
   CoiabOrganizationsStoreProvider,
   createCoiabOrganizationsStore,
@@ -38,6 +39,21 @@ import {
   type EtapaArea,
   type OrganizacaoLocal,
 } from '../../lib/organization/coiabOrganizations';
+import {
+  createUserProfileStore,
+  UserProfileStoreProvider,
+  type PendingArchiveIntent,
+  type UserProfileStore,
+} from '../../contexts/UserProfileStoreContext';
+
+jest.mock('../../hooks/organization/useAddRemoteArchiveToOrganization', () => ({
+  useAddRemoteArchiveToOrganization: jest.fn(),
+}));
+
+const archiveStart: jest.Mock = jest.fn(async () => ({error: undefined}));
+const useArchiveMock = jest.requireMock(
+  '../../hooks/organization/useAddRemoteArchiveToOrganization',
+) as {useAddRemoteArchiveToOrganization: jest.Mock};
 
 jest.mock('../../contexts/ActiveProjectIdStoreContext', () => {
   const holder = {current: undefined as string | undefined};
@@ -108,6 +124,9 @@ const screenProps = {
   route: {
     key: 'OrganizationProvisioning',
     name: 'OrganizationProvisioning',
+    // #129/P1-A: the route carries the intent created by the navigation that
+    // reached this screen; only that intent may be pinned.
+    params: {intentId: 'intent-1'},
   },
 } as unknown as NativeStackScreenProps<
   AppStackParamsList,
@@ -171,6 +190,8 @@ const activationMock = jest.requireMock(
 ) as {__setActivation(activation: unknown): void};
 
 let store: CoiabOrganizationsStore;
+/** #129: the pending remote-archive URL lives in the local profile. */
+let profileStore: UserProfileStore;
 /** The early-access gate the new recovery exits read (89 fase 2, D1). */
 let earlyAccess: EarlyAccessStore;
 
@@ -179,20 +200,36 @@ let earlyAccess: EarlyAccessStore;
  * No navigator: the screen does not navigate — routing belongs to the
  * startup gate and the generation rule, tested at the navigator level.
  */
-function renderScreen() {
-  return render(
+function ProvisioningHarness({showScreen}: {showScreen: boolean}) {
+  return (
     <IntlProvider locale="en" messages={{}}>
       <EarlyAccessStoreProvider value={earlyAccess}>
         <CoiabOrganizationsStoreProvider store={store}>
-          <NavigationContext.Provider value={navigationMock}>
-            <NavigationRouteContext.Provider value={screenProps.route}>
-              <OrganizationProvisioning {...screenProps} />
-            </NavigationRouteContext.Provider>
-          </NavigationContext.Provider>
+          <UserProfileStoreProvider store={profileStore}>
+            <PendingArchiveResume />
+            {showScreen ? (
+              <NavigationContext.Provider value={navigationMock}>
+                <NavigationRouteContext.Provider value={screenProps.route}>
+                  <OrganizationProvisioning {...screenProps} />
+                </NavigationRouteContext.Provider>
+              </NavigationContext.Provider>
+            ) : (
+              <Text>NO-PROVISIONING</Text>
+            )}
+          </UserProfileStoreProvider>
         </CoiabOrganizationsStoreProvider>
       </EarlyAccessStoreProvider>
-    </IntlProvider>,
+    </IntlProvider>
   );
+}
+
+async function renderScreen(showScreen = true) {
+  const result = await render(<ProvisioningHarness showScreen={showScreen} />);
+  return {
+    ...result,
+    setScreen: (show: boolean) =>
+      result.rerender(<ProvisioningHarness showScreen={show} />),
+  };
 }
 
 function etapa(overrides: Partial<EtapaArea>): EtapaArea {
@@ -274,6 +311,14 @@ const BACK_BLOCKED =
 beforeEach(() => {
   jest.clearAllMocks();
   store = createCoiabOrganizationsStore({persist: false});
+  profileStore = createUserProfileStore();
+  archiveStart.mockImplementation(async () => ({error: undefined}));
+  useArchiveMock.useAddRemoteArchiveToOrganization.mockReturnValue({
+    start: archiveStart,
+    busy: false,
+    progress: {monitoramento: 'idle', alertas: 'idle'},
+    reset: jest.fn(),
+  });
   // Early access OFF by default (production's default): since f12641db
   // neither the drawer nor this surface gates its organization exits, so
   // every exit asserted below proves the flag is irrelevant. S2 turns it ON
@@ -443,6 +488,701 @@ describe('OrganizationProvisioning', () => {
   // acknowledged FIRST, B still `preparando` behind it. The content
   // authority is the organization in preparation — the rows are B's own
   // journal, never the settled first entry's.
+  describe('pending remote archive URL (#129/P1)', () => {
+    /** Seeds one intent; the default is the one THIS route owns, pinned. */
+    function seedIntent(overrides: Partial<PendingArchiveIntent> = {}) {
+      profileStore.actions.addPendingArchiveIntent({
+        id: 'intent-1',
+        url: 'https://exemplo.org/',
+        organizationId: 'org-1',
+        createdAt: Date.now(),
+        sendingSince: null,
+        appliedFor: null,
+        ...overrides,
+      });
+    }
+
+    test('a pinned intent is applied to BOTH slots once and removed', async () => {
+      seedIntent();
+      seedDocument([
+        organizacao({
+          estado: 'falha_recuperavel',
+          materializacao: PAR_PRONTA,
+        }),
+      ]);
+
+      await renderScreen();
+
+      await waitFor(() => {
+        expect(archiveStart).toHaveBeenCalledWith({
+          slots: {m: 'proj-m-1', a: 'proj-a-1'},
+          baseUrl: 'https://exemplo.org/',
+        });
+      });
+      await waitFor(() => {
+        expect(profileStore.instance.getState().pendingArchives).toStrictEqual(
+          [],
+        );
+      });
+      expect(archiveStart).toHaveBeenCalledTimes(1);
+    });
+
+    test('the provisioning surface pins ONLY the intent named by the route', async () => {
+      seedIntent({organizationId: null});
+      // A sibling intent is NOT this route's: it must stay orphan.
+      seedIntent({
+        id: 'intent-outro',
+        url: 'https://outro.example/',
+        organizationId: null,
+      });
+      seedDocument([
+        organizacao({
+          estado: 'preparando',
+          materializacao: {
+            monitoramento: etapa({etapa: 'criado', projectId: 'proj-m-1'}),
+            alertas: etapa({etapa: 'ausente'}),
+          },
+        }),
+      ]);
+
+      await renderScreen();
+
+      await waitFor(() => {
+        expect(
+          profileStore.instance
+            .getState()
+            .pendingArchives.find(intent => intent.id === 'intent-1'),
+        ).toMatchObject({
+          url: 'https://exemplo.org/',
+          organizationId: 'org-1',
+          appliedFor: null,
+        });
+      });
+      expect(
+        profileStore.instance
+          .getState()
+          .pendingArchives.find(intent => intent.id === 'intent-outro')
+          ?.organizationId,
+      ).toBeNull();
+      // Only one slot exists: the target is fixed but nothing is sent yet.
+      expect(archiveStart).not.toHaveBeenCalled();
+    });
+
+    test('a failed pin retries only the captured organization and drops the intent when it leaves the document (P1-A)', async () => {
+      seedIntent({organizationId: null});
+      // Every pin write fails: the intent stays orphan, which is exactly the
+      // window where a retry could otherwise resolve a NEW `preparando` org.
+      const pin = jest
+        .spyOn(profileStore.actions, 'updatePendingArchiveIntent')
+        .mockImplementation(() => {
+          throw new Error('disk full');
+        });
+      try {
+        seedDocument([
+          organizacao({
+            id: 'org-1',
+            estado: 'preparando',
+            materializacao: PAR_PRONTA,
+          }),
+        ]);
+
+        await renderScreen();
+        await waitFor(() => {
+          expect(pin).toHaveBeenCalledWith('intent-1', {
+            organizationId: 'org-1',
+          });
+        });
+
+        // The captured organization leaves the document; a different one
+        // enters `preparando`.
+        await act(async () => {
+          seedDocument([
+            organizacao({
+              id: 'org-2',
+              estado: 'preparando',
+              materializacao: PAR_PRONTA_B,
+            }),
+          ]);
+        });
+
+        // The intent is discarded, never retargeted.
+        await waitFor(() => {
+          expect(
+            profileStore.instance.getState().pendingArchives,
+          ).toStrictEqual([]);
+        });
+        expect(pin).not.toHaveBeenCalledWith('intent-1', {
+          organizationId: 'org-2',
+        });
+        expect(archiveStart).not.toHaveBeenCalled();
+      } finally {
+        pin.mockRestore();
+      }
+    });
+
+    test('a failed intent removal keeps the captured organization and retries the drop without retargeting (P1-A)', async () => {
+      jest.useFakeTimers();
+      try {
+        seedIntent({organizationId: null});
+        // Every pin write fails: the intent stays orphan, the window where a
+        // retry could otherwise resolve a NEW `preparando` organization.
+        const pin = jest
+          .spyOn(profileStore.actions, 'updatePendingArchiveIntent')
+          .mockImplementation(() => {
+            throw new Error('disk full');
+          });
+        const removeReal = profileStore.actions.removePendingArchiveIntent;
+        let removeFails = true;
+        const remove = jest
+          .spyOn(profileStore.actions, 'removePendingArchiveIntent')
+          .mockImplementation((id: string) => {
+            if (removeFails) throw new Error('disk full');
+            removeReal(id);
+          });
+        try {
+          seedDocument([
+            organizacao({
+              id: 'org-1',
+              estado: 'preparando',
+              materializacao: PAR_PRONTA,
+            }),
+          ]);
+
+          await renderScreen();
+          await act(async () => {
+            await Promise.resolve();
+          });
+          expect(pin).toHaveBeenCalledWith('intent-1', {
+            organizationId: 'org-1',
+          });
+
+          // The captured organization leaves the document while a different
+          // one takes the `preparando` slot, before the intent could be
+          // dropped. The drop then fails too.
+          await act(async () => {
+            seedDocument([
+              organizacao({
+                id: 'org-2',
+                estado: 'preparando',
+                materializacao: PAR_PRONTA_B,
+              }),
+            ]);
+          });
+          // Two ticks of the existing retry timer: every removal attempt still
+          // addresses org-1, so the second organization is never pinned or
+          // sent to.
+          await act(async () => {
+            jest.advanceTimersByTime(1_000);
+          });
+          await act(async () => {
+            jest.advanceTimersByTime(1_000);
+          });
+          expect(remove).toHaveBeenCalled();
+          expect(pin).not.toHaveBeenCalledWith('intent-1', {
+            organizationId: 'org-2',
+          });
+          expect(archiveStart).not.toHaveBeenCalled();
+          expect(
+            profileStore.instance.getState().pendingArchives,
+          ).toStrictEqual([
+            expect.objectContaining({id: 'intent-1', organizationId: null}),
+          ]);
+
+          // Persistence recovers: the next tick finishes the drop.
+          removeFails = false;
+          await act(async () => {
+            jest.advanceTimersByTime(1_000);
+          });
+          expect(
+            profileStore.instance.getState().pendingArchives,
+          ).toStrictEqual([]);
+          expect(archiveStart).not.toHaveBeenCalled();
+        } finally {
+          remove.mockRestore();
+          pin.mockRestore();
+        }
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    test('appliedFor prevents a second application and only finishes the cleanup', async () => {
+      seedIntent({appliedFor: 'org-1'});
+      seedDocument([
+        organizacao({estado: 'preparando', materializacao: PAR_PRONTA}),
+      ]);
+
+      await renderScreen();
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(archiveStart).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(profileStore.instance.getState().pendingArchives).toStrictEqual(
+          [],
+        );
+      });
+    });
+
+    test('a known organizationId never falls back to another territory', async () => {
+      seedIntent({organizationId: 'org-removida'});
+      seedDocument([
+        organizacao({
+          id: 'org-outra',
+          estado: 'preparando',
+          materializacao: PAR_PRONTA,
+        }),
+      ]);
+
+      await renderScreen();
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      // Never applied to the other (present) territory, and — since its own
+      // organization is gone — dropped instead of kept forever (P1-A).
+      expect(archiveStart).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(profileStore.instance.getState().pendingArchives).toStrictEqual(
+          [],
+        );
+      });
+    });
+
+    test('a failing add keeps the intent pending and the surface is never blocked', async () => {
+      seedIntent();
+      archiveStart.mockImplementation(async () => ({
+        error: new Error('server unreachable'),
+      }));
+      seedDocument([
+        organizacao({estado: 'preparando', materializacao: PAR_PRONTA}),
+      ]);
+
+      await renderScreen();
+
+      await waitFor(() => {
+        expect(archiveStart).toHaveBeenCalledTimes(1);
+      });
+      expect(profileStore.instance.getState().pendingArchives).toHaveLength(1);
+      expect(profileStore.instance.getState().pendingArchives[0]).toMatchObject(
+        {
+          url: 'https://exemplo.org/',
+          organizationId: 'org-1',
+          appliedFor: null,
+        },
+      );
+      // The pre-send mark is durable, so a remount cannot double-fire.
+      expect(
+        profileStore.instance.getState().pendingArchives[0]?.sendingSince,
+      ).toEqual(expect.any(Number));
+      // Fire-and-forget: the preparation surface still renders normally.
+      expect(screen.getByText('Preparing your territory…')).toBeOnTheScreen();
+    });
+
+    test('unmounting and remounting the provisioning surface mid-flight does not duplicate the call', async () => {
+      let releaseStart: (value: {error?: unknown}) => void = () => {};
+      archiveStart.mockImplementation(
+        () =>
+          new Promise(resolve => {
+            releaseStart = resolve;
+          }),
+      );
+      seedIntent();
+      seedDocument([
+        organizacao({estado: 'preparando', materializacao: PAR_PRONTA}),
+      ]);
+
+      const view = await renderScreen();
+
+      await waitFor(() => {
+        expect(archiveStart).toHaveBeenCalledTimes(1);
+      });
+
+      // The screen goes away; the navigator-owned resume hook stays mounted
+      // (exactly as in production, where Home remains underneath).
+      await act(async () => {
+        view.setScreen(false);
+      });
+      await act(async () => {
+        view.setScreen(true);
+      });
+
+      expect(archiveStart).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        releaseStart({error: undefined});
+      });
+      await waitFor(() => {
+        expect(profileStore.instance.getState().pendingArchives).toStrictEqual(
+          [],
+        );
+      });
+      expect(archiveStart).toHaveBeenCalledTimes(1);
+    });
+
+    test('discards an orphan intent once the organization left preparation (P1-A)', async () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        seedIntent({
+          id: 'intent-orfao',
+          organizationId: null,
+          createdAt: Date.now() - 120_000,
+        });
+        // No organization left in `preparando`: the creation that owned this
+        // orphan is gone. The URL has no safe target and must be discarded.
+        seedDocument([]);
+
+        await renderScreen();
+
+        await waitFor(() => {
+          expect(
+            profileStore.instance.getState().pendingArchives,
+          ).toStrictEqual([]);
+        });
+        expect(archiveStart).not.toHaveBeenCalled();
+        // PII-free: only the opaque intent id is logged.
+        expect(warn).toHaveBeenCalledWith(
+          expect.stringContaining('orphan archive intent'),
+          {intentId: 'intent-orfao'},
+        );
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    test('a pinned intent whose organization left the document is removed (P1-A)', async () => {
+      // The pin survives in the profile but its target no longer exists:
+      // it can never be applied and must not be retargeted (P1-A).
+      seedIntent({id: 'intent-hook', organizationId: 'org-inexistente'});
+      seedDocument([]);
+
+      await renderScreen(false);
+
+      await waitFor(() => {
+        expect(profileStore.instance.getState().pendingArchives).toStrictEqual(
+          [],
+        );
+      });
+      expect(archiveStart).not.toHaveBeenCalled();
+    });
+
+    test('a pinned intent removal that throws is retried (P1-A)', async () => {
+      jest.useFakeTimers();
+      try {
+        seedIntent({id: 'intent-hook', organizationId: 'org-inexistente'});
+        seedDocument([]);
+        const removeReal = profileStore.actions.removePendingArchiveIntent;
+        let removeFails = true;
+        const remove = jest
+          .spyOn(profileStore.actions, 'removePendingArchiveIntent')
+          .mockImplementation((id: string) => {
+            if (removeFails) throw new Error('disk full');
+            removeReal(id);
+          });
+        try {
+          await renderScreen(false);
+          await act(async () => {
+            await Promise.resolve();
+          });
+          expect(remove).toHaveBeenCalledWith('intent-hook');
+          expect(profileStore.instance.getState().pendingArchives).toHaveLength(
+            1,
+          );
+
+          removeFails = false;
+          await act(async () => {
+            jest.advanceTimersByTime(1_000);
+          });
+          expect(
+            profileStore.instance.getState().pendingArchives,
+          ).toStrictEqual([]);
+          expect(archiveStart).not.toHaveBeenCalled();
+        } finally {
+          remove.mockRestore();
+        }
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    test('an orphan intent is never applied to the current organization in preparation (P1-A)', async () => {
+      // This intent was not named by the route, so nothing pins it. The
+      // resume hook must not fall back to the `preparando` organization.
+      seedIntent({id: 'intent-orfao', organizationId: null});
+      seedDocument([
+        organizacao({estado: 'preparando', materializacao: PAR_PRONTA}),
+      ]);
+
+      await renderScreen();
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(archiveStart).not.toHaveBeenCalled();
+      expect(
+        profileStore.instance
+          .getState()
+          .pendingArchives.find(intent => intent.id === 'intent-orfao')
+          ?.organizationId,
+      ).toBeNull();
+    });
+
+    test('a hydration failure preserves a pinned intent instead of reading the empty list as removal (P1)', async () => {
+      seedIntent();
+      // A failed rehydration exposes an EMPTY document while the persisted
+      // one still exists (SPEC A §5.3): the pinned target is not "gone".
+      store.instance.setState({hidratacaoFalhou: true});
+      expect(store.instance.getState()).toMatchObject({
+        organizacoes: [],
+        hidratacaoFalhou: true,
+      });
+
+      const {rerender} = await renderScreen(false);
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      // Neither discard nor apply: the URL still has a target on disk.
+      expect(archiveStart).not.toHaveBeenCalled();
+      expect(
+        profileStore.instance
+          .getState()
+          .pendingArchives.find(intent => intent.id === 'intent-1'),
+      ).toMatchObject({organizationId: 'org-1'});
+
+      // Rehydration succeeds (a fresh store carries the persisted document):
+      // once the id is visible again, the SAME pinned intent is applied.
+      const reidratado = createCoiabOrganizationsStore();
+      reidratado.instance.setState(
+        {
+          ...documento([
+            organizacao({
+              estado: 'falha_recuperavel',
+              materializacao: PAR_PRONTA,
+            }),
+          ]),
+          hidratacaoFalhou: false,
+        },
+        true,
+      );
+      store = reidratado;
+      rerender(<ProvisioningHarness showScreen={false} />);
+
+      await waitFor(() => {
+        expect(archiveStart).toHaveBeenCalledWith({
+          slots: {m: 'proj-m-1', a: 'proj-a-1'},
+          baseUrl: 'https://exemplo.org/',
+        });
+      });
+      await waitFor(() => {
+        expect(profileStore.instance.getState().pendingArchives).toStrictEqual(
+          [],
+        );
+      });
+      expect(archiveStart).toHaveBeenCalledTimes(1);
+    });
+
+    test('a completion removes only its own intent (A in flight, B created later) (P1-B)', async () => {
+      let releaseA: (value: {error?: unknown}) => void = () => {};
+      archiveStart.mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            releaseA = resolve;
+          }),
+      );
+      seedIntent({id: 'intent-a', organizationId: 'org-1'});
+      seedDocument([
+        organizacao({estado: 'preparando', materializacao: PAR_PRONTA}),
+        // B's target exists but has no project ids yet: it is not sent and
+        // is not an orphan, so A's completion must not touch it.
+        organizacao({id: 'org-2', estado: 'preparando'}),
+      ]);
+
+      await renderScreen();
+      await waitFor(() => {
+        expect(archiveStart).toHaveBeenCalledTimes(1);
+      });
+
+      // B is created while A is still in flight and targets another
+      // organization (present but not materialized, so it is not sent yet).
+      await act(async () => {
+        profileStore.actions.addPendingArchiveIntent({
+          id: 'intent-b',
+          url: 'https://b.example/',
+          organizationId: 'org-2',
+        });
+      });
+
+      await act(async () => {
+        releaseA({error: undefined});
+      });
+
+      await waitFor(() => {
+        expect(
+          profileStore.instance
+            .getState()
+            .pendingArchives.map(intent => intent.id),
+        ).toEqual(['intent-b']);
+      });
+      expect(archiveStart).toHaveBeenCalledTimes(1);
+    });
+
+    test('a failed completion persistence never resends in the session and persists on retry (P1-C)', async () => {
+      let releaseA: (value: {error?: unknown}) => void = () => {};
+      archiveStart.mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            releaseA = resolve;
+          }),
+      );
+      seedIntent();
+      seedDocument([
+        organizacao({estado: 'preparando', materializacao: PAR_PRONTA}),
+      ]);
+
+      const realSetState = profileStore.instance.setState.bind(
+        profileStore.instance,
+      );
+      let writes = 0;
+      const setState = jest
+        .spyOn(profileStore.instance, 'setState')
+        .mockImplementation((partial, replace) => {
+          writes += 1;
+          // The pre-send mark (1) succeeds; the FIRST completion write (2)
+          // fails; the delayed retry (3+) persists.
+          if (writes === 2) throw new Error('disk full');
+          realSetState(partial, replace);
+        });
+
+      try {
+        await renderScreen();
+        await waitFor(() => {
+          expect(archiveStart).toHaveBeenCalledTimes(1);
+        });
+        expect(writes).toBe(1);
+
+        await act(async () => {
+          releaseA({error: undefined});
+        });
+        await waitFor(() => {
+          expect(writes).toBe(2);
+        });
+        // In-session: the success is remembered in `appliedIds`, so no
+        // second network call happens even though nothing was persisted.
+        expect(archiveStart).toHaveBeenCalledTimes(1);
+
+        // The simple delayed retry persists the removal.
+        await waitFor(
+          () => {
+            expect(
+              profileStore.instance.getState().pendingArchives,
+            ).toStrictEqual([]);
+          },
+          {timeout: 4000},
+        );
+        expect(archiveStart).toHaveBeenCalledTimes(1);
+      } finally {
+        setState.mockRestore();
+      }
+    });
+
+    test('a send mark older than 60 s is an interrupted attempt and resends once (P1-C)', async () => {
+      archiveStart.mockImplementation(async () => ({
+        error: new Error('offline'),
+      }));
+      seedIntent({sendingSince: Date.now() - 61_000});
+      seedDocument([
+        organizacao({estado: 'preparando', materializacao: PAR_PRONTA}),
+      ]);
+
+      await renderScreen();
+
+      await waitFor(() => {
+        expect(archiveStart).toHaveBeenCalledTimes(1);
+      });
+      // The stale mark did not freeze the intent: a fresh mark was written
+      // before the single replay.
+      expect(
+        profileStore.instance.getState().pendingArchives[0]?.sendingSince,
+      ).toBeGreaterThan(Date.now() - 10_000);
+    });
+
+    test('a fresh sending mark waits for the wake-up after the 60 s window (P2)', async () => {
+      jest.useFakeTimers();
+      try {
+        // Just marked as sent: the window is still open and no store change
+        // will ever announce that time passed.
+        seedIntent({sendingSince: Date.now()});
+        seedDocument([
+          organizacao({estado: 'preparando', materializacao: PAR_PRONTA}),
+        ]);
+
+        await renderScreen();
+        await act(async () => {
+          await Promise.resolve();
+        });
+        expect(archiveStart).not.toHaveBeenCalled();
+
+        // A full window with no store change: still nothing to send.
+        await act(async () => {
+          jest.advanceTimersByTime(60_000);
+        });
+        expect(archiveStart).not.toHaveBeenCalled();
+
+        // The next 15 s wake-up re-evaluates and the stale mark allows the
+        // single replay.
+        await act(async () => {
+          jest.advanceTimersByTime(15_000);
+        });
+        expect(archiveStart).toHaveBeenCalledTimes(1);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    test('a failed send is retried on the next wake-up after the window, one attempt per cycle (P2)', async () => {
+      jest.useFakeTimers();
+      try {
+        archiveStart.mockImplementation(async () => ({
+          error: new Error('offline'),
+        }));
+        seedIntent();
+        seedDocument([
+          organizacao({estado: 'preparando', materializacao: PAR_PRONTA}),
+        ]);
+
+        await renderScreen();
+        await act(async () => {
+          await Promise.resolve();
+        });
+        expect(archiveStart).toHaveBeenCalledTimes(1);
+
+        // Nothing in the store changes after the failure; only the wake-up
+        // can advance the stale window. It does not fire inside the window.
+        await act(async () => {
+          jest.advanceTimersByTime(60_000);
+        });
+        expect(archiveStart).toHaveBeenCalledTimes(1);
+
+        // The next wake-up retries exactly once.
+        await act(async () => {
+          jest.advanceTimersByTime(15_000);
+        });
+        expect(archiveStart).toHaveBeenCalledTimes(2);
+
+        // The retry wrote a fresh mark, so the following wake-up stays quiet:
+        // no tight loop.
+        await act(async () => {
+          jest.advanceTimersByTime(15_000);
+        });
+        expect(archiveStart).toHaveBeenCalledTimes(2);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+  });
+
   describe('multi-organization document', () => {
     test("renders the preparing organization's area rows, not the settled first one's", async () => {
       seedDocument([
@@ -667,6 +1407,21 @@ describe('OrganizationProvisioning', () => {
       ).toBeEnabled();
     });
 
+    test('a participant gets no creation exit (P1-1)', async () => {
+      seedDocument([prontaAtiva.organizacao], ativaA);
+      ativarRecovery('recovery', 'unavailable');
+      profileStore.actions.setCoordinationRole('participant');
+      await renderScreen();
+
+      expect(
+        screen.queryByTestId('ORG.provisioning-create-organization-btn'),
+      ).not.toBeOnTheScreen();
+      // The other exits are unaffected.
+      expect(
+        screen.getByTestId('ORG.provisioning-retry-activation-btn'),
+      ).toBeOnTheScreen();
+    });
+
     // (T5a) Every non-`indisponivel` state of the surface must stay exactly
     // as it is today — no name, no exits. Guard: green in the base state.
     test.each([
@@ -809,34 +1564,36 @@ describe('OrganizationProvisioning', () => {
         <IntlProvider locale="en" messages={{}}>
           <EarlyAccessStoreProvider value={earlyAccess}>
             <CoiabOrganizationsStoreProvider store={store}>
-              <NavigationContainer
-                ref={navigationRef}
-                initialState={{
-                  index: 1,
-                  routes: [
-                    {name: 'OrganizationProvisioning'},
-                    {
-                      name: 'RemovedFromProjectBottomSheet',
-                      params: {projectId: 'proj-m-1'},
-                    },
-                  ],
-                }}>
-                <NavStack.Navigator>
-                  {/* Home is REGISTERED so a reset fired during the hold
+              <UserProfileStoreProvider store={profileStore}>
+                <NavigationContainer
+                  ref={navigationRef}
+                  initialState={{
+                    index: 1,
+                    routes: [
+                      {name: 'OrganizationProvisioning'},
+                      {
+                        name: 'RemovedFromProjectBottomSheet',
+                        params: {projectId: 'proj-m-1'},
+                      },
+                    ],
+                  }}>
+                  <NavStack.Navigator>
+                    {/* Home is REGISTERED so a reset fired during the hold
                   would land somewhere real instead of silently warning —
                   the routes assertion below is what pins the hold. */}
-                  <NavStack.Screen name="Home" component={HomeStub} />
-                  <NavStack.Screen
-                    name="OrganizationProvisioning"
-                    component={OrganizationProvisioning}
-                  />
-                  <NavStack.Screen
-                    name="RemovedFromProjectBottomSheet"
-                    component={SheetStub}
-                    options={{presentation: 'transparentModal'}}
-                  />
-                </NavStack.Navigator>
-              </NavigationContainer>
+                    <NavStack.Screen name="Home" component={HomeStub} />
+                    <NavStack.Screen
+                      name="OrganizationProvisioning"
+                      component={OrganizationProvisioning}
+                    />
+                    <NavStack.Screen
+                      name="RemovedFromProjectBottomSheet"
+                      component={SheetStub}
+                      options={{presentation: 'transparentModal'}}
+                    />
+                  </NavStack.Navigator>
+                </NavigationContainer>
+              </UserProfileStoreProvider>
             </CoiabOrganizationsStoreProvider>
           </EarlyAccessStoreProvider>
         </IntlProvider>,
@@ -1252,15 +2009,17 @@ describe('OrganizationProvisioning', () => {
         <IntlProvider locale="en" messages={{}}>
           <EarlyAccessStoreProvider value={earlyAccess}>
             <CoiabOrganizationsStoreProvider store={store}>
-              <NavigationContainer ref={navigationRef}>
-                <NavStack.Navigator initialRouteName="OrganizationProvisioning">
-                  <NavStack.Screen name="Home" component={HomeStub} />
-                  <NavStack.Screen
-                    name="OrganizationProvisioning"
-                    component={OrganizationProvisioning}
-                  />
-                </NavStack.Navigator>
-              </NavigationContainer>
+              <UserProfileStoreProvider store={profileStore}>
+                <NavigationContainer ref={navigationRef}>
+                  <NavStack.Navigator initialRouteName="OrganizationProvisioning">
+                    <NavStack.Screen name="Home" component={HomeStub} />
+                    <NavStack.Screen
+                      name="OrganizationProvisioning"
+                      component={OrganizationProvisioning}
+                    />
+                  </NavStack.Navigator>
+                </NavigationContainer>
+              </UserProfileStoreProvider>
             </CoiabOrganizationsStoreProvider>
           </EarlyAccessStoreProvider>
         </IntlProvider>,
@@ -1506,31 +2265,33 @@ describe('OrganizationProvisioning', () => {
         <IntlProvider locale="en" messages={{}}>
           <EarlyAccessStoreProvider value={earlyAccess}>
             <CoiabOrganizationsStoreProvider store={store}>
-              <NavigationContainer
-                ref={navigationRef}
-                initialState={{
-                  index: 1,
-                  routes: [
-                    {name: 'OrganizationProvisioning'},
-                    {
-                      name: 'RemovedFromProjectBottomSheet',
-                      params: {projectId: 'proj-m-1'},
-                    },
-                  ],
-                }}>
-                <NavStack.Navigator>
-                  <NavStack.Screen name="Home" component={HomeStub} />
-                  <NavStack.Screen
-                    name="OrganizationProvisioning"
-                    component={OrganizationProvisioning}
-                  />
-                  <NavStack.Screen
-                    name="RemovedFromProjectBottomSheet"
-                    component={SheetStub}
-                    options={{presentation: 'transparentModal'}}
-                  />
-                </NavStack.Navigator>
-              </NavigationContainer>
+              <UserProfileStoreProvider store={profileStore}>
+                <NavigationContainer
+                  ref={navigationRef}
+                  initialState={{
+                    index: 1,
+                    routes: [
+                      {name: 'OrganizationProvisioning'},
+                      {
+                        name: 'RemovedFromProjectBottomSheet',
+                        params: {projectId: 'proj-m-1'},
+                      },
+                    ],
+                  }}>
+                  <NavStack.Navigator>
+                    <NavStack.Screen name="Home" component={HomeStub} />
+                    <NavStack.Screen
+                      name="OrganizationProvisioning"
+                      component={OrganizationProvisioning}
+                    />
+                    <NavStack.Screen
+                      name="RemovedFromProjectBottomSheet"
+                      component={SheetStub}
+                      options={{presentation: 'transparentModal'}}
+                    />
+                  </NavStack.Navigator>
+                </NavigationContainer>
+              </UserProfileStoreProvider>
             </CoiabOrganizationsStoreProvider>
           </EarlyAccessStoreProvider>
         </IntlProvider>,

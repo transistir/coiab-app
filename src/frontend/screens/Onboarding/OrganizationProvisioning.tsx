@@ -20,6 +20,10 @@ import {
   type OrganizacaoLocal,
 } from '../../lib/organization/coiabOrganizations';
 import {DARK_GREY, RED} from '../../lib/styles';
+import {
+  useUserProfileActions,
+  useUserProfileState,
+} from '../../contexts/UserProfileStoreContext';
 
 /** SPEC B §3.2:68 — 30 s without conclusion shows the notice; never a retry. */
 const AVISO_DEMORA_MS = 30_000;
@@ -464,6 +468,91 @@ export const OrganizationProvisioning = ({
   );
   const organizacaoDocument =
     emPreparo ?? organizacaoAtiva ?? estado.organizacoes[0];
+  // P1-1: creation is coordinator-only; a participant gets no control.
+  const {coordinationRole, pendingArchives} = useUserProfileState();
+  const {updatePendingArchiveIntent, removePendingArchiveIntent} =
+    useUserProfileActions();
+  // #129/P1-A: the application itself belongs to ONE owner (the navigator's
+  // resume hook). This surface only pins the target id of the intent created
+  // by the navigation that reached it (`intentId` route param): without that
+  // scope an intent could be handed to whatever organization happens to be in
+  // preparation, which is exactly the leak the review found. No param means
+  // this surface owns no intent and pins nothing.
+  const intentId = route.params?.intentId;
+  // #129/P1-A (round 5): the resolved target is CAPTURED per intent. A retry
+  // of the pin write always addresses that same id; it never resolves a new
+  // organization. If the captured id left the document while the write was
+  // failing, the intent is dropped — a later organization entering
+  // `preparando` must not inherit this URL.
+  const alvoRef = React.useRef<Record<string, string>>({});
+  const [pinTick, setPinTick] = React.useState(0);
+  const pinRetryRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const agendarPinRetry = React.useCallback(() => {
+    if (pinRetryRef.current !== null) return;
+    pinRetryRef.current = setTimeout(() => {
+      pinRetryRef.current = null;
+      setPinTick(tick => tick + 1);
+    }, 1_000);
+  }, []);
+  React.useEffect(
+    () => () => {
+      if (pinRetryRef.current !== null) {
+        clearTimeout(pinRetryRef.current);
+        pinRetryRef.current = null;
+      }
+    },
+    [],
+  );
+  React.useEffect(() => {
+    // `pinTick` carries no value: it is the failed pin's signal to re-run.
+    if (pinTick < 0 || !intentId) return;
+    const intent = pendingArchives.find(item => item.id === intentId);
+    if (!intent) {
+      delete alvoRef.current[intentId];
+      return;
+    }
+    if (intent.organizationId !== null) {
+      // Already pinned (by an earlier render or a previous session): keep the
+      // captured id in sync, never look for another target.
+      alvoRef.current[intentId] = intent.organizationId;
+      return;
+    }
+    const capturado = alvoRef.current[intentId] ?? emPreparo?.id;
+    if (!capturado) return;
+    alvoRef.current[intentId] = capturado;
+    // The document changed and the captured organization is gone: drop the
+    // intent. Pointing it at whoever is in `preparando` now would apply this
+    // creation's URL to another territory.
+    if (!estado.organizacoes.some(org => org.id === capturado)) {
+      try {
+        removePendingArchiveIntent(intentId);
+      } catch {
+        // The drop itself failed: keep the captured id so the retry below
+        // addresses the SAME organization. Clearing it here would let a later
+        // `preparando` organization inherit this creation's URL on the next
+        // tick — the exact retarget this capture exists to prevent.
+        agendarPinRetry();
+        return;
+      }
+      delete alvoRef.current[intentId];
+      return;
+    }
+    try {
+      updatePendingArchiveIntent(intentId, {organizationId: capturado});
+    } catch {
+      // Persistence failed: retry ONLY the captured id while it still exists.
+      agendarPinRetry();
+    }
+  }, [
+    intentId,
+    pinTick,
+    pendingArchives,
+    emPreparo,
+    estado.organizacoes,
+    updatePendingArchiveIntent,
+    removePendingArchiveIntent,
+    agendarPinRetry,
+  ]);
   const {status: activationStatus, preparacaoViva} =
     useOrganizationActivationContext();
   // The document's own operational id (SPEC A §4.2 regra 5): null while the
@@ -600,7 +689,7 @@ export const OrganizationProvisioning = ({
       ? () => navigation.navigate('Organizations')
       : undefined;
   const criarOrganizacao =
-    derivado !== null
+    derivado !== null && coordinationRole !== 'participant'
       ? () => navigation.navigate('CreateOrganization')
       : undefined;
 

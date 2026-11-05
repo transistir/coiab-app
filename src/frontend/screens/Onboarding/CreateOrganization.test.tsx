@@ -18,6 +18,7 @@ import {
 import {IntlProvider} from 'react-intl';
 
 import {CreateOrganization} from './CreateOrganization';
+import {OrganizationProvisioning} from './OrganizationProvisioning';
 import {
   useOrganizationMaterializer,
   type OrganizationMaterializerHandle,
@@ -28,7 +29,6 @@ import {
   type CoiabOrganizationsStore,
 } from '../../contexts/CoiabOrganizationsStoreContext';
 import {useProjetarProjectIdAtivo} from '../../contexts/ActiveProjectIdStoreContext';
-import {markerFor} from '../../lib/organization/marker';
 import {ErroPacote} from '../../lib/organization/pacotes';
 import {OrganizationOperationError} from '../../lib/organization/fanout';
 import type {
@@ -36,12 +36,16 @@ import type {
   OrganizacaoLocal,
 } from '../../lib/organization/coiabOrganizations';
 import type {AppStackParamsList} from '../../sharedTypes/navigation';
+import {useAddRemoteArchiveToOrganization} from '../../hooks/organization/useAddRemoteArchiveToOrganization';
+import {
+  createUserProfileStore,
+  UserProfileStoreProvider,
+  type UserProfileStore,
+} from '../../contexts/UserProfileStoreContext';
 
-// pt-BR copied verbatim from SPEC B :54/:55/:252. The copy is asserted
-// through the i18n keys (exact pt-BR text), not the English defaultMessage
-// (SPEC B :100-102). `tooLong` is deliberately absent: the marker-bound
-// message (flag #14) is preserved as-is and asserted by its English
-// defaultMessage below.
+// pt-BR copied verbatim from SPEC B :54/:55. The copy is asserted through
+// the i18n keys (exact pt-BR text), not the English defaultMessage
+// (SPEC B :100-102).
 const PT_MESSAGES = {
   '$1screens.OrganizationSetup.createOrganization': 'Criar território',
   '$1screens.OrganizationSetup.createIntroBody':
@@ -52,7 +56,10 @@ const PT_MESSAGES = {
     'Escolha um nome para seu território.',
   '$1screens.OrganizationSetup.nameNotIdentity':
     'Usar o mesmo nome de outro território não conecta os dispositivos. Para participar de um território existente, aguarde um convite.',
-  '$1screens.OrganizationSetup.emptyName': 'Informe o nome do território.',
+  '$1screens.Onboarding.CreateOrganization.archiveUrlLabel':
+    'Endereço do arquivo remoto',
+  '$1screens.Onboarding.CreateOrganization.archiveUrlInvalid':
+    'Informe uma URL HTTPS válida',
   '$1screens.Onboarding.CreateOrganization.creationInProgress':
     'Já existe uma criação de território em andamento.',
 };
@@ -65,12 +72,69 @@ const useMaterializadorMock = useOrganizationMaterializer as jest.Mock;
 
 jest.mock('../../contexts/ActiveProjectIdStoreContext', () => ({
   useProjetarProjectIdAtivo: jest.fn(),
+  useActiveProjectId: () => undefined,
 }));
+
+const activation = {
+  status: 'preparing' as const,
+  preparacaoViva: true,
+  activate: jest.fn(async () => true),
+  retryPreparation: jest.fn(async () => true),
+  recoverPendingWork: jest.fn(async () => false),
+};
+
+jest.mock('../../contexts/OrganizationActivationContext', () => {
+  const holder = {current: undefined as unknown};
+  return {
+    __setActivation: (value: unknown) => {
+      holder.current = value;
+    },
+    useOrganizationActivationContext: () => holder.current,
+  };
+});
+
+const activationMock = jest.requireMock(
+  '../../contexts/OrganizationActivationContext',
+) as {__setActivation(value: unknown): void};
+
+jest.mock('../../hooks/organization/useAddRemoteArchiveToOrganization', () => ({
+  useAddRemoteArchiveToOrganization: jest.fn(),
+}));
+
+// The hardware layer the cold-start fallback subscribes to: the entries are
+// recorded so a test can press Back the way the OS delivers it.
+jest.mock('react-native/Libraries/Utilities/BackHandler', () => {
+  const live: Array<{handler: () => boolean}> = [];
+  const addEventListener = jest.fn((_event: string, handler: () => boolean) => {
+    live.push({handler});
+    return {
+      remove: jest.fn(() => {
+        const index = live.findIndex(item => item.handler === handler);
+        if (index >= 0) live.splice(index, 1);
+      }),
+    };
+  });
+  return {
+    __esModule: true,
+    __live: live,
+    default: {exitApp: jest.fn(), addEventListener},
+  };
+});
+
+const backHandlerMock = jest.requireMock(
+  'react-native/Libraries/Utilities/BackHandler',
+) as {
+  __live: Array<{handler: () => boolean}>;
+  default: {addEventListener: jest.Mock};
+};
+
+const useArchiveMock = useAddRemoteArchiveToOrganization as jest.Mock;
 
 const projetar = jest.fn();
 // The screen chains `.catch/.finally` on the returned promise, so the
 // default mock must resolve like the real `iniciar` does.
 const iniciar = jest.fn(async () => {});
+const archiveStart = jest.fn(async () => ({error: undefined}));
 
 function mockMaterializador(
   overrides?: Partial<OrganizationMaterializerHandle>,
@@ -115,6 +179,7 @@ function documentoComOrganizacao(nome: string): EstadoOrganizacoes {
     ativa: null,
   };
 }
+
 /**
  * A settled first organization: ready, acknowledged, both areas verified —
  * the §4.2 shape CA12's form-opening scenario operates on.
@@ -150,7 +215,72 @@ const registrar = async (nome: string) => {
   store.instance.setState(documentoComOrganizacao(nome));
 };
 
+/** The materializer resolving with BOTH projects already created (#129). */
+const registrarComProjetos = async (nome: string) => {
+  await Promise.resolve();
+  store.instance.setState({
+    versao: 1,
+    organizacoes: [
+      {
+        ...documentoComOrganizacao(nome).organizacoes[0]!,
+        materializacao: {
+          monitoramento: {
+            etapa: 'criado',
+            projectId: 'p-m',
+            template: null,
+            idsAntesDaCriacao: null,
+          },
+          alertas: {
+            etapa: 'criado',
+            projectId: 'p-a',
+            template: null,
+            idsAntesDaCriacao: null,
+          },
+        },
+      },
+    ],
+    ativa: null,
+  });
+};
+
+/** The organization registered, then the materialization fails recoverably. */
+const registrarComFalhaRecuperavel = async (nome: string) => {
+  await Promise.resolve();
+  const base = documentoComOrganizacao(nome).organizacoes[0]!;
+  store.instance.setState({
+    versao: 1,
+    organizacoes: [
+      {
+        ...base,
+        estado: 'falha_recuperavel',
+        materializacao: {
+          monitoramento: {
+            etapa: 'criado',
+            projectId: 'p-m',
+            template: null,
+            idsAntesDaCriacao: null,
+          },
+          alertas: {
+            etapa: 'criado',
+            projectId: 'p-a',
+            template: null,
+            idsAntesDaCriacao: null,
+          },
+        },
+        ultimoErro: {
+          codigo: 'preparation-failed',
+          area: 'alertas',
+          ocorridoEm: '2026-11-04T00:00:00.000Z',
+        },
+      },
+    ],
+    ativa: null,
+  });
+  throw new Error('materialization interrupted');
+};
+
 let store: CoiabOrganizationsStore;
+let profileStore: UserProfileStore;
 
 const Stack = createNativeStackNavigator<AppStackParamsList>();
 const navigationRef = createNavigationContainerRef<AppStackParamsList>();
@@ -159,6 +289,16 @@ const SuccessStub = () => <Text>SUCCESS-STUB</Text>;
 
 const HomeStub = () => <Text>HOME-REACHED</Text>;
 const ProvisioningStub = () => <Text>PROVISIONING-REACHED</Text>;
+const JoinStub = () => <Text>JOIN-REACHED</Text>;
+
+/** Records the route params the handover actually carried. */
+const provisioningRouteParams: Array<{intentId?: string} | undefined> = [];
+const ParamsProvisioningStub = ({
+  route,
+}: NativeStackScreenProps<AppStackParamsList, 'OrganizationProvisioning'>) => {
+  provisioningRouteParams.push(route.params);
+  return <Text>PROVISIONING-PARAMS</Text>;
+};
 
 const ErrorStub = ({
   route,
@@ -172,33 +312,53 @@ const ErrorStub = ({
   </>
 );
 
-async function renderScreen() {
+async function renderTree(
+  ProvisioningComponent: React.ComponentType<
+    NativeStackScreenProps<AppStackParamsList, 'OrganizationProvisioning'>
+  >,
+  initialRouteName: 'Success' | 'CreateOrganization',
+) {
   await render(
     <IntlProvider locale="pt-BR" messages={PT_MESSAGES}>
       <NavigationContainer ref={navigationRef}>
         <CoiabOrganizationsStoreProvider store={store}>
-          <Stack.Navigator initialRouteName="Success">
-            <Stack.Screen name="Success" component={SuccessStub} />
-            <Stack.Screen
-              name="CreateOrganization"
-              component={CreateOrganization}
-              options={{headerShown: false}}
-            />
-            <Stack.Screen name="Home" component={HomeStub} />
-            <Stack.Screen
-              name="OrganizationProvisioning"
-              component={ProvisioningStub}
-            />
-            <Stack.Screen
-              name="ErrorBottomSheet"
-              component={ErrorStub}
-              options={{headerShown: false}}
-            />
-          </Stack.Navigator>
+          <UserProfileStoreProvider store={profileStore}>
+            <Stack.Navigator initialRouteName={initialRouteName}>
+              <Stack.Screen name="Success" component={SuccessStub} />
+              <Stack.Screen
+                name="CreateOrganization"
+                component={CreateOrganization}
+                options={{headerShown: false}}
+              />
+              <Stack.Screen name="Home" component={HomeStub} />
+              <Stack.Screen
+                name="OrganizationProvisioning"
+                component={ProvisioningComponent}
+              />
+              <Stack.Screen
+                name="JoinOrganizationIntro"
+                component={JoinStub}
+                options={{headerShown: false}}
+              />
+              <Stack.Screen
+                name="ErrorBottomSheet"
+                component={ErrorStub}
+                options={{headerShown: false}}
+              />
+            </Stack.Navigator>
+          </UserProfileStoreProvider>
         </CoiabOrganizationsStoreProvider>
       </NavigationContainer>
     </IntlProvider>,
   );
+}
+
+async function renderScreen(
+  ProvisioningComponent: React.ComponentType<
+    NativeStackScreenProps<AppStackParamsList, 'OrganizationProvisioning'>
+  > = ProvisioningStub,
+) {
+  await renderTree(ProvisioningComponent, 'Success');
   // The native-stack navigator mounts asynchronously: wait for the initial
   // route to settle before dispatching, or the navigate becomes a no-op
   // ("navigation object hasn't been initialized").
@@ -208,39 +368,55 @@ async function renderScreen() {
   });
 }
 
+async function renderColdStartScreen() {
+  await renderTree(ProvisioningStub, 'CreateOrganization');
+  await screen.findByTestId('ORG.create-intro-continue-btn');
+}
+
+/** Delivers a hardware Back the way React Native walks the subscriptions. */
+function pressHardwareBack() {
+  for (const {handler} of [...backHandlerMock.__live].reverse()) {
+    if (handler()) return true;
+  }
+  return false;
+}
+
 // The SPEC B §3.1 journey: Continuar on the intro leads to the name step.
 async function irParaEtapaNome() {
   await fireEvent.press(screen.getByTestId('ORG.create-intro-continue-btn'));
-  expect(screen.getByTestId('ORG.create-name-inp')).toBeOnTheScreen();
+  expect(screen.getByTestId('ORG.create-name-select')).toBeOnTheScreen();
+}
+
+// #129: the name is chosen from the predefined catalog (one entry today).
+async function selecionarTerritorio() {
+  await fireEvent.press(screen.getByTestId('ORG.create-name-option-4999'));
+}
+
+async function preencherUrl(url = 'https://exemplo.org/') {
+  await fireEvent.changeText(
+    screen.getByTestId('ORG.create-archive-url-inp'),
+    url,
+  );
 }
 
 beforeEach(() => {
   jest.clearAllMocks();
+  provisioningRouteParams.length = 0;
+  backHandlerMock.__live.length = 0;
   store = createCoiabOrganizationsStore();
+  profileStore = createUserProfileStore();
+  activationMock.__setActivation(activation);
   (useProjetarProjectIdAtivo as jest.Mock).mockReturnValue(projetar);
   mockMaterializador();
+  useArchiveMock.mockReturnValue({
+    start: archiveStart,
+    busy: false,
+    progress: {monitoramento: 'idle', alertas: 'idle'},
+    reset: jest.fn(),
+  });
 });
 
 describe('CreateOrganization', () => {
-  // The real bound is the minted marker `coiab-org:v1:<16>:<slot>:<name>`
-  // (SPEC 4.1/E3): 32 overhead chars — the format has a colon after the slot
-  // too — so the encoded name must fit 28. Measured off the real format so
-  // this suite fails if the guard and the marker ever disagree again.
-  const MARKER_OVERHEAD = markerFor('0123456789abcdef', 'm', 'x').length - 1;
-  const MAX_ENCODED_NAME = 60 - MARKER_OVERHEAD;
-
-  test('the guard bound mints a marker of exactly 60 chars, never 61', () => {
-    // Pins the overhead: both colons after the slot count, so 28 encoded
-    // chars land the marker on exactly 60 and the 29th overflows it.
-    expect(MAX_ENCODED_NAME).toBe(28);
-    expect(
-      markerFor('0123456789abcdef', 'm', 'a'.repeat(MAX_ENCODED_NAME)),
-    ).toHaveLength(60);
-    expect(
-      markerFor('0123456789abcdef', 'm', 'a'.repeat(MAX_ENCODED_NAME + 1)),
-    ).toHaveLength(61);
-  });
-
   test('the intro step renders the SPEC B :54 copy and leads to the name step', async () => {
     await renderScreen();
 
@@ -253,7 +429,9 @@ describe('CreateOrganization', () => {
     expect(
       screen.getByTestId('ORG.create-intro-continue-btn'),
     ).toBeOnTheScreen();
-    expect(screen.queryByTestId('ORG.create-name-inp')).not.toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('ORG.create-name-select'),
+    ).not.toBeOnTheScreen();
 
     await irParaEtapaNome();
 
@@ -265,8 +443,41 @@ describe('CreateOrganization', () => {
         'Usar o mesmo nome de outro território não conecta os dispositivos. Para participar de um território existente, aguarde um convite.',
       ),
     ).toBeOnTheScreen();
-    expect(screen.getByTestId('ORG.create-name-inp')).toBeOnTheScreen();
+    expect(screen.getByTestId('ORG.create-name-select')).toBeOnTheScreen();
+    expect(screen.getByTestId('ORG.create-archive-url-inp')).toBeOnTheScreen();
     expect(screen.getByTestId('ORG.create-btn')).toBeOnTheScreen();
+  });
+
+  test('on a cold start with no previous route, hardware Back opens the role question (P1)', async () => {
+    // The startup gate makes this the initial route for a coordinator, so
+    // the navigator's own Back handler cannot pop anything; the screen's
+    // fallback must land on the question (Success) instead of exiting.
+    await renderColdStartScreen();
+
+    expect(navigationRef.canGoBack()).toBe(false);
+
+    await act(async () => {
+      expect(pressHardwareBack()).toBe(true);
+    });
+
+    expect(await screen.findByText('SUCCESS-STUB')).toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('ORG.create-intro-continue-btn'),
+    ).not.toBeOnTheScreen();
+  });
+
+  test('a participant never sees the form and is sent to JoinOrganizationIntro (P1-1)', async () => {
+    profileStore.actions.setCoordinationRole('participant');
+    await renderScreen();
+
+    expect(await screen.findByText('JOIN-REACHED')).toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('ORG.create-intro-continue-btn'),
+    ).not.toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('ORG.create-name-select'),
+    ).not.toBeOnTheScreen();
+    expect(iniciar).not.toHaveBeenCalled();
   });
 
   test('back from the name step returns to the intro with no effects', async () => {
@@ -279,176 +490,209 @@ describe('CreateOrganization', () => {
     expect(
       await screen.findByTestId('ORG.create-intro-continue-btn'),
     ).toBeOnTheScreen();
-    expect(screen.queryByTestId('ORG.create-name-inp')).not.toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('ORG.create-name-select'),
+    ).not.toBeOnTheScreen();
     expect(iniciar).not.toHaveBeenCalled();
     // "sem efeitos": the document is untouched by the round-trip.
     expect(store.instance.getState().organizacoes).toHaveLength(0);
   });
 
-  test('the name step labels the field and the submit button per SPEC B :55', async () => {
+  test('the create button stays disabled without a name and without a valid URL', async () => {
     await renderScreen();
-
     await irParaEtapaNome();
 
-    expect(screen.getByTestId('ORG.create-name-inp')).toHaveProp(
-      'placeholder',
-      'Nome do território',
-    );
-    expect(screen.getByTestId('ORG.create-btn')).toHaveTextContent(
-      'Criar território',
-    );
-  });
+    // Nothing selected, empty URL.
+    expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
 
-  test('an empty submit shows the required-name message and never calls the core', async () => {
-    // SPEC B :252: an empty (or whitespace-only) name is rejected BEFORE
-    // persisting the intent — the message explains, nothing is created.
-    await renderScreen();
+    // Selecting a territory alone is not enough.
+    await selecionarTerritorio();
+    expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
 
-    await irParaEtapaNome();
-    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
-
-    expect(screen.getByText('Informe o nome do território.')).toBeOnTheScreen();
-    expect(iniciar).not.toHaveBeenCalled();
-
-    // A whitespace-only name is equally rejected (trim).
-    await fireEvent.changeText(
-      screen.getByTestId('ORG.create-name-inp'),
-      '   ',
-    );
+    // A malformed URL keeps the button disabled and explains why.
+    await preencherUrl('not a url');
+    expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
     expect(
-      screen.queryByText('Informe o nome do território.'),
-    ).not.toBeOnTheScreen();
-    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
-    expect(screen.getByText('Informe o nome do território.')).toBeOnTheScreen();
-    expect(iniciar).not.toHaveBeenCalled();
+      screen.getByTestId('ORG.create-archive-url-invalid'),
+    ).toHaveTextContent('Informe uma URL HTTPS válida');
+
+    // http:// is rejected by the format-only validation (HTTPS required).
+    await preencherUrl('http://exemplo.org');
+    expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+    expect(
+      screen.getByTestId('ORG.create-archive-url-invalid'),
+    ).toBeOnTheScreen();
   });
 
-  test('presses create with the trimmed name and never writes the active project', async () => {
+  test('the create button is enabled with a selected territory and a valid HTTPS URL', async () => {
+    await renderScreen();
+    await irParaEtapaNome();
+
+    await selecionarTerritorio();
+    await preencherUrl('https://exemplo.org/');
+
+    expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
+    expect(
+      screen.queryByTestId('ORG.create-archive-url-invalid'),
+    ).not.toBeOnTheScreen();
+  });
+
+  test('presses create with the territory name from the selector and never writes the active project', async () => {
     // SPEC B §3.3/§5.3: between `pronta` and the "Abrir organização" tap the
     // device has NO active selection — `ativa` is born only in that tap's
-    // single write, so the form must hand the materializer the trimmed name
-    // and never repoint the legacy active id itself.
+    // single write, so the form must hand the materializer the selected
+    // name and never repoint the legacy active id itself.
     await renderScreen();
     await irParaEtapaNome();
 
-    await fireEvent.changeText(
-      screen.getByTestId('ORG.create-name-inp'),
-      '  Órgão Teste  ',
-    );
-
+    await selecionarTerritorio();
+    await preencherUrl('https://exemplo.org/');
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
     await waitFor(() => {
-      expect(iniciar).toHaveBeenCalledWith('Órgão Teste');
+      expect(iniciar).toHaveBeenCalledWith('Kaxuyana-Tunayana');
     });
     await waitFor(() => {
       expect(projetar).not.toHaveBeenCalled();
     });
   });
 
-  test('an ASCII name at the exact encoded-marker boundary stays enabled', async () => {
+  test('records an intent with an id before starting and never applies the archive from this screen (#129)', async () => {
+    const iniciarComProjetos = jest.fn(async (nome: string) => {
+      // The intent must already be durable when the materialization starts.
+      const [intent] = profileStore.instance.getState().pendingArchives;
+      expect(intent).toMatchObject({
+        url: 'https://exemplo.org/',
+        organizationId: null,
+        appliedFor: null,
+        sendingSince: null,
+      });
+      expect(typeof intent?.id).toBe('string');
+      await registrarComProjetos(nome);
+    });
+    mockMaterializador({iniciar: iniciarComProjetos});
     await renderScreen();
     await irParaEtapaNome();
 
-    // 32 + 28 = 60 — the marker fits exactly.
-    await fireEvent.changeText(
-      screen.getByTestId('ORG.create-name-inp'),
-      'a'.repeat(MAX_ENCODED_NAME),
-    );
-    expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
+    await selecionarTerritorio();
+    // The normalization adds the trailing slash.
+    await preencherUrl('https://exemplo.org');
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+
+    expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
+    expect(iniciarComProjetos).toHaveBeenCalledWith('Kaxuyana-Tunayana');
+    // The network add belongs to the global resume hook, never to the form —
+    // even when both project ids are already published.
+    expect(archiveStart).not.toHaveBeenCalled();
+    const intents = profileStore.instance.getState().pendingArchives;
+    expect(intents).toHaveLength(1);
+    expect(intents[0]).toMatchObject({
+      url: 'https://exemplo.org/',
+      organizationId: null,
+      appliedFor: null,
+    });
+  });
+
+  test('a persistence failure before the latch leaves the form usable and never starts the materialization (#129/P2)', async () => {
+    mockMaterializador({iniciar: registrar});
+    await renderScreen();
+    await irParaEtapaNome();
+    await selecionarTerritorio();
+    await preencherUrl('https://exemplo.org/');
+
+    const setState = jest.spyOn(profileStore.instance, 'setState');
+    setState.mockImplementationOnce(() => {
+      throw new Error('disk full');
+    });
+    try {
+      await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+    } finally {
+      setState.mockRestore();
+    }
+
+    expect(await screen.findByText('ERROR: disk full')).toBeOnTheScreen();
+    expect(iniciar).not.toHaveBeenCalled();
+    // The latch was never armed: the button is back, not a stuck spinner.
     expect(
-      screen.queryByText('Territory name is too long'),
-    ).not.toBeOnTheScreen();
-
-    // One more char makes the marker overflow 60 — the button is disabled
-    // even though the raw input is far below its 60-char maxLength.
-    await fireEvent.changeText(
-      screen.getByTestId('ORG.create-name-inp'),
-      'a'.repeat(MAX_ENCODED_NAME + 1),
-    );
-    expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
-    expect(screen.getByText('Territory name is too long')).toBeOnTheScreen();
-  });
-
-  test('an accented name is guarded by its encoded length, not the raw one', async () => {
-    await renderScreen();
-    await irParaEtapaNome();
-
-    // 'Órganização' is 11 raw chars but encodes to 26 (each accented char
-    // becomes %XX%XX): 32 + 26 = 58, inside the bound. Pinned so the
-    // boundary walk below stays meaningful.
-    expect(encodeURIComponent('Órganização')).toHaveLength(26);
-    await fireEvent.changeText(
-      screen.getByTestId('ORG.create-name-inp'),
-      'Órganização',
-    );
-    expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
-
-    // Appending ASCII chars walks the encoded length onto the boundary:
-    // 26 + 2 = 28 still fits exactly; +1 more overflows.
-    await fireEvent.changeText(
-      screen.getByTestId('ORG.create-name-inp'),
-      'Órganização' +
-        'x'.repeat(MAX_ENCODED_NAME - encodeURIComponent('Órganização').length),
-    );
-    expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
-
-    await fireEvent.changeText(
-      screen.getByTestId('ORG.create-name-inp'),
-      'Órganização' +
-        'x'.repeat(
-          MAX_ENCODED_NAME - encodeURIComponent('Órganização').length + 1,
-        ),
-    );
-    expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
-    expect(screen.getByText('Territory name is too long')).toBeOnTheScreen();
-  });
-
-  test('an emoji name is guarded by its encoded length', async () => {
-    await renderScreen();
-    await irParaEtapaNome();
-
-    // Each 🌴 encodes to 12 chars (%F0%9F%8C%B4, 4 bytes × 3): two fit the
-    // 28-char encoded-name bound, three do not — both far below the raw
-    // 60-char input maxLength.
-    await fireEvent.changeText(
-      screen.getByTestId('ORG.create-name-inp'),
-      '🌴'.repeat(2),
-    );
-    expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
-
-    await fireEvent.changeText(
-      screen.getByTestId('ORG.create-name-inp'),
-      '🌴'.repeat(3),
-    );
-    expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
-    expect(screen.getByText('Territory name is too long')).toBeOnTheScreen();
-  });
-
-  test('the character counter reads the encoded length against the guard bound', async () => {
-    await renderScreen();
-    await irParaEtapaNome();
-
-    // ASCII only: encoded and raw lengths agree, and the denominator is the
-    // encoded-name bound (28), not the marker length (60).
-    await fireEvent.changeText(
-      screen.getByTestId('ORG.create-name-inp'),
-      'Minha Organizacao',
-    );
-    expect(encodeURIComponent('Minha Organizacao')).toHaveLength(19);
-    expect(screen.getByText(`19/${MAX_ENCODED_NAME}`)).toBeOnTheScreen();
-
-    // Accents expand under encoding, and the guard counts the encoded form —
-    // so the counter must too, or it would read 11 while the guard counts 29.
-    await fireEvent.changeText(
-      screen.getByTestId('ORG.create-name-inp'),
-      'Órganização',
-    );
-    expect(
-      screen.getByText(
-        `${encodeURIComponent('Órganização').length}/${MAX_ENCODED_NAME}`,
-      ),
+      screen.getByTestId('ORG.create-btn', {includeHiddenElements: true}),
     ).toBeOnTheScreen();
+    expect(
+      screen.queryByText('Creating Territory…', {
+        includeHiddenElements: true,
+      }),
+    ).not.toBeOnTheScreen();
+  });
+
+  test('a recoverable failure keeps the intent pinned to THIS creation target (#129/P1-A)', async () => {
+    mockMaterializador({iniciar: registrarComFalhaRecuperavel});
+    await renderScreen(OrganizationProvisioning);
+    await irParaEtapaNome();
+
+    await selecionarTerritorio();
+    await preencherUrl('https://exemplo.org/');
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+
+    expect(
+      await screen.findByText('Could not finish creating the territory.'),
+    ).toBeOnTheScreen();
+    // The form recorded the intent; the provisioning surface pinned the
+    // target id received through the route param. The global owner applies
+    // it — never the form, and never a guessed organization.
+    expect(profileStore.instance.getState().pendingArchives).toHaveLength(1);
+    expect(profileStore.instance.getState().pendingArchives[0]).toMatchObject({
+      url: 'https://exemplo.org/',
+      organizationId: '0123456789abcdef',
+      appliedFor: null,
+    });
+    expect(archiveStart).not.toHaveBeenCalled();
+  });
+
+  test('a refused attempt never hands its orphan intent to another creation (P1-A)', async () => {
+    // The materializer's own typed refusal: nothing was registered, so the
+    // intent is orphan. The form stays with the blocked notice.
+    mockMaterializador({
+      iniciar: async () => {
+        throw new OrganizationOperationError(
+          'creation-in-progress',
+          'another creation is in flight',
+        );
+      },
+    });
+    await renderScreen(ParamsProvisioningStub);
+    await irParaEtapaNome();
+    await selecionarTerritorio();
+    await preencherUrl('https://exemplo.org/');
+    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+
+    expect(
+      await screen.findByTestId('ORG.create-blocked', {
+        includeHiddenElements: true,
+      }),
+    ).toBeOnTheScreen();
+    expect(profileStore.instance.getState().pendingArchives).toHaveLength(1);
+
+    // Another creation's organization enters preparation: the provisioning
+    // surface takes over, but this screen's orphan intent must not travel
+    // with it (it would be pinned to that territory).
+    const outra = {
+      ...documentoComOrganizacao('Outra').organizacoes[0]!,
+      id: 'fedcba9876543210',
+    };
+    store.instance.setState({
+      versao: 1,
+      organizacoes: [outra],
+      ativa: null,
+    });
+
+    expect(
+      await screen.findByText('PROVISIONING-PARAMS', {
+        includeHiddenElements: true,
+      }),
+    ).toBeOnTheScreen();
+    expect(provisioningRouteParams).toHaveLength(1);
+    expect(provisioningRouteParams[0]?.intentId).toBeUndefined();
+    // The orphan stays put: it is never applied to that territory.
+    expect(profileStore.instance.getState().pendingArchives).toHaveLength(1);
   });
 
   test('shows the loading state instead of the button while creating', async () => {
@@ -461,10 +705,8 @@ describe('CreateOrganization', () => {
     await renderScreen();
     await irParaEtapaNome();
 
-    await fireEvent.changeText(
-      screen.getByTestId('ORG.create-name-inp'),
-      'Minha Org',
-    );
+    await selecionarTerritorio();
+    await preencherUrl('https://exemplo.org/');
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
     expect(screen.queryByTestId('ORG.create-btn')).not.toBeOnTheScreen();
@@ -480,23 +722,19 @@ describe('CreateOrganization', () => {
     await renderScreen();
     await irParaEtapaNome();
 
-    await fireEvent.changeText(
-      screen.getByTestId('ORG.create-name-inp'),
-      'Órgão Teste',
-    );
+    await selecionarTerritorio();
+    await preencherUrl('https://exemplo.org/');
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
     expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
     // A replace, not a push: the form is gone with its draft handed over.
-    expect(screen.queryByTestId('ORG.create-name-inp')).not.toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('ORG.create-name-select'),
+    ).not.toBeOnTheScreen();
     expect(screen.queryByText('HOME-REACHED')).not.toBeOnTheScreen();
   });
 
   test('a first creation whose resolved document has no resolvable selection replaces EXACTLY once', async () => {
-    // The redirect effect owns this handover (the persisted B has no
-    // selection, so `derivarProjectIdAtivo` is null) and the `.then()`'s
-    // live-document read must stay silent — a second replace would push the
-    // provisioning surface twice over the same operation.
     mockMaterializador({iniciar: registrar});
     await renderScreen();
     await irParaEtapaNome();
@@ -513,15 +751,15 @@ describe('CreateOrganization', () => {
       if (last) landings.push(last.name);
     });
     try {
-      await fireEvent.changeText(
-        screen.getByTestId('ORG.create-name-inp'),
-        'Órgão Teste',
-      );
+      await selecionarTerritorio();
+      await preencherUrl('https://exemplo.org/');
       await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
       expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
       expect(landings).toEqual(['OrganizationProvisioning']);
-      expect(screen.queryByTestId('ORG.create-name-inp')).not.toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('ORG.create-name-select'),
+      ).not.toBeOnTheScreen();
     } finally {
       unsubscribe();
     }
@@ -554,22 +792,22 @@ describe('CreateOrganization', () => {
       if (last) landings.push(last.name);
     });
     try {
-      await fireEvent.changeText(
-        screen.getByTestId('ORG.create-name-inp'),
-        'Órgão Teste',
-      );
+      await selecionarTerritorio();
+      await preencherUrl('https://exemplo.org/');
       await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
       expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
       expect(landings).toEqual(['OrganizationProvisioning']);
       // A replace, not a push: the form is gone with its draft handed over.
-      expect(screen.queryByTestId('ORG.create-name-inp')).not.toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('ORG.create-name-select'),
+      ).not.toBeOnTheScreen();
     } finally {
       unsubscribe();
     }
   });
 
-  test('a rejection with no document entry opens the error sheet and keeps the name', async () => {
+  test('a rejection with no document entry opens the error sheet and keeps the draft', async () => {
     // The materializer rejects before anything is persisted (a template
     // package failure, an MMKV write refusal): nothing was created, so the
     // form stays — draft intact — with the error explained.
@@ -580,19 +818,19 @@ describe('CreateOrganization', () => {
     });
     await renderScreen();
     await irParaEtapaNome();
-    await fireEvent.changeText(
-      screen.getByTestId('ORG.create-name-inp'),
-      '  Órgão Teste  ',
-    );
+    await selecionarTerritorio();
+    await preencherUrl('https://exemplo.org/');
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
     expect(await screen.findByText('ERROR: boom')).toBeOnTheScreen();
     // The sheet is a modal over the form, so the form screen reads
-    // aria-hidden — the draft's persistence is asserted through the
-    // hidden query, exactly the value that was typed.
+    // aria-hidden — the draft's persistence is asserted through the hidden
+    // query, exactly the value that was typed.
     expect(
-      screen.getByTestId('ORG.create-name-inp', {includeHiddenElements: true}),
-    ).toHaveProp('value', '  Órgão Teste  ');
+      screen.getByTestId('ORG.create-archive-url-inp', {
+        includeHiddenElements: true,
+      }),
+    ).toHaveProp('value', 'https://exemplo.org/');
     // The failure re-arms the form: the user can correct and retry.
     expect(
       screen.getByTestId('ORG.create-btn', {includeHiddenElements: true}),
@@ -614,10 +852,8 @@ describe('CreateOrganization', () => {
     });
     await renderScreen();
     await irParaEtapaNome();
-    await fireEvent.changeText(
-      screen.getByTestId('ORG.create-name-inp'),
-      '  Órgão Teste  ',
-    );
+    await selecionarTerritorio();
+    await preencherUrl('https://exemplo.org/');
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
     expect(
@@ -628,7 +864,7 @@ describe('CreateOrganization', () => {
     expect(
       await screen.findByText('CODE: pacote_nao_aprovado'),
     ).toBeOnTheScreen();
-    // The failure re-arms the form: draft intact for a retry.
+    // The failure re-arms the form.
     expect(
       screen.getByTestId('ORG.create-btn', {includeHiddenElements: true}),
     ).toBeOnTheScreen();
@@ -639,11 +875,13 @@ describe('CreateOrganization', () => {
     // one whose id survived an interrupted attempt — is never overwritten by
     // a new `iniciar`: the provisioning screen owns its recovery, so the
     // form must hand over before the first press.
-    store.instance.setState(documentoComOrganizacao('Órgão Pendente'));
+    store.instance.setState(documentoComOrganizacao('Território Pendente'));
     await renderScreen();
 
     expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
-    expect(screen.queryByTestId('ORG.create-name-inp')).not.toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('ORG.create-name-select'),
+    ).not.toBeOnTheScreen();
     expect(iniciar).not.toHaveBeenCalled();
   });
 
@@ -652,7 +890,7 @@ describe('CreateOrganization', () => {
     // resolves), opening the creation form from Home is an explicit act —
     // it must not be bounced to a confirmation the user already consumed,
     // and `iniciar` would refuse a second registration anyway.
-    const pronta = organizacaoPronta('Órgão Ativa');
+    const pronta = organizacaoPronta('Território Ativo');
     store.instance.setState({
       versao: 1,
       organizacoes: [pronta],
@@ -660,7 +898,7 @@ describe('CreateOrganization', () => {
     } as EstadoOrganizacoes);
     await renderScreen();
     await irParaEtapaNome();
-    expect(screen.getByTestId('ORG.create-name-inp')).toBeOnTheScreen();
+    expect(screen.getByTestId('ORG.create-name-select')).toBeOnTheScreen();
     expect(screen.queryByText('PROVISIONING-REACHED')).not.toBeOnTheScreen();
     expect(iniciar).not.toHaveBeenCalled();
   });
@@ -672,13 +910,15 @@ describe('CreateOrganization', () => {
     // confirmation/selection surface owns the document, not the form.
     store.instance.setState({
       versao: 1,
-      organizacoes: [organizacaoPronta('Órgão Ativa')],
+      organizacoes: [organizacaoPronta('Território Ativo')],
       ativa: null,
     } as EstadoOrganizacoes);
     await renderScreen();
 
     expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
-    expect(screen.queryByTestId('ORG.create-name-inp')).not.toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('ORG.create-name-select'),
+    ).not.toBeOnTheScreen();
     expect(iniciar).not.toHaveBeenCalled();
   });
 
@@ -689,30 +929,25 @@ describe('CreateOrganization', () => {
     // (`organizacoes[0]`), it is the materializer's own typed refusal.
     store.instance.setState({
       versao: 1,
-      organizacoes: [organizacaoPronta('Órgão Ativa')],
+      organizacoes: [organizacaoPronta('Território Ativo')],
       ativa: {organizacaoId: '0123456789abcdef', area: 'monitoramento'},
     } as EstadoOrganizacoes);
     await renderScreen();
     await irParaEtapaNome();
-    await fireEvent.changeText(
-      screen.getByTestId('ORG.create-name-inp'),
-      '  Órgão Segunda  ',
-    );
+    await selecionarTerritorio();
+    await preencherUrl('https://exemplo.org/');
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
     await waitFor(() => {
-      expect(iniciar).toHaveBeenCalledWith('Órgão Segunda');
+      expect(iniciar).toHaveBeenCalledWith('Kaxuyana-Tunayana');
     });
     // Once `iniciar` resolves, the provisioning surface owns the living
-    // operation (it already renders `preparando`/confirmation by id —
-    // Fase 3). The redirect effect stays silent here because
+    // operation. The redirect effect stays silent here because
     // `derivarProjectIdAtivo` still resolves by A, so the screen hands
-    // over itself. (Updated pin: the old assertion — "the form stays" —
-    // pinned the BLOCKER 2 bug, where a resolved second creation left the
-    // user on the form with no indication that B's operation is alive.)
+    // over itself.
     expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
     expect(
-      screen.queryByTestId('ORG.create-name-inp', {
+      screen.queryByTestId('ORG.create-name-select', {
         includeHiddenElements: true,
       }),
     ).not.toBeOnTheScreen();
@@ -730,15 +965,13 @@ describe('CreateOrganization', () => {
     });
     store.instance.setState({
       versao: 1,
-      organizacoes: [organizacaoPronta('Órgão Ativa')],
+      organizacoes: [organizacaoPronta('Território Ativo')],
       ativa: {organizacaoId: '0123456789abcdef', area: 'monitoramento'},
     } as EstadoOrganizacoes);
     await renderScreen();
     await irParaEtapaNome();
-    await fireEvent.changeText(
-      screen.getByTestId('ORG.create-name-inp'),
-      'Órgão Segunda',
-    );
+    await selecionarTerritorio();
+    await preencherUrl('https://exemplo.org/');
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
     expect(await screen.findByText('ERROR: boom')).toBeOnTheScreen();
@@ -746,17 +979,9 @@ describe('CreateOrganization', () => {
 
   test('a start while another creation is in flight is surfaced as blocked, not swallowed', async () => {
     // SPEC B §5.5 guard lives in the materializer layer: a start whose
-    // concurrent flight never landed its registration (the exclusive()
-    // refusal — the plan's Fase 1 item 6) throws the typed
-    // `creation-in-progress` (OrganizationOperationError). The screen must
-    // branch on the typed code — not the message — and signal that state:
-    // never crash, never silence.
-    //
-    // The in-flight flight is NOT seeded into the document: the §4 guard
-    // (:257, plano) replaces an explicitly opened form the moment the
-    // document holds a `preparando` organization, so the reachable refusal
-    // is the one whose registration did not land — the form stays up,
-    // explains, and re-arms.
+    // concurrent flight never landed its registration throws the typed
+    // `creation-in-progress`. The screen must branch on the typed code —
+    // not the message — and signal that state: never crash, never silence.
     iniciar.mockImplementation(async () => {
       throw new OrganizationOperationError(
         'creation-in-progress',
@@ -765,19 +990,17 @@ describe('CreateOrganization', () => {
     });
     store.instance.setState({
       versao: 1,
-      organizacoes: [organizacaoPronta('Órgão Ativa')],
+      organizacoes: [organizacaoPronta('Território Ativo')],
       ativa: {organizacaoId: '0123456789abcdef', area: 'monitoramento'},
     } as EstadoOrganizacoes);
     await renderScreen();
     await irParaEtapaNome();
-    await fireEvent.changeText(
-      screen.getByTestId('ORG.create-name-inp'),
-      'Órgão Segunda',
-    );
+    await selecionarTerritorio();
+    await preencherUrl('https://exemplo.org/');
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
     await waitFor(() => {
-      expect(iniciar).toHaveBeenCalledWith('Órgão Segunda');
+      expect(iniciar).toHaveBeenCalledWith('Kaxuyana-Tunayana');
     });
     expect(await screen.findByTestId('ORG.create-blocked')).toBeOnTheScreen();
     // The form stays usable and the press never crashed it.
@@ -785,13 +1008,12 @@ describe('CreateOrganization', () => {
       screen.getByTestId('ORG.create-btn', {includeHiddenElements: true}),
     ).toBeOnTheScreen();
   });
+
   test('a new attempt clears the blocked message before the second start settles', async () => {
     // BLOCKER 1: `bloqueado` was write-once — the message claimed a creation
     // was in flight even after that flight ended and a fresh `iniciar`
-    // started. The reset belongs to the attempt START: the moment a second
-    // press passes the re-entry guard, the stale message must be gone. The
-    // second start here never settles, so the form stays on its loading
-    // state and the assertion cannot be satisfied by any handover.
+    // started. The second start here never settles, so the form stays on its
+    // loading state and the assertion cannot be satisfied by any handover.
     iniciar
       .mockRejectedValueOnce(
         new OrganizationOperationError(
@@ -802,15 +1024,13 @@ describe('CreateOrganization', () => {
       .mockImplementation(() => new Promise<void>(() => {}));
     store.instance.setState({
       versao: 1,
-      organizacoes: [organizacaoPronta('Órgão Ativa')],
+      organizacoes: [organizacaoPronta('Território Ativo')],
       ativa: {organizacaoId: '0123456789abcdef', area: 'monitoramento'},
     } as EstadoOrganizacoes);
     await renderScreen();
     await irParaEtapaNome();
-    await fireEvent.changeText(
-      screen.getByTestId('ORG.create-name-inp'),
-      'Órgão Segunda',
-    );
+    await selecionarTerritorio();
+    await preencherUrl('https://exemplo.org/');
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
     expect(await screen.findByTestId('ORG.create-blocked')).toBeOnTheScreen();
 
@@ -831,10 +1051,8 @@ describe('CreateOrganization', () => {
       mockMaterializador({iniciar: () => new Promise<void>(() => {})});
       await renderScreen();
       await irParaEtapaNome();
-      await fireEvent.changeText(
-        screen.getByTestId('ORG.create-name-inp'),
-        'Órgão Teste',
-      );
+      await selecionarTerritorio();
+      await preencherUrl('https://exemplo.org/');
       await fireEvent.press(screen.getByTestId('ORG.create-btn'));
       // The start is in flight (the loading UI replaced the button).
       expect(screen.queryByTestId('ORG.create-btn')).not.toBeOnTheScreen();
@@ -871,15 +1089,13 @@ describe('CreateOrganization', () => {
       });
       store.instance.setState({
         versao: 1,
-        organizacoes: [organizacaoPronta('Órgão Ativa')],
+        organizacoes: [organizacaoPronta('Território Ativo')],
         ativa: {organizacaoId: '0123456789abcdef', area: 'monitoramento'},
       } as EstadoOrganizacoes);
       await renderScreen();
       await irParaEtapaNome();
-      await fireEvent.changeText(
-        screen.getByTestId('ORG.create-name-inp'),
-        'Órgão Segunda',
-      );
+      await selecionarTerritorio();
+      await preencherUrl('https://exemplo.org/');
       await fireEvent.press(screen.getByTestId('ORG.create-btn'));
       expect(await screen.findByTestId('ORG.create-blocked')).toBeOnTheScreen();
 
@@ -900,13 +1116,6 @@ describe('CreateOrganization', () => {
     });
 
     test('a refusal does not block the handover when the document settles without a selection', async () => {
-      // B5-3 (fix round 2): `bloqueado` is a terminal banner state, not a
-      // gate on the handover. A refused start never resolves (the typed
-      // refusal never reaches the `.then`), so `startResolvido` stays
-      // false; when the OTHER flight registers its organization
-      // (`preparando`, no resolvable selection — §3.3 item 2), the
-      // provisioning surface owns the document and the replace must land
-      // even though the stale banner state is still up.
       iniciar.mockRejectedValueOnce(
         new OrganizationOperationError(
           'creation-in-progress',
@@ -915,31 +1124,24 @@ describe('CreateOrganization', () => {
       );
       store.instance.setState({
         versao: 1,
-        organizacoes: [organizacaoPronta('Órgão Ativa')],
+        organizacoes: [organizacaoPronta('Território Ativo')],
         ativa: {organizacaoId: '0123456789abcdef', area: 'monitoramento'},
       } as EstadoOrganizacoes);
       await renderScreen();
       await irParaEtapaNome();
-      await fireEvent.changeText(
-        screen.getByTestId('ORG.create-name-inp'),
-        'Órgão Segunda',
-      );
+      await selecionarTerritorio();
+      await preencherUrl('https://exemplo.org/');
       await fireEvent.press(screen.getByTestId('ORG.create-btn'));
       expect(await screen.findByTestId('ORG.create-blocked')).toBeOnTheScreen();
 
       // The other flight registers its organization.
       await act(async () => {
-        store.instance.setState(documentoComOrganizacao('Órgão Em Voo'));
+        store.instance.setState(documentoComOrganizacao('Território Em Voo'));
       });
       expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
     });
 
     test('back during flight explains itself at the intro and the handover lands exactly once', async () => {
-      // Reviewer pin (fix round 2): the §3.1 hop (first back) and the
-      // handover were never tested together. The first back turns the name
-      // form into the intro — where the creating copy explains the hold
-      // (B5-2) — the second back is dropped while the flight is alive, and
-      // the resolved start lands on the provisioning surface EXACTLY once.
       let releaseStart: () => void = () => {};
       mockMaterializador({
         iniciar: (nome: string) =>
@@ -960,10 +1162,8 @@ describe('CreateOrganization', () => {
         if (last) landings.push(last.name);
       });
       try {
-        await fireEvent.changeText(
-          screen.getByTestId('ORG.create-name-inp'),
-          'Órgão Teste',
-        );
+        await selecionarTerritorio();
+        await preencherUrl('https://exemplo.org/');
         await fireEvent.press(screen.getByTestId('ORG.create-btn'));
         // The start is in flight (the loading UI replaced the button).
         expect(screen.queryByTestId('ORG.create-btn')).not.toBeOnTheScreen();
@@ -1013,19 +1213,14 @@ describe('CreateOrganization', () => {
   // B5-4 on this screen (fix round 3): the generation gate's RESET is the
   // system's own routing (SPEC B §5.5's recovery table) — a prevented reset
   // is consumed-and-dropped because the gate advances its generation before
-  // dispatching and never retries. Pinned at the navigator level with the
-  // REAL PreventRemoveProvider: a RESET dispatch that removes the held
-  // screen must LAND — the same pin shape Provisioning carries in its own
-  // file.
+  // dispatching and never retries.
   describe('navigator-level reset passes the hold (GenerationTransitionGate)', () => {
     test('a system reset removes the held screen and lands on its destination', async () => {
       mockMaterializador({iniciar: () => new Promise<void>(() => {})});
       await renderScreen();
       await irParaEtapaNome();
-      await fireEvent.changeText(
-        screen.getByTestId('ORG.create-name-inp'),
-        'Órgão Teste',
-      );
+      await selecionarTerritorio();
+      await preencherUrl('https://exemplo.org/');
       await fireEvent.press(screen.getByTestId('ORG.create-btn'));
       // The hold is live: the loading UI replaced the button.
       expect(screen.queryByTestId('ORG.create-btn')).not.toBeOnTheScreen();

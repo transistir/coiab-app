@@ -581,6 +581,15 @@
     "message": "Go to the map",
     "description": "Action that opens the map of the current work area from the empty observation list"
   },
+  "$1screens.Onboarding.CreateOrganization.archiveUrlInvalid": {
+    "message": "Enter a valid HTTPS URL"
+  },
+  "$1screens.Onboarding.CreateOrganization.archiveUrlLabel": {
+    "message": "Remote archive URL"
+  },
+  "$1screens.Onboarding.CreateOrganization.archiveUrlPlaceholder": {
+    "message": "https://…"
+  },
   "$1screens.Onboarding.CreateOrganization.creating": {
     "message": "Creating Territory…"
   },
@@ -693,9 +702,6 @@
   "$1screens.OrganizationSetup.createdTitle": {
     "message": "Territory created"
   },
-  "$1screens.OrganizationSetup.emptyName": {
-    "message": "Enter the Territory name."
-  },
   "$1screens.OrganizationSetup.failureBody": {
     "message": "What was already prepared is saved. Try again to finish."
   },
@@ -716,12 +722,6 @@
   },
   "$1screens.OrganizationSetup.nameNotIdentity": {
     "message": "Using the same name as another Territory does not connect the devices. To join an existing Territory, wait for an invitation."
-  },
-  "$1screens.OrganizationSetup.noOrganizationBody": {
-    "message": "Your device is not yet part of a Territory"
-  },
-  "$1screens.OrganizationSetup.noOrganizationGuidance": {
-    "message": "Create a Territory or wait for an invitation to join an existing one."
   },
   "$1screens.OrganizationSetup.openOrganizationButton": {
     "message": "Open territory"
@@ -754,6 +754,15 @@
   "$1screens.OrganizationSetup.retryPreparationButton": {
     "message": "Try again"
   },
+  "$1screens.OrganizationSetup.roleCoordinatorButton": {
+    "message": "Yes, I am a coordinator"
+  },
+  "$1screens.OrganizationSetup.roleParticipantButton": {
+    "message": "No, I am a participant"
+  },
+  "$1screens.OrganizationSetup.roleQuestion": {
+    "message": "Are you a coordinator?"
+  },
   "$1screens.OrganizationSetup.syncRestartRequired": {
     "message": "Sync needs to be started again.",
     "description": "A failed switch after the sync commands were already stopped (SPEC A §5.2:167, “A sincronização precisa ser iniciada novamente.”)"
@@ -764,9 +773,6 @@
   },
   "$1screens.OrganizationSetup.waitInviteBody": {
     "message": "Ask a person responsible for the Territory to invite this device."
-  },
-  "$1screens.OrganizationSetup.waitInviteButton": {
-    "message": "Wait for an invitation"
   },
   "$1screens.OrganizationSetup.waitInviteTitle": {
     "message": "Wait for an invitation"
