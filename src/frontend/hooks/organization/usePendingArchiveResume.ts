@@ -114,6 +114,17 @@ export function usePendingArchiveResume() {
     // Negative ticks never happen; reading the counters is what makes the
     // delayed retry and the wake-up re-run this cleanup after time passes.
     if (retryTick < 0 || tick < 0) return;
+    // A hydration failure exposes an EMPTY document while the persisted one
+    // still exists (SPEC A §5.3): an absent id here proves nothing about the
+    // target leaving. Discarding would destroy the URL of a territory that is
+    // merely unreadable this boot, so nothing is removed (or retargeted) —
+    // the next cycle, after a successful rehydration, decides again. The
+    // retry timer keeps a wake-up scheduled even when only the store's own
+    // change could otherwise advance this effect.
+    if (estado.hidratacaoFalhou) {
+      if (pendingArchives.length > 0) agendarRetentativa();
+      return;
+    }
     const agora = Date.now();
     const emPreparo = organizacaoEmPreparo(estado);
     for (const intent of pendingArchives) {
@@ -196,6 +207,10 @@ export function usePendingArchiveResume() {
     // delayed retry re-run this attempt after a failed mark write and the
     // wake-up re-evaluate once the 60 s stale window has passed.
     if (retryTick < 0 || tick < 0) return;
+    // While hydration failed, `organizacoes` is the empty fallback: no target
+    // can be matched and guessing one is forbidden (P1-A). Leave every intent
+    // untouched and wait for the rehydration to publish the real document.
+    if (estado.hidratacaoFalhou) return;
     if (busy) return;
     if (emAndamentoRef.current !== null) return;
 

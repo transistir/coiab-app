@@ -928,6 +928,61 @@ describe('OrganizationProvisioning', () => {
       ).toBeNull();
     });
 
+    test('a hydration failure preserves a pinned intent instead of reading the empty list as removal (P1)', async () => {
+      seedIntent();
+      // A failed rehydration exposes an EMPTY document while the persisted
+      // one still exists (SPEC A §5.3): the pinned target is not "gone".
+      store.instance.setState({hidratacaoFalhou: true});
+      expect(store.instance.getState()).toMatchObject({
+        organizacoes: [],
+        hidratacaoFalhou: true,
+      });
+
+      const {rerender} = await renderScreen(false);
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      // Neither discard nor apply: the URL still has a target on disk.
+      expect(archiveStart).not.toHaveBeenCalled();
+      expect(
+        profileStore.instance
+          .getState()
+          .pendingArchives.find(intent => intent.id === 'intent-1'),
+      ).toMatchObject({organizationId: 'org-1'});
+
+      // Rehydration succeeds (a fresh store carries the persisted document):
+      // once the id is visible again, the SAME pinned intent is applied.
+      const reidratado = createCoiabOrganizationsStore();
+      reidratado.instance.setState(
+        {
+          ...documento([
+            organizacao({
+              estado: 'falha_recuperavel',
+              materializacao: PAR_PRONTA,
+            }),
+          ]),
+          hidratacaoFalhou: false,
+        },
+        true,
+      );
+      store = reidratado;
+      rerender(<ProvisioningHarness showScreen={false} />);
+
+      await waitFor(() => {
+        expect(archiveStart).toHaveBeenCalledWith({
+          slots: {m: 'proj-m-1', a: 'proj-a-1'},
+          baseUrl: 'https://exemplo.org/',
+        });
+      });
+      await waitFor(() => {
+        expect(profileStore.instance.getState().pendingArchives).toStrictEqual(
+          [],
+        );
+      });
+      expect(archiveStart).toHaveBeenCalledTimes(1);
+    });
+
     test('a completion removes only its own intent (A in flight, B created later) (P1-B)', async () => {
       let releaseA: (value: {error?: unknown}) => void = () => {};
       archiveStart.mockImplementationOnce(
