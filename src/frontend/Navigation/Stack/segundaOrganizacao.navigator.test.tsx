@@ -297,7 +297,8 @@ describe('segunda organização (navigator real)', () => {
   });
 
   const SEGUNDA_ID = 'fedcba9876543210';
-  const SEGUNDA_NOME = 'Organização B';
+  // #129: the name now comes from the predefined territory selector.
+  const SEGUNDA_NOME = 'Kaxuyana-Tunayana';
 
   async function habilitarEarlyAccessEAbrirMenu() {
     await act(async () => {
@@ -344,9 +345,10 @@ describe('segunda organização (navigator real)', () => {
       {timeout: 15_000},
     );
     await fireEvent.press(screen.getByTestId('ORG.create-intro-continue-btn'));
+    await fireEvent.press(screen.getByTestId('ORG.create-name-option-4999'));
     await fireEvent.changeText(
-      screen.getByTestId('ORG.create-name-inp'),
-      SEGUNDA_NOME,
+      screen.getByTestId('ORG.create-archive-url-inp'),
+      'https://exemplo.org/',
     );
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
@@ -662,7 +664,7 @@ describe('segunda organização (navigator real)', () => {
       await screen.findByTestId('ORG.provisioning-retry-preparation-btn'),
     ).toBeOnTheScreen();
     expect(
-      screen.queryByTestId('ORG.create-name-inp', {
+      screen.queryByTestId('ORG.create-name-select', {
         includeHiddenElements: true,
       }),
     ).not.toBeOnTheScreen();

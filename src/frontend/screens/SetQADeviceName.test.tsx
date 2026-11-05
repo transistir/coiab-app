@@ -140,6 +140,8 @@ describe('On QA Device require existence of a QA Device name', () => {
     await waitFor(() => {
       expect(screen.queryByText('Set QA Device Name')).not.toBeOnTheScreen();
     });
-    expect(screen.getByTestId('ONBOARDING.create-org-btn')).toBeOnTheScreen();
+    expect(
+      screen.getByTestId('ONBOARDING.role-coordinator-btn'),
+    ).toBeOnTheScreen();
   });
 });

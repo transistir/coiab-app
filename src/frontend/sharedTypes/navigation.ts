@@ -201,7 +201,10 @@ export type RootStackParamsList = {
   ConfirmDeleteTrackBottomSheet: {trackId: string};
   // Shared with the onboarding screen set (registered in a RootStack.Group
   // outside the onboarding/app conditional) — routable from both.
-  OrganizationProvisioning: undefined;
+  // #129/P1-A: `intentId` scopes the pending remote-archive pin to the intent
+  // created by the navigation that reaches this screen. Optional: every other
+  // entry point (invites, removal recovery, startup routing) has no intent.
+  OrganizationProvisioning: {intentId?: string} | undefined;
   // SPEC A §6.1 — the organization selector modal, opened from the drawer's
   // "Trocar de organização" entry (the entry itself is wired separately).
   Organizations: undefined;
@@ -219,7 +222,7 @@ export type OnboardingParamsList = {
   VillageEntry: undefined;
   CreateOrganization: undefined;
   JoinOrganizationIntro: undefined;
-  OrganizationProvisioning: undefined;
+  OrganizationProvisioning: {intentId?: string} | undefined;
   ErrorBottomSheet: {error: Error};
 };
 

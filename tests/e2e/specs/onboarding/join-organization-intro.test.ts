@@ -15,8 +15,10 @@ describe('Onboarding - Join Organization Intro Screen', () => {
     // next pending step.
     await completeEthnicProfileIfNeeded();
 
-    const joinOrgButton = await $(byResourceId('ONBOARDING.join-org-btn'));
-    await joinOrgButton.click();
+    const participantButton = await $(
+      byResourceId('ONBOARDING.role-participant-btn'),
+    );
+    await participantButton.click();
 
     const title = await $(byTextMatches('Wait for an invitation'));
     await expect(title).toBeDisplayed();

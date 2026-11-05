@@ -396,12 +396,13 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
   test('a delayed project refresh holds the confirmation up without offering creation again', async () => {
     await freshSetup.renderNavigationAsync();
     await fireEvent.press(
-      await screen.findByTestId('ONBOARDING.create-org-btn'),
+      await screen.findByTestId('ONBOARDING.role-coordinator-btn'),
     );
     await fireEvent.press(screen.getByTestId('ORG.create-intro-continue-btn'));
+    await fireEvent.press(screen.getByTestId('ORG.create-name-option-4999'));
     await fireEvent.changeText(
-      screen.getByTestId('ORG.create-name-inp'),
-      'New Org',
+      screen.getByTestId('ORG.create-archive-url-inp'),
+      'https://exemplo.org/',
     );
 
     const listProjects = freshSetup.manager.listProjects.bind(
@@ -451,7 +452,11 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       // aria-hidden underneath, so "not re-offered" is asserted on the
       // create form's own button and on the route stack, not on the
       // fork's copy.)
-      expect(screen.getByTestId('ORG.create-name-inp')).toBeOnTheScreen();
+      expect(
+        screen.getByTestId('ORG.create-name-select', {
+          includeHiddenElements: true,
+        }),
+      ).toBeOnTheScreen();
       expect(screen.getByText('Creating Territory…')).toBeOnTheScreen();
       expect(screen.queryByTestId('ORG.create-btn')).not.toBeOnTheScreen();
       // "Nothing bounced to Home" covers the whole Home screen — under the
@@ -483,7 +488,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       });
       expect(screen.getByTestId('ENTRONCAMENTO.scrn')).toBeOnTheScreen();
       expect(
-        screen.queryByTestId('ONBOARDING.create-org-btn'),
+        screen.queryByTestId('ONBOARDING.role-coordinator-btn'),
       ).not.toBeOnTheScreen();
       expect(screen.queryByTestId('ORG.create-btn')).not.toBeOnTheScreen();
       expect(await listProjects()).toHaveLength(2);
@@ -500,7 +505,12 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     });
     await freshSetup.renderNavigationAsync({activeProjectId: legacyProjectId});
 
-    expect(await screen.findByText('Wait for an invitation')).toBeOnTheScreen();
+    expect(
+      await screen.findByTestId('ONBOARDING.role-coordinator-btn'),
+    ).toBeOnTheScreen();
+    expect(
+      screen.getByTestId('ONBOARDING.role-participant-btn'),
+    ).toBeOnTheScreen();
     expect(screen.getByText('test is ready!')).toBeOnTheScreen();
   });
 
@@ -511,7 +521,9 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     // dados marcados ficam preservados (plan Q7), porém não são
     // reconhecidos como organização.
     await orgSetup.renderNavigation();
-    expect(await screen.findByText('Wait for an invitation')).toBeOnTheScreen();
+    expect(
+      await screen.findByTestId('ONBOARDING.role-coordinator-btn'),
+    ).toBeOnTheScreen();
     expect(screen.getByText('test is ready!')).toBeOnTheScreen();
     expect(screen.queryByTestId('MAIN.map-screen')).not.toBeOnTheScreen();
     // #118 ciclo 5 (caso negativo): sem organização salva a janela de
@@ -742,12 +754,13 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
   test('e2e: criar → confirmação → Abrir organização → Home com o nome da organização (SPEC B §3.3)', async () => {
     await freshSetup.renderNavigationAsync();
     await fireEvent.press(
-      await screen.findByTestId('ONBOARDING.create-org-btn'),
+      await screen.findByTestId('ONBOARDING.role-coordinator-btn'),
     );
     await fireEvent.press(screen.getByTestId('ORG.create-intro-continue-btn'));
+    await fireEvent.press(screen.getByTestId('ORG.create-name-option-4999'));
     await fireEvent.changeText(
-      screen.getByTestId('ORG.create-name-inp'),
-      '  Minha Org  ',
+      screen.getByTestId('ORG.create-archive-url-inp'),
+      'https://exemplo.org/',
     );
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
@@ -779,7 +792,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     // organização — com espaços das bordas removidos no save.
     expect(
       await screen.findByTestId('MENU.greeting-project'),
-    ).toHaveTextContent('Minha Org');
+    ).toHaveTextContent('Kaxuyana-Tunayana');
     // A prova de que o PROJETO ATIVO do app trocou (SPEC A §4.2 regra 5) é o
     // título do header da aba Map: `HOME.header-title` vem de
     // `useOrganizacaoAtiva`, que só nomeia a organização enquanto a seleção
@@ -790,7 +803,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     );
     expect(
       await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
-    ).toHaveTextContent('Minha Org');
+    ).toHaveTextContent('Kaxuyana-Tunayana');
     // A escrita única do toque gravou reconhecimento e seleção juntos.
     const raw = documentoPersistido();
     const organizacaoCriada = raw.organizacoes[0];
@@ -806,12 +819,13 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
   test('reinício antes do toque reapresenta a confirmação e mantém ativa nula (CA10)', async () => {
     const desmontar = await freshSetup.renderNavigationAsync();
     await fireEvent.press(
-      await screen.findByTestId('ONBOARDING.create-org-btn'),
+      await screen.findByTestId('ONBOARDING.role-coordinator-btn'),
     );
     await fireEvent.press(screen.getByTestId('ORG.create-intro-continue-btn'));
+    await fireEvent.press(screen.getByTestId('ORG.create-name-option-4999'));
     await fireEvent.changeText(
-      screen.getByTestId('ORG.create-name-inp'),
-      'Minha Org',
+      screen.getByTestId('ORG.create-archive-url-inp'),
+      'https://exemplo.org/',
     );
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
     // Aguarda a publicação pronta SEM tocar em Abrir organização. Espera de

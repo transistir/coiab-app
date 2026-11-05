@@ -13,35 +13,26 @@ import {BodyText} from '../../sharedComponents/Text/BodyText';
 import {PrimaryButton, SecondaryButton} from '../../sharedComponents/Buttons';
 import {WHITE, DARK_GREEN, COMAPEO_BLUE} from '../../lib/styles';
 import {useOwnDeviceInfo} from '@comapeo/core-react';
+import {useUserProfileActions} from '../../contexts/UserProfileStoreContext';
 
 const m = defineMessages({
   deviceReady: {
     id: '$1screens.DeviceNaming.Success.deviceReady',
     defaultMessage: '{deviceName} is ready!',
   },
-  // SPEC B :99-100: the decision descriptors are NEW (the old DeviceNaming
-  // Success ids inverted the hierarchy or changed meaning) and live under
-  // the OrganizationSetup namespace — the state this screen forwards to.
-  noOrganizationBody: {
-    id: '$1screens.OrganizationSetup.noOrganizationBody',
-    // SPEC A :142 (§4.4 glossary).
-    defaultMessage: 'Your device is not yet part of a Territory',
+  // #129: the onboarding fork after the profile steps is the coordinator
+  // question — creating a Territory is no longer offered directly.
+  roleQuestion: {
+    id: '$1screens.OrganizationSetup.roleQuestion',
+    defaultMessage: 'Are you a coordinator?',
   },
-  noOrganizationGuidance: {
-    id: '$1screens.OrganizationSetup.noOrganizationGuidance',
-    // SPEC B :53.
-    defaultMessage:
-      'Create a Territory or wait for an invitation to join an existing one.',
+  roleCoordinatorButton: {
+    id: '$1screens.OrganizationSetup.roleCoordinatorButton',
+    defaultMessage: 'Yes, I am a coordinator',
   },
-  createOrganization: {
-    id: '$1screens.OrganizationSetup.createOrganization',
-    // SPEC B :53 — the PRIMARY action, not the legacy join-first order.
-    defaultMessage: 'Create Territory',
-  },
-  waitInviteButton: {
-    id: '$1screens.OrganizationSetup.waitInviteButton',
-    // SPEC B :53 — the SECONDARY action.
-    defaultMessage: 'Wait for an invitation',
+  roleParticipantButton: {
+    id: '$1screens.OrganizationSetup.roleParticipantButton',
+    defaultMessage: 'No, I am a participant',
   },
 });
 export const Success = ({
@@ -49,6 +40,7 @@ export const Success = ({
 }: NativeStackScreenProps<OnboardingParamsList, 'Success'>) => {
   const {formatMessage: t} = useIntl();
   const {data: deviceInfo} = useOwnDeviceInfo();
+  const {setCoordinationRole} = useUserProfileActions();
   const deviceName = deviceInfo.name || '';
 
   return (
@@ -66,18 +58,15 @@ export const Success = ({
               {t(m.deviceReady, {deviceName})}
             </HeaderText>
           </View>
-          <BodyText style={styles.bodyText}>{t(m.noOrganizationBody)}</BodyText>
-          <BodyText style={styles.bodyText}>
-            {t(m.noOrganizationGuidance)}
-          </BodyText>
+          <BodyText style={styles.bodyText}>{t(m.roleQuestion)}</BodyText>
         </View>
       </View>
 
       <View style={styles.actions}>
         <PrimaryButton
-          testID="ONBOARDING.create-org-btn"
+          testID="ONBOARDING.role-coordinator-btn"
           fullSize
-          text={t(m.createOrganization)}
+          text={t(m.roleCoordinatorButton)}
           iconPosition="left"
           renderIcon={({size, color}) => (
             <ProjectCoordinatorIcon
@@ -88,13 +77,14 @@ export const Success = ({
             />
           )}
           onPress={() => {
+            setCoordinationRole('coordinator');
             navigation.navigate('CreateOrganization');
           }}
         />
         <SecondaryButton
-          testID="ONBOARDING.join-org-btn"
+          testID="ONBOARDING.role-participant-btn"
           fullSize
-          text={t(m.waitInviteButton)}
+          text={t(m.roleParticipantButton)}
           iconPosition="left"
           renderIcon={({size}) => (
             <ProjectParticipantIcon
@@ -105,6 +95,7 @@ export const Success = ({
             />
           )}
           onPress={() => {
+            setCoordinationRole('participant');
             navigation.navigate('JoinOrganizationIntro');
           }}
         />
