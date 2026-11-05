@@ -144,6 +144,23 @@ export const SettingsHome: Story = {
   },
 };
 
+/**
+ * The Settings home screen for a coordinator: the profile role reveals the
+ * "Criar território" row migrated out of the Menu.
+ */
+export const SettingsHomeCoordinator: Story = {
+  name: '01b Settings Home Coordinator',
+  parameters: {
+    flow: {
+      state: {
+        ...onboardedNoDraft,
+        coordinationRole: 'coordinator' as const,
+      },
+      initialState: settingsState,
+    },
+  },
+};
+
 /** The device name display screen, reached from the Settings home row. */
 export const DeviceNameDisplay: Story = {
   name: '02 Device Name Display',

@@ -21,6 +21,7 @@ import HeartCheckIcon from '../../images/HeartCheck.svg';
 import AngleRulerIcon from '../../images/AngleRuler.svg';
 import {isQABuild} from '../../lib/appVariant';
 import {useQADeviceName} from '../../contexts/QADeviceNameStoreContext';
+import {useUserProfileState} from '../../contexts/UserProfileStoreContext';
 
 const m = defineMessages({
   title: {
@@ -139,6 +140,11 @@ const m = defineMessages({
     defaultMessage: 'Your Team',
     description: 'Migrated menu entry: your team',
   },
+  criarOrganizacao: {
+    id: '$1Navigation.Menu.criarOrganizacao',
+    defaultMessage: 'Criar território',
+    description: 'Menu list entry that opens the organization creation flow',
+  },
 });
 
 export const AppSettings: NativeNavigationComponent<'AppSettings'> = ({
@@ -170,6 +176,7 @@ export const AppSettings: NativeNavigationComponent<'AppSettings'> = ({
   // Maps segue sem restrição de papel.
   const {projectId} = useActiveProject();
   const {role} = useProjectRoleAndDetails(projectId);
+  const {coordinationRole} = useUserProfileState();
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -202,6 +209,23 @@ export const AppSettings: NativeNavigationComponent<'AppSettings'> = ({
               size={24}
               color={NEW_DARK_GREY}
             />
+          }
+          EndContent={
+            <MaterialIcon
+              name="chevron-right"
+              size={20}
+              color={NEW_DARK_GREY}
+            />
+          }
+        />
+      )}
+      {coordinationRole === 'coordinator' && (
+        <SettingsRow
+          testID="settingsCreateOrganizationButton"
+          onPress={() => navigation.navigate('CreateOrganization')}
+          label={formatMessage(m.criarOrganizacao)}
+          Icon={
+            <MaterialIcon name="business" size={24} color={NEW_DARK_GREY} />
           }
           EndContent={
             <MaterialIcon

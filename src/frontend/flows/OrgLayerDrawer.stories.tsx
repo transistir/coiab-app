@@ -55,11 +55,11 @@ export const SwitchOrganizationEntry: Story = {
 };
 
 /**
- * The menu page over a single ready organization: no selector entry, but
- * the create entry exists — the way to a second organization.
+ * The menu page over a single ready organization: no selector entry, and no
+ * create entry either — creation now lives in Configurações.
  */
-export const CreateOrganizationEntry: Story = {
-  name: '02 Create Organization Entry',
+export const SingleOrganizationMenu: Story = {
+  name: '02 Single Organization Menu',
   parameters: {
     flow: {state: FLOW_STATES.oneOrganizationEarlyAccess},
   },

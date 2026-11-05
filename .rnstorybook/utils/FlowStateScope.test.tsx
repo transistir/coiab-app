@@ -97,7 +97,7 @@ import {
   SecondOrganizationProvisioning,
 } from '../../src/frontend/flows/OrgLayer.stories';
 import OrgLayerDrawerMeta, {
-  CreateOrganizationEntry,
+  SingleOrganizationMenu,
   SwitchOrganizationEntry,
 } from '../../src/frontend/flows/OrgLayerDrawer.stories';
 import {withFlowState} from '../decorators/withFlowState';
@@ -166,7 +166,7 @@ function SecondOrganizationProvisioningStory() {
 }
 
 const DRAWER_STORY_ID = 'flows-orglayerdrawer--switch-organization-entry';
-const CREATE_ENTRY_STORY_ID = 'flows-orglayerdrawer--create-organization-entry';
+const SINGLE_ORG_STORY_ID = 'flows-orglayerdrawer--single-organization-menu';
 
 /**
  * `Flows/OrgLayerDrawer` declares `[withFlowState, withNavigation]`; Storybook
@@ -352,21 +352,24 @@ describe('organization stories (FlowStateScope)', () => {
     expectPersistedOrganizations();
   }, 60_000);
 
-  test('the drawer create row: one ready organization offers the create entry, not the selector', async () => {
+  test('the drawer single-organization row: no create entry and no selector', async () => {
     await renderStory(
-      drawerStory(CreateOrganizationEntry.parameters, CREATE_ENTRY_STORY_ID),
+      drawerStory(SingleOrganizationMenu.parameters, SINGLE_ORG_STORY_ID),
     );
 
     expect(
       await screen.findByTestId(
-        'MENU.criar-organizacao',
+        'MENU.main-action-button',
         {},
         {timeout: 30_000},
       ),
     ).toBeOnTheScreen();
     expect(
-      screen.getByTestId(`STORYBOOK.flow-ready.${CREATE_ENTRY_STORY_ID}`),
+      screen.getByTestId(`STORYBOOK.flow-ready.${SINGLE_ORG_STORY_ID}`),
     ).toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('MENU.criar-organizacao'),
+    ).not.toBeOnTheScreen();
     expect(
       screen.queryByTestId('MENU.trocar-organizacao'),
     ).not.toBeOnTheScreen();

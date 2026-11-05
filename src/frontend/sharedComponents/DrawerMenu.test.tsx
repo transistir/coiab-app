@@ -409,46 +409,20 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     expect(mockNavigation.navigate).toHaveBeenCalledWith('Organizations');
   });
 
-  test('acesso antecipado ligado, organização operável: a entrada de criar existe', async () => {
-    await renderDrawer(true, {earlyAccess: true});
+  test('coordenador não vê mais a entrada de criar território no menu', async () => {
+    await renderDrawer(true, {
+      coordinationRole: 'coordinator',
+      earlyAccess: true,
+    });
 
-    expect(
-      await screen.findByTestId('MENU.criar-organizacao'),
-    ).toBeOnTheScreen();
-  });
-
-  test('acesso antecipado desligado, organização operável: a entrada de criar existe', async () => {
-    // A única condição da entrada de criar é haver organização operável.
-    await renderDrawer(true);
-
-    expect(
-      await screen.findByTestId('MENU.criar-organizacao'),
-    ).toBeOnTheScreen();
-    expect(screen.getByText('Criar território')).toBeOnTheScreen();
-  });
-
-  test('acesso antecipado desligado, uma única organização operável: criar existe e troca não', async () => {
-    // Uma organização não precisa de seletor, mas ainda pode criar outra.
-    await renderDrawer(true, {organizacoes: [readyOrganization('A')]});
-
-    expect(
-      await screen.findByTestId('MENU.criar-organizacao'),
-    ).toBeOnTheScreen();
-    expect(
-      screen.queryByTestId('MENU.trocar-organizacao'),
-    ).not.toBeOnTheScreen();
-  });
-
-  test('acesso antecipado ligado, sem organização operável: criar não existe', async () => {
-    await renderDrawer(false, {earlyAccess: true});
-
-    await screen.findByTestId('MENU.main-action-button');
+    await screen.findByTestId('MENU.area-monitoramento');
     expect(
       screen.queryByTestId('MENU.criar-organizacao'),
     ).not.toBeOnTheScreen();
+    expect(screen.queryByText('Criar território')).not.toBeOnTheScreen();
   });
 
-  test('participante (papel do perfil) não vê a entrada de criar território', async () => {
+  test('participante não vê a entrada de criar território no menu', async () => {
     await renderDrawer(true, {coordinationRole: 'participant'});
 
     await screen.findByTestId('MENU.area-monitoramento');
@@ -460,21 +434,45 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     expect(screen.getByTestId('MENU.main-action-button')).toBeOnTheScreen();
   });
 
-  test('coordenador (papel do perfil) vê a entrada de criar território', async () => {
-    await renderDrawer(true, {coordinationRole: 'coordinator'});
+  test('papel de coordenação indefinido não vê a entrada de criar território', async () => {
+    await renderDrawer(true);
 
+    await screen.findByTestId('MENU.area-monitoramento');
     expect(
-      await screen.findByTestId('MENU.criar-organizacao'),
-    ).toBeOnTheScreen();
+      screen.queryByTestId('MENU.criar-organizacao'),
+    ).not.toBeOnTheScreen();
   });
 
-  test('toque em criar: fecha o menu e abre CreateOrganization', async () => {
+  test('acesso antecipado ligado: a entrada de criar não existe', async () => {
     await renderDrawer(true, {earlyAccess: true});
 
-    await fireEvent.press(await screen.findByTestId('MENU.criar-organizacao'));
+    await screen.findByTestId('MENU.area-monitoramento');
+    expect(
+      screen.queryByTestId('MENU.criar-organizacao'),
+    ).not.toBeOnTheScreen();
+  });
 
-    expect(closeMenu).toHaveBeenCalledTimes(1);
-    expect(mockNavigation.navigate).toHaveBeenCalledWith('CreateOrganization');
+  test('uma única organização operável: criar e troca ausentes', async () => {
+    // A criação migrou para Configurações; uma organização não precisa de
+    // seletor.
+    await renderDrawer(true, {organizacoes: [readyOrganization('A')]});
+
+    await screen.findByTestId('MENU.area-monitoramento');
+    expect(
+      screen.queryByTestId('MENU.criar-organizacao'),
+    ).not.toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('MENU.trocar-organizacao'),
+    ).not.toBeOnTheScreen();
+  });
+
+  test('sem organização operável: criar não existe', async () => {
+    await renderDrawer(false, {earlyAccess: true});
+
+    await screen.findByTestId('MENU.main-action-button');
+    expect(
+      screen.queryByTestId('MENU.criar-organizacao'),
+    ).not.toBeOnTheScreen();
   });
 
   test('não-regressão com a entrada de troca: áreas, nome e proibidas ausentes', async () => {
@@ -564,7 +562,9 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     expect(screen.queryByTestId('MENU.convidar')).not.toBeOnTheScreen();
     // Predicados/testIDs preservados para participant também.
     expect(screen.getByTestId('MENU.trocar-organizacao')).toBeOnTheScreen();
-    expect(screen.getByTestId('MENU.criar-organizacao')).toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('MENU.criar-organizacao'),
+    ).not.toBeOnTheScreen();
   });
 
   test('entradas de organização em branco sobre o fundo escuro (remodelagem)', async () => {
@@ -580,7 +580,7 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     });
     await renderDrawer(true, {earlyAccess: true});
 
-    for (const texto of ['Trocar de território', 'Criar território']) {
+    for (const texto of ['Trocar de território']) {
       expect(screen.getByText(texto).props.style).toEqual(
         expect.arrayContaining([expect.objectContaining({color: WHITE})]),
       );

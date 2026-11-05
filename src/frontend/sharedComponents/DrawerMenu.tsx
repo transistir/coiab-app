@@ -34,7 +34,6 @@ import {useEarlyAccessState} from '../contexts/EarlyAccessContext';
 import {useCoiabOrganizationsState} from '../contexts/CoiabOrganizationsStoreContext';
 import {derivarProjectIdAtivo} from '../lib/organization/coiabOrganizations';
 import {OrganizationAreaAccesses} from './OrganizationAreaAccesses.tsx';
-import {useUserProfileState} from '../contexts/UserProfileStoreContext';
 
 const m = defineMessages({
   greeting: {
@@ -64,11 +63,6 @@ const m = defineMessages({
     id: '$1Navigation.Menu.convidarSubtitle',
     defaultMessage: 'Adicionar pessoas',
     description: 'Subtitle of the invite menu entry',
-  },
-  criarOrganizacao: {
-    id: '$1Navigation.Menu.criarOrganizacao',
-    defaultMessage: 'Criar território',
-    description: 'Menu list entry that opens the organization creation flow',
   },
   exchange: {
     id: '$1Navigation.Menu.exchange',
@@ -132,9 +126,10 @@ function MenuListItem({
  * "Olá, Parente" + nome do projeto corrente, os DOIS cards clicáveis de
  * área (Monitoramento Territorial e Alertas — Cadeias Produtivas e Censo
  * Demográfico ficam para fases seguintes, decisão do dono do produto) e a
- * lista: Trocar de organização (≥2 organizações), Convidar (somente
- * coordinator) e Criar organização (organização operável). Early access
- * não condiciona mais essas entradas. As 5 entradas legadas do CoMapeo
+ * lista: Trocar de território (≥2 organizações) e Convidar (somente
+ * coordinator). A criação de território migrou para Configurações
+ * (AppSettings), visível apenas para coordenador. Early access não
+ * condiciona mais essas entradas. As 5 entradas legadas do CoMapeo
  * (Team, Coordinator Tools, Gather Observations, Background Map,
  * AppSettings) migraram: Background Maps/Project Settings/Your Team agora
  * vivem em AppSettings (ComapeoSettings). O botão Exchange permanece no
@@ -147,11 +142,6 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
   const {projectId} = useActiveProject();
   const {role, projectHeader} = useProjectRoleAndDetails(projectId);
   const estadoOrganizacoes = useCoiabOrganizationsState();
-  // P1-1: only coordinators may create a territory. The entry is absent for
-  // participants (no disabled control), mirroring the create screen's own
-  // redirect guard.
-  const {coordinationRole} = useUserProfileState();
-  const podeCriar = coordinationRole !== 'participant';
   // SEM organização operável (solo/sem doc): os cards não existem — a
   // página mostra saudação + lista (paridade com o comportamento anterior
   // que retornava null).
@@ -247,22 +237,6 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
               subtitulo={m.convidarSubtitle}
               icone="person-add"
               accessibilityLabel="Invite people to the territory."
-            />
-          )}
-          {/* Same owner decision (f12641db): the create entry is part of
-              the normal app and early access gates it no longer. It exists
-              whenever there is an operating organization; without one it
-              does not exist (no hidden or disabled control). */}
-          {!semOrganizacaoOperavel && podeCriar && (
-            <MenuListItem
-              testID="MENU.criar-organizacao"
-              onPress={() => {
-                closeMenu();
-                navigation.navigate('CreateOrganization');
-              }}
-              titulo={m.criarOrganizacao}
-              icone="business"
-              accessibilityLabel="Open the territory creation flow."
             />
           )}
         </View>
