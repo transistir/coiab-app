@@ -86,12 +86,15 @@ describe('Onboarding Screens', () => {
   test('should show the org fork, receive the organization invite bundle, and accept it', async () => {
     const user = userEvent.setup();
     await inviteeSetup.renderNavigationAsync();
-    // SPEC E6: the Success fork is organization-first — the waiting state
-    // (Aguardar convite) is what joining looks like until an invite bundle
-    // arrives.
-    const waitInviteButton = await screen.findByText('Wait for an invitation');
-    expect(waitInviteButton).toBeVisible();
-    await user.press(waitInviteButton);
+    // SPEC E6: the Success fork is the coordinator question — the participant
+    // answer is what leads to the waiting state (Aguardar convite), which is
+    // what joining looks like until an invite bundle arrives.
+    const participantButton = await screen.findByTestId(
+      'ONBOARDING.role-participant-btn',
+    );
+    expect(participantButton).toBeVisible();
+    await user.press(participantButton);
+    expect(await screen.findByText('Wait for an invitation')).toBeVisible();
     expect(
       await screen.findByText(
         'Ask a person responsible for the Territory to invite this device.',
