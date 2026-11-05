@@ -219,7 +219,12 @@ export const AppSettings: NativeNavigationComponent<'AppSettings'> = ({
           }
         />
       )}
-      {coordinationRole === 'coordinator' && (
+      {/* Perfis gravados antes da #129 (v2–v5) hidratam `coordinationRole`
+          como `null` ("não respondido"). Exigir `'coordinator'` esconderia a
+          entrada de um coordenador legado — e o menu não tem mais a ação.
+          Por isso o critério é o mesmo da tela de criação: só participante
+          fica de fora (`CreateOrganization` redireciona `'participant'`). */}
+      {coordinationRole !== 'participant' && (
         <SettingsRow
           testID="settingsCreateOrganizationButton"
           onPress={() => navigation.navigate('CreateOrganization')}

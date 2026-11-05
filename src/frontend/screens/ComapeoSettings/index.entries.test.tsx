@@ -110,7 +110,10 @@ describe('AppSettings — migração dos acessos removidos do Menu (Entroncament
     ).toBeOnTheScreen();
   });
 
-  test('papel de coordenação indefinido: Criar território ausente', async () => {
+  // #131: perfis v2–v5 hidratam `coordinationRole: null` ("não respondido").
+  // Esconder a entrada nesse caso tiraria o único caminho de criação de
+  // território de um coordenador legado — o menu não tem mais a ação.
+  test('papel de coordenação não respondido (perfil legado): Criar território presente', async () => {
     mockCoordinationRole(null);
     await render(
       <IntlProvider locale="en" messages={{}}>
@@ -122,8 +125,24 @@ describe('AppSettings — migração dos acessos removidos do Menu (Entroncament
     );
 
     expect(
-      screen.queryByTestId('settingsCreateOrganizationButton'),
-    ).not.toBeOnTheScreen();
+      screen.getByTestId('settingsCreateOrganizationButton'),
+    ).toBeOnTheScreen();
+  });
+
+  test('coordenador: Criar território presente', async () => {
+    mockCoordinationRole('coordinator');
+    await render(
+      <IntlProvider locale="en" messages={{}}>
+        <AppSettings
+          navigation={mockNavigation as never}
+          route={mockRoute as never}
+        />
+      </IntlProvider>,
+    );
+
+    expect(
+      screen.getByTestId('settingsCreateOrganizationButton'),
+    ).toBeOnTheScreen();
   });
 
   test('solo: YourTeam ausente (sem equipe); BackgroundMaps sem restrição', async () => {
