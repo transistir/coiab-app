@@ -101,6 +101,33 @@ jest.mock('../../hooks/organization/useAddRemoteArchiveToOrganization', () => ({
   useAddRemoteArchiveToOrganization: jest.fn(),
 }));
 
+// The hardware layer the cold-start fallback subscribes to: the entries are
+// recorded so a test can press Back the way the OS delivers it.
+jest.mock('react-native/Libraries/Utilities/BackHandler', () => {
+  const live: Array<{handler: () => boolean}> = [];
+  const addEventListener = jest.fn((_event: string, handler: () => boolean) => {
+    live.push({handler});
+    return {
+      remove: jest.fn(() => {
+        const index = live.findIndex(item => item.handler === handler);
+        if (index >= 0) live.splice(index, 1);
+      }),
+    };
+  });
+  return {
+    __esModule: true,
+    __live: live,
+    default: {exitApp: jest.fn(), addEventListener},
+  };
+});
+
+const backHandlerMock = jest.requireMock(
+  'react-native/Libraries/Utilities/BackHandler',
+) as {
+  __live: Array<{handler: () => boolean}>;
+  default: {addEventListener: jest.Mock};
+};
+
 const useArchiveMock = useAddRemoteArchiveToOrganization as jest.Mock;
 
 const projetar = jest.fn();
@@ -285,17 +312,18 @@ const ErrorStub = ({
   </>
 );
 
-async function renderScreen(
+async function renderTree(
   ProvisioningComponent: React.ComponentType<
     NativeStackScreenProps<AppStackParamsList, 'OrganizationProvisioning'>
-  > = ProvisioningStub,
+  >,
+  initialRouteName: 'Success' | 'CreateOrganization',
 ) {
   await render(
     <IntlProvider locale="pt-BR" messages={PT_MESSAGES}>
       <NavigationContainer ref={navigationRef}>
         <CoiabOrganizationsStoreProvider store={store}>
           <UserProfileStoreProvider store={profileStore}>
-            <Stack.Navigator initialRouteName="Success">
+            <Stack.Navigator initialRouteName={initialRouteName}>
               <Stack.Screen name="Success" component={SuccessStub} />
               <Stack.Screen
                 name="CreateOrganization"
@@ -323,6 +351,14 @@ async function renderScreen(
       </NavigationContainer>
     </IntlProvider>,
   );
+}
+
+async function renderScreen(
+  ProvisioningComponent: React.ComponentType<
+    NativeStackScreenProps<AppStackParamsList, 'OrganizationProvisioning'>
+  > = ProvisioningStub,
+) {
+  await renderTree(ProvisioningComponent, 'Success');
   // The native-stack navigator mounts asynchronously: wait for the initial
   // route to settle before dispatching, or the navigate becomes a no-op
   // ("navigation object hasn't been initialized").
@@ -330,6 +366,19 @@ async function renderScreen(
   await act(async () => {
     navigationRef.navigate('CreateOrganization');
   });
+}
+
+async function renderColdStartScreen() {
+  await renderTree(ProvisioningStub, 'CreateOrganization');
+  await screen.findByTestId('ORG.create-intro-continue-btn');
+}
+
+/** Delivers a hardware Back the way React Native walks the subscriptions. */
+function pressHardwareBack() {
+  for (const {handler} of [...backHandlerMock.__live].reverse()) {
+    if (handler()) return true;
+  }
+  return false;
 }
 
 // The SPEC B §3.1 journey: Continuar on the intro leads to the name step.
@@ -353,6 +402,7 @@ async function preencherUrl(url = 'https://exemplo.org/') {
 beforeEach(() => {
   jest.clearAllMocks();
   provisioningRouteParams.length = 0;
+  backHandlerMock.__live.length = 0;
   store = createCoiabOrganizationsStore();
   profileStore = createUserProfileStore();
   activationMock.__setActivation(activation);
@@ -396,6 +446,24 @@ describe('CreateOrganization', () => {
     expect(screen.getByTestId('ORG.create-name-select')).toBeOnTheScreen();
     expect(screen.getByTestId('ORG.create-archive-url-inp')).toBeOnTheScreen();
     expect(screen.getByTestId('ORG.create-btn')).toBeOnTheScreen();
+  });
+
+  test('on a cold start with no previous route, hardware Back opens the role question (P1)', async () => {
+    // The startup gate makes this the initial route for a coordinator, so
+    // the navigator's own Back handler cannot pop anything; the screen's
+    // fallback must land on the question (Success) instead of exiting.
+    await renderColdStartScreen();
+
+    expect(navigationRef.canGoBack()).toBe(false);
+
+    await act(async () => {
+      expect(pressHardwareBack()).toBe(true);
+    });
+
+    expect(await screen.findByText('SUCCESS-STUB')).toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('ORG.create-intro-continue-btn'),
+    ).not.toBeOnTheScreen();
   });
 
   test('a participant never sees the form and is sent to JoinOrganizationIntro (P1-1)', async () => {

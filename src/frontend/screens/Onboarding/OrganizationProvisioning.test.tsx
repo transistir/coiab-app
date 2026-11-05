@@ -740,15 +740,14 @@ describe('OrganizationProvisioning', () => {
         await Promise.resolve();
       });
 
+      // Never applied to the other (present) territory, and — since its own
+      // organization is gone — dropped instead of kept forever (P1-A).
       expect(archiveStart).not.toHaveBeenCalled();
-      expect(profileStore.instance.getState().pendingArchives).toHaveLength(1);
-      expect(profileStore.instance.getState().pendingArchives[0]).toMatchObject(
-        {
-          url: 'https://exemplo.org/',
-          organizationId: 'org-removida',
-          appliedFor: null,
-        },
-      );
+      await waitFor(() => {
+        expect(profileStore.instance.getState().pendingArchives).toStrictEqual(
+          [],
+        );
+      });
     });
 
     test('a failing add keeps the intent pending and the surface is never blocked', async () => {
@@ -852,6 +851,61 @@ describe('OrganizationProvisioning', () => {
       }
     });
 
+    test('a pinned intent whose organization left the document is removed (P1-A)', async () => {
+      // The pin survives in the profile but its target no longer exists:
+      // it can never be applied and must not be retargeted (P1-A).
+      seedIntent({id: 'intent-hook', organizationId: 'org-inexistente'});
+      seedDocument([]);
+
+      await renderScreen(false);
+
+      await waitFor(() => {
+        expect(profileStore.instance.getState().pendingArchives).toStrictEqual(
+          [],
+        );
+      });
+      expect(archiveStart).not.toHaveBeenCalled();
+    });
+
+    test('a pinned intent removal that throws is retried (P1-A)', async () => {
+      jest.useFakeTimers();
+      try {
+        seedIntent({id: 'intent-hook', organizationId: 'org-inexistente'});
+        seedDocument([]);
+        const removeReal = profileStore.actions.removePendingArchiveIntent;
+        let removeFails = true;
+        const remove = jest
+          .spyOn(profileStore.actions, 'removePendingArchiveIntent')
+          .mockImplementation((id: string) => {
+            if (removeFails) throw new Error('disk full');
+            removeReal(id);
+          });
+        try {
+          await renderScreen(false);
+          await act(async () => {
+            await Promise.resolve();
+          });
+          expect(remove).toHaveBeenCalledWith('intent-hook');
+          expect(profileStore.instance.getState().pendingArchives).toHaveLength(
+            1,
+          );
+
+          removeFails = false;
+          await act(async () => {
+            jest.advanceTimersByTime(1_000);
+          });
+          expect(
+            profileStore.instance.getState().pendingArchives,
+          ).toStrictEqual([]);
+          expect(archiveStart).not.toHaveBeenCalled();
+        } finally {
+          remove.mockRestore();
+        }
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     test('an orphan intent is never applied to the current organization in preparation (P1-A)', async () => {
       // This intent was not named by the route, so nothing pins it. The
       // resume hook must not fall back to the `preparando` organization.
@@ -885,6 +939,9 @@ describe('OrganizationProvisioning', () => {
       seedIntent({id: 'intent-a', organizationId: 'org-1'});
       seedDocument([
         organizacao({estado: 'preparando', materializacao: PAR_PRONTA}),
+        // B's target exists but has no project ids yet: it is not sent and
+        // is not an orphan, so A's completion must not touch it.
+        organizacao({id: 'org-2', estado: 'preparando'}),
       ]);
 
       await renderScreen();
@@ -893,7 +950,7 @@ describe('OrganizationProvisioning', () => {
       });
 
       // B is created while A is still in flight and targets another
-      // organization (absent from the document, so it is not sent yet).
+      // organization (present but not materialized, so it is not sent yet).
       await act(async () => {
         profileStore.actions.addPendingArchiveIntent({
           id: 'intent-b',

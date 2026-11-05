@@ -127,7 +127,21 @@ export function usePendingArchiveResume() {
         }
         continue;
       }
-      if (intent.organizationId !== null) continue;
+      if (intent.organizationId !== null) {
+        // A pin whose organization left the document can never be applied:
+        // no retarget is allowed (P1-A), so the existing removal flow takes
+        // it out — and a failed removal is retried through the same timer.
+        const alvoAindaExiste = estado.organizacoes.some(
+          organizacao => organizacao.id === intent.organizationId,
+        );
+        if (alvoAindaExiste) continue;
+        try {
+          removePendingArchiveIntent(intent.id);
+        } catch {
+          agendarRetentativa();
+        }
+        continue;
+      }
       if (emPreparo !== undefined) continue;
       if (agora - intent.createdAt < PENDING_ARCHIVE_ORPHAN_GRACE_MS) continue;
       // No PII: an opaque id only — never the URL, organization or profile.

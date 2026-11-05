@@ -354,6 +354,21 @@ export const CreateOrganization = ({
     return unsubscribe;
   }, [etapa, navigation]);
 
+  // Cold start: this route may be the initial one, so the hardware Back has
+  // no history to pop and would exit the app. The intro stage is the choice
+  // fork's child, so Back there still belongs to the role question. With
+  // history the navigator's own handler owns the pop (this listener is not
+  // registered), and during a live operation the hold below wins.
+  React.useEffect(() => {
+    if (etapa !== 'introducao' || iniciando) return;
+    if (navigation.canGoBack()) return;
+    const hardware = BackHandler.addEventListener('hardwareBackPress', () => {
+      navigation.replace('Success');
+      return true;
+    });
+    return () => hardware.remove();
+  }, [etapa, iniciando, navigation]);
+
   // A rejection means NOTHING was persisted (the materializer routes every
   // mid-materialization failure into the document as `falha_recuperavel`
   // instead of throwing): the form stays with its draft and explains the
