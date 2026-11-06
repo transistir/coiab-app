@@ -7,6 +7,7 @@ import {LoadingIndicator} from '../../sharedComponents/LoadingIndicator';
 import MaterialIcons from '@react-native-vector-icons/material-icons';
 
 import {useActiveProject} from '../../contexts/ActiveProjectContext';
+import {useOrganizationMaterializer} from '../../contexts/OrganizationMaterializerContext';
 import Error from '../../images/Error.svg';
 import {BottomSheetWrapper} from '../../sharedComponents/BottomSheetWrapper';
 import {
@@ -51,6 +52,7 @@ export function RemoveRemoteArchive({
   const {projectId} = useActiveProject();
 
   const removeServerPeer = useRemoveServerPeer({projectId});
+  const materializador = useOrganizationMaterializer();
 
   return (
     <BottomSheetWrapper>
@@ -81,6 +83,14 @@ export function RemoveRemoteArchive({
                         navigation.navigate('ErrorBottomSheet', {error: err});
                       },
                       onSuccess: () => {
+                        // The journal must not keep claiming success after
+                        // Core lost the server: reopen only this project's
+                        // slot so the same URL can really be requested again.
+                        try {
+                          materializador?.removerArquivo(projectId);
+                        } catch (error) {
+                          Sentry.captureException(error);
+                        }
                         navigation.goBack();
                       },
                     },

@@ -30,16 +30,10 @@ import {
 } from '../lib/organization/materializar';
 import {generateOrganizationId} from '../lib/organization/orgId';
 import {criarTemplateSourceInstalado} from '../lib/organization/pacotesInstalados';
-import {SLOTS, type Slot} from '../lib/organization/marker';
 import {membersQueryKey, projectsQueryKey} from '../lib/organization/queryKeys';
 import {repositorioDoStore} from '../lib/organization/repositorio';
 import {normalizeRemoteArchiveUrl} from '../utils/normalizeRemoteArchiveUrl';
 import {useCoiabOrganizationsStoreContext} from './CoiabOrganizationsStoreContext';
-
-const AREA_DO_SLOT: Record<Slot, 'monitoramento' | 'alertas'> = {
-  m: 'monitoramento',
-  a: 'alertas',
-};
 
 /**
  * The root-owned materialization engine (SPEC B §5.4), mounted once at the
@@ -75,6 +69,12 @@ export type OrganizationMaterializerHandle = {
     organizacaoId: string,
     url: string,
   ): Promise<ResultadoArquivoRemoto>;
+  /**
+   * Reconciles a Core-level removal of the archive server with the journal.
+   * Only the slot that owns `projectId` is reopened (explicit retry required);
+   * the organization's other project stays `concluido`.
+   */
+  removerArquivo(projectId: string): void;
 };
 
 const OrganizationMaterializerContext =
@@ -124,6 +124,15 @@ export function OrganizationMaterializerProvider({
     const executorArquivoRemoto = createArquivoRemotoExecutor({
       repository,
       rede: redeArquivoRemoto,
+      // The member cache of a project changes when the server REALLY applies
+      // the archive — even if that response lands after the 60 s deadline.
+      // Invalidate per slot on the real settlement; the executor's return is
+      // no longer a cache signal (a timeout is not a server effect).
+      onEnvioConcluido: ({projectId}) => {
+        void queryClient.invalidateQueries({
+          queryKey: membersQueryKey(projectId),
+        });
+      },
     });
     const materializer = createMaterializer({
       client: clienteDeCriacao(clientApi),
@@ -132,39 +141,17 @@ export function OrganizationMaterializerProvider({
       generateId: generateOrganizationId,
       arquivoRemoto: redeArquivoRemoto,
     });
-    /** Invalidate the member list of every slot this organization owns. */
-    const invalidarMembros = async (organizacaoId: string) => {
-      const organizacao = store.instance
-        .getState()
-        .organizacoes.find(o => o.id === organizacaoId);
-      if (!organizacao) return;
-      await Promise.all(
-        SLOTS.map(slot => {
-          const projectId =
-            organizacao.materializacao[AREA_DO_SLOT[slot]].projectId;
-          return projectId
-            ? queryClient.invalidateQueries({
-                queryKey: membersQueryKey(projectId),
-              })
-            : undefined;
-        }),
-      );
-    };
     /**
-     * The shared archive operation: re-reads the target by id, delegates to
-     * the journal executor (never the materializer) and refreshes only that
-     * organization's member queries.
+     * The shared archive operation: re-reads the target by id and delegates to
+     * the journal executor (never the materializer). Member queries are
+     * refreshed by the executor's per-send callback, not here: returning from
+     * a deadline-expired pass must not claim the server already applied it.
      */
-    const executarArquivo = async (
+    const executarArquivo = (
       organizacaoId: string,
       modo: ModoArquivoRemoto,
-    ): Promise<ResultadoArquivoRemoto> => {
-      const resultado = await executorArquivoRemoto.executar(organizacaoId, {
-        modo,
-      });
-      await invalidarMembros(organizacaoId);
-      return resultado;
-    };
+    ): Promise<ResultadoArquivoRemoto> =>
+      executorArquivoRemoto.executar(organizacaoId, {modo});
     /**
      * #142 fase C1: the manual screen's request is journalized before it runs.
      * The journal URL is the single source of truth for the executor, and the
@@ -266,6 +253,8 @@ export function OrganizationMaterializerProvider({
       retomarArquivo: organizacaoId => executarArquivo(organizacaoId, 'retry'),
       solicitarArquivo: (organizacaoId, url) =>
         solicitarArquivo(organizacaoId, url),
+      removerArquivo: projectId =>
+        executorArquivoRemoto.removerArquivo(projectId),
     };
     return {handle, executarArquivo};
   }, [store, clientApi, templates, queryClient, vivas]);

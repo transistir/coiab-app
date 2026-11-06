@@ -63,6 +63,14 @@ export function criarRedeArquivoRemoto(
   };
 }
 
+/** One real send (or its late response) settling, after the deadline raced it. */
+export type EnvioArquivoRemotoConcluido = {
+  organizacaoId: string;
+  slot: Slot;
+  projectId: string;
+  sucesso: boolean;
+};
+
 export type ResultadoEnvioSlots = Array<{slot: Slot; erro?: unknown}>;
 
 /**
@@ -100,6 +108,63 @@ const AREA_POR_SLOT: Record<Slot, 'monitoramento' | 'alertas'> = {
   m: 'monitoramento',
   a: 'alertas',
 };
+
+/**
+ * The slot that owns a project. Core removal is per project, so it must reset
+ * exactly that slot — never the organization's other (still archived) project.
+ */
+function localizarSlotDoProjeto(
+  documento: EstadoOrganizacoes,
+  projectId: string,
+): {organizacaoId: string; slot: Slot} | undefined {
+  for (const organizacao of documento.organizacoes) {
+    for (const slot of SLOTS) {
+      if (
+        organizacao.materializacao[AREA_POR_SLOT[slot]].projectId === projectId
+      ) {
+        return {organizacaoId: organizacao.id, slot};
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * A removal is a REAL journal transition, not a Core-only side effect. The
+ * removed slot goes back to `falha_recuperavel` (with a distinct reason) so a
+ * resend needs an explicit request: the automatic boot pass already skips
+ * that state, while a retry sends only this slot and preserves the other.
+ */
+function marcarSlotRemovido(
+  documento: EstadoOrganizacoes,
+  organizacaoId: string,
+  slot: Slot,
+): EstadoOrganizacoes | undefined {
+  const organizacao = documento.organizacoes.find(
+    item => item.id === organizacaoId,
+  );
+  if (!organizacao?.arquivoRemoto) return undefined;
+  const atual = organizacao.arquivoRemoto.slots[slot];
+  // Already reconciled: keep the document reference (no spurious write).
+  if (atual.estado === 'falha_recuperavel' && atual.erro === 'removido') {
+    return undefined;
+  }
+  const slots = {
+    ...organizacao.arquivoRemoto.slots,
+    [slot]: {estado: 'falha_recuperavel' as const, erro: 'removido'},
+  };
+  const arquivoRemoto: ArquivoRemoto = {
+    ...organizacao.arquivoRemoto,
+    estado: estadoAgregado(slots),
+    slots,
+  };
+  return {
+    ...documento,
+    organizacoes: documento.organizacoes.map(item =>
+      item.id === organizacaoId ? {...item, arquivoRemoto} : item,
+    ),
+  };
+}
 
 /**
  * Live sends, keyed by the repository OBJECT. A remount creates a new
@@ -164,11 +229,19 @@ export function createArquivoRemotoExecutor({
   rede,
   now = Date.now,
   timeoutMs = PRAZO_ARQUIVO_REMOTO_MS,
+  onEnvioConcluido,
 }: {
   repository: ArquivoRemotoRepository;
   rede: ArquivoRemotoRede;
   now?: () => number;
   timeoutMs?: number;
+  /**
+   * Called when a send REALLY settles — including a response that arrives
+   * after `timeoutMs` already released the presentation. The caller uses it
+   * to refresh the member cache of the project that received the archive;
+   * the deadline itself is not a server effect and must not invalidate.
+   */
+  onEnvioConcluido?: (evento: EnvioArquivoRemotoConcluido) => unknown;
 }) {
   function mapaDeVoos(): Map<string, Voo> {
     let mapa = voos.get(repository);
@@ -203,6 +276,35 @@ export function createArquivoRemotoExecutor({
       if (chave.startsWith(prefixo)) return true;
     }
     return false;
+  }
+
+  /**
+   * Cache refresh is a consumer concern: it must never affect the durable
+   * journal, so a throwing/rejecting callback is swallowed here.
+   */
+  function notificarEnvioConcluido(
+    organizacaoId: string,
+    slot: Slot,
+    projectId: string,
+    sucesso: boolean,
+  ): void {
+    if (!onEnvioConcluido) return;
+    try {
+      const resultado = onEnvioConcluido({
+        organizacaoId,
+        slot,
+        projectId,
+        sucesso,
+      });
+      if (
+        resultado &&
+        typeof (resultado as PromiseLike<unknown>).then === 'function'
+      ) {
+        (resultado as PromiseLike<unknown>).then(undefined, () => {});
+      }
+    } catch {
+      /* the journal already reflects the send; a cache miss is recoverable */
+    }
   }
 
   function agendarReaplicacao(organizacaoId: string): void {
@@ -384,6 +486,7 @@ export function createArquivoRemotoExecutor({
             guardarSucessoPendente(organizacaoId, slot, tentativaId);
             agendarReaplicacao(organizacaoId);
           }
+          notificarEnvioConcluido(organizacaoId, slot, projectId, true);
         },
         () => {
           try {
@@ -394,6 +497,7 @@ export function createArquivoRemotoExecutor({
           } catch {
             /* the next pass re-evaluates this slot from the journal */
           }
+          notificarEnvioConcluido(organizacaoId, slot, projectId, false);
         },
       );
     let terminou = false;
@@ -475,6 +579,28 @@ export function createArquivoRemotoExecutor({
   }
 
   return {
+    /**
+     * Reconciles a Core-level archive removal with the durable journal: only
+     * the slot whose project lost the server is reopened, so a later request
+     * for the SAME URL really sends that slot and leaves the other untouched.
+     * An in-flight success checkpoint for that slot is dropped too; a late
+     * response cannot patch a journal whose attempt id was cleared.
+     */
+    removerArquivo(projectId: string): void {
+      const documento = repository.read();
+      const alvo = localizarSlotDoProjeto(documento, projectId);
+      if (!alvo) return;
+      sucessosPendentes
+        .get(repository)
+        ?.delete(`${alvo.organizacaoId}:${alvo.slot}`);
+      const proximo = marcarSlotRemovido(
+        documento,
+        alvo.organizacaoId,
+        alvo.slot,
+      );
+      if (!proximo) return;
+      repository.write(proximo);
+    },
     /**
      * Whether a pass for this organization is still alive. The caller uses it
      * BEFORE replacing the journal with a new URL: a refusal must leave the

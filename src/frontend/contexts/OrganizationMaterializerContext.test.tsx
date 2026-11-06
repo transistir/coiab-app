@@ -17,7 +17,9 @@ import {
   type TemplateSource,
 } from '../lib/organization/materializar';
 import {projectsQueryKey} from '../lib/organization/queryKeys';
+import {MMKVStoreInitializer} from '../hooks/persistedState/createPersistedState';
 import {
+  COIAB_ORGANIZATIONS_STORAGE_KEY,
   CoiabOrganizationsStoreProvider,
   createCoiabOrganizationsStore,
   type CoiabOrganizationsStore,
@@ -584,11 +586,15 @@ describe('OrganizationMaterializerContext', () => {
   });
 
   test('#142 P2: duas aberturas consecutivas não reenviam o arquivo após replay esgotado', async () => {
-    const store = createCoiabOrganizationsStore();
+    // Real persistence proof: the first opening writes the failed checkpoints
+    // to the test storage, and the second opening is a NEW store rehydrated
+    // from that storage — reusing one in-memory store proves nothing.
+    MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
+    const primeiroStore = createCoiabOrganizationsStore({persist: true});
     // The durable journal already spent its one replay: the first boot can
     // only record the failure. The SECOND opening must not choose `retry`
     // merely because the aggregate state is now `falha_recuperavel`.
-    store.instance.setState(
+    primeiroStore.instance.setState(
       readyDocumentWithArchive({
         url: 'https://arquivo.example/',
         estado: 'aplicando',
@@ -605,15 +611,15 @@ describe('OrganizationMaterializerContext', () => {
       true,
     );
 
-    const primeiro = await renderMaterializador(store);
+    const primeiro = await renderMaterializador(primeiroStore);
     const monitoramento = (await clientApi.getProject(
       `${ORG_ID}-m`,
     )) as ReturnType<typeof fakeCreationProject>;
 
     await waitFor(() =>
       expect(
-        store.instance.getState().organizacoes[0]?.arquivoRemoto?.slots.m
-          .estado,
+        primeiroStore.instance.getState().organizacoes[0]?.arquivoRemoto?.slots
+          .m.estado,
       ).toBe('falha_recuperavel'),
     );
     expect(monitoramento.$member.addServerPeer).not.toHaveBeenCalled();
@@ -622,15 +628,27 @@ describe('OrganizationMaterializerContext', () => {
       await primeiro.hook.unmount();
     });
 
-    // Second opening over the SAME persisted document.
-    const segundo = await renderMaterializador(store);
+    // The raw slice the on-device MMKV holds — not the in-memory state.
+    const cru = MMKVStoreInitializer.getItem(
+      COIAB_ORGANIZATIONS_STORAGE_KEY,
+    ) as string | null;
+    expect(typeof cru).toBe('string');
+    const gravado = JSON.parse(cru as string).state as EstadoOrganizacoes;
+    expect(gravado.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'falha_recuperavel',
+      replayConsumido: true,
+    });
+
+    // Second opening over the SAME persisted document, built fresh.
+    const segundoStore = createCoiabOrganizationsStore({persist: true});
+    const segundo = await renderMaterializador(segundoStore);
     await act(async () => {
       await Promise.resolve();
     });
 
     expect(monitoramento.$member.addServerPeer).not.toHaveBeenCalled();
     expect(
-      store.instance.getState().organizacoes[0]?.arquivoRemoto?.slots.m,
+      segundoStore.instance.getState().organizacoes[0]?.arquivoRemoto?.slots.m,
     ).toMatchObject({
       estado: 'falha_recuperavel',
       replayConsumido: true,
@@ -643,6 +661,149 @@ describe('OrganizationMaterializerContext', () => {
     await act(async () => {
       await segundo.hook.unmount();
     });
+    MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
+  });
+
+  test('#142 2ª rodada P2: remover reabre só o slot removido e reenviar a mesma URL envia de verdade', async () => {
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState(
+      readyDocumentWithArchive({
+        url: 'https://arquivo.example/',
+        estado: 'concluido',
+        slots: {
+          m: {estado: 'concluido', tentativaId: 'tentativa-m'},
+          a: {estado: 'concluido', tentativaId: 'tentativa-a'},
+        },
+      }),
+      true,
+    );
+    const {hook} = await renderMaterializador(store);
+
+    const monitoramento = (await clientApi.getProject(
+      `${ORG_ID}-m`,
+    )) as ReturnType<typeof fakeCreationProject>;
+    const alertas = (await clientApi.getProject(`${ORG_ID}-a`)) as ReturnType<
+      typeof fakeCreationProject
+    >;
+
+    // A concluded journal is not resent just because the provider mounted.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(monitoramento.$member.addServerPeer).not.toHaveBeenCalled();
+    expect(alertas.$member.addServerPeer).not.toHaveBeenCalled();
+
+    // The real removal flow (RemoveRemoteArchive's success callback) reconciles
+    // the journal: the removed project's slot is no longer `concluido`.
+    await act(async () => {
+      hook.result.current!.removerArquivo(`${ORG_ID}-m`);
+    });
+    const aposRemocao =
+      store.instance.getState().organizacoes[0]!.arquivoRemoto!;
+    expect(aposRemocao.estado).toBe('falha_recuperavel');
+    expect(aposRemocao.slots.m).toEqual({
+      estado: 'falha_recuperavel',
+      erro: 'removido',
+    });
+    // The untouched project keeps its successful slot byte-identical.
+    expect(aposRemocao.slots.a).toMatchObject({
+      estado: 'concluido',
+      tentativaId: 'tentativa-a',
+    });
+
+    // Requesting the SAME URL again must produce a real send for the removed
+    // slot — and only for it.
+    const resultado = await hook.result.current!.solicitarArquivo(
+      ORG_ID,
+      'https://arquivo.example/',
+    );
+
+    expect(resultado.estado).toBe('concluido');
+    expect(monitoramento.$member.addServerPeer).toHaveBeenCalledTimes(1);
+    expect(monitoramento.$member.addServerPeer).toHaveBeenCalledWith(
+      'https://arquivo.example/',
+    );
+    expect(alertas.$member.addServerPeer).not.toHaveBeenCalled();
+    expect(
+      store.instance.getState().organizacoes[0]?.arquivoRemoto?.estado,
+    ).toBe('concluido');
+
+    await act(async () => {
+      await hook.unmount();
+    });
+  });
+
+  test('#142 2ª rodada P2: conclusão tardia após o prazo invalida membros na resposta real', async () => {
+    jest.useFakeTimers();
+    try {
+      let liberar!: () => void;
+      const pendente = new Promise<void>(resolve => {
+        liberar = resolve;
+      });
+      const addServerPeer = jest.fn(() => pendente);
+      clientApi.getProject = jest.fn(async () => ({
+        $member: {addServerPeer},
+      }));
+
+      const store = createCoiabOrganizationsStore();
+      store.instance.setState(
+        readyDocumentWithArchive({
+          url: 'https://arquivo.example/',
+          estado: 'pendente',
+          slots: {m: {estado: 'pendente'}, a: {estado: 'pendente'}},
+        }),
+        true,
+      );
+
+      const {hook, invalidateQueries} = await renderMaterializador(store);
+      const projetosInvalidados = () =>
+        invalidateQueries.mock.calls
+          .map(([arg]) => arg?.queryKey)
+          .filter(
+            (queryKey): queryKey is unknown[] =>
+              Array.isArray(queryKey) && queryKey[3] === 'members',
+          )
+          .map(queryKey => queryKey[2]);
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(addServerPeer).toHaveBeenCalledTimes(2);
+      expect(projetosInvalidados()).toEqual([]);
+
+      // The deadline releases the presentation without being a server effect:
+      // the journal becomes recoverable, but the member cache stays untouched.
+      await act(async () => {
+        jest.advanceTimersByTime(60_000);
+        await Promise.resolve();
+      });
+      expect(
+        store.instance.getState().organizacoes[0]?.arquivoRemoto?.slots.m
+          .estado,
+      ).toBe('falha_recuperavel');
+      expect(projetosInvalidados()).toEqual([]);
+
+      // The REAL late response still lands and concludes the journal; now the
+      // member cache of each project that received the archive is refreshed.
+      await act(async () => {
+        liberar();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(
+        store.instance.getState().organizacoes[0]?.arquivoRemoto?.estado,
+      ).toBe('concluido');
+      expect(new Set(projetosInvalidados())).toEqual(
+        new Set([`${ORG_ID}-m`, `${ORG_ID}-a`]),
+      );
+
+      await act(async () => {
+        await hook.unmount();
+      });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test('retry por id não recria projeto nem reimporta categorias', async () => {

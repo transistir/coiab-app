@@ -24,10 +24,12 @@ import {
   type OrganizationMaterializerHandle,
 } from '../../contexts/OrganizationMaterializerContext';
 import {
+  COIAB_ORGANIZATIONS_STORAGE_KEY,
   CoiabOrganizationsStoreProvider,
   createCoiabOrganizationsStore,
   type CoiabOrganizationsStore,
 } from '../../contexts/CoiabOrganizationsStoreContext';
+import {MMKVStoreInitializer} from '../../hooks/persistedState/createPersistedState';
 import {useProjetarProjectIdAtivo} from '../../contexts/ActiveProjectIdStoreContext';
 import {ErroPacote} from '../../lib/organization/pacotes';
 import {OrganizationOperationError} from '../../lib/organization/fanout';
@@ -377,6 +379,11 @@ beforeEach(() => {
   });
 });
 
+afterEach(() => {
+  // The persistence test writes the real key; never leak it into a sibling.
+  MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
+});
+
 describe('CreateOrganization', () => {
   test('the intro step renders the SPEC B :54 copy and leads to the name step', async () => {
     await renderScreen();
@@ -548,6 +555,10 @@ describe('CreateOrganization', () => {
   });
 
   test('a recoverable failure keeps the archive URL in the journal, not in the profile (#142 fase C1)', async () => {
+    // Persistence proof: this test runs over the REAL per-device storage —
+    // the in-memory document tends to pass even when nothing was written.
+    MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
+    store = createCoiabOrganizationsStore({persist: true});
     // The REAL materializer, over this screen's real store: the journal must
     // carry the URL through the first checkpoint and a later failure, and
     // survive a rehydration — a mock that registers an organization without
@@ -650,10 +661,27 @@ describe('CreateOrganization', () => {
       url: 'https://exemplo.org/',
       estado: 'pendente',
     });
-    const reidratado = parseEstadoOrganizacoes(store.instance.getState());
-    expect(reidratado?.organizacoes[0]?.arquivoRemoto?.url).toBe(
-      'https://exemplo.org/',
-    );
+
+    // The assertion is against the DOCUMENT ACTUALLY WRITTEN to storage —
+    // deleting the persist branch would leave this raw slice absent.
+    const cru = MMKVStoreInitializer.getItem(
+      COIAB_ORGANIZATIONS_STORAGE_KEY,
+    ) as string | null;
+    expect(typeof cru).toBe('string');
+    const gravado = JSON.parse(cru as string).state;
+    const reidratado = parseEstadoOrganizacoes(gravado);
+    expect(reidratado?.organizacoes[0]?.arquivoRemoto).toMatchObject({
+      url: 'https://exemplo.org/',
+      estado: 'pendente',
+    });
+    // A NEW store built with persistence reopens the same document.
+    const reaberto = createCoiabOrganizationsStore({persist: true});
+    expect(
+      reaberto.instance.getState().organizacoes[0]?.arquivoRemoto,
+    ).toMatchObject({
+      url: 'https://exemplo.org/',
+      estado: 'pendente',
+    });
   });
 
   test('shows the loading state instead of the button while creating', async () => {
