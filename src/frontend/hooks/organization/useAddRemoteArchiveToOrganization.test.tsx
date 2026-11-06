@@ -112,6 +112,48 @@ describe('useAddRemoteArchiveToOrganization', () => {
     hook.unmount();
   });
 
+  test('uso manual continua aplicando aos dois slots', async () => {
+    // #142 fase B: the manual path keeps its contract after delegating the
+    // fan-out to the shared archive operation — both slots are applied and
+    // each project's member cache is invalidated by project id.
+    const {clientApi, addServerPeerByProject} = createFakeClient();
+    const addMonitoramento = jest.fn();
+    const addAlertas = jest.fn();
+    addServerPeerByProject.set(MONITORAMENTO_PROJECT_ID, addMonitoramento);
+    addServerPeerByProject.set(ALERTAS_PROJECT_ID, addAlertas);
+    const {wrapper, invalidateQueries} = createSpiedWrapper(clientApi);
+
+    const hook = await renderHook(() => useAddRemoteArchiveToOrganization(), {
+      wrapper,
+    });
+
+    let outcome: AddRemoteArchiveOutcome;
+    await act(async () => {
+      outcome = await hook.result.current.start({
+        slots: SLOTS,
+        baseUrl: BASE_URL,
+      });
+    });
+
+    expect(outcome).toEqual({error: undefined});
+    expect(addMonitoramento).toHaveBeenCalledTimes(1);
+    expect(addMonitoramento).toHaveBeenCalledWith(BASE_URL);
+    expect(addAlertas).toHaveBeenCalledTimes(1);
+    expect(addAlertas).toHaveBeenCalledWith(BASE_URL);
+    expect(hook.result.current.progress).toMatchObject({
+      monitoramento: 'done',
+      alertas: 'done',
+    });
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: membersQueryKey(MONITORAMENTO_PROJECT_ID),
+    });
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: membersQueryKey(ALERTAS_PROJECT_ID),
+    });
+
+    hook.unmount();
+  });
+
   test('one failing slot does not abort the other', async () => {
     const {clientApi, addServerPeerByProject} = createFakeClient();
     const alertasError = new Error('NETWORK_ERROR');

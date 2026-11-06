@@ -2,7 +2,11 @@ import {useCallback, useEffect, useRef, useState} from 'react';
 import {useQueryClient} from '@tanstack/react-query';
 import {useClientApi} from '@comapeo/core-react';
 
-import {SLOTS, type Slot} from '../../lib/organization/marker';
+import {
+  aplicarArquivoRemotoEmSlots,
+  criarRedeArquivoRemoto,
+} from '../../lib/organization/arquivoRemoto';
+import type {Slot} from '../../lib/organization/marker';
 import {membersQueryKey} from '../../lib/organization/queryKeys';
 
 export type SlotArchiveState = 'idle' | 'adding' | 'done' | 'error';
@@ -89,34 +93,35 @@ export function useAddRemoteArchiveToOrganization() {
         error: undefined,
       });
 
-      const results = await Promise.all(
-        SLOTS.map(async slot => {
-          try {
-            const projectApi = await clientApi.getProject(slots[slot]);
-            await projectApi.$member.addServerPeer(baseUrl);
-            return {slot, state: 'done' as const, error: undefined};
-          } catch (e) {
-            return {slot, state: 'error' as const, error: e};
-          } finally {
-            // Direct clientApi calls bypass core-react's own invalidation,
-            // so the member list of each touched project must be
-            // invalidated by hand — per slot, as it settles, not only at
-            // the end of the fan-out.
-            await queryClient.invalidateQueries({
-              queryKey: membersQueryKey(slots[slot]),
-            });
-          }
-        }),
+      // #142 fase B: the manual operation delegates the fan-out to the SAME
+      // archive adapter the journal executor uses. The hook keeps its public
+      // contract (both slots, per-slot outcome, first error) and its per-slot
+      // member invalidation by project id.
+      const rede = criarRedeArquivoRemoto(projectId =>
+        clientApi.getProject(projectId),
       );
+      const results = await aplicarArquivoRemotoEmSlots({
+        rede,
+        url: baseUrl,
+        slots,
+        onSlotSettled: slot =>
+          // Direct clientApi calls bypass core-react's own invalidation, so
+          // the member list of each touched project must be invalidated by
+          // hand — per slot, as it settles, not only at the end.
+          queryClient.invalidateQueries({
+            queryKey: membersQueryKey(slots[slot]),
+          }),
+      });
 
       if (attemptRef.current !== attempt) return undefined;
 
       const next = {...IDLE_PROGRESS};
       let firstError: unknown = undefined;
       for (const result of results) {
-        next[result.slot === 'm' ? 'monitoramento' : 'alertas'] = result.state;
-        if (result.error !== undefined && firstError === undefined) {
-          firstError = result.error;
+        next[result.slot === 'm' ? 'monitoramento' : 'alertas'] =
+          result.erro === undefined ? 'done' : 'error';
+        if (result.erro !== undefined && firstError === undefined) {
+          firstError = result.erro;
         }
       }
       next.error = firstError;

@@ -1,8 +1,21 @@
-import {createContext, ReactNode, useContext, useMemo, useState} from 'react';
+import {
+  createContext,
+  ReactNode,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import {useClientApi} from '@comapeo/core-react';
 import {useQueryClient} from '@tanstack/react-query';
 import {createStore, useStore, type StoreApi} from 'zustand';
 
+import {
+  createArquivoRemotoExecutor,
+  criarRedeArquivoRemoto,
+  type ModoArquivoRemoto,
+  type ResultadoArquivoRemoto,
+} from '../lib/organization/arquivoRemoto';
 import {clienteDeCriacao} from '../lib/organization/clienteDeCriacao';
 import {
   confirmarEntrada,
@@ -16,9 +29,15 @@ import {
 } from '../lib/organization/materializar';
 import {generateOrganizationId} from '../lib/organization/orgId';
 import {criarTemplateSourceInstalado} from '../lib/organization/pacotesInstalados';
-import {projectsQueryKey} from '../lib/organization/queryKeys';
+import {SLOTS, type Slot} from '../lib/organization/marker';
+import {membersQueryKey, projectsQueryKey} from '../lib/organization/queryKeys';
 import {repositorioDoStore} from '../lib/organization/repositorio';
 import {useCoiabOrganizationsStoreContext} from './CoiabOrganizationsStoreContext';
+
+const AREA_DO_SLOT: Record<Slot, 'monitoramento' | 'alertas'> = {
+  m: 'monitoramento',
+  a: 'alertas',
+};
 
 /**
  * The root-owned materialization engine (SPEC B §5.4), mounted once at the
@@ -31,8 +50,19 @@ import {useCoiabOrganizationsStoreContext} from './CoiabOrganizationsStoreContex
  * exists but is not `preparando` settles as a no-op resume.
  */
 export type OrganizationMaterializerHandle = {
-  iniciar(nome: string): Promise<void>;
+  /**
+   * #142 fase B: the archive URL is part of the SAME `preparando` write the
+   * engine already owns. Omitted means "no archive was requested".
+   */
+  iniciar(nome: string, opcoes?: {arquivoRemotoUrl?: string}): Promise<void>;
   retomar(organizacaoId: string): Promise<void>;
+  /**
+   * Explicit archive retry by organization id — the shared journal executor,
+   * never a second materialization. It re-reads the target's own project ids
+   * from the journal, so it cannot recreate a project, re-import categories
+   * or re-confirm the organization.
+   */
+  retomarArquivo(organizacaoId: string): Promise<ResultadoArquivoRemoto>;
 };
 
 const OrganizationMaterializerContext =
@@ -65,24 +95,82 @@ export function OrganizationMaterializerProvider({
   const clientApi = useClientApi();
   const queryClient = useQueryClient();
   const [vivas] = useState(() => createStore<number>(() => 0));
-  const materializador = useMemo<OrganizationMaterializerHandle>(() => {
+  const motor = useMemo(() => {
     const acompanhar = (operacao: () => Promise<void>) => {
       vivas.setState(n => n + 1, true);
       return operacao().finally(() => vivas.setState(n => n - 1, true));
     };
     const fonte = templates ?? criarTemplateSourceInstalado();
+    // One repository object and one network adapter feed BOTH the
+    // materializer and the root executor: the journal's live-promise guards
+    // are keyed by the repository object, so a remount joins the same sends
+    // instead of duplicating them.
+    const repository = repositorioDoStore(store);
+    const redeArquivoRemoto = criarRedeArquivoRemoto(projectId =>
+      clientApi.getProject(projectId),
+    );
+    const executorArquivoRemoto = createArquivoRemotoExecutor({
+      repository,
+      rede: redeArquivoRemoto,
+    });
     const materializer = createMaterializer({
       client: clienteDeCriacao(clientApi),
       templates: fonte,
-      repository: repositorioDoStore(store),
+      repository,
       generateId: generateOrganizationId,
+      arquivoRemoto: redeArquivoRemoto,
     });
+    /** Invalidate the member list of every slot this organization owns. */
+    const invalidarMembros = async (organizacaoId: string) => {
+      const organizacao = store.instance
+        .getState()
+        .organizacoes.find(o => o.id === organizacaoId);
+      if (!organizacao) return;
+      await Promise.all(
+        SLOTS.map(slot => {
+          const projectId =
+            organizacao.materializacao[AREA_DO_SLOT[slot]].projectId;
+          return projectId
+            ? queryClient.invalidateQueries({
+                queryKey: membersQueryKey(projectId),
+              })
+            : undefined;
+        }),
+      );
+    };
+    /**
+     * The shared archive operation: re-reads the target by id, delegates to
+     * the journal executor (never the materializer) and refreshes only that
+     * organization's member queries.
+     */
+    const executarArquivo = async (
+      organizacaoId: string,
+      modo: ModoArquivoRemoto,
+    ): Promise<ResultadoArquivoRemoto> => {
+      const resultado = await executorArquivoRemoto.executar(organizacaoId, {
+        modo,
+      });
+      await invalidarMembros(organizacaoId);
+      return resultado;
+    };
     const retomar = async (organizacaoId: string) => {
       const organizacao = store.instance
         .getState()
         .organizacoes.find(o => o.id === organizacaoId);
       if (!organizacao) {
         throw new Error('organization-not-resumable');
+      }
+      // #142 fase B: a `pronta` organization whose archive step is still
+      // pending is resumed through the SAME entry point — but only the
+      // archive step runs. Re-dispatching it as a creation resume would be a
+      // second materialization loop (and `resume` would no-op anyway).
+      if (
+        organizacao.estado === 'pronta' &&
+        organizacao.arquivoRemoto !== undefined &&
+        organizacao.arquivoRemoto.estado !== 'concluido'
+      ) {
+        await executarArquivo(organizacaoId, 'retry');
+        return;
       }
       // SPEC B §5.5 dispatch: a journal whose BOTH areas are accepted
       // invites (no creation snapshot, no template) is an INVITE entry —
@@ -106,18 +194,44 @@ export function OrganizationMaterializerProvider({
           );
       }
     };
-    return {
-      iniciar: nome =>
+    const handle: OrganizationMaterializerHandle = {
+      iniciar: (nome, opcoes) =>
         acompanhar(() =>
           materializer
-            .start(nome)
+            .start(nome, opcoes)
             .finally(() =>
               queryClient.invalidateQueries({queryKey: projectsQueryKey}),
             ),
         ),
       retomar: organizacaoId => acompanhar(() => retomar(organizacaoId)),
+      retomarArquivo: organizacaoId => executarArquivo(organizacaoId, 'retry'),
     };
+    return {handle, executarArquivo};
   }, [store, clientApi, templates, queryClient, vivas]);
+
+  const materializador = motor.handle;
+  const {executarArquivo} = motor;
+
+  // #142 fase B — boot reconciliation. Organizations already `pronta` keep
+  // their archive step in the same journal; nothing else would ever finish an
+  // interrupted pass (the provisioning surface only exists for `preparando`).
+  // An interrupted `aplicando` keeps its durable replay budget, so it is
+  // resumed in automatic mode; a recorded failure waits for this boot's one
+  // explicit retry. Every write is patched by organization id, so a late
+  // conclusion never touches another organization nor the active selection.
+  useEffect(() => {
+    const organizacoes = store.instance.getState().organizacoes;
+    for (const organizacao of organizacoes) {
+      const arquivo = organizacao.arquivoRemoto;
+      if (organizacao.estado !== 'pronta' || !arquivo) continue;
+      if (arquivo.estado === 'concluido') continue;
+      const modo: ModoArquivoRemoto =
+        arquivo.estado === 'falha_recuperavel' ? 'retry' : 'automatico';
+      // The executor already bounds and catches its own sends; a repository
+      // read/write failure must not surface as an unhandled rejection.
+      void executarArquivo(organizacao.id, modo).catch(() => {});
+    }
+  }, [executarArquivo, store]);
 
   return (
     <OrganizationMaterializerContext value={materializador}>

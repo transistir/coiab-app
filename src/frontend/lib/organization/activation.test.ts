@@ -591,6 +591,124 @@ describe('trabalho pendente da própria seleção não bloqueia restauração (F
   });
 });
 
+describe('#142 fase B: arquivo remoto sobrevive à ativação e continua retomável', () => {
+  function comArquivo(
+    estado: 'pendente' | 'falha_recuperavel' = 'falha_recuperavel',
+  ) {
+    return {
+      ...readyOrganization('A'),
+      arquivoRemoto: {
+        url: 'https://arquivo.example/',
+        estado,
+        slots: {
+          m: {estado, tentativaId: 'tentativa-m'},
+          a: {estado, tentativaId: 'tentativa-a'},
+        },
+      },
+    } satisfies OrganizacaoLocal;
+  }
+
+  test('ativação de outra organização não apaga arquivoRemoto pendente', async () => {
+    const store = createCoiabOrganizationsStore();
+    const a = comArquivo();
+    store.instance.setState(
+      {
+        versao: 1,
+        organizacoes: [a, readyOrganization('B')],
+        ativa: {organizacaoId: 'A', area: 'monitoramento'},
+      },
+      true,
+    );
+    const getProject = jest.fn(async () => ({
+      $getOwnRole: async () => ({roleId: MEMBER_ROLE_ID}),
+    }));
+    const resumePreparation = jest.fn(async () => {});
+    const activation = createOrganizationActivation({
+      store,
+      getProject,
+      resumePreparation,
+    });
+
+    await activation.initialize();
+    expect(await activation.activate('B')).toBe(true);
+
+    const depois = store.instance
+      .getState()
+      .organizacoes.find(organizacao => organizacao.id === 'A');
+    // Activating another organization is a selection change only: the
+    // pending archive block is neither erased nor rewritten.
+    expect(depois?.arquivoRemoto).toEqual(a.arquivoRemoto);
+    expect(resumePreparation).not.toHaveBeenCalled();
+  });
+
+  test('organização pronta com arquivo pendente continua retomável pelo mesmo caminho, sem segundo loop', async () => {
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState(
+      {
+        versao: 1,
+        organizacoes: [comArquivo()],
+        ativa: {organizacaoId: 'A', area: 'monitoramento'},
+      },
+      true,
+    );
+    const getProject = jest.fn(async () => ({
+      $getOwnRole: async () => ({roleId: MEMBER_ROLE_ID}),
+    }));
+    // The shared adapter retries ONLY the archive step: the journal stays
+    // `pronta` with the same materialized projects.
+    const resumePreparation = jest.fn(async (id: string) => {
+      store.instance.setState(state => ({
+        organizacoes: state.organizacoes.map(item =>
+          item.id === id
+            ? {
+                ...item,
+                arquivoRemoto: {
+                  ...item.arquivoRemoto!,
+                  estado: 'concluido' as const,
+                  slots: {
+                    m: {estado: 'concluido' as const},
+                    a: {estado: 'concluido' as const},
+                  },
+                },
+              }
+            : item,
+        ),
+      }));
+    });
+    const activation = createOrganizationActivation({
+      store,
+      getProject,
+      resumePreparation,
+    });
+
+    await activation.initialize();
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'ready',
+      projectId: 'A-m',
+    });
+    const materializacaoAntes =
+      store.instance.getState().organizacoes[0]?.materializacao;
+
+    expect(await activation.retryPreparation('A')).toBe(true);
+
+    expect(resumePreparation).toHaveBeenCalledTimes(1);
+    expect(resumePreparation).toHaveBeenCalledWith('A');
+    const depois = store.instance.getState().organizacoes[0];
+    // The same path retries the archive without downgrading the organization
+    // or rebuilding anything: `pronta` and the exact projects are intact.
+    expect(depois).toMatchObject({
+      estado: 'pronta',
+      materializacao: materializacaoAntes,
+      arquivoRemoto: {estado: 'concluido'},
+    });
+    // No preparation publication leaked over the ready context.
+    expect(activation.instance.getState()).toMatchObject({
+      status: 'ready',
+      projectId: 'A-m',
+    });
+  });
+});
+
 describe('recuperação de journal (CA03)', () => {
   test('preparando reidratado retoma uma vez, falha durável exige retry explícito', async () => {
     const store = createCoiabOrganizationsStore();

@@ -35,6 +35,60 @@ export type ArquivoRemotoRede = {
   addServerPeer(input: {projectId: string; url: string}): Promise<void>;
 };
 
+/** The minimal project surface the archive adapter needs. */
+export type ArquivoRemotoProjeto = {
+  $member: {addServerPeer(url: string): Promise<void>};
+};
+
+/**
+ * The ONE production adapter for `ArquivoRemotoRede`. Both the journal
+ * executor and the manual hook build it from the same `getProject` read, so
+ * there is a single place where "apply the archive" reaches Core.
+ */
+export function criarRedeArquivoRemoto(
+  getProject: (projectId: string) => Promise<ArquivoRemotoProjeto>,
+): ArquivoRemotoRede {
+  return {
+    addServerPeer: async ({projectId, url}) => {
+      const projeto = await getProject(projectId);
+      await projeto.$member.addServerPeer(url);
+    },
+  };
+}
+
+export type ResultadoEnvioSlots = Array<{slot: Slot; erro?: unknown}>;
+
+/**
+ * Shared fan-out used by the manual operation: one failing slot never aborts
+ * the other, every slot settles through `onSlotSettled` (the caller's cache
+ * invalidation), and the array preserves the canonical `SLOTS` order so the
+ * first error is deterministic.
+ */
+export async function aplicarArquivoRemotoEmSlots({
+  rede,
+  url,
+  slots,
+  onSlotSettled,
+}: {
+  rede: ArquivoRemotoRede;
+  url: string;
+  slots: Record<Slot, string>;
+  onSlotSettled?: (slot: Slot) => Promise<unknown> | void;
+}): Promise<ResultadoEnvioSlots> {
+  return Promise.all(
+    SLOTS.map(async slot => {
+      try {
+        await rede.addServerPeer({projectId: slots[slot], url});
+        return {slot};
+      } catch (erro) {
+        return {slot, erro};
+      } finally {
+        await onSlotSettled?.(slot);
+      }
+    }),
+  );
+}
+
 const AREA_POR_SLOT: Record<Slot, 'monitoramento' | 'alertas'> = {
   m: 'monitoramento',
   a: 'alertas',
