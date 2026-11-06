@@ -15,6 +15,12 @@ import {useOrganizations} from '../../hooks/organization/useOrganizations';
 import {useAddRemoteArchiveToOrganization} from '../../hooks/organization/useAddRemoteArchiveToOrganization';
 import type {ReconstructedOrganization} from '../../lib/organization/reconstruct';
 
+// The real SDK starts a module-level cleanup interval on import, which keeps
+// Jest's process alive after the suite finishes.
+jest.mock('@sentry/react-native', () => ({
+  captureException: jest.fn(),
+}));
+
 jest.mock('@comapeo/core-react', () => ({
   useAddServerPeer: jest.fn(),
 }));
@@ -177,6 +183,40 @@ async function pressAdd() {
   await user.press(screen.getByText('+ Add Remote Archive'));
 }
 
+/**
+ * Resolves the `onPress` handler the way RTL's `fireEvent` does: walk up the
+ * host nodes, and for each one follow the fiber chain until the next host
+ * boundary. The gesture-handler touchable exposes responder props on the host
+ * node and `onPress` only on the composite above it.
+ */
+function findPressHandler(
+  instance: ReturnType<typeof screen.getByText>,
+): () => unknown {
+  type Fiber = {
+    memoizedProps: Record<string, unknown> | null;
+    return: Fiber | null;
+    type: unknown;
+  } | null;
+  function walkFiber(fiber: Fiber): (() => unknown) | null {
+    if (!fiber?.memoizedProps) return null;
+    const onPress = fiber.memoizedProps.onPress;
+    if (typeof onPress === 'function') return onPress as () => unknown;
+    if (fiber.return === null || typeof fiber.return.type === 'string') {
+      return null;
+    }
+    return walkFiber(fiber.return);
+  }
+  let node: typeof instance | null = instance;
+  while (node) {
+    const handler = walkFiber(
+      (node as unknown as {unstable_fiber: Fiber}).unstable_fiber,
+    );
+    if (handler) return handler;
+    node = node.parent as typeof instance | null;
+  }
+  throw new Error('No press handler found');
+}
+
 function lastBeforeRemoveListener() {
   const calls = mockNavigation.addListener.mock.calls.filter(
     ([event]) => event === 'beforeRemove',
@@ -277,6 +317,45 @@ describe('AddRemoteArchive', () => {
       'ErrorBottomSheet',
       expect.anything(),
     );
+  });
+
+  test('#142 P2: a second press while the journal pass is alive starts nothing', async () => {
+    mockOrganizations([READY_ORG]);
+    journalOrganizations = [{id: READY_ORG.organizationId}];
+    // The first invocation stays pending until the assertions below: the
+    // sync ref is the only guard between the two calls (the rerender has not
+    // replaced the button yet).
+    let liberar!: () => void;
+    solicitarArquivo.mockImplementation(
+      () =>
+        new Promise(resolve => {
+          liberar = () => resolve({estado: 'aplicando', slots: {}});
+        }),
+    );
+    await renderScreen();
+    await findArchive();
+
+    const onPress = findPressHandler(screen.getByText('+ Add Remote Archive'));
+    // Two synchronous presses inside a single act: the first handler is
+    // pending, React has not rerendered the dock yet, and the sync ref must be
+    // the guard that stops the second from choosing another path. (RTL's
+    // `fireEvent` is async in v14; two unawaited calls create overlapping
+    // acts and corrupt the renderer for the next test.)
+    await act(async () => {
+      onPress();
+      onPress();
+      await Promise.resolve();
+    });
+
+    expect(solicitarArquivo).toHaveBeenCalledTimes(1);
+    // The busy invocation must NOT fall through to the manual fan-out.
+    expect(orgStart).not.toHaveBeenCalled();
+    expect(mutate).not.toHaveBeenCalled();
+
+    await act(async () => {
+      liberar();
+      await Promise.resolve();
+    });
   });
 
   test('org membership via slot a fans out to the same two slots', async () => {

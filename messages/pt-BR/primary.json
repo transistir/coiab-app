@@ -732,6 +732,21 @@
   "$1screens.OrganizationSetup.alertsRow": {
     "message": "Alertas"
   },
+  "$1screens.OrganizationSetup.archiveApplying": {
+    "message": "Adicionando"
+  },
+  "$1screens.OrganizationSetup.archiveDone": {
+    "message": "Pronto"
+  },
+  "$1screens.OrganizationSetup.archiveFailed": {
+    "message": "Não adicionado"
+  },
+  "$1screens.OrganizationSetup.archivePending": {
+    "message": "Pendente"
+  },
+  "$1screens.OrganizationSetup.archiveRow": {
+    "message": "Arquivo remoto"
+  },
   "$1screens.OrganizationSetup.areaNotComplete": {
     "message": "Não concluído"
   },
@@ -817,6 +832,9 @@
     "message": "Preparando seu território…"
   },
   "$1screens.OrganizationSetup.retryActivationButton": {
+    "message": "Tentar novamente"
+  },
+  "$1screens.OrganizationSetup.retryArchiveButton": {
     "message": "Tentar novamente"
   },
   "$1screens.OrganizationSetup.retryPreparationButton": {

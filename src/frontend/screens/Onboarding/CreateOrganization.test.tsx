@@ -31,10 +31,14 @@ import {
 import {useProjetarProjectIdAtivo} from '../../contexts/ActiveProjectIdStoreContext';
 import {ErroPacote} from '../../lib/organization/pacotes';
 import {OrganizationOperationError} from '../../lib/organization/fanout';
-import type {
-  EstadoOrganizacoes,
-  OrganizacaoLocal,
+import {createMaterializer} from '../../lib/organization/materializar';
+import {repositorioDoStore} from '../../lib/organization/repositorio';
+import {
+  parseEstadoOrganizacoes,
+  type EstadoOrganizacoes,
+  type OrganizacaoLocal,
 } from '../../lib/organization/coiabOrganizations';
+import {CREATOR_ROLE_ID} from '../../sharedTypes';
 import type {AppStackParamsList} from '../../sharedTypes/navigation';
 import {useAddRemoteArchiveToOrganization} from '../../hooks/organization/useAddRemoteArchiveToOrganization';
 import {
@@ -243,41 +247,8 @@ const registrarComProjetos = async (nome: string) => {
   });
 };
 
-/** The organization registered, then the materialization fails recoverably. */
-const registrarComFalhaRecuperavel = async (nome: string) => {
-  await Promise.resolve();
-  const base = documentoComOrganizacao(nome).organizacoes[0]!;
-  store.instance.setState({
-    versao: 1,
-    organizacoes: [
-      {
-        ...base,
-        estado: 'falha_recuperavel',
-        materializacao: {
-          monitoramento: {
-            etapa: 'criado',
-            projectId: 'p-m',
-            template: null,
-            idsAntesDaCriacao: null,
-          },
-          alertas: {
-            etapa: 'criado',
-            projectId: 'p-a',
-            template: null,
-            idsAntesDaCriacao: null,
-          },
-        },
-        ultimoErro: {
-          codigo: 'preparation-failed',
-          area: 'alertas',
-          ocorridoEm: '2026-11-04T00:00:00.000Z',
-        },
-      },
-    ],
-    ativa: null,
-  });
-  throw new Error('materialization interrupted');
-};
+// A recoverable archive failure is exercised through the REAL materializer
+// below; no mock journals an organization without `arquivoRemoto`.
 
 let store: CoiabOrganizationsStore;
 let profileStore: UserProfileStore;
@@ -577,8 +548,77 @@ describe('CreateOrganization', () => {
   });
 
   test('a recoverable failure keeps the archive URL in the journal, not in the profile (#142 fase C1)', async () => {
-    const iniciarComFalha = jest.fn(registrarComFalhaRecuperavel);
-    mockMaterializador({iniciar: iniciarComFalha});
+    // The REAL materializer, over this screen's real store: the journal must
+    // carry the URL through the first checkpoint and a later failure, and
+    // survive a rehydration — a mock that registers an organization without
+    // `arquivoRemoto` proves nothing about persistence.
+    const projetos = new Map<string, ReturnType<typeof criarProjetoFake>>();
+    function criarProjetoFake() {
+      return {
+        $member: {
+          getById: jest.fn(async () => ({
+            name: 'Teste',
+            deviceType: 'mobile',
+            role: {roleId: CREATOR_ROLE_ID},
+          })),
+        },
+        $importCategories: jest.fn(async () => {}),
+        $setProjectSettings: jest.fn(async () => {}),
+        $getProjectSettings: jest.fn(async () => ({
+          name: 'Monitoramento',
+          sendStats: false,
+          projectDescription: 'marker',
+        })),
+      };
+    }
+    const client = {
+      getDeviceInfo: jest.fn(async () => ({
+        deviceId: 'device-1',
+        name: 'Teste',
+        deviceType: 'mobile' as const,
+      })),
+      setDeviceInfo: jest.fn(async () => {}),
+      listProjects: jest.fn(async () => []),
+      createProject: jest.fn(async ({name}: {name: string}) => {
+        // The SECOND area fails, i.e. AFTER the first checkpoint and after
+        // Monitoramento was fully materialized.
+        if (name === 'Alertas') throw new Error('alertas-failed');
+        return 'projeto-m';
+      }),
+      getProject: jest.fn(async () => {
+        let projeto = projetos.get('projeto-m');
+        if (!projeto) {
+          projeto = criarProjetoFake();
+          projetos.set('projeto-m', projeto);
+        }
+        return projeto;
+      }),
+    };
+    const templates = {
+      prepare: jest.fn(async () => ({
+        monitoramento: {
+          ref: {versao: '1', hash: 'monitoramento'},
+          filePath: '/fake/monitoramento.comapeocat',
+        },
+        alertas: {
+          ref: {versao: '1', hash: 'alertas'},
+          filePath: '/fake/alertas.comapeocat',
+        },
+      })),
+      verify: jest.fn(async () => true),
+    };
+    const materializer = createMaterializer({
+      client,
+      templates,
+      repository: repositorioDoStore(store),
+      generateId: () => '0123456789abcdef',
+      arquivoRemoto: {addServerPeer: jest.fn(async () => {})},
+    });
+    const iniciarReal = jest.fn(
+      (nome: string, opcoes?: {arquivoRemotoUrl?: string}) =>
+        materializer.start(nome, opcoes),
+    );
+    mockMaterializador({iniciar: iniciarReal});
     await renderScreen(OrganizationProvisioning);
     await irParaEtapaNome();
 
@@ -589,7 +629,7 @@ describe('CreateOrganization', () => {
     expect(
       await screen.findByText('Could not finish creating the territory.'),
     ).toBeOnTheScreen();
-    expect(iniciarComFalha).toHaveBeenCalledWith('Kaxuyana-Tunayana', {
+    expect(iniciarReal).toHaveBeenCalledWith('Kaxuyana-Tunayana', {
       arquivoRemotoUrl: 'https://exemplo.org/',
     });
     expect(Object.keys(profileStore.instance.getState()).sort()).toStrictEqual([
@@ -598,6 +638,22 @@ describe('CreateOrganization', () => {
       'village',
     ]);
     expect(archiveStart).not.toHaveBeenCalled();
+
+    // Failure after the FIRST checkpoint, with the URL already in the same
+    // `preparando` write: the persisted journal keeps it and a rehydration
+    // reads it back.
+    const persistida = store.instance.getState().organizacoes[0]!;
+    expect(client.createProject).toHaveBeenCalledTimes(2);
+    expect(persistida.estado).toBe('falha_recuperavel');
+    expect(persistida.materializacao.monitoramento.etapa).toBe('verificado');
+    expect(persistida.arquivoRemoto).toMatchObject({
+      url: 'https://exemplo.org/',
+      estado: 'pendente',
+    });
+    const reidratado = parseEstadoOrganizacoes(store.instance.getState());
+    expect(reidratado?.organizacoes[0]?.arquivoRemoto?.url).toBe(
+      'https://exemplo.org/',
+    );
   });
 
   test('shows the loading state instead of the button while creating', async () => {

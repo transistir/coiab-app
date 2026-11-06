@@ -1,4 +1,6 @@
 import * as React from 'react';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import {Text} from 'react-native';
 import {
   act,
@@ -618,6 +620,36 @@ describe('OrganizationProvisioning', () => {
       });
       expect(retomarArquivo).toHaveBeenCalledWith('org-1');
       expect(retomarArquivo).not.toHaveBeenCalledWith('org-0');
+    });
+
+    test('pt-BR catalog carries the archive row, statuses and retry copy', () => {
+      // Read the REAL source catalog compiled into the app (`messages/pt-BR`
+      // → `translations/pt.json`), not a test-local message map.
+      const catalogo = JSON.parse(
+        fs.readFileSync(
+          path.resolve(__dirname, '../../../../messages/pt-BR/primary.json'),
+          'utf8',
+        ),
+      ) as Record<string, {message: string}>;
+
+      expect(catalogo['$1screens.OrganizationSetup.archiveRow']?.message).toBe(
+        'Arquivo remoto',
+      );
+      expect(
+        catalogo['$1screens.OrganizationSetup.archivePending']?.message,
+      ).toBe('Pendente');
+      expect(
+        catalogo['$1screens.OrganizationSetup.archiveApplying']?.message,
+      ).toBe('Adicionando');
+      expect(catalogo['$1screens.OrganizationSetup.archiveDone']?.message).toBe(
+        'Pronto',
+      );
+      expect(
+        catalogo['$1screens.OrganizationSetup.archiveFailed']?.message,
+      ).toBe('Não adicionado');
+      expect(
+        catalogo['$1screens.OrganizationSetup.retryArchiveButton']?.message,
+      ).toBe('Tentar novamente');
     });
   });
 

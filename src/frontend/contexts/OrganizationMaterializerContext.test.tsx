@@ -521,7 +521,7 @@ describe('OrganizationMaterializerContext', () => {
     };
   }
 
-  test('organização pronta com arquivo em falha_recuperavel é retomada no boot uma vez', async () => {
+  test('falha recuperável não é reenviada no boot; o retry é explícito', async () => {
     const store = createCoiabOrganizationsStore();
     store.instance.setState(
       readyDocumentWithArchive({
@@ -543,13 +543,22 @@ describe('OrganizationMaterializerContext', () => {
       typeof fakeCreationProject
     >;
 
-    await waitFor(() =>
-      expect(
-        store.instance.getState().organizacoes[0]?.arquivoRemoto?.estado,
-      ).toBe('concluido'),
-    );
+    // Boot is automatic: a recorded failure waits for the user, never a
+    // watchdog resend that could reset the durable replay budget.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(monitoramento.$member.addServerPeer).not.toHaveBeenCalled();
+    expect(alertas.$member.addServerPeer).not.toHaveBeenCalled();
+    expect(
+      store.instance.getState().organizacoes[0]?.arquivoRemoto?.estado,
+    ).toBe('falha_recuperavel');
 
-    // Only the failed slot was sent; the concluded one is never re-sent.
+    // The explicit retry is the one action that talks to the server.
+    await act(async () => {
+      await hook.result.current!.retomarArquivo(ORG_ID);
+    });
+
     expect(monitoramento.$member.addServerPeer).toHaveBeenCalledTimes(1);
     expect(monitoramento.$member.addServerPeer).toHaveBeenCalledWith(
       'https://arquivo.example/',
@@ -567,11 +576,73 @@ describe('OrganizationMaterializerContext', () => {
     // awaiting it keeps the act scope from leaking into the next test (an
     // unawaited rerender left effects unflushed there, so the following
     // provider neither reported its handle nor ran its boot reconciliation).
-    await hook.rerender(undefined as never);
+    await hook.rerender(undefined);
     await act(async () => {
       await Promise.resolve();
     });
     expect(monitoramento.$member.addServerPeer).toHaveBeenCalledTimes(1);
+  });
+
+  test('#142 P2: duas aberturas consecutivas não reenviam o arquivo após replay esgotado', async () => {
+    const store = createCoiabOrganizationsStore();
+    // The durable journal already spent its one replay: the first boot can
+    // only record the failure. The SECOND opening must not choose `retry`
+    // merely because the aggregate state is now `falha_recuperavel`.
+    store.instance.setState(
+      readyDocumentWithArchive({
+        url: 'https://arquivo.example/',
+        estado: 'aplicando',
+        slots: {
+          m: {
+            estado: 'aplicando',
+            tentativaId: 'tentativa-m',
+            iniciadaEm: 1,
+            replayConsumido: true,
+          },
+          a: {estado: 'concluido', tentativaId: 'tentativa-a'},
+        },
+      }),
+      true,
+    );
+
+    const primeiro = await renderMaterializador(store);
+    const monitoramento = (await clientApi.getProject(
+      `${ORG_ID}-m`,
+    )) as ReturnType<typeof fakeCreationProject>;
+
+    await waitFor(() =>
+      expect(
+        store.instance.getState().organizacoes[0]?.arquivoRemoto?.slots.m
+          .estado,
+      ).toBe('falha_recuperavel'),
+    );
+    expect(monitoramento.$member.addServerPeer).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await primeiro.hook.unmount();
+    });
+
+    // Second opening over the SAME persisted document.
+    const segundo = await renderMaterializador(store);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(monitoramento.$member.addServerPeer).not.toHaveBeenCalled();
+    expect(
+      store.instance.getState().organizacoes[0]?.arquivoRemoto?.slots.m,
+    ).toMatchObject({
+      estado: 'falha_recuperavel',
+      replayConsumido: true,
+    });
+    // No creation was started either: the archive boot is never a new
+    // materialization.
+    const materializer = createMaterializerMock.mock.results[0]!.value;
+    expect(materializer.start).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await segundo.hook.unmount();
+    });
   });
 
   test('retry por id não recria projeto nem reimporta categorias', async () => {
@@ -643,6 +714,61 @@ describe('OrganizationMaterializerContext', () => {
     expect(materializer.start).not.toHaveBeenCalled();
     expect(materializer.resume).not.toHaveBeenCalled();
     expect(confirmarEntradaMock).not.toHaveBeenCalled();
+  });
+
+  test('#142 P2: segunda URL durante execução viva preserva o journal e não executa', async () => {
+    let liberar!: () => void;
+    const pendente = new Promise<void>(resolve => {
+      liberar = resolve;
+    });
+    const addServerPeer = jest.fn(() => pendente);
+    // Both slots reach the same pending native operation, so the first pass
+    // is live (envios > 0) while the second URL is requested.
+    clientApi.getProject = jest.fn(async () => ({
+      $member: {addServerPeer},
+    }));
+
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState(
+      readyDocumentWithArchive({
+        url: 'https://primeiro.example/',
+        estado: 'pendente',
+        slots: {m: {estado: 'pendente'}, a: {estado: 'pendente'}},
+      }),
+      true,
+    );
+    const {hook} = await renderMaterializador(store);
+
+    await waitFor(() => expect(addServerPeer).toHaveBeenCalledTimes(2));
+    const antes = store.instance.getState().organizacoes[0]!.arquivoRemoto!;
+    expect(antes.slots.m.estado).toBe('aplicando');
+
+    // A DIFFERENT URL arrives while the first pass is alive: the shared lock
+    // refuses it. The journal must stay byte-identical — new URL, previous
+    // tentativaIds and states — and no new execution may start.
+    const resultado = await hook.result.current!.solicitarArquivo(
+      ORG_ID,
+      'https://segundo.example/',
+    );
+    expect(resultado.estado).toBe('em-andamento');
+
+    const depois = store.instance.getState().organizacoes[0]!.arquivoRemoto!;
+    expect(depois).toBe(antes);
+    expect(depois.url).toBe('https://primeiro.example/');
+    expect(addServerPeer).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      liberar();
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(
+        store.instance.getState().organizacoes[0]?.arquivoRemoto?.estado,
+      ).toBe('concluido'),
+    );
+    await act(async () => {
+      await hook.unmount();
+    });
   });
 
   test('iniciar repassa a URL do arquivo remoto ao motor e grava no journal', async () => {

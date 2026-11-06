@@ -10,6 +10,13 @@ import {SLOTS, type Slot} from './marker';
 /** A promise without a response is failed after this window. */
 export const PRAZO_ARQUIVO_REMOTO_MS = 60_000;
 
+/**
+ * Space between attempts to re-write a conclusion checkpoint whose journal
+ * write failed. The local write is retried WITHOUT ever repeating the send,
+ * so a transient MMKV failure cannot leave the step stuck in `aplicando`.
+ */
+export const RETENTATIVA_CHECKPOINT_MS = 1_000;
+
 export type ModoArquivoRemoto = 'automatico' | 'retry';
 
 export type ResultadoArquivoRemoto = {
@@ -181,6 +188,40 @@ export function createArquivoRemotoExecutor({
     return mapa;
   }
 
+  /**
+   * One spaced retry timer per organization, owned by this executor. The
+   * timer only re-applies a conclusion checkpoint; it never selects a slot
+   * for sending, so a failed write cannot turn into a duplicate send.
+   */
+  const retentativas = new Map<string, ReturnType<typeof setTimeout>>();
+
+  function temSucessosPendentes(organizacaoId: string): boolean {
+    const mapa = sucessosPendentes.get(repository);
+    if (!mapa) return false;
+    const prefixo = `${organizacaoId}:`;
+    for (const chave of mapa.keys()) {
+      if (chave.startsWith(prefixo)) return true;
+    }
+    return false;
+  }
+
+  function agendarReaplicacao(organizacaoId: string): void {
+    if (retentativas.has(organizacaoId)) return;
+    const timer = setTimeout(() => {
+      retentativas.delete(organizacaoId);
+      try {
+        reaplicarSucessosPendentes(organizacaoId);
+      } catch {
+        // A failed read/write keeps the in-memory guard; retry later.
+      }
+      if (temSucessosPendentes(organizacaoId))
+        agendarReaplicacao(organizacaoId);
+    }, RETENTATIVA_CHECKPOINT_MS);
+    // Do not keep the Node/Jest process alive for a checkpoint retry.
+    (timer as unknown as {unref?: () => void}).unref?.();
+    retentativas.set(organizacaoId, timer);
+  }
+
   /** Reads the target organization by id — NEVER the active or first entry. */
   function lerOrganizacao(organizacaoId: string): OrganizacaoLocal | undefined {
     return repository
@@ -341,6 +382,7 @@ export function createArquivoRemotoExecutor({
           } catch {
             // Success must never be re-sent: repeat only this write later.
             guardarSucessoPendente(organizacaoId, slot, tentativaId);
+            agendarReaplicacao(organizacaoId);
           }
         },
         () => {
@@ -433,6 +475,14 @@ export function createArquivoRemotoExecutor({
   }
 
   return {
+    /**
+     * Whether a pass for this organization is still alive. The caller uses it
+     * BEFORE replacing the journal with a new URL: a refusal must leave the
+     * live attempt (its URL, tentativaId and slot states) untouched.
+     */
+    emAndamento(organizacaoId: string): boolean {
+      return (mapaDeVoos().get(organizacaoId)?.envios.size ?? 0) > 0;
+    },
     executar(
       organizacaoId: string,
       opcoes: {modo?: ModoArquivoRemoto} = {},

@@ -3,7 +3,10 @@ import type {
   OrganizacaoLocal,
   ArquivoRemoto,
 } from './documento';
-import {createArquivoRemotoExecutor} from './arquivoRemoto';
+import {
+  createArquivoRemotoExecutor,
+  RETENTATIVA_CHECKPOINT_MS,
+} from './arquivoRemoto';
 
 const URL_ARQUIVO = 'https://arquivo.example/';
 
@@ -272,34 +275,44 @@ describe('arquivo remoto no journal da organização (#142)', () => {
     );
   });
 
-  test('sucesso seguido de falha de persistência repete só a gravação', async () => {
-    const org = organizacao('org-1', arquivo());
-    const h = harness({documentoInicial: documento(org)});
-    const write = h.repository.write.getMockImplementation()!;
-    let falharConclusaoDeM = true;
-    h.repository.write.mockImplementation((next: EstadoOrganizacoes) => {
-      const slot = next.organizacoes[0]?.arquivoRemoto?.slots.m;
-      if (falharConclusaoDeM && slot?.estado === 'concluido') {
-        falharConclusaoDeM = false;
-        throw new Error('mmkv-write-failed');
-      }
-      write(next);
-    });
+  test('sucesso seguido de falha de persistência converge sem novo envio', async () => {
+    jest.useFakeTimers();
+    try {
+      const org = organizacao('org-1', arquivo());
+      const h = harness({documentoInicial: documento(org)});
+      const write = h.repository.write.getMockImplementation()!;
+      let falharConclusaoDeM = true;
+      h.repository.write.mockImplementation((next: EstadoOrganizacoes) => {
+        const slot = next.organizacoes[0]?.arquivoRemoto?.slots.m;
+        if (falharConclusaoDeM && slot?.estado === 'concluido') {
+          falharConclusaoDeM = false;
+          throw new Error('mmkv-write-failed');
+        }
+        write(next);
+      });
 
-    await h.criar().executar('org-1');
+      await h.criar().executar('org-1');
 
-    expect(h.addServerPeer).toHaveBeenCalledTimes(2);
-    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m.estado).toBe(
-      'aplicando',
-    );
+      // The send succeeded; only the conclusion checkpoint was lost.
+      expect(h.addServerPeer).toHaveBeenCalledTimes(2);
+      expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m.estado).toBe(
+        'aplicando',
+      );
 
-    // Same session (a remount): the in-memory guard repeats only the failed
-    // checkpoint write — never the network send.
-    await h.criar().executar('org-1');
+      // No external call and no extra send: the executor itself retries the
+      // CHECKPOINT after the spacing, converging to `concluido`.
+      jest.advanceTimersByTime(RETENTATIVA_CHECKPOINT_MS);
+      await microtarefas();
 
-    expect(h.addServerPeer).toHaveBeenCalledTimes(2);
-    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
-      estado: 'concluido',
-    });
+      expect(h.addServerPeer).toHaveBeenCalledTimes(2);
+      expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+        estado: 'concluido',
+      });
+      expect(h.document.organizacoes[0]?.arquivoRemoto?.estado).toBe(
+        'concluido',
+      );
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

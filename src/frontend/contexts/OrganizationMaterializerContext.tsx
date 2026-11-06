@@ -183,6 +183,16 @@ export function OrganizationMaterializerProvider({
       if (!organizacao) throw new Error('organization-not-found');
       const atual = organizacao.arquivoRemoto;
       const mesmaUrl = atual?.url === normalizada;
+      // #142 review P2: the journal must not be replaced while a pass is
+      // alive. A second URL is REFUSED by the shared lock, preserving the
+      // live attempt's URL, tentativaId and slot states; a refusal is never
+      // a journal write that the executor will not run.
+      if (!mesmaUrl && executorArquivoRemoto.emAndamento(organizacaoId)) {
+        return {
+          estado: 'em-andamento',
+          slots: atual ? {...atual.slots} : {},
+        };
+      }
       if (!mesmaUrl) {
         repository.write({
           ...documento,
@@ -263,24 +273,23 @@ export function OrganizationMaterializerProvider({
   const materializador = motor.handle;
   const {executarArquivo} = motor;
 
-  // #142 fase B — boot reconciliation. Organizations already `pronta` keep
-  // their archive step in the same journal; nothing else would ever finish an
-  // interrupted pass (the provisioning surface only exists for `preparando`).
   // An interrupted `aplicando` keeps its durable replay budget, so it is
-  // resumed in automatic mode; a recorded failure waits for this boot's one
-  // explicit retry. Every write is patched by organization id, so a late
-  // conclusion never touches another organization nor the active selection.
+  // resumed in automatic mode. A recorded failure is NOT retried by the boot:
+  // `retry` is user-paced and only ever reaches the executor through an
+  // explicit action (the provisioning button / manual request). Otherwise a
+  // boot would reset `replayConsumido` and resend a budget the durable
+  // journal had already spent. Every write is patched by organization id, so
+  // a late conclusion never touches another organization nor the active
+  // selection.
   useEffect(() => {
     const organizacoes = store.instance.getState().organizacoes;
     for (const organizacao of organizacoes) {
       const arquivo = organizacao.arquivoRemoto;
       if (organizacao.estado !== 'pronta' || !arquivo) continue;
       if (arquivo.estado === 'concluido') continue;
-      const modo: ModoArquivoRemoto =
-        arquivo.estado === 'falha_recuperavel' ? 'retry' : 'automatico';
       // The executor already bounds and catches its own sends; a repository
       // read/write failure must not surface as an unhandled rejection.
-      void executarArquivo(organizacao.id, modo).catch(() => {});
+      void executarArquivo(organizacao.id, 'automatico').catch(() => {});
     }
   }, [executarArquivo, store]);
 

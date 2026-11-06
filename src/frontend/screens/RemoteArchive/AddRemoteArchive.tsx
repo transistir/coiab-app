@@ -235,11 +235,15 @@ const AddFoundArchive = ({name, url}: AddFoundArchiveProps) => {
     status === 'pending' || organizationArchive.busy || journalBusy;
 
   async function handleAddRemoteArchive() {
+    // #142 review P2: a second invocation while the journal pass is alive
+    // must return BEFORE choosing a path. Falling through would skip the
+    // journal branch and start the manual fan-out beside the live executor.
+    if (journalBusyRef.current) return;
     if (activeOrganization) {
       // #142 fase C1: a journalized organization runs through the SAME
       // executor/lock. It re-reads both project ids from the journal and can
       // neither recreate a project nor race a manual fan-out.
-      if (materializador && journalOrganization && !journalBusyRef.current) {
+      if (materializador && journalOrganization) {
         journalBusyRef.current = true;
         setJournalBusy(true);
         try {
