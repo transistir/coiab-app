@@ -645,6 +645,125 @@ describe('arquivo remoto no journal da organização (#142)', () => {
     );
   });
 
+  test('falha única no checkpoint `aplicando` de a não vira sucesso e o próximo passe envia a', async () => {
+    const org = organizacao('org-1', arquivo());
+    const h = harness({documentoInicial: documento(org)});
+    const write = h.repository.write.getMockImplementation()!;
+    let falharAplicandoDeA = true;
+    h.repository.write.mockImplementation((next: EstadoOrganizacoes) => {
+      const slot = next.organizacoes[0]?.arquivoRemoto?.slots.a;
+      if (falharAplicandoDeA && slot?.estado === 'aplicando') {
+        falharAplicandoDeA = false;
+        throw new Error('mmkv-write-failed');
+      }
+      write(next);
+    });
+
+    const resultado = await h.criar().executar('org-1');
+
+    // `m` was really sent; `a` was NOT (there is no `start` without its
+    // durable record). The single sibling success must never be reported as
+    // success while `a` was never sent.
+    expect(h.addServerPeer).toHaveBeenCalledTimes(1);
+    expect(h.addServerPeer).toHaveBeenCalledWith({
+      projectId: 'org-1-m',
+      url: URL_ARQUIVO,
+    });
+    expect(resultado.estado).toBe('falha_recuperavel');
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.a).toMatchObject({
+      estado: 'falha_recuperavel',
+      erro: 'checkpoint-inicial',
+    });
+
+    // Round-trip: the persisted aggregate still refuses to claim success, so
+    // the screen's success branch cannot open.
+    const persistido = JSON.parse(
+      JSON.stringify(h.document),
+    ) as EstadoOrganizacoes;
+    expect(persistido.organizacoes[0]?.arquivoRemoto?.estado).toBe(
+      'falha_recuperavel',
+    );
+
+    // The next pass retakes the slot whose start was never recorded.
+    const seguinte = await h.criar().executar('org-1');
+
+    expect(h.addServerPeer).toHaveBeenCalledTimes(2);
+    expect(h.addServerPeer).toHaveBeenLastCalledWith({
+      projectId: 'org-1-a',
+      url: URL_ARQUIVO,
+    });
+    expect(seguinte.estado).toBe('concluido');
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.a).toMatchObject({
+      estado: 'concluido',
+    });
+  });
+
+  test('falha no checkpoint inicial e na falha preserva falha_recuperavel em memória', async () => {
+    jest.useFakeTimers();
+    try {
+      const org = organizacao('org-1', arquivo());
+      const h = harness({documentoInicial: documento(org)});
+      const write = h.repository.write.getMockImplementation()!;
+      let falhas = 0;
+      h.repository.write.mockImplementation((next: EstadoOrganizacoes) => {
+        const slotA = next.organizacoes[0]?.arquivoRemoto?.slots.a;
+        const falhandoAplicando = slotA?.estado === 'aplicando';
+        const falhandoCheckpoint =
+          slotA?.estado === 'falha_recuperavel' &&
+          slotA.erro === 'checkpoint-inicial';
+        if (falhas < 2 && (falhandoAplicando || falhandoCheckpoint)) {
+          falhas += 1;
+          throw new Error('mmkv-write-failed');
+        }
+        write(next);
+      });
+
+      const resultado = await h.criar().executar('org-1');
+
+      expect(h.addServerPeer).toHaveBeenCalledTimes(1);
+      // The durable failure checkpoint was lost too, so the slot itself is
+      // still `pendente`; only the in-memory latch knows it failed.
+      expect(resultado.estado).toBe('falha_recuperavel');
+      expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.a.estado).toBe(
+        'pendente',
+      );
+
+      // The checkpoint retry re-applies the failure WITHOUT resending.
+      jest.advanceTimersByTime(RETENTATIVA_CHECKPOINT_MS);
+      await microtarefas();
+
+      expect(h.addServerPeer).toHaveBeenCalledTimes(1);
+      expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.a).toMatchObject({
+        estado: 'falha_recuperavel',
+        erro: 'checkpoint-inicial',
+      });
+      expect(h.document.organizacoes[0]?.arquivoRemoto?.estado).toBe(
+        'falha_recuperavel',
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('concluido + removido continua agregando concluido', async () => {
+    const org = organizacao(
+      'org-1',
+      arquivo({
+        estado: 'concluido',
+        slots: {
+          m: {estado: 'removido'},
+          a: {estado: 'concluido', tentativaId: 'tentativa-a'},
+        },
+      }),
+    );
+    const h = harness({documentoInicial: documento(org)});
+
+    const resultado = await h.criar().executar('org-1');
+
+    expect(h.addServerPeer).not.toHaveBeenCalled();
+    expect(resultado.estado).toBe('concluido');
+  });
+
   test('consulta de remoção antiga não sobrescreve a tentativa nova', async () => {
     const org = organizacao(
       'org-1',

@@ -197,18 +197,22 @@ function estadoAgregado(
   // next boot reconcile a durable `removendo` left by a crash (a `concluido`
   // sibling would otherwise make the aggregate terminal and hide the intent).
   if (estados.some(estado => estado === 'removendo')) return 'removendo';
-  if (estados.every(estado => estado === 'concluido')) return 'concluido';
   // All slots removed means there is no archive anywhere.
   if (estados.every(estado => estado === 'removido')) return 'removido';
+  // Success requires the WHOLE archive applied (or deliberately removed): a
+  // single `concluido` sibling must never mask a slot that was never sent.
+  // `pendente`/`aplicando` are not terminal, so they can never be success.
+  const todosTerminaisDeSucesso = estados.every(
+    estado => estado === 'concluido' || estado === 'removido',
+  );
+  if (todosTerminaisDeSucesso && estados.some(estado => estado === 'concluido'))
+    return 'concluido';
   // A recoverable failure must outrank a partial success: with one slot
   // `concluido` and another `falha_recuperavel` the archive is NOT fully
   // applied, so the aggregate must keep the retry visible instead of letting
   // the screen announce a false success.
   if (estados.some(estado => estado === 'falha_recuperavel'))
     return 'falha_recuperavel';
-  // A partial removal still has the archive applied in at least one territory
-  // (`concluido` + `removido`), so the aggregate must not claim absence.
-  if (estados.some(estado => estado === 'concluido')) return 'concluido';
   return 'pendente';
 }
 
@@ -393,6 +397,32 @@ export function createArquivoRemotoExecutor({
       .organizacoes.find(organizacao => organizacao.id === organizacaoId);
   }
 
+  /**
+   * A failed `aplicando` checkpoint whose terminal failure ALSO failed to
+   * persist lives only in memory. The pass result must still report
+   * `falha_recuperavel`: the durable aggregate (`pendente` after a sibling
+   * success) would otherwise hide a slot that was never sent.
+   */
+  function estadoComFalhaDeCheckpointInicial(
+    organizacaoId: string,
+    estado: ResultadoArquivoRemoto['estado'],
+  ): ResultadoArquivoRemoto['estado'] {
+    // Only a would-be success (or its silent `pendente` fallback) is unsafe;
+    // explicit in-progress/absent results keep their meaning.
+    if (estado !== 'pendente' && estado !== 'concluido') return estado;
+    const mapa = checkpointsPendentes.get(repository);
+    if (!mapa) return estado;
+    const prefixo = `${organizacaoId}:`;
+    for (const [chave, checkpoint] of mapa) {
+      if (
+        chave.startsWith(prefixo) &&
+        checkpoint.patch.erro === 'checkpoint-inicial'
+      )
+        return 'falha_recuperavel';
+    }
+    return estado;
+  }
+
   function resultadoAtual(
     organizacaoId: string,
     estado?: ResultadoArquivoRemoto['estado'],
@@ -402,7 +432,10 @@ export function createArquivoRemotoExecutor({
       return {estado: estado ?? 'sem-arquivo', slots: {}};
     }
     return {
-      estado: estado ?? organizacao.arquivoRemoto.estado,
+      estado: estadoComFalhaDeCheckpointInicial(
+        organizacaoId,
+        estado ?? organizacao.arquivoRemoto.estado,
+      ),
       slots: {...organizacao.arquivoRemoto.slots},
     };
   }
@@ -682,7 +715,26 @@ export function createArquivoRemotoExecutor({
         erro: undefined,
       });
     } catch {
-      // Cannot record the attempt: do not send. A later pass writes again.
+      // Cannot record the attempt (no `start` without its durable record), so
+      // the slot must NOT be sent. Leaving it silently `pendente` is exactly
+      // what let a `concluido` sibling produce a false success. Record the
+      // attempt as a recoverable failure instead; the executor result then
+      // reports it and a later pass can retake the slot.
+      const tentativaEsperada = atual.tentativaId ?? null;
+      try {
+        gravarSlot(organizacaoId, slot, tentativaEsperada, {
+          estado: 'falha_recuperavel',
+          erro: 'checkpoint-inicial',
+        });
+        limparCheckpointPendente(organizacaoId, slot);
+      } catch {
+        // Even the failure checkpoint was lost: keep it in memory, re-apply it
+        // by timer (never resending anything) and keep the pass non-success.
+        guardarCheckpointPendente(organizacaoId, slot, tentativaEsperada, {
+          estado: 'falha_recuperavel',
+          erro: 'checkpoint-inicial',
+        });
+      }
       return;
     }
 
@@ -787,7 +839,14 @@ export function createArquivoRemotoExecutor({
       if (guardaDeCheckpointPendente(organizacaoId, slot)) continue;
       if (modo === 'automatico') {
         // A known rejection waits for an explicit retry — no watchdog resend.
-        if (atual.estado === 'falha_recuperavel') continue;
+        // The ONE exception is a locally lost `aplicando` checkpoint: no
+        // native effect ever started, so the next pass must retake the slot
+        // instead of leaving it stranded with no live operation.
+        if (
+          atual.estado === 'falha_recuperavel' &&
+          atual.erro !== 'checkpoint-inicial'
+        )
+          continue;
         // A confirmed removal is TERMINAL for automatic passes: the boot
         // must not re-add an archive the user removed. Only an explicit
         // request reopens it.

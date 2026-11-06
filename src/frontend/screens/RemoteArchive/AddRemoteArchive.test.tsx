@@ -294,6 +294,35 @@ describe('AddRemoteArchive', () => {
     );
   });
 
+  test('journalized falha recuperável aborts to the error sheet, never success', async () => {
+    mockOrganizations([READY_ORG]);
+    journalOrganizations = [{id: READY_ORG.organizationId}];
+    // #142 9ª rodada: a lost initial checkpoint leaves one slot unsent while
+    // the other concluded. One sibling success is NOT success.
+    solicitarArquivo.mockResolvedValue({
+      estado: 'falha_recuperavel',
+      slots: {
+        m: {estado: 'concluido'},
+        a: {estado: 'falha_recuperavel', erro: 'checkpoint-inicial'},
+      },
+    });
+    await renderScreen();
+    await findArchive();
+
+    await pressAdd();
+
+    await waitFor(() => {
+      expect(mockNavigation.navigate).toHaveBeenCalledWith(
+        'ErrorBottomSheet',
+        expect.objectContaining({error: expect.any(Error)}),
+      );
+    });
+    expect(mockNavigation.navigate).not.toHaveBeenCalledWith(
+      'SuccessfullyAddedArchive',
+      expect.anything(),
+    );
+  });
+
   test('manual submission concurrent with a journal application never starts a second fan-out', async () => {
     mockOrganizations([READY_ORG]);
     // The journal is already applying this URL: the shared executor joins or
