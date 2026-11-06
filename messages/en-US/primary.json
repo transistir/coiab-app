@@ -668,6 +668,21 @@
   "$1screens.OrganizationSetup.alertsRow": {
     "message": "Alerts"
   },
+  "$1screens.OrganizationSetup.archiveApplying": {
+    "message": "Adding"
+  },
+  "$1screens.OrganizationSetup.archiveDone": {
+    "message": "Ready"
+  },
+  "$1screens.OrganizationSetup.archiveFailed": {
+    "message": "Not added"
+  },
+  "$1screens.OrganizationSetup.archivePending": {
+    "message": "Pending"
+  },
+  "$1screens.OrganizationSetup.archiveRow": {
+    "message": "Remote archive"
+  },
   "$1screens.OrganizationSetup.areaNotComplete": {
     "message": "Not completed"
   },
@@ -750,6 +765,10 @@
   "$1screens.OrganizationSetup.retryActivationButton": {
     "message": "Try again",
     "description": "Reactivates the settled organization after a failed open (SPEC B §4.4:120, “Tentar novamente”)"
+  },
+  "$1screens.OrganizationSetup.retryArchiveButton": {
+    "message": "Try again",
+    "description": "Retries applying the remote archive to this territory only"
   },
   "$1screens.OrganizationSetup.retryPreparationButton": {
     "message": "Try again"
