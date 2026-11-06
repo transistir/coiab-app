@@ -200,11 +200,15 @@ function estadoAgregado(
   if (estados.every(estado => estado === 'concluido')) return 'concluido';
   // All slots removed means there is no archive anywhere.
   if (estados.every(estado => estado === 'removido')) return 'removido';
+  // A recoverable failure must outrank a partial success: with one slot
+  // `concluido` and another `falha_recuperavel` the archive is NOT fully
+  // applied, so the aggregate must keep the retry visible instead of letting
+  // the screen announce a false success.
+  if (estados.some(estado => estado === 'falha_recuperavel'))
+    return 'falha_recuperavel';
   // A partial removal still has the archive applied in at least one territory
   // (`concluido` + `removido`), so the aggregate must not claim absence.
   if (estados.some(estado => estado === 'concluido')) return 'concluido';
-  if (estados.some(estado => estado === 'falha_recuperavel'))
-    return 'falha_recuperavel';
   return 'pendente';
 }
 
@@ -577,6 +581,9 @@ export function createArquivoRemotoExecutor({
       if (!arquivo) continue;
       for (const slot of SLOTS) {
         if (arquivo.slots[slot].estado !== 'removendo') continue;
+        // Identity of the removal attempt that is being reconciled. A newer
+        // removal replaces it; the old read must then be discarded.
+        const remocaoId = arquivo.slots[slot].remocaoId;
         const projectId =
           organizacao.materializacao[AREA_POR_SLOT[slot]].projectId;
         if (!projectId) {
@@ -606,8 +613,11 @@ export function createArquivoRemotoExecutor({
         const organizacaoAtual = atualDoc.organizacoes.find(
           item => item.id === organizacao.id,
         );
-        if (organizacaoAtual?.arquivoRemoto?.slots[slot].estado !== 'removendo')
-          continue;
+        const slotAtual = organizacaoAtual?.arquivoRemoto?.slots[slot];
+        if (slotAtual?.estado !== 'removendo') continue;
+        // A newer removal now owns this slot. Its own callback/reconciliation
+        // decides the outcome; this read is stale and must be dropped silently.
+        if (slotAtual.remocaoId !== remocaoId) continue;
         // A removal may have started while Core was being queried. Its
         // callback owns the decision now; never write a stale `concluido`.
         if (remocaoEmVoo(projectId)) continue;
@@ -834,7 +844,13 @@ export function createArquivoRemotoExecutor({
       );
       if (!organizacao?.arquivoRemoto) return undefined;
       const anterior = {...organizacao.arquivoRemoto.slots[alvo.slot]};
-      gravarSlotDireto(alvo.organizacaoId, alvo.slot, {estado: 'removendo'});
+      gravarSlotDireto(alvo.organizacaoId, alvo.slot, {
+        estado: 'removendo',
+        // The attempt identity is durable BEFORE the Core effect. A Core read
+        // started by an older removal carries the old id and is discarded once
+        // this new attempt owns the slot.
+        remocaoId: proximaTentativa(now),
+      });
       // The removal supersedes any pending send conclusion for this slot.
       limparCheckpointPendente(alvo.organizacaoId, alvo.slot);
       marcarRemocaoEmVoo(projectId);
@@ -909,8 +925,12 @@ export function createArquivoRemotoExecutor({
       const organizacao = documento.organizacoes.find(
         item => item.id === alvo.organizacaoId,
       );
-      if (organizacao?.arquivoRemoto?.slots[alvo.slot].estado !== 'removendo')
-        return true;
+      const slotInicial = organizacao?.arquivoRemoto?.slots[alvo.slot];
+      if (slotInicial?.estado !== 'removendo') return true;
+      // Identity of THIS removal attempt. If a newer removal starts while the
+      // Core read is in flight, its id replaces this one and the result below
+      // is discarded instead of overwriting the new attempt.
+      const remocaoId = slotInicial.remocaoId;
       let existe: boolean;
       try {
         existe = await consultarArquivo(projectId);
@@ -932,6 +952,9 @@ export function createArquivoRemotoExecutor({
         item => item.id === alvo.organizacaoId,
       )?.arquivoRemoto?.slots[alvo.slot];
       if (slotAtual?.estado !== 'removendo') return true;
+      // Another removal owns the slot now: drop this stale read silently and
+      // let that attempt (or its own reconciliation) decide.
+      if (slotAtual.remocaoId !== remocaoId) return false;
       try {
         gravarSlotDireto(
           alvo.organizacaoId,

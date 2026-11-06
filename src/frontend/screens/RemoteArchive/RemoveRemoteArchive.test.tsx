@@ -245,7 +245,7 @@ describe('RemoveRemoteArchive journal ownership on unmount (#142 P2 6ª rodada)'
     const view = await renderScreen();
 
     await pressRemove();
-    expect(cenario.slot().m).toEqual({estado: 'removendo'});
+    expect(cenario.slot().m).toMatchObject({estado: 'removendo'});
 
     // Background → AuthScreen replaces the modal while Core is still running.
     await view.unmount();
@@ -283,7 +283,7 @@ describe('RemoveRemoteArchive journal ownership on unmount (#142 P2 6ª rodada)'
     const view = await renderScreen();
 
     await pressRemove();
-    expect(cenario.slot().m).toEqual({estado: 'removendo'});
+    expect(cenario.slot().m).toMatchObject({estado: 'removendo'});
 
     await view.unmount();
     observadorMontado = false;
@@ -363,7 +363,7 @@ describe('RemoveRemoteArchive journal ownership on unmount (#142 P2 6ª rodada)'
       await flushMicrotasks();
     });
 
-    expect(cenario.slot().m).toEqual({estado: 'removendo'});
+    expect(cenario.slot().m).toMatchObject({estado: 'removendo'});
     // A durable `removendo` is a live operation: the new request is blocked
     // and no send is attempted.
     expect(cenario.executor.emAndamento(ORG_ID)).toBe(true);

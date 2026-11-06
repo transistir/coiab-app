@@ -34,6 +34,13 @@ export type EstadoArquivoRemoto =
 export type EstadoSlotArquivoRemoto = {
   estado: EstadoArquivoRemoto;
   tentativaId?: string;
+  /**
+   * Identity of the REMOVAL attempt that owns a `removendo` slot. A late Core
+   * read belonging to an older removal must never write its outcome over a
+   * newer attempt, so reconciliation applies a result only while this id still
+   * matches the slot.
+   */
+  remocaoId?: string;
   iniciadaEm?: number;
   replayConsumido?: boolean;
   erro?: string;

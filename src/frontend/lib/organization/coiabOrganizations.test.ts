@@ -441,6 +441,7 @@ describe('arquivo remoto no documento (#142)', () => {
           m: {
             estado: 'concluido',
             tentativaId: 'tentativa-m',
+            remocaoId: 'remocao-m',
             iniciadaEm: 111,
             replayConsumido: true,
           },

@@ -424,7 +424,7 @@ describe('arquivo remoto no journal da organização (#142)', () => {
       // 1. Durable intent BEFORE Core removal.
       const anterior = executor.marcarRemocao('org-1-m');
       expect(anterior).toMatchObject({estado: 'concluido'});
-      expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
+      expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
         estado: 'removendo',
       });
 
@@ -441,7 +441,7 @@ describe('arquivo remoto no journal da organização (#142)', () => {
       });
       // Never a success while the removal is unreconciled.
       expect(executor.removerArquivo('org-1-m')).toBe(false);
-      expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
+      expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
         estado: 'removendo',
       });
 
@@ -602,5 +602,118 @@ describe('arquivo remoto no journal da organização (#142)', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  test('concluído + falha recuperável agrega falha_recuperavel (retry visível)', async () => {
+    const org = organizacao(
+      'org-1',
+      arquivo({
+        estado: 'concluido',
+        slots: {
+          m: {estado: 'concluido', tentativaId: 'tentativa-m'},
+          a: {
+            estado: 'falha_recuperavel',
+            tentativaId: 'tentativa-a',
+            erro: 'arquivo-indisponivel',
+          },
+        },
+      }),
+    );
+    const h = harness({
+      documentoInicial: documento(org),
+      rede: async () => {
+        throw new Error('core-rejected');
+      },
+    });
+
+    const resultado = await h.criar().executar('org-1', {modo: 'retry'});
+
+    // `m` stays applied and `a` failed again: the archive is NOT fully
+    // applied, so the aggregate must keep the recoverable failure visible.
+    // Before the fix the aggregate was `concluido` and AddRemoteArchive opened
+    // SuccessfullyAddedArchive, hiding the retry.
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'concluido',
+      tentativaId: 'tentativa-m',
+    });
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.a).toMatchObject({
+      estado: 'falha_recuperavel',
+    });
+    expect(resultado.estado).toBe('falha_recuperavel');
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.estado).toBe(
+      'falha_recuperavel',
+    );
+  });
+
+  test('consulta de remoção antiga não sobrescreve a tentativa nova', async () => {
+    const org = organizacao(
+      'org-1',
+      arquivo({
+        estado: 'concluido',
+        slots: {
+          m: {estado: 'concluido', tentativaId: 'tentativa-m'},
+          a: {estado: 'concluido', tentativaId: 'tentativa-a'},
+        },
+      }),
+    );
+
+    // Both Core reads are controlled: the first belongs to removal #1 and the
+    // second to removal #2. #1's read resolves AFTER #2 started (Core still
+    // reports the server as active); #2's read then resolves with the server
+    // really gone.
+    let resolverAntiga!: (existe: boolean) => void;
+    const consultaAntiga = new Promise<boolean>(resolve => {
+      resolverAntiga = resolve;
+    });
+    let resolverNova!: (existe: boolean) => void;
+    const consultaNova = new Promise<boolean>(resolve => {
+      resolverNova = resolve;
+    });
+    let chamadas = 0;
+    const consultarArquivo = jest.fn(async () => {
+      chamadas += 1;
+      return chamadas === 1 ? consultaAntiga : consultaNova;
+    });
+    const h = harness({
+      documentoInicial: documento(org),
+      consulta: consultarArquivo,
+    });
+    const executor = h.criar();
+
+    // Removal #1 rejects; its reconciliation read is suspended.
+    executor.marcarRemocao('org-1-m');
+    const reconciliacaoAntiga = executor.reconciliarRemocao('org-1-m');
+    await microtarefas();
+    expect(consultarArquivo).toHaveBeenCalledTimes(1);
+
+    // Removal #2 starts and queries Core WHILE #1's read is still pending.
+    executor.marcarRemocao('org-1-m');
+    const reconciliacaoNova = executor.reconciliarRemocao('org-1-m');
+    await microtarefas();
+    expect(consultarArquivo).toHaveBeenCalledTimes(2);
+
+    // #1's stale "still active" answer lands first. Without attempt identity
+    // it wrote `concluido`, making #2's reconciliation short-circuit.
+    resolverAntiga(true);
+    await reconciliacaoAntiga;
+
+    // #2's read now says the archive is gone: it must own the outcome.
+    resolverNova(false);
+    await reconciliacaoNova;
+
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
+      estado: 'removido',
+    });
+    // `a` still has the archive applied.
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.estado).toBe('concluido');
+
+    // The re-add of the SAME URL must really send: a stale `concluido` used to
+    // leave Core blocked while the journal skipped every send.
+    await h.criar().executar('org-1', {modo: 'retry'});
+    expect(h.addServerPeer).toHaveBeenCalledTimes(1);
+    expect(h.addServerPeer).toHaveBeenCalledWith({
+      projectId: 'org-1-m',
+      url: URL_ARQUIVO,
+    });
   });
 });

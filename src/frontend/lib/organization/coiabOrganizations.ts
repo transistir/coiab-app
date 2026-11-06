@@ -72,6 +72,7 @@ const ESTADOS_ARQUIVO_REMOTO = [
 const EstadoSlotArquivoRemotoSchema = v.object({
   estado: v.picklist(ESTADOS_ARQUIVO_REMOTO),
   tentativaId: v.optional(v.string()),
+  remocaoId: v.optional(v.string()),
   iniciadaEm: v.optional(v.number()),
   replayConsumido: v.optional(v.boolean()),
   erro: v.optional(v.string()),
