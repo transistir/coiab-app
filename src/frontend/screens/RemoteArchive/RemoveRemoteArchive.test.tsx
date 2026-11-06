@@ -115,7 +115,9 @@ function organizacao(arquivoRemoto: ArquivoRemoto): OrganizacaoLocal {
  * durable slot in a converged state; asserting on a mock call would not prove
  * that `removendo` stopped blocking the next URL.
  */
-function criarCenario() {
+function criarCenario(
+  consultarArquivo: (projectId: string) => Promise<boolean> = async () => false,
+) {
   let documento: EstadoOrganizacoes = {
     versao: 1,
     organizacoes: [organizacao(arquivoConcluido())],
@@ -128,14 +130,19 @@ function criarCenario() {
     },
   };
   const addServerPeer = jest.fn(async () => {});
-  const executor = createArquivoRemotoExecutor({
-    repository,
-    rede: {addServerPeer},
-  });
+  const criarExecutor = () =>
+    createArquivoRemotoExecutor({
+      repository,
+      rede: {addServerPeer},
+      consultarArquivo,
+    });
+  const executor = criarExecutor();
 
   useMaterializadorMock.mockReturnValue({
     marcarRemocao: (projectId: string) => executor.marcarRemocao(projectId),
     removerArquivo: (projectId: string) => executor.removerArquivo(projectId),
+    reconciliarRemocao: (projectId: string) =>
+      executor.reconciliarRemocao(projectId),
     cancelarRemocao: (
       projectId: string,
       anterior: Parameters<typeof executor.cancelarRemocao>[1],
@@ -144,6 +151,8 @@ function criarCenario() {
 
   return {
     executor,
+    /** New executor over the SAME storage: the in-memory passes are gone. */
+    criarExecutor,
     addServerPeer,
     get documento() {
       return documento;
@@ -247,7 +256,7 @@ describe('RemoveRemoteArchive journal ownership on unmount (#142 P2 6ª rodada)'
       await flushMicrotasks();
     });
 
-    expect(cenario.slot().m).toEqual({estado: 'pendente', erro: 'removido'});
+    expect(cenario.slot().m).toEqual({estado: 'removido'});
     expect(cenario.executor.emAndamento(ORG_ID)).toBe(false);
     // The unmounted screen must not navigate after the late answer.
     expect(mockNavigation.goBack).not.toHaveBeenCalled();
@@ -265,8 +274,12 @@ describe('RemoveRemoteArchive journal ownership on unmount (#142 P2 6ª rodada)'
     });
   });
 
-  test('Core rejection after unmount restores the previous slot and a new URL runs', async () => {
-    const cenario = criarCenario();
+  test('Core rejects after blocking: journal is `removido` and re-adding the SAME URL really sends', async () => {
+    // The literal Core shape (`member-api.js`): assign BLOCKED_ROLE_ID, then
+    // fail the initial sync. The active-server read therefore reports the
+    // archive as gone even though `mutateAsync` rejected.
+    let bloqueado = false;
+    const cenario = criarCenario(async () => !bloqueado);
     const view = await renderScreen();
 
     await pressRemove();
@@ -276,27 +289,89 @@ describe('RemoveRemoteArchive journal ownership on unmount (#142 P2 6ª rodada)'
     observadorMontado = false;
 
     await act(async () => {
+      bloqueado = true;
+      core.reject(new Error('sync failed after blocking'));
+      await flushMicrotasks();
+    });
+
+    // Not the old slot, and not `pendente` (which would let the boot re-add
+    // the file): the removal is a terminal state.
+    expect(cenario.slot().m).toEqual({estado: 'removido'});
+    // `a` still has the archive, so the aggregate is `concluido`, not the
+    // terminal "no archive" state.
+    expect(cenario.documento.organizacoes[0]!.arquivoRemoto!.estado).toBe(
+      'concluido',
+    );
+    expect(cenario.executor.emAndamento(ORG_ID)).toBe(false);
+    expect(mockNavigation.navigate).not.toHaveBeenCalled();
+
+    // Restart: a fresh executor over the same journal. The explicit re-add of
+    // the SAME URL must produce a real send, never a false `concluido`.
+    const reiniciado = cenario.criarExecutor();
+    const resultado = await reiniciado.executar(ORG_ID, {modo: 'retry'});
+
+    expect(resultado.estado).toBe('concluido');
+    expect(cenario.addServerPeer).toHaveBeenCalledWith({
+      projectId: PROJECT_M,
+      url: URL_ANTIGA,
+    });
+    expect(cenario.addServerPeer).toHaveBeenCalledTimes(1);
+  });
+
+  test('Core rejects without effect: journal stays `concluido` and a re-add sends nothing', async () => {
+    // The failure happened before blocking: the read still finds the active
+    // server, so the archive is considered present and a re-add has nothing
+    // to send until the user removes it again.
+    const cenario = criarCenario(async () => true);
+    const view = await renderScreen();
+
+    await pressRemove();
+    await view.unmount();
+    observadorMontado = false;
+
+    await act(async () => {
+      core.reject(new Error('refused before blocking'));
+      await flushMicrotasks();
+    });
+
+    expect(cenario.slot().m).toEqual({estado: 'concluido'});
+    expect(cenario.documento.organizacoes[0]!.arquivoRemoto!.estado).toBe(
+      'concluido',
+    );
+    expect(cenario.executor.emAndamento(ORG_ID)).toBe(false);
+    expect(mockNavigation.navigate).not.toHaveBeenCalled();
+
+    const reiniciado = cenario.criarExecutor();
+    const resultado = await reiniciado.executar(ORG_ID, {modo: 'retry'});
+
+    expect(resultado.estado).toBe('concluido');
+    expect(cenario.addServerPeer).not.toHaveBeenCalled();
+  });
+
+  test('Core unreachable while reconciling: slot stays `removendo` and no false success', async () => {
+    const cenario = criarCenario(async () => {
+      throw new Error('core-offline');
+    });
+    const view = await renderScreen();
+
+    await pressRemove();
+    await view.unmount();
+    observadorMontado = false;
+
+    await act(async () => {
       core.reject(new Error('core refused'));
       await flushMicrotasks();
     });
 
-    expect(cenario.slot().m).toEqual({
-      estado: 'concluido',
-      tentativaId: 'tentativa-m',
+    expect(cenario.slot().m).toEqual({estado: 'removendo'});
+    // A durable `removendo` is a live operation: the new request is blocked
+    // and no send is attempted.
+    expect(cenario.executor.emAndamento(ORG_ID)).toBe(true);
+    const resultado = await cenario.executor.executar(ORG_ID, {
+      modo: 'retry',
     });
-    expect(cenario.executor.emAndamento(ORG_ID)).toBe(false);
+    expect(resultado.estado).not.toBe('concluido');
+    expect(cenario.addServerPeer).not.toHaveBeenCalled();
     expect(mockNavigation.navigate).not.toHaveBeenCalled();
-
-    cenario.trocarUrl(URL_NOVA);
-    await cenario.executor.executar(ORG_ID, {modo: 'retry'});
-
-    expect(cenario.addServerPeer).toHaveBeenCalledWith({
-      projectId: PROJECT_M,
-      url: URL_NOVA,
-    });
-    expect(cenario.addServerPeer).toHaveBeenCalledWith({
-      projectId: PROJECT_A,
-      url: URL_NOVA,
-    });
   });
 });

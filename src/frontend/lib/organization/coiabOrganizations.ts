@@ -64,6 +64,7 @@ const ESTADOS_ARQUIVO_REMOTO = [
   'pendente',
   'aplicando',
   'removendo',
+  'removido',
   'concluido',
   'falha_recuperavel',
 ] as const;

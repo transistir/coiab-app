@@ -119,36 +119,53 @@ export function RemoveRemoteArchive({
                   // drops the observer callbacks, which used to leave the
                   // slot `removendo` and the in-flight removal guard marked
                   // until restart. Awaited work survives the unmount.
+                  // #142 review P2 (7ª rodada): a Core rejection is NOT proof
+                  // that the removal did not happen. Core records the blocked
+                  // role BEFORE syncing (`member-api.js`), so the error can
+                  // arrive after the file became inactive. Only a real Core
+                  // read may decide the slot; restoring the previous state
+                  // would leave the journal durably wrong and block re-adding
+                  // the same URL.
                   void (async () => {
                     let sucesso = false;
                     let erro: unknown;
+                    // Tracks whether the native call actually started. A
+                    // throw BEFORE it is a pre-flight failure: Core never saw
+                    // the request, so the durable mark can be reverted.
+                    let coreIniciado = false;
                     try {
-                      await removeServerPeer.mutateAsync({serverDeviceId});
+                      const mutacao = removeServerPeer.mutateAsync({
+                        serverDeviceId,
+                      });
+                      coreIniciado = true;
+                      await mutacao;
                       sucesso = true;
                     } catch (err) {
                       erro = err;
-                    } finally {
-                      try {
-                        if (sucesso) {
-                          // Finalize only after Core removed the server. A
-                          // false return means the journal is still
-                          // `removendo`; its timer/boot reconciliation will
-                          // finish it, so the screen must not claim a durable
-                          // success.
-                          if (!materializador.removerArquivo(projectId)) {
-                            Sentry.captureException(
-                              new Error('archive-removal-checkpoint-pending'),
-                            );
-                          }
-                        } else {
-                          // Core kept the server: restore the exact previous
-                          // slot. If that write also fails, the durable mark
-                          // stays and Core reconciliation decides later.
-                          materializador.cancelarRemocao(projectId, anterior);
+                    }
+                    try {
+                      if (sucesso) {
+                        // Finalize only after Core removed the server. A
+                        // false return means the journal is still
+                        // `removendo`; its timer/boot reconciliation will
+                        // finish it, so the screen must not claim a durable
+                        // success.
+                        if (!materializador.removerArquivo(projectId)) {
+                          Sentry.captureException(
+                            new Error('archive-removal-checkpoint-pending'),
+                          );
                         }
-                      } catch (journalError) {
-                        Sentry.captureException(journalError);
+                      } else if (!coreIniciado) {
+                        // Pre-flight failure: the previous slot is restored
+                        // exactly. This is the ONLY use of `cancelarRemocao`.
+                        materializador.cancelarRemocao(projectId, anterior);
+                      } else {
+                        // Core rejected: keep `removendo` and let Core decide
+                        // (`removido` / `concluido` / still `removendo`).
+                        await materializador.reconciliarRemocao(projectId);
                       }
+                    } catch (journalError) {
+                      Sentry.captureException(journalError);
                     }
                     if (sucesso) {
                       if (montada.current) navigation.goBack();

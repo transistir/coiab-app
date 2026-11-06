@@ -193,6 +193,9 @@ function archiveStatusMessage(estado: EstadoArquivoRemoto) {
       // A removal is a live journal operation, so it shares the applying
       // vocabulary while Core/checkpoint reconciliation finishes.
       return m.archiveApplying;
+    case 'removido':
+      // The archive was removed: it is not archived on the server anymore.
+      return m.archiveFailed;
     case 'concluido':
       return m.archiveDone;
     case 'falha_recuperavel':

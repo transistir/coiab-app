@@ -443,7 +443,8 @@ export function createOrganizationActivation({
     // second materialization loop may start. Only the archive step runs.
     const arquivoPendente =
       org.arquivoRemoto !== undefined &&
-      org.arquivoRemoto.estado !== 'concluido';
+      org.arquivoRemoto.estado !== 'concluido' &&
+      org.arquivoRemoto.estado !== 'removido';
     const prontaComArquivo = org.estado === 'pronta' && arquivoPendente;
     if (org.estado === 'pronta' && !arquivoPendente) return false;
     // SPEC A §4.2 regra 7: 'falha_recuperavel' is recorded when a resume was

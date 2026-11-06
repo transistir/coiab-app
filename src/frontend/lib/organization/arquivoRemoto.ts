@@ -193,7 +193,16 @@ function estadoAgregado(
 ): EstadoArquivoRemoto {
   const estados = SLOTS.map(slot => slots[slot].estado);
   if (estados.some(estado => estado === 'aplicando')) return 'aplicando';
+  // A removal in flight is not "no archive": keeping it non-terminal lets the
+  // next boot reconcile a durable `removendo` left by a crash (a `concluido`
+  // sibling would otherwise make the aggregate terminal and hide the intent).
+  if (estados.some(estado => estado === 'removendo')) return 'removendo';
   if (estados.every(estado => estado === 'concluido')) return 'concluido';
+  // All slots removed means there is no archive anywhere.
+  if (estados.every(estado => estado === 'removido')) return 'removido';
+  // A partial removal still has the archive applied in at least one territory
+  // (`concluido` + `removido`), so the aggregate must not claim absence.
+  if (estados.some(estado => estado === 'concluido')) return 'concluido';
   if (estados.some(estado => estado === 'falha_recuperavel'))
     return 'falha_recuperavel';
   return 'pendente';
@@ -608,9 +617,10 @@ export function createArquivoRemotoExecutor({
             slot,
             existe
               ? {estado: 'concluido'}
-              : // Removed, but explicit: the automatic boot pass must not
-                // re-add the archive the user removed.
-                {estado: 'pendente', erro: 'removido'},
+              : // Removed, but explicit: a terminal state distinct from
+                // `pendente`, so the automatic boot pass never re-adds the
+                // archive the user removed while an explicit request still can.
+                {estado: 'removido'},
           );
         } catch {
           agendarReaplicacao(organizacao.id);
@@ -768,9 +778,10 @@ export function createArquivoRemotoExecutor({
       if (modo === 'automatico') {
         // A known rejection waits for an explicit retry — no watchdog resend.
         if (atual.estado === 'falha_recuperavel') continue;
-        // A reconciled removal is reopened ONLY by an explicit request: the
-        // boot pass must not re-add an archive the user removed.
-        if (atual.estado === 'pendente' && atual.erro === 'removido') continue;
+        // A confirmed removal is TERMINAL for automatic passes: the boot
+        // must not re-add an archive the user removed. Only an explicit
+        // request reopens it.
+        if (atual.estado === 'removido') continue;
         if (atual.estado === 'aplicando') {
           if (atual.replayConsumido) {
             const tentativaEsperada = atual.tentativaId ?? null;
@@ -830,12 +841,11 @@ export function createArquivoRemotoExecutor({
       return anterior;
     },
     /**
-     * Finalizes a Core removal that already succeeded. The slot becomes
-     * `pendente` with the explicit `removido` marker, so a later request for
-     * the same URL really sends while the automatic boot pass does not.
-     * Returns true ONLY when the journal no longer claims the archive; when
-     * the final write fails the durable `removendo` stays and a timer keeps
-     * reconciling it.
+     * Finalizes a Core removal that already succeeded. The slot becomes the
+     * terminal `removido`, so a later explicit request for the same URL really
+     * sends while the automatic boot pass does not. Returns true ONLY when the
+     * journal no longer claims the archive; when the final write fails the
+     * durable `removendo` stays and a timer keeps reconciling it.
      */
     removerArquivo(projectId: string): boolean {
       try {
@@ -847,17 +857,21 @@ export function createArquivoRemotoExecutor({
         );
         if (!organizacao?.arquivoRemoto) return true;
         const atual = organizacao.arquivoRemoto.slots[alvo.slot];
-        if (atual.estado !== 'removendo' && atual.estado !== 'concluido') {
+        if (
+          atual.estado !== 'removendo' &&
+          atual.estado !== 'concluido' &&
+          atual.estado !== 'removido'
+        ) {
           // Already reopened (or failed): nothing still claims `concluido`.
           return true;
         }
+        if (atual.estado === 'removido') return true;
         try {
           // Called only after Core confirmed the removal, so `concluido` is
           // stale even if a concurrent reconciliation wrote it while the
           // Core call was in flight.
           gravarSlotDireto(alvo.organizacaoId, alvo.slot, {
-            estado: 'pendente',
-            erro: 'removido',
+            estado: 'removido',
           });
           limparCheckpointPendente(alvo.organizacaoId, alvo.slot);
           return true;
@@ -872,9 +886,69 @@ export function createArquivoRemotoExecutor({
       }
     },
     /**
-     * Reverts the durable mark after Core FAILED to remove the server. A
-     * failed write keeps `removendo`, and the reconciliation timer asks Core
-     * (still present → `concluido`) without guessing.
+     * Reconciles a REMOVAL whose Core call just rejected. Core assigns the
+     * blocked role BEFORE syncing (`member-api.js`), so a rejection does not
+     * prove the server is still active: the error may arrive after the block
+     * landed. Guessing (`concluido`) would leave the journal durably wrong and
+     * block re-adding the same URL, so the slot stays `removendo` until a real
+     * Core read decides:
+     *   - no active server → `removido`;
+     *   - still active → `concluido` (the removal did not stick);
+     *   - Core unreachable → `removendo`, retried by timer/boot.
+     *
+     * Returns true only when the slot reached a terminal state.
+     */
+    async reconciliarRemocao(projectId: string): Promise<boolean> {
+      // The Core call already settled: its live guard must not block the read
+      // that decides the real outcome.
+      limparRemocaoEmVoo(projectId);
+      if (!consultarArquivo) return false;
+      const documento = repository.read();
+      const alvo = localizarSlotDoProjeto(documento, projectId);
+      if (!alvo) return true;
+      const organizacao = documento.organizacoes.find(
+        item => item.id === alvo.organizacaoId,
+      );
+      if (organizacao?.arquivoRemoto?.slots[alvo.slot].estado !== 'removendo')
+        return true;
+      let existe: boolean;
+      try {
+        existe = await consultarArquivo(projectId);
+      } catch {
+        // Unknown Core state: keep the durable intent and retry later.
+        agendarReaplicacao(alvo.organizacaoId);
+        return false;
+      }
+      // Re-read after the await: the journal may have moved on.
+      const atualDoc = repository.read();
+      const alvoAtual = localizarSlotDoProjeto(atualDoc, projectId);
+      if (
+        !alvoAtual ||
+        alvoAtual.organizacaoId !== alvo.organizacaoId ||
+        alvoAtual.slot !== alvo.slot
+      )
+        return true;
+      const slotAtual = atualDoc.organizacoes.find(
+        item => item.id === alvo.organizacaoId,
+      )?.arquivoRemoto?.slots[alvo.slot];
+      if (slotAtual?.estado !== 'removendo') return true;
+      try {
+        gravarSlotDireto(
+          alvo.organizacaoId,
+          alvo.slot,
+          existe ? {estado: 'concluido'} : {estado: 'removido'},
+        );
+        return true;
+      } catch {
+        agendarReaplicacao(alvo.organizacaoId);
+        return false;
+      }
+    },
+    /**
+     * Reverts the durable mark when the REMOVAL effect was never started (a
+     * pre-flight failure). A rejection from Core is NEVER handled here: Core
+     * may have blocked before failing, so only `reconciliarRemocao` may decide
+     * its outcome.
      */
     cancelarRemocao(
       projectId: string,

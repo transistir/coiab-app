@@ -428,16 +428,12 @@ describe('arquivo remoto no journal da organização (#142)', () => {
         estado: 'removendo',
       });
 
-      // 2. Core removal OK, but the final `pendente` checkpoint write fails.
+      // 2. Core removal OK, but the final `removido` checkpoint write fails.
       const write = h.repository.write.getMockImplementation()!;
       let falharFinal = true;
       h.repository.write.mockImplementation((next: EstadoOrganizacoes) => {
         const slot = next.organizacoes[0]?.arquivoRemoto?.slots.m;
-        if (
-          falharFinal &&
-          slot?.estado === 'pendente' &&
-          slot.erro === 'removido'
-        ) {
+        if (falharFinal && slot?.estado === 'removido') {
           falharFinal = false;
           throw new Error('mmkv-write-failed');
         }
@@ -461,10 +457,10 @@ describe('arquivo remoto no journal da organização (#142)', () => {
       // re-add an archive the user removed...
       expect(h.addServerPeer).not.toHaveBeenCalled();
       expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
-        estado: 'pendente',
-        erro: 'removido',
+        estado: 'removido',
       });
-      expect(resultado.estado).toBe('pendente');
+      // `a` still has the archive applied, so the aggregate is NOT `removido`.
+      expect(resultado.estado).toBe('concluido');
 
       // ...an explicit re-add of the SAME URL sends for real, and only for it.
       await reinicio.criar().executar('org-1', {modo: 'retry'});
@@ -483,6 +479,80 @@ describe('arquivo remoto no journal da organização (#142)', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  test('remoção confirmada é terminal: nenhum passe posterior re-adiciona', async () => {
+    const org = organizacao(
+      'org-1',
+      arquivo({
+        estado: 'concluido',
+        slots: {
+          m: {estado: 'concluido', tentativaId: 'tentativa-m'},
+          a: {estado: 'concluido', tentativaId: 'tentativa-a'},
+        },
+      }),
+    );
+    const h = harness({
+      documentoInicial: documento(org),
+      consulta: async () => false,
+    });
+    const executor = h.criar();
+
+    executor.marcarRemocao('org-1-m');
+    expect(executor.removerArquivo('org-1-m')).toBe(true);
+
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
+      estado: 'removido',
+    });
+    // Partial removal: `a` keeps the archive, so the organization still HAS a
+    // remote archive and the aggregate must remain `concluido`.
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.estado).toBe('concluido');
+
+    // Boot pass, then a restart (new repository object), then another pass:
+    // none of them may re-add the archive the user removed.
+    await executor.executar('org-1', {modo: 'automatico'});
+    const reinicio = h.reiniciar();
+    await reinicio.criar().executar('org-1', {modo: 'automatico'});
+    await executor.executar('org-1', {modo: 'automatico'});
+
+    expect(h.addServerPeer).not.toHaveBeenCalled();
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
+      estado: 'removido',
+    });
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.estado).toBe('concluido');
+  });
+
+  test('remoção parcial: slot removido com irmão concluído agrega `concluido`', () => {
+    const org = organizacao(
+      'org-1',
+      arquivo({
+        estado: 'concluido',
+        slots: {
+          m: {estado: 'concluido', tentativaId: 'tentativa-m'},
+          a: {estado: 'concluido', tentativaId: 'tentativa-a'},
+        },
+      }),
+    );
+    const h = harness({
+      documentoInicial: documento(org),
+      consulta: async () => false,
+    });
+    const executor = h.criar();
+
+    executor.marcarRemocao('org-1-m');
+    expect(executor.removerArquivo('org-1-m')).toBe(true);
+
+    const parcial = h.document.organizacoes[0]!.arquivoRemoto!;
+    expect(parcial.slots.m).toEqual({estado: 'removido'});
+    expect(parcial.slots.a).toMatchObject({estado: 'concluido'});
+    // The archive is still applied in `a`. Every consumer maps `concluido` to
+    // "archive present/done", never to the "no archive" copy.
+    expect(parcial.estado).toBe('concluido');
+
+    // Absence is only true once BOTH slots are removed.
+    executor.marcarRemocao('org-1-a');
+    expect(executor.removerArquivo('org-1-a')).toBe(true);
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.estado).toBe('removido');
   });
 
   test('rejeição do Core com falha de escrita converge pelo timer sem novo envio', async () => {

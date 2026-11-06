@@ -10,8 +10,20 @@ export type EtapaArea = {
   template: TemplateRef | null;
   idsAntesDaCriacao: string[] | null;
 };
+/**
+ * Terminal removal state. It exists so a confirmed removal can never be
+ * confused with `pendente`: the archive URL is still in the journal, and a
+ * `pendente` slot would make the next automatic pass re-add the file the user
+ * removed. `removido` is skipped by automatic passes and becomes a send
+ * candidate ONLY on an explicit request.
+ */
 export type EstadoArquivoRemoto =
-  'pendente' | 'aplicando' | 'removendo' | 'concluido' | 'falha_recuperavel';
+  | 'pendente'
+  | 'aplicando'
+  | 'removendo'
+  | 'removido'
+  | 'concluido'
+  | 'falha_recuperavel';
 /**
  * One project slot of the remote archive step (#142). `tentativaId` names the
  * attempt that owns the current state, so a late response can only ever patch

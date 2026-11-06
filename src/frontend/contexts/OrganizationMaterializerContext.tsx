@@ -84,8 +84,15 @@ export type OrganizationMaterializerHandle = {
    */
   removerArquivo(projectId: string): boolean;
   /**
-   * Restores the pre-removal slot after Core REFUSED the removal. A failed
-   * write keeps `removendo` and lets Core reconciliation decide.
+   * Reconciles a removal whose Core call REJECTED. Core blocks the peer
+   * before syncing, so the error alone does not say whether the file became
+   * inactive. The journal keeps `removendo` until a Core read decides
+   * (`removido` / `concluido`, or stays `removendo` while unreachable).
+   */
+  reconciliarRemocao(projectId: string): Promise<boolean>;
+  /**
+   * Restores the pre-removal slot after a PRE-FLIGHT failure, before Core was
+   * called. Never used for a Core rejection (see `reconciliarRemocao`).
    */
   cancelarRemocao(
     projectId: string,
@@ -197,6 +204,10 @@ export function OrganizationMaterializerProvider({
       };
       const inicial = lerAtual();
       const mesmaUrl = inicial.arquivo?.url === normalizada;
+      const remocaoPendente =
+        inicial.arquivo !== undefined &&
+        (inicial.arquivo.slots.m.estado === 'removendo' ||
+          inicial.arquivo.slots.a.estado === 'removendo');
       // #142 review P2 (5ª rodada): the journal must not be replaced while an
       // archive operation is unresolved. This is checked on the DURABLE slots,
       // not only on a live promise: after a failed Core read the removal stays
@@ -228,6 +239,18 @@ export function OrganizationMaterializerProvider({
               : item,
           ),
         });
+      } else if (remocaoPendente) {
+        // Re-adding the SAME URL while a removal is unresolved: Core may have
+        // blocked before failing, so reconcile first. If it cannot be
+        // resolved, the new request is refused and the intent stays untouched.
+        await executorArquivoRemoto.reconciliar(organizacaoId);
+        if (executorArquivoRemoto.emAndamento(organizacaoId)) {
+          const atual = lerAtual();
+          return {
+            estado: 'em-andamento',
+            slots: atual.arquivo ? {...atual.arquivo.slots} : {},
+          };
+        }
       }
       const atual = lerAtual().arquivo;
       // An interrupted/in-flight pass keeps its replay budget and joins the
@@ -258,7 +281,8 @@ export function OrganizationMaterializerProvider({
       if (
         organizacao.estado === 'pronta' &&
         organizacao.arquivoRemoto !== undefined &&
-        organizacao.arquivoRemoto.estado !== 'concluido'
+        organizacao.arquivoRemoto.estado !== 'concluido' &&
+        organizacao.arquivoRemoto.estado !== 'removido'
       ) {
         await executarArquivo(organizacaoId, 'retry');
         return;
@@ -307,6 +331,8 @@ export function OrganizationMaterializerProvider({
         executorArquivoRemoto.marcarRemocao(projectId),
       removerArquivo: projectId =>
         executorArquivoRemoto.removerArquivo(projectId),
+      reconciliarRemocao: projectId =>
+        executorArquivoRemoto.reconciliarRemocao(projectId),
       cancelarRemocao: (projectId, anterior) =>
         executorArquivoRemoto.cancelarRemocao(projectId, anterior),
     };
@@ -329,7 +355,10 @@ export function OrganizationMaterializerProvider({
     for (const organizacao of organizacoes) {
       const arquivo = organizacao.arquivoRemoto;
       if (organizacao.estado !== 'pronta' || !arquivo) continue;
-      if (arquivo.estado === 'concluido') continue;
+      // Terminal aggregate states are never reopened by a boot. `removido`
+      // means the user removed the archive; only an explicit request re-adds.
+      if (arquivo.estado === 'concluido' || arquivo.estado === 'removido')
+        continue;
       // The executor already bounds and catches its own sends; a repository
       // read/write failure must not surface as an unhandled rejection.
       void executarArquivo(organizacao.id, 'automatico').catch(() => {});

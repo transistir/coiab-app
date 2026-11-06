@@ -712,11 +712,10 @@ describe('OrganizationMaterializerContext', () => {
     const aposRemocao =
       store.instance.getState().organizacoes[0]!.arquivoRemoto!;
     // Reopened only for an explicit request (never auto-sent by the boot).
-    expect(aposRemocao.estado).toBe('pendente');
-    expect(aposRemocao.slots.m).toEqual({
-      estado: 'pendente',
-      erro: 'removido',
-    });
+    // `a` still has the archive applied, so the aggregate is `concluido` —
+    // the UI must not announce that the organization has no remote archive.
+    expect(aposRemocao.estado).toBe('concluido');
+    expect(aposRemocao.slots.m).toEqual({estado: 'removido'});
     // The untouched project keeps its successful slot byte-identical.
     expect(aposRemocao.slots.a).toMatchObject({
       estado: 'concluido',
@@ -1134,6 +1133,58 @@ describe('OrganizationMaterializerContext', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  test('7ª rodada P2: re-adicionar a MESMA URL é recusado enquanto a remoção não é reconciliada', async () => {
+    const addServerPeer = jest.fn(async (url: string) => url);
+    clientApi.getProject = jest.fn(async () => ({
+      $member: {
+        addServerPeer,
+        getMany: jest.fn(async () => {
+          throw new Error('core-offline');
+        }),
+      },
+    }));
+
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState(
+      readyDocumentWithArchive({
+        url: 'https://primeiro.example/',
+        estado: 'pendente',
+        slots: {
+          m: {estado: 'removendo'},
+          a: {estado: 'concluido', tentativaId: 'tentativa-a'},
+        },
+      }),
+      true,
+    );
+    const {hook} = await renderMaterializador(store);
+    await act(async () => {
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    });
+    expect(addServerPeer).not.toHaveBeenCalled();
+    const antes = store.instance.getState().organizacoes[0]!.arquivoRemoto!;
+
+    let resultado!: ResultadoArquivoRemoto;
+    await act(async () => {
+      resultado = await hook.result.current!.solicitarArquivo(
+        ORG_ID,
+        'https://primeiro.example/',
+      );
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    });
+
+    // Core cannot confirm the removal: the same-URL request is blocked before
+    // any send and the durable intent is preserved byte-identically.
+    expect(resultado.estado).toBe('em-andamento');
+    expect(addServerPeer).not.toHaveBeenCalled();
+    const durante = store.instance.getState().organizacoes[0]!.arquivoRemoto!;
+    expect(durante).toBe(antes);
+    expect(durante.slots.m.estado).toBe('removendo');
+
+    await act(async () => {
+      await hook.unmount();
+    });
   });
 
   test('iniciar repassa a URL do arquivo remoto ao motor e grava no journal', async () => {

@@ -467,6 +467,33 @@ describe('arquivo remoto no documento (#142)', () => {
     expect(parsed).toEqual(documento);
   });
 
+  test('estado terminal `removido` sobrevive ao round-trip', () => {
+    const org = criarOrganizacaoPronta({
+      arquivoRemoto: {
+        url: 'https://arquivo.example/',
+        estado: 'removido',
+        slots: {
+          m: {estado: 'removido'},
+          a: {estado: 'concluido', tentativaId: 'tentativa-a'},
+        },
+      },
+    });
+    const documento: EstadoOrganizacoes = {
+      versao: 1,
+      organizacoes: [org],
+      ativa: null,
+    };
+
+    const parsed = parseEstadoOrganizacoes(
+      JSON.parse(JSON.stringify(documento)),
+    );
+
+    expect(parsed).toEqual(documento);
+    expect(parsed?.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
+      estado: 'removido',
+    });
+  });
+
   test('documento antigo sem o campo continua válido', () => {
     const org = criarOrganizacaoPronta();
     const documento: EstadoOrganizacoes = {
