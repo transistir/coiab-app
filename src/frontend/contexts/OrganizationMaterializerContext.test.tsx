@@ -721,7 +721,10 @@ describe('OrganizationMaterializerContext', () => {
     // `a` still has the archive applied, so the aggregate is `concluido` —
     // the UI must not announce that the organization has no remote archive.
     expect(aposRemocao.estado).toBe('concluido');
-    expect(aposRemocao.slots.m).toEqual({estado: 'removido'});
+    expect(aposRemocao.slots.m).toEqual({
+      estado: 'removido',
+      baseUrl: 'https://arquivo.example',
+    });
     // The untouched project keeps its successful slot byte-identical.
     expect(aposRemocao.slots.a).toMatchObject({
       estado: 'concluido',

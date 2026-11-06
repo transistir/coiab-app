@@ -1,3 +1,9 @@
+import type {MemberApi} from '@comapeo/core';
+
+import {
+  archiveServerMatchesIdentity,
+  isActiveArchiveServerMember,
+} from './archiveServer';
 import type {
   ArquivoRemoto,
   EstadoArquivoRemoto,
@@ -44,9 +50,20 @@ export type ArquivoRemotoRepository = {
   write(document: EstadoOrganizacoes): void;
 };
 
-/** Network boundary, injected exactly like the engine's other adapters. */
+/**
+ * Network boundary, injected exactly like the engine's other adapters.
+ *
+ * #142 11ª rodada: the addition RESOLVES the server identity whenever the
+ * adapter can read it. The journal persists the returned `deviceId` so a
+ * later removal is matched by DEVICE, not by whichever hostname happens to be
+ * in use — the same server can be reachable through an alias that changes the
+ * announced `baseUrl`.
+ */
 export type ArquivoRemotoRede = {
-  addServerPeer(input: {projectId: string; url: string}): Promise<void>;
+  addServerPeer(input: {
+    projectId: string;
+    url: string;
+  }): Promise<IdentidadeArquivoRemoto | void>;
 };
 
 /**
@@ -63,8 +80,43 @@ export type ArquivoRemotoConsulta = (
 
 /** The minimal project surface the archive adapter needs. */
 export type ArquivoRemotoProjeto = {
-  $member: {addServerPeer(url: string): Promise<void>};
+  $member: {
+    addServerPeer(url: string): Promise<void>;
+    /**
+     * Member read used ONLY to resolve the device id right after a successful
+     * addition. Optional so a minimal/injected project (unit harness) still
+     * satisfies the surface.
+     */
+    getMany?(options: {includeLeft: boolean}): Promise<MemberApi.MemberInfo[]>;
+  };
 };
+
+/**
+ * Best-effort identity of the server that was just added. Core's
+ * `addServerPeer` returns `void`, but the member is readable right after the
+ * call; its `deviceId` is the stable identity the journal must keep. A failed
+ * read NEVER turns a successful addition into a recoverable failure — the
+ * journal simply keeps the URL-only identity it already had.
+ */
+async function identidadeDoServidorAdicionado(
+  projeto: ArquivoRemotoProjeto,
+  url: string,
+): Promise<IdentidadeArquivoRemoto | undefined> {
+  const getMany = projeto.$member.getMany;
+  if (typeof getMany !== 'function') return undefined;
+  const baseUrl = normalizarBaseUrl(url);
+  try {
+    const membros = await getMany({includeLeft: false});
+    const membro = membros.find(
+      candidato =>
+        isActiveArchiveServerMember(candidato) &&
+        archiveServerMatchesIdentity(candidato, {baseUrl}),
+    );
+    return membro ? {baseUrl, deviceId: membro.deviceId} : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * The ONE production adapter for `ArquivoRemotoRede`. Both the journal
@@ -78,6 +130,7 @@ export function criarRedeArquivoRemoto(
     addServerPeer: async ({projectId, url}) => {
       const projeto = await getProject(projectId);
       await projeto.$member.addServerPeer(url);
+      return identidadeDoServidorAdicionado(projeto, url);
     },
   };
 }
@@ -268,6 +321,24 @@ function limparSlot(slot: EstadoSlotArquivoRemoto): EstadoSlotArquivoRemoto {
   return Object.fromEntries(
     Object.entries(slot).filter(([, valor]) => valor !== undefined),
   ) as EstadoSlotArquivoRemoto;
+}
+
+/**
+ * Terminal transition that KEEPS the archive identity (#142 11ª rodada).
+ * `gravarSlotDireto` replaces the whole slot, so a plain `{estado}` would
+ * erase the `deviceId` learned at addition right after the first removal
+ * reconciliation — and the next removal/readd would fall back to the
+ * hostname, reintroducing the alias bug.
+ */
+function comIdentidade(
+  slot: EstadoSlotArquivoRemoto | undefined,
+  estado: EstadoSlotArquivoRemoto,
+): EstadoSlotArquivoRemoto {
+  return {
+    ...estado,
+    ...(slot?.baseUrl ? {baseUrl: slot.baseUrl} : {}),
+    ...(slot?.deviceId ? {deviceId: slot.deviceId} : {}),
+  };
 }
 
 export function criarArquivoRemotoPendente(url: string): ArquivoRemoto {
@@ -712,12 +783,16 @@ export function createArquivoRemotoExecutor({
           gravarSlotDireto(
             organizacao.id,
             slot,
-            existe
-              ? {estado: 'concluido'}
-              : // Removed, but explicit: a terminal state distinct from
-                // `pendente`, so the automatic boot pass never re-adds the
-                // archive the user removed while an explicit request still can.
-                {estado: 'removido'},
+            comIdentidade(
+              slotAtual,
+              existe
+                ? {estado: 'concluido'}
+                : // Removed, but explicit: a terminal state distinct from
+                  // `pendente`, so the automatic boot pass never re-adds the
+                  // archive the user removed while an explicit request still
+                  // can.
+                  {estado: 'removido'},
+            ),
           );
         } catch {
           agendarReaplicacao(organizacao.id);
@@ -810,15 +885,30 @@ export function createArquivoRemotoExecutor({
     const envioBase = Promise.resolve()
       .then(() => rede.addServerPeer({projectId, url}))
       .then(
-        () => {
+        identidadeDoEnvio => {
+          // #142 11ª rodada: persist the device id the addition resolved. It
+          // is the PRIMARY identity from now on, so a removal that reaches the
+          // same server through another hostname still matches this slot.
+          const identidade = normalizarIdentidade(
+            identidadeDoEnvio || undefined,
+            url,
+          );
+          const checkpointConcluido: Partial<EstadoSlotArquivoRemoto> = {
+            estado: 'concluido',
+            baseUrl: identidade?.baseUrl ?? urlNormalizada,
+            ...(identidade?.deviceId ? {deviceId: identidade.deviceId} : {}),
+          };
           try {
-            gravarSlot(organizacaoId, slot, tentativaId, {estado: 'concluido'});
+            gravarSlot(organizacaoId, slot, tentativaId, checkpointConcluido);
             limparCheckpointPendente(organizacaoId, slot);
           } catch {
             // Success must never be re-sent: repeat only this write later.
-            guardarCheckpointPendente(organizacaoId, slot, tentativaId, {
-              estado: 'concluido',
-            });
+            guardarCheckpointPendente(
+              organizacaoId,
+              slot,
+              tentativaId,
+              checkpointConcluido,
+            );
           }
           notificarEnvioConcluido(organizacaoId, slot, projectId, true);
         },
@@ -1041,9 +1131,11 @@ export function createArquivoRemotoExecutor({
           // Called only after Core confirmed the removal, so `concluido` is
           // stale even if a concurrent reconciliation wrote it while the
           // Core call was in flight.
-          gravarSlotDireto(alvo.organizacaoId, alvo.slot, {
-            estado: 'removido',
-          });
+          gravarSlotDireto(
+            alvo.organizacaoId,
+            alvo.slot,
+            comIdentidade(atual, {estado: 'removido'}),
+          );
           limparCheckpointPendente(alvo.organizacaoId, alvo.slot);
           return true;
         } catch {
@@ -1116,7 +1208,10 @@ export function createArquivoRemotoExecutor({
         gravarSlotDireto(
           alvo.organizacaoId,
           alvo.slot,
-          existe ? {estado: 'concluido'} : {estado: 'removido'},
+          comIdentidade(
+            slotAtual,
+            existe ? {estado: 'concluido'} : {estado: 'removido'},
+          ),
         );
         return true;
       } catch {

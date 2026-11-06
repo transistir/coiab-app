@@ -73,6 +73,12 @@ const EstadoSlotArquivoRemotoSchema = v.object({
   estado: v.picklist(ESTADOS_ARQUIVO_REMOTO),
   tentativaId: v.optional(v.string()),
   remocaoId: v.optional(v.string()),
+  // Archive-server identity of the slot (#142 11ª rodada). These fields are
+  // part of the PERSISTED contract, not just the in-memory type: a `removendo`
+  // slot rehydrated after a restart must still tell Core WHICH server to
+  // query, even when the hostname used to reach it changed.
+  baseUrl: v.optional(v.string()),
+  deviceId: v.optional(v.string()),
   iniciadaEm: v.optional(v.number()),
   replayConsumido: v.optional(v.boolean()),
   erro: v.optional(v.string()),

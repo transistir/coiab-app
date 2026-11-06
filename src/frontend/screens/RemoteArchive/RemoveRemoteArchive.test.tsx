@@ -259,7 +259,11 @@ describe('RemoveRemoteArchive journal ownership on unmount (#142 P2 6ª rodada)'
       await flushMicrotasks();
     });
 
-    expect(cenario.slot().m).toEqual({estado: 'removido'});
+    expect(cenario.slot().m).toEqual({
+      estado: 'removido',
+      baseUrl: 'https://arquivo.example',
+      deviceId: 'server-device-1',
+    });
     expect(cenario.executor.emAndamento(ORG_ID)).toBe(false);
     // The unmounted screen must not navigate after the late answer.
     expect(mockNavigation.goBack).not.toHaveBeenCalled();
@@ -299,7 +303,11 @@ describe('RemoveRemoteArchive journal ownership on unmount (#142 P2 6ª rodada)'
 
     // Not the old slot, and not `pendente` (which would let the boot re-add
     // the file): the removal is a terminal state.
-    expect(cenario.slot().m).toEqual({estado: 'removido'});
+    expect(cenario.slot().m).toEqual({
+      estado: 'removido',
+      baseUrl: 'https://arquivo.example',
+      deviceId: 'server-device-1',
+    });
     // `a` still has the archive, so the aggregate is `concluido`, not the
     // terminal "no archive" state.
     expect(cenario.documento.organizacoes[0]!.arquivoRemoto!.estado).toBe(
@@ -337,7 +345,11 @@ describe('RemoveRemoteArchive journal ownership on unmount (#142 P2 6ª rodada)'
       await flushMicrotasks();
     });
 
-    expect(cenario.slot().m).toEqual({estado: 'concluido'});
+    expect(cenario.slot().m).toEqual({
+      estado: 'concluido',
+      baseUrl: 'https://arquivo.example',
+      deviceId: 'server-device-1',
+    });
     expect(cenario.documento.organizacoes[0]!.arquivoRemoto!.estado).toBe(
       'concluido',
     );

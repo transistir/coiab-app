@@ -3,11 +3,15 @@ import type {
   OrganizacaoLocal,
   ArquivoRemoto,
 } from './documento';
+import {MEMBER_ROLE_ID} from '../../sharedTypes';
 import {
   createArquivoRemotoExecutor,
   criarArquivoRemotoPendente,
+  criarRedeArquivoRemoto,
   RETENTATIVA_CHECKPOINT_MS,
 } from './arquivoRemoto';
+import {parseEstadoOrganizacoes} from './coiabOrganizations';
+import type {IdentidadeArquivoRemoto} from './identidadeArquivo';
 
 const URL_ARQUIVO = 'https://arquivo.example/';
 const IDENTIDADE_PADRAO = {baseUrl: URL_ARQUIVO};
@@ -56,8 +60,14 @@ function arquivo(overrides: Partial<ArquivoRemoto> = {}): ArquivoRemoto {
   };
 }
 
-type Rede = (input: {projectId: string; url: string}) => Promise<void>;
-type Consulta = (projectId: string) => Promise<boolean>;
+type Rede = (input: {
+  projectId: string;
+  url: string;
+}) => Promise<IdentidadeArquivoRemoto | void>;
+type Consulta = (
+  projectId: string,
+  identidade: IdentidadeArquivoRemoto,
+) => Promise<boolean>;
 
 function harness({
   documentoInicial: inicial,
@@ -462,6 +472,7 @@ describe('arquivo remoto no journal da organização (#142)', () => {
       expect(h.addServerPeer).not.toHaveBeenCalled();
       expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
         estado: 'removido',
+        baseUrl: 'https://arquivo.example',
       });
       // `a` still has the archive applied, so the aggregate is NOT `removido`.
       expect(resultado.estado).toBe('concluido');
@@ -507,6 +518,7 @@ describe('arquivo remoto no journal da organização (#142)', () => {
 
     expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
       estado: 'removido',
+      baseUrl: 'https://arquivo.example',
     });
     // Partial removal: `a` keeps the archive, so the organization still HAS a
     // remote archive and the aggregate must remain `concluido`.
@@ -522,6 +534,7 @@ describe('arquivo remoto no journal da organização (#142)', () => {
     expect(h.addServerPeer).not.toHaveBeenCalled();
     expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
       estado: 'removido',
+      baseUrl: 'https://arquivo.example',
     });
     expect(h.document.organizacoes[0]?.arquivoRemoto?.estado).toBe('concluido');
   });
@@ -547,7 +560,10 @@ describe('arquivo remoto no journal da organização (#142)', () => {
     expect(executor.removerArquivo('org-1-m', IDENTIDADE_PADRAO)).toBe(true);
 
     const parcial = h.document.organizacoes[0]!.arquivoRemoto!;
-    expect(parcial.slots.m).toEqual({estado: 'removido'});
+    expect(parcial.slots.m).toEqual({
+      estado: 'removido',
+      baseUrl: 'https://arquivo.example',
+    });
     expect(parcial.slots.a).toMatchObject({estado: 'concluido'});
     // The archive is still applied in `a`. Every consumer maps `concluido` to
     // "archive present/done", never to the "no archive" copy.
@@ -826,6 +842,7 @@ describe('arquivo remoto no journal da organização (#142)', () => {
 
     expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
       estado: 'removido',
+      baseUrl: 'https://arquivo.example',
     });
     // `a` still has the archive applied.
     expect(h.document.organizacoes[0]?.arquivoRemoto?.estado).toBe('concluido');
@@ -881,6 +898,8 @@ describe('identidade do arquivo remoto na remoção (#142 10ª rodada)', () => {
     expect(executor.removerArquivo('org-1-m', IDENTIDADE_A)).toBe(true);
     expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
       estado: 'removido',
+      baseUrl: 'https://arquivo.example',
+      deviceId: 'server-a',
     });
 
     // 3. B é adicionado aos dois projetos: em Core `a` fica com A+B, mas o
@@ -954,6 +973,150 @@ describe('identidade do arquivo remoto na remoção (#142 10ª rodada)', () => {
     expect(result).toBe(true);
     expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
       estado: 'removido',
+      baseUrl: 'https://arquivo.example',
+      deviceId: 'server-a',
     });
+  });
+
+  test('alias do mesmo servidor é reconhecido pelo deviceId e o readd envia', async () => {
+    const URL_ALIAS = 'https://alias.example/';
+    // The addition is the only point where Core's device id can be learned:
+    // `addServerPeer` returns void, so the adapter resolves the member and the
+    // journal must persist that id.
+    const rede = jest.fn(async ({url}: {projectId: string; url: string}) => ({
+      baseUrl: url.replace(/\/+$/, ''),
+      deviceId: 'server-a',
+    }));
+    const h = harness({
+      documentoInicial: documento(organizacao('org-1')),
+      rede,
+    });
+    const executor = h.criar();
+
+    trocarArquivo(h, URL_ARQUIVO);
+    await executor.executar('org-1', {modo: 'retry'});
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'concluido',
+      baseUrl: 'https://arquivo.example',
+      deviceId: 'server-a',
+    });
+
+    // Same server, reached through another hostname: the removal identifies
+    // it by deviceId, not by the URL that happens to be announced.
+    const identidadeAlias = {baseUrl: URL_ALIAS, deviceId: 'server-a'};
+    expect(executor.marcarRemocao('org-1-m', identidadeAlias)).toBeDefined();
+    expect(executor.removerArquivo('org-1-m', identidadeAlias)).toBe(true);
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'removido',
+      deviceId: 'server-a',
+    });
+
+    // Re-adding through the ORIGINAL URL must really send: a stale
+    // `concluido` here hid a server that Core had already removed.
+    const antes = h.addServerPeer.mock.calls.length;
+    await executor.executar('org-1', {modo: 'retry'});
+    expect(h.addServerPeer.mock.calls.length).toBeGreaterThan(antes);
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'concluido',
+    });
+  });
+
+  test.each([
+    {caso: 'ativo', existe: true, esperado: 'concluido'},
+    {caso: 'ausente', existe: false, esperado: 'removido'},
+  ])(
+    'reidratação preserva a identidade e reconcilia o servidor ($caso)',
+    async ({existe, esperado}) => {
+      const bruto = JSON.parse(
+        JSON.stringify(
+          documento(
+            organizacao(
+              'org-1',
+              arquivo({
+                url: 'https://original.example/',
+                estado: 'removendo',
+                slots: {
+                  m: {
+                    estado: 'removendo',
+                    remocaoId: 'remocao-m',
+                    baseUrl: 'https://original.example',
+                    deviceId: 'server-a',
+                  },
+                  a: {estado: 'concluido', tentativaId: 'tentativa-a'},
+                },
+              }),
+            ),
+          ),
+        ),
+      );
+      // REAL parser: persist and rehydrate, never an in-memory object.
+      const reidratado = parseEstadoOrganizacoes(bruto);
+      expect(reidratado).not.toBeNull();
+
+      const consulta = jest.fn(async () => existe);
+      const h = harness({
+        documentoInicial: reidratado as EstadoOrganizacoes,
+        consulta,
+      });
+      await h.criar().executar('org-1', {modo: 'automatico'});
+
+      // The boot asks Core about THIS server, even though the hostname may
+      // have changed since the intent was written.
+      expect(consulta).toHaveBeenCalledWith('org-1-m', {
+        baseUrl: 'https://original.example',
+        deviceId: 'server-a',
+      });
+      expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+        estado: esperado,
+        baseUrl: 'https://original.example',
+        deviceId: 'server-a',
+      });
+    },
+  );
+});
+
+describe('adaptador de rede: identidade devolvida pela adição (#142 11ª rodada)', () => {
+  function projetoCom(getMany: () => Promise<Array<Record<string, unknown>>>) {
+    return {
+      $member: {
+        addServerPeer: jest.fn(async () => {}),
+        getMany: jest.fn(getMany),
+      },
+    };
+  }
+
+  test('resolve o deviceId do servidor recém-adicionado', async () => {
+    const membro = {
+      deviceId: 'server-a',
+      deviceType: 'selfHostedServer',
+      role: {roleId: MEMBER_ROLE_ID},
+      selfHostedServerDetails: {baseUrl: 'https://arquivo.example/'},
+    };
+    const projeto = projetoCom(async () => [membro]);
+    const rede = criarRedeArquivoRemoto(async () => projeto as never);
+
+    await expect(
+      rede.addServerPeer({
+        projectId: 'org-1-m',
+        url: 'https://arquivo.example/',
+      }),
+    ).resolves.toEqual({
+      baseUrl: 'https://arquivo.example',
+      deviceId: 'server-a',
+    });
+  });
+
+  test('falha na leitura do membro não invalida a adição', async () => {
+    const projeto = projetoCom(async () => {
+      throw new Error('member-read-failed');
+    });
+    const rede = criarRedeArquivoRemoto(async () => projeto as never);
+
+    await expect(
+      rede.addServerPeer({
+        projectId: 'org-1-m',
+        url: 'https://arquivo.example/',
+      }),
+    ).resolves.toBeUndefined();
   });
 });

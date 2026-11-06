@@ -468,6 +468,47 @@ describe('arquivo remoto no documento (#142)', () => {
     expect(parsed).toEqual(documento);
   });
 
+  test('round-trip preserva baseUrl e deviceId do slot (identidade)', () => {
+    const org = criarOrganizacaoPronta({
+      arquivoRemoto: {
+        url: 'https://original.example/',
+        estado: 'removendo',
+        slots: {
+          m: {
+            estado: 'removendo',
+            remocaoId: 'remocao-m',
+            baseUrl: 'https://original.example',
+            deviceId: 'server-a',
+          },
+          a: {
+            estado: 'concluido',
+            tentativaId: 'tentativa-a',
+            baseUrl: 'https://original.example',
+            deviceId: 'server-a',
+          },
+        },
+      },
+    });
+    const documento: EstadoOrganizacoes = {
+      versao: 1,
+      organizacoes: [org],
+      ativa: null,
+    };
+
+    // REAL parser, both directions: persist (JSON) then rehydrate.
+    const parsed = parseEstadoOrganizacoes(
+      JSON.parse(JSON.stringify(documento)),
+    );
+
+    expect(parsed).toEqual(documento);
+    expect(parsed?.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
+      estado: 'removendo',
+      remocaoId: 'remocao-m',
+      baseUrl: 'https://original.example',
+      deviceId: 'server-a',
+    });
+  });
+
   test('estado terminal `removido` sobrevive ao round-trip', () => {
     const org = criarOrganizacaoPronta({
       arquivoRemoto: {
