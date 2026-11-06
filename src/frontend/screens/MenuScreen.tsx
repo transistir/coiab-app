@@ -28,9 +28,7 @@ export const MenuScreen: React.FC<
   return (
     <View style={styles.container} testID="ENTRONCAMENTO.scrn">
       <View style={styles.inner} testID="MENU.scrn">
-        {/* Sem gaveta para fechar quando o menu é uma página: closeMenu é
-            no-op; as entradas que navegam para outras telas seguem iguais. */}
-        <DrawerMenu closeMenu={() => {}} />
+        <DrawerMenu />
       </View>
     </View>
   );

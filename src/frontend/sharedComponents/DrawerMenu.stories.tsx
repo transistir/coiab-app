@@ -40,7 +40,7 @@ function DrawerMenuStory() {
   return (
     <View style={{flex: 1}}>
       <ActiveProjectProvider activeProjectId={activeProjectId}>
-        <DrawerMenu closeMenu={() => {}} />
+        <DrawerMenu />
       </ActiveProjectProvider>
     </View>
   );

@@ -408,13 +408,18 @@ describe('segunda organização (navigator real)', () => {
       await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
     ).toHaveTextContent(SEGUNDA_NOME);
 
-    // The selector now exists (length >= 2) and switches back to A.
+    // The selector now exists (length >= 2) and switches back to A. The
+    // entry lives in Configurações (AppSettings), not in the Menu.
     await fireEvent.press(
-      await screen.findByTestId('tabBarButtonMenu', {}, {timeout: 15_000}),
+      await screen.findByTestId(
+        'tabBarButtonConfiguracoes',
+        {},
+        {timeout: 15_000},
+      ),
     );
     await fireEvent.press(
       await screen.findByTestId(
-        'MENU.trocar-organizacao',
+        'settingsSwitchTerritoryButton',
         {},
         {
           timeout: 15_000,
@@ -425,7 +430,7 @@ describe('segunda organização (navigator real)', () => {
       () =>
         expect(
           mockNavigation.getRootState().routes.map(route => route.name),
-        ).toEqual(['Home', 'Organizations']),
+        ).toEqual(['Home', 'AppSettings', 'Organizations']),
       {timeout: 15_000},
     );
     expect(

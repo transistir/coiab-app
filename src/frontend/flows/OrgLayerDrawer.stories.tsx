@@ -8,10 +8,10 @@ import {useActiveProjectId} from '../contexts/ActiveProjectIdStoreContext';
 import {DrawerMenu} from '../sharedComponents/DrawerMenu';
 
 /**
- * The menu page's "Switch organization" entry (SPEC A §6.1), the way into
- * the selector `Flows/OrgLayer` captures open. The entry exists only with
- * early access on and two or more organizations, so its testID alone proves
- * both seeded axes reached the menu page.
+ * The menu page over two organizations. The "Switch organization" entry
+ * (SPEC A §6.1) moved to Configurações (AppSettings), so the menu no longer
+ * renders it even with two organizations; the readiness marker is the
+ * Exchange button, the page's stable footer.
  *
  * This is a non-route flow story: the menu page content (`DrawerMenu` since
  * #118 removed the drawer) wrapped in its own `ActiveProjectProvider` the
@@ -31,7 +31,7 @@ function OpenDrawerMenu() {
   return (
     <View style={{flex: 1}}>
       <ActiveProjectProvider activeProjectId={activeProjectId}>
-        <DrawerMenu closeMenu={() => {}} />
+        <DrawerMenu />
       </ActiveProjectProvider>
     </View>
   );
@@ -46,9 +46,9 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** The menu page over two organizations, with the selector entry shown. */
+/** The menu page over two organizations, without the selector entry. */
 export const SwitchOrganizationEntry: Story = {
-  name: '01 Switch Organization Entry',
+  name: '01 Menu Without Switch Entry',
   parameters: {
     flow: {state: FLOW_STATES.twoOrganizationsEarlyAccess},
   },

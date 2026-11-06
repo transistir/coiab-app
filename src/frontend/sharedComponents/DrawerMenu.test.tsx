@@ -124,8 +124,6 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
   let queryClient: QueryClient;
   let trackStore: TrackStore;
   let draftStore: DraftObservationStore;
-  const closeMenu = jest.fn();
-
   beforeEach(() => {
     jest.clearAllMocks();
     useProjectRoleAndDetailsMock.mockReturnValue({
@@ -197,7 +195,7 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
                     <OrganizationMaterializerProvider>
                       <OrganizationActivationProvider>
                         <IntlProvider locale="en" messages={{}}>
-                          <DrawerMenu closeMenu={closeMenu} />
+                          <DrawerMenu />
                         </IntlProvider>
                       </OrganizationActivationProvider>
                     </OrganizationMaterializerProvider>
@@ -367,15 +365,16 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     expect(screen.queryByTestId('MENU.area-alertas')).not.toBeOnTheScreen();
   });
 
-  test('acesso antecipado desligado, duas organizações: a entrada de troca existe', async () => {
-    // O documento default já traz duas organizações (A ativa, B); a única
-    // condição da entrada de troca é haver duas ou mais organizações.
+  test('acesso antecipado desligado, duas organizações: a entrada de troca não existe', async () => {
+    // O documento default traz duas organizações (A ativa, B), mas a troca
+    // migrou para Configurações (AppSettings).
     await renderDrawer(true);
 
+    await screen.findByTestId('MENU.area-monitoramento');
     expect(
-      await screen.findByTestId('MENU.trocar-organizacao'),
-    ).toBeOnTheScreen();
-    expect(screen.getByText('Trocar de território')).toBeOnTheScreen();
+      screen.queryByTestId('MENU.trocar-organizacao'),
+    ).not.toBeOnTheScreen();
+    expect(screen.queryByText('Trocar de território')).not.toBeOnTheScreen();
   });
 
   test('acesso antecipado ligado, uma única organização: a entrada de troca não existe', async () => {
@@ -392,21 +391,14 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     ).not.toBeOnTheScreen();
   });
 
-  test('acesso antecipado ligado, duas organizações: a entrada de troca existe', async () => {
+  test('acesso antecipado ligado, duas organizações: a entrada de troca não existe', async () => {
     await renderDrawer(true, {earlyAccess: true});
 
+    await screen.findByTestId('MENU.area-monitoramento');
     expect(
-      await screen.findByTestId('MENU.trocar-organizacao'),
-    ).toBeOnTheScreen();
-  });
-
-  test('toque na entrada de troca: fecha o menu e abre o seletor Organizations', async () => {
-    await renderDrawer(true, {earlyAccess: true});
-
-    await fireEvent.press(await screen.findByTestId('MENU.trocar-organizacao'));
-
-    expect(closeMenu).toHaveBeenCalledTimes(1);
-    expect(mockNavigation.navigate).toHaveBeenCalledWith('Organizations');
+      screen.queryByTestId('MENU.trocar-organizacao'),
+    ).not.toBeOnTheScreen();
+    expect(screen.queryByText('Trocar de território')).not.toBeOnTheScreen();
   });
 
   test('coordenador não vê mais a entrada de criar território no menu', async () => {
@@ -548,7 +540,7 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     expect(mockNavigation.navigate).toHaveBeenCalledWith('YourTeam');
   });
 
-  test('Convidar ausente p/ participant (entradas de troca seguem)', async () => {
+  test('Convidar ausente p/ participant (troca e criação seguem fora do menu)', async () => {
     useProjectRoleAndDetailsMock.mockReturnValue({
       role: 'participant',
       projectHeader: 'Monitoramento',
@@ -560,8 +552,9 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
 
     await screen.findByTestId('MENU.area-monitoramento');
     expect(screen.queryByTestId('MENU.convidar')).not.toBeOnTheScreen();
-    // Predicados/testIDs preservados para participant também.
-    expect(screen.getByTestId('MENU.trocar-organizacao')).toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('MENU.trocar-organizacao'),
+    ).not.toBeOnTheScreen();
     expect(
       screen.queryByTestId('MENU.criar-organizacao'),
     ).not.toBeOnTheScreen();
@@ -580,7 +573,7 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     });
     await renderDrawer(true, {earlyAccess: true});
 
-    for (const texto of ['Trocar de território']) {
+    for (const texto of ['Convidar']) {
       expect(screen.getByText(texto).props.style).toEqual(
         expect.arrayContaining([expect.objectContaining({color: WHITE})]),
       );

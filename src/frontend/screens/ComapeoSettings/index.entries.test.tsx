@@ -42,13 +42,18 @@ jest.mock('../../hooks/useProjectRoleAndDetails', () => ({
 jest.mock('../../contexts/UserProfileStoreContext', () => ({
   useUserProfileState: jest.fn(),
 }));
+jest.mock('../../contexts/CoiabOrganizationsStoreContext', () => ({
+  useCoiabOrganizationsState: jest.fn(),
+}));
 
 import {useProjectRoleAndDetails} from '../../hooks/useProjectRoleAndDetails';
 import {useUserProfileState} from '../../contexts/UserProfileStoreContext';
 import type {CoordinationRole} from '../../contexts/UserProfileStoreContext';
+import {useCoiabOrganizationsState} from '../../contexts/CoiabOrganizationsStoreContext';
 
 const roleMock = useProjectRoleAndDetails as jest.Mock;
 const profileMock = useUserProfileState as jest.Mock;
+const organizationsMock = useCoiabOrganizationsState as jest.Mock;
 
 // O componente consome as props tipadas `navigation`/`route` do
 // react-navigation; nos testes um dublê com o `navigate` espiado basta
@@ -80,10 +85,20 @@ function mockCoordinationRole(role: CoordinationRole) {
   });
 }
 
+function mockOrganizations(count: number) {
+  organizationsMock.mockReturnValue({
+    organizacoes: Array.from({length: count}, (_, index) => ({
+      id: `org-${index}`,
+    })),
+  });
+}
+
 describe('AppSettings — migração dos acessos removidos do Menu (Entroncamento)', () => {
   beforeEach(() => {
     mockRole('coordinator');
     mockCoordinationRole('coordinator');
+    mockOrganizations(1);
+    navigate.mockClear();
   });
 
   test('participant: ProjectSettings e Criar território ausentes; YourTeam e BackgroundMaps presentes', async () => {
@@ -197,5 +212,39 @@ describe('AppSettings — migração dos acessos removidos do Menu (Entroncament
     expect(navigate).toHaveBeenCalledWith('CreateOrganization');
     await fireEvent.press(screen.getByTestId('settingsYourTeamButton'));
     expect(navigate).toHaveBeenCalledWith('YourTeam');
+  });
+
+  test('duas organizações: Trocar de território presente e abre o seletor', async () => {
+    mockOrganizations(2);
+    await render(
+      <IntlProvider locale="en" messages={{}}>
+        <AppSettings
+          navigation={mockNavigation as never}
+          route={mockRoute as never}
+        />
+      </IntlProvider>,
+    );
+
+    expect(
+      screen.getByTestId('settingsSwitchTerritoryButton'),
+    ).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('settingsSwitchTerritoryButton'));
+    expect(navigate).toHaveBeenCalledWith('Organizations');
+  });
+
+  test('uma organização: Trocar de território ausente', async () => {
+    mockOrganizations(1);
+    await render(
+      <IntlProvider locale="en" messages={{}}>
+        <AppSettings
+          navigation={mockNavigation as never}
+          route={mockRoute as never}
+        />
+      </IntlProvider>,
+    );
+
+    expect(
+      screen.queryByTestId('settingsSwitchTerritoryButton'),
+    ).not.toBeOnTheScreen();
   });
 });
