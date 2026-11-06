@@ -1283,3 +1283,187 @@ describe('adaptador real: deviceId pelo diff de membros (#142 12ª rodada)', () 
     expect(core.adicionados).toEqual(['org-1-m']);
   });
 });
+
+describe('checkpoint de sucesso pendente antes da remoção (#142 13ª rodada)', () => {
+  const URL_ALIAS = 'https://alias.example/';
+  const URL_CANONICA = 'https://canonical.example/';
+  const DEVICE_ID = 'srv-1';
+
+  function membroDoServidor() {
+    return {
+      deviceId: DEVICE_ID,
+      deviceType: 'selfHostedServer',
+      role: {roleId: MEMBER_ROLE_ID},
+      selfHostedServerDetails: {baseUrl: URL_CANONICA},
+    };
+  }
+
+  /**
+   * Real adapter over fake Core storage: `addServerPeer` registers `srv-1`
+   * regardless of the hostname used, so alias/canonical are the real pair the
+   * production adapter must resolve.
+   */
+  function coreReal() {
+    const membrosPorProjeto = new Map<string, Array<Record<string, unknown>>>();
+    const getProject = jest.fn(async (projectId: string) => ({
+      $member: {
+        addServerPeer: jest.fn(async () => {
+          const atuais = membrosPorProjeto.get(projectId) ?? [];
+          if (!atuais.some(item => item.deviceId === DEVICE_ID)) {
+            membrosPorProjeto.set(projectId, [...atuais, membroDoServidor()]);
+          }
+        }),
+        getMany: jest.fn(async () => [
+          ...(membrosPorProjeto.get(projectId) ?? []),
+        ]),
+      },
+    }));
+    return {
+      rede: criarRedeArquivoRemoto(getProject as never),
+      removerDe: (projectId: string) => membrosPorProjeto.set(projectId, []),
+    };
+  }
+
+  function trocarArquivo(h: ReturnType<typeof harness>, url: string): void {
+    h.repository.write({
+      ...h.document,
+      organizacoes: h.document.organizacoes.map(organizacao => ({
+        ...organizacao,
+        arquivoRemoto: criarArquivoRemotoPendente(url),
+      })),
+    });
+  }
+
+  /**
+   * Makes the persistence of `m: concluido` fail while the send itself
+   * succeeded, leaving only the in-memory checkpoint. `persistente` also fails
+   * every retry of that checkpoint (the "still cannot be written" case).
+   */
+  function falharConclusaoDeM(
+    h: ReturnType<typeof harness>,
+    {persistente = false}: {persistente?: boolean} = {},
+  ): () => boolean {
+    const write = h.repository.write.getMockImplementation()!;
+    let falhou = false;
+    h.repository.write.mockImplementation((next: EstadoOrganizacoes) => {
+      const slotM = next.organizacoes[0]?.arquivoRemoto?.slots.m;
+      if (slotM?.estado === 'concluido' && (persistente || !falhou)) {
+        falhou = true;
+        throw new Error('mmkv-write-failed');
+      }
+      write(next);
+    });
+    return () => falhou;
+  }
+
+  test('remoção pelo canônico reaplica o checkpoint pendente e o readd envia', async () => {
+    jest.useFakeTimers();
+    try {
+      const core = coreReal();
+      const h = harness({
+        documentoInicial: documento(organizacao('org-1')),
+        rede: core.rede.addServerPeer,
+      });
+      const executor = h.criar();
+
+      // 1. Applied through the ALIAS; Core resolves `srv-1`.
+      trocarArquivo(h, URL_ALIAS);
+      const falhou = falharConclusaoDeM(h);
+      await executor.executar('org-1', {modo: 'retry'});
+
+      expect(h.addServerPeer).toHaveBeenCalledTimes(2);
+      expect(falhou()).toBe(true);
+      // Only the in-memory checkpoint knows `srv-1`; the persisted slot still
+      // carries the OLD identity.
+      expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+        estado: 'aplicando',
+      });
+      expect(
+        h.document.organizacoes[0]?.arquivoRemoto?.slots.m.deviceId,
+      ).toBeUndefined();
+
+      // 2. BEFORE the retry timer: removal arrives through the CANONICAL url
+      // plus `srv-1`. Without re-applying the checkpoint the identity would
+      // not match and the removal would be silently ignored.
+      const identidadeCanonica = {baseUrl: URL_CANONICA, deviceId: DEVICE_ID};
+      const anterior = executor.marcarRemocao('org-1-m', identidadeCanonica);
+      expect(anterior).toBeDefined();
+      expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+        estado: 'removendo',
+        deviceId: DEVICE_ID,
+      });
+
+      // 3. Core removes and the journal finalizes inside the same call.
+      core.removerDe('org-1-m');
+      expect(executor.removerArquivo('org-1-m', identidadeCanonica)).toBe(true);
+
+      // 4. REAL JSON + parser round-trip: restart.
+      const reidratado = parseEstadoOrganizacoes(
+        JSON.parse(JSON.stringify(h.document)),
+      );
+      expect(reidratado).not.toBeNull();
+      const h2 = harness({
+        documentoInicial: reidratado as EstadoOrganizacoes,
+        rede: core.rede.addServerPeer,
+      });
+
+      // 5. Re-add through the ALIAS must really send, never a stale success.
+      const antes = h2.addServerPeer.mock.calls.length;
+      await h2.criar().executar('org-1', {modo: 'retry'});
+
+      expect(h2.addServerPeer.mock.calls.length).toBeGreaterThan(antes);
+      expect(h2.addServerPeer).toHaveBeenCalledWith({
+        projectId: 'org-1-m',
+        url: URL_ALIAS,
+      });
+      expect(h2.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject(
+        {
+          estado: 'concluido',
+          deviceId: DEVICE_ID,
+        },
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('checkpoint pendente não gravável recusa a remoção antes do Core', async () => {
+    jest.useFakeTimers();
+    try {
+      const core = coreReal();
+      const h = harness({
+        documentoInicial: documento(organizacao('org-1')),
+        rede: core.rede.addServerPeer,
+      });
+      const executor = h.criar();
+
+      trocarArquivo(h, URL_ALIAS);
+      const falhou = falharConclusaoDeM(h, {persistente: true});
+      await executor.executar('org-1', {modo: 'retry'});
+
+      expect(h.addServerPeer).toHaveBeenCalledTimes(2);
+      expect(falhou()).toBe(true);
+      expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+        estado: 'aplicando',
+      });
+
+      // The screen only reaches `useRemoveServerPeer` after this call returns;
+      // a throw IS the abort signal, so Core is never asked to remove.
+      let removeuDoCore = false;
+      expect(() => {
+        executor.marcarRemocao('org-1-m', {
+          baseUrl: URL_CANONICA,
+          deviceId: DEVICE_ID,
+        });
+        removeuDoCore = true;
+      }).toThrow('archive-removal-checkpoint-pending');
+
+      expect(removeuDoCore).toBe(false);
+      expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+        estado: 'aplicando',
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});

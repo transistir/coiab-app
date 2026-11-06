@@ -719,10 +719,16 @@ export function createArquivoRemotoExecutor({
    * Repeats only the journal write of a TERMINAL checkpoint whose write was
    * lost. Called BEFORE any new selection, so a failed write can never cause a
    * resend or leave an `aplicando` slot with no live operation.
+   *
+   * Returns false when at least one checkpoint of the organization is STILL
+   * pending. Removal entries use it as a gate: deciding an identity (or a
+   * removal intent) against stale persisted state would let the pending
+   * checkpoint overwrite the removal later.
    */
-  function reaplicarCheckpointsPendentes(organizacaoId: string): void {
+  function reaplicarCheckpointsPendentes(organizacaoId: string): boolean {
     const mapa = checkpointsPendentes.get(repository);
-    if (!mapa) return;
+    if (!mapa) return true;
+    let todasAplicadas = true;
     for (const [chave, checkpoint] of Array.from(mapa)) {
       if (checkpoint.organizacaoId !== organizacaoId) continue;
       const organizacao = lerOrganizacao(organizacaoId);
@@ -763,8 +769,10 @@ export function createArquivoRemotoExecutor({
         mapa.delete(chave);
       } catch {
         // Keep the latch: the next pass writes again, still without sending.
+        todasAplicadas = false;
       }
     }
+    return todasAplicadas;
   }
 
   /**
@@ -1101,10 +1109,29 @@ export function createArquivoRemotoExecutor({
       projectId: string,
       identidade: IdentidadeArquivoRemoto,
     ): EstadoSlotArquivoRemoto | undefined {
-      const documento = repository.read();
-      const alvo = localizarSlotDoProjeto(documento, projectId);
+      const documentoInicial = repository.read();
+      const alvoInicial = localizarSlotDoProjeto(documentoInicial, projectId);
       // The journal only owns COIAB organizations. A standalone project has
       // no slot to mark, and its Core removal is allowed exactly as before.
+      if (!alvoInicial) return undefined;
+      const organizacaoInicial = documentoInicial.organizacoes.find(
+        item => item.id === alvoInicial.organizacaoId,
+      );
+      if (!organizacaoInicial?.arquivoRemoto) return undefined;
+      // #142 review P2 (13ª rodada): a TERMINAL checkpoint whose write was
+      // lost may hold the only durable identity of this server (the `deviceId`
+      // learned at addition). Deciding the removal against the stale persisted
+      // slot would ignore the removal, while the pending success would later
+      // overwrite the journal and survive a restart as a false `concluido`.
+      // Re-apply it FIRST; if it still cannot be written, refuse before any
+      // Core effect — the screen turns the throw into an error.
+      if (!reaplicarCheckpointsPendentes(alvoInicial.organizacaoId)) {
+        throw new Error('archive-removal-checkpoint-pending');
+      }
+      // Re-read after the flush: the identity comparison MUST use the state
+      // that is now actually persisted.
+      const documento = repository.read();
+      const alvo = localizarSlotDoProjeto(documento, projectId);
       if (!alvo) return undefined;
       const organizacao = documento.organizacoes.find(
         item => item.id === alvo.organizacaoId,
@@ -1151,9 +1178,21 @@ export function createArquivoRemotoExecutor({
     ): boolean {
       try {
         const documento = repository.read();
-        const alvo = localizarSlotDoProjeto(documento, projectId);
+        const alvoInicial = localizarSlotDoProjeto(documento, projectId);
+        if (!alvoInicial) return true;
+        const organizacaoInicial = documento.organizacoes.find(
+          item => item.id === alvoInicial.organizacaoId,
+        );
+        if (!organizacaoInicial?.arquivoRemoto) return true;
+        // Any removal entry starts by re-applying pending terminal checkpoints:
+        // a lost success may hold the `deviceId` this removal names. A write
+        // that still fails leaves the checkpoint in memory; the code below
+        // then works from the updated persisted state when it exists.
+        reaplicarCheckpointsPendentes(alvoInicial.organizacaoId);
+        const documentoAtual = repository.read();
+        const alvo = localizarSlotDoProjeto(documentoAtual, projectId);
         if (!alvo) return true;
-        const organizacao = documento.organizacoes.find(
+        const organizacao = documentoAtual.organizacoes.find(
           item => item.id === alvo.organizacaoId,
         );
         if (!organizacao?.arquivoRemoto) return true;
@@ -1212,6 +1251,16 @@ export function createArquivoRemotoExecutor({
       // that decides the real outcome.
       limparRemocaoEmVoo(projectId);
       if (!consultarArquivo) return false;
+      const documentoInicial = repository.read();
+      const alvoInicial = localizarSlotDoProjeto(documentoInicial, projectId);
+      if (!alvoInicial) return true;
+      const organizacaoInicial = documentoInicial.organizacoes.find(
+        item => item.id === alvoInicial.organizacaoId,
+      );
+      if (!organizacaoInicial?.arquivoRemoto) return true;
+      // Re-apply pending terminal checkpoints before choosing the identity the
+      // Core read uses; a lost success may hold the `deviceId` of this server.
+      reaplicarCheckpointsPendentes(alvoInicial.organizacaoId);
       const documento = repository.read();
       const alvo = localizarSlotDoProjeto(documento, projectId);
       if (!alvo) return true;
