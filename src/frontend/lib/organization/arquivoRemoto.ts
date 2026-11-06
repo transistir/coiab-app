@@ -92,30 +92,72 @@ export type ArquivoRemotoProjeto = {
 };
 
 /**
+ * Best-effort member read. A project may not expose `getMany` at all (minimal
+ * harness) and the read itself may fail; both degrade to an empty list so a
+ * failed lookup NEVER turns a successful addition into a recoverable failure.
+ */
+async function lerMembros(
+  projeto: ArquivoRemotoProjeto,
+): Promise<MemberApi.MemberInfo[]> {
+  const getMany = projeto.$member.getMany;
+  if (typeof getMany !== 'function') return [];
+  try {
+    return await getMany({includeLeft: false});
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Best-effort identity of the server that was just added. Core's
- * `addServerPeer` returns `void`, but the member is readable right after the
- * call; its `deviceId` is the stable identity the journal must keep. A failed
- * read NEVER turns a successful addition into a recoverable failure — the
- * journal simply keeps the URL-only identity it already had.
+ * `addServerPeer` returns `void`, so the only way to learn the stable
+ * `deviceId` is to diff the member list around the call (#142 12ª rodada).
+ *
+ * Resolution order:
+ *   a. EXACTLY one archive-server member appeared → that is the added server,
+ *      whatever hostname it announces. This is what makes an alias work: the
+ *      caller adds `alias.example`, the server announces `canonical.example`.
+ *   b. Otherwise, match the announced `baseUrl` against the informed URL.
+ *      Candidates are the NEW members when any appeared; only an idempotent
+ *      re-add (no new member) falls back to every active server.
+ *   c. Otherwise undefined: the executor persists the informed URL alone (the
+ *      URL-only identity it already had).
+ *
+ * The journal always records `baseUrl` as the INFORMED url (normalized), plus
+ * the resolved `deviceId` when there is one. A device id is never taken from
+ * an unrelated pre-existing member, so removing one server can never name
+ * another.
  */
 async function identidadeDoServidorAdicionado(
   projeto: ArquivoRemotoProjeto,
   url: string,
+  membrosAntes: MemberApi.MemberInfo[],
 ): Promise<IdentidadeArquivoRemoto | undefined> {
-  const getMany = projeto.$member.getMany;
-  if (typeof getMany !== 'function') return undefined;
   const baseUrl = normalizarBaseUrl(url);
-  try {
-    const membros = await getMany({includeLeft: false});
-    const membro = membros.find(
-      candidato =>
-        isActiveArchiveServerMember(candidato) &&
-        archiveServerMatchesIdentity(candidato, {baseUrl}),
-    );
-    return membro ? {baseUrl, deviceId: membro.deviceId} : undefined;
-  } catch {
-    return undefined;
+  const membrosDepois = await lerMembros(projeto);
+  const deviceIdsAnteriores = new Set(
+    membrosAntes.filter(isActiveArchiveServerMember).map(m => m.deviceId),
+  );
+  const ativosDepois = membrosDepois.filter(isActiveArchiveServerMember);
+  const novos = ativosDepois.filter(
+    membro => !deviceIdsAnteriores.has(membro.deviceId),
+  );
+
+  // (a) The single new archive server IS the one just added.
+  if (novos.length === 1) {
+    return {baseUrl, deviceId: novos[0]!.deviceId};
   }
+
+  // (b) Announced URL. Prefer the new members so a pre-existing server can
+  // never steal the identity of the one just added.
+  const candidatos = novos.length > 0 ? novos : ativosDepois;
+  const porUrl = candidatos.find(membro =>
+    archiveServerMatchesIdentity(membro, {baseUrl}),
+  );
+  if (porUrl) return {baseUrl, deviceId: porUrl.deviceId};
+
+  // (c) No trustworthy device id: URL-only identity, exactly as before.
+  return undefined;
 }
 
 /**
@@ -129,8 +171,12 @@ export function criarRedeArquivoRemoto(
   return {
     addServerPeer: async ({projectId, url}) => {
       const projeto = await getProject(projectId);
+      // Read BEFORE the effect so the diff identifies the member Core actually
+      // added, even when the server announces a canonical hostname instead of
+      // the alias the caller used.
+      const membrosAntes = await lerMembros(projeto);
       await projeto.$member.addServerPeer(url);
-      return identidadeDoServidorAdicionado(projeto, url);
+      return identidadeDoServidorAdicionado(projeto, url, membrosAntes);
     },
   };
 }

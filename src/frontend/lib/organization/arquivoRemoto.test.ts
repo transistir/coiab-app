@@ -1120,3 +1120,166 @@ describe('adaptador de rede: identidade devolvida pela adição (#142 11ª rodad
     ).resolves.toBeUndefined();
   });
 });
+
+describe('adaptador real: deviceId pelo diff de membros (#142 12ª rodada)', () => {
+  const URL_ALIAS = 'https://alias.example/';
+  const URL_CANONICA = 'https://canonical.example/';
+  const DEVICE_ID = 'srv-1';
+
+  function membroDoServidor() {
+    return {
+      deviceId: DEVICE_ID,
+      deviceType: 'selfHostedServer',
+      role: {roleId: MEMBER_ROLE_ID},
+      selfHostedServerDetails: {baseUrl: URL_CANONICA},
+    };
+  }
+
+  /**
+   * Fake Core storage with one member list per project. `addServerPeer`
+   * behaves like the real server: called through ANY hostname, it registers a
+   * member whose device id is `srv-1` and whose announced URL is the canonical
+   * one. That is exactly the alias case the adapter must survive.
+   */
+  function coreReal({
+    comGetMany = true,
+    getManyFalha = false,
+  }: {comGetMany?: boolean; getManyFalha?: boolean} = {}) {
+    const membrosPorProjeto = new Map<string, Array<Record<string, unknown>>>();
+    const adicionados: string[] = [];
+    const getProject = jest.fn(async (projectId: string) => {
+      const $member: Record<string, unknown> = {
+        addServerPeer: jest.fn(async () => {
+          adicionados.push(projectId);
+          const atuais = membrosPorProjeto.get(projectId) ?? [];
+          if (!atuais.some(item => item.deviceId === DEVICE_ID)) {
+            membrosPorProjeto.set(projectId, [...atuais, membroDoServidor()]);
+          }
+        }),
+      };
+      if (comGetMany) {
+        $member.getMany = jest.fn(async () => {
+          if (getManyFalha) throw new Error('member-read-failed');
+          return [...(membrosPorProjeto.get(projectId) ?? [])];
+        });
+      }
+      return {$member};
+    });
+    return {
+      rede: criarRedeArquivoRemoto(getProject as never),
+      adicionados,
+      removerDe: (projectId: string) => membrosPorProjeto.set(projectId, []),
+    };
+  }
+
+  function trocarArquivo(h: ReturnType<typeof harness>, url: string): void {
+    h.repository.write({
+      ...h.document,
+      organizacoes: h.document.organizacoes.map(organizacao => ({
+        ...organizacao,
+        arquivoRemoto: criarArquivoRemotoPendente(url),
+      })),
+    });
+  }
+
+  test('alias: o deviceId vem do membro NOVO, não da URL informada', async () => {
+    const core = coreReal();
+
+    await expect(
+      core.rede.addServerPeer({projectId: 'org-1-m', url: URL_ALIAS}),
+    ).resolves.toEqual({
+      baseUrl: 'https://alias.example',
+      deviceId: DEVICE_ID,
+    });
+    expect(core.adicionados).toEqual(['org-1-m']);
+  });
+
+  test('alias completo: remover pelo canônico + deviceId e o readd envia', async () => {
+    const core = coreReal();
+    const h = harness({
+      documentoInicial: documento(organizacao('org-1')),
+      rede: core.rede.addServerPeer,
+    });
+    const executor = h.criar();
+
+    // 1. Aplicado pelo ALIAS; o servidor anuncia o CANÔNICO.
+    trocarArquivo(h, URL_ALIAS);
+    await executor.executar('org-1', {modo: 'retry'});
+    expect(h.addServerPeer).toHaveBeenCalledTimes(2);
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'concluido',
+      baseUrl: 'https://alias.example',
+      deviceId: DEVICE_ID,
+    });
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.a).toMatchObject({
+      estado: 'concluido',
+      baseUrl: 'https://alias.example',
+      deviceId: DEVICE_ID,
+    });
+
+    // 2. Remoção chega pelo CANÔNICO + deviceId. Sem o deviceId persistido o
+    // slot não era reconhecido e o readd seguinte não enviava nada.
+    const identidadeCanonica = {
+      baseUrl: URL_CANONICA,
+      deviceId: DEVICE_ID,
+    };
+    expect(executor.marcarRemocao('org-1-m', identidadeCanonica)).toBeDefined();
+    core.removerDe('org-1-m'); // efeito real de Core
+    expect(executor.removerArquivo('org-1-m', identidadeCanonica)).toBe(true);
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
+      estado: 'removido',
+      baseUrl: 'https://alias.example',
+      deviceId: DEVICE_ID,
+    });
+
+    // 3. Round-trip REAL por JSON + parser: a identidade sobrevive ao restart.
+    const reidratado = parseEstadoOrganizacoes(
+      JSON.parse(JSON.stringify(h.document)),
+    );
+    expect(reidratado).not.toBeNull();
+    const h2 = harness({
+      documentoInicial: reidratado as EstadoOrganizacoes,
+      rede: core.rede.addServerPeer,
+    });
+
+    // 4. Readd pela URL ORIGINAL (alias), sem tocar no journal. O slot
+    // `removido` só é retomado por um pedido explícito (retry).
+    const antes = h2.addServerPeer.mock.calls.length;
+    const resultado = await h2.criar().executar('org-1', {modo: 'retry'});
+
+    expect(h2.addServerPeer.mock.calls.length).toBeGreaterThan(antes);
+    expect(h2.addServerPeer).toHaveBeenCalledWith({
+      projectId: 'org-1-m',
+      url: URL_ALIAS,
+    });
+    expect(resultado.estado).toBe('concluido');
+    expect(h2.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'concluido',
+      baseUrl: 'https://alias.example',
+      deviceId: DEVICE_ID,
+    });
+    // O slot `a` continua aplicado; o readd não o reenvia.
+    expect(h2.addServerPeer).toHaveBeenCalledTimes(1);
+    expect(h2.document.organizacoes[0]?.arquivoRemoto?.slots.a).toMatchObject({
+      estado: 'concluido',
+    });
+  });
+
+  test('getMany indisponível: adição ok, identidade só URL', async () => {
+    const core = coreReal({comGetMany: false});
+
+    await expect(
+      core.rede.addServerPeer({projectId: 'org-1-m', url: URL_ALIAS}),
+    ).resolves.toBeUndefined();
+    expect(core.adicionados).toEqual(['org-1-m']);
+  });
+
+  test('getMany falhando: adição ok, identidade só URL', async () => {
+    const core = coreReal({getManyFalha: true});
+
+    await expect(
+      core.rede.addServerPeer({projectId: 'org-1-m', url: URL_ALIAS}),
+    ).resolves.toBeUndefined();
+    expect(core.adicionados).toEqual(['org-1-m']);
+  });
+});
