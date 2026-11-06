@@ -20,10 +20,9 @@ import {
   type OrganizacaoLocal,
 } from '../../lib/organization/coiabOrganizations';
 import {DARK_GREY, RED} from '../../lib/styles';
-import {
-  useUserProfileActions,
-  useUserProfileState,
-} from '../../contexts/UserProfileStoreContext';
+import {useUserProfileState} from '../../contexts/UserProfileStoreContext';
+import {useOrganizationMaterializer} from '../../contexts/OrganizationMaterializerContext';
+import type {EstadoArquivoRemoto} from '../../lib/organization/documento';
 
 /** SPEC B §3.2:68 — 30 s without conclusion shows the notice; never a retry. */
 const AVISO_DEMORA_MS = 30_000;
@@ -70,6 +69,31 @@ const m = defineMessages({
   areaNotComplete: {
     id: '$1screens.OrganizationSetup.areaNotComplete',
     defaultMessage: 'Not completed',
+  },
+  archiveRow: {
+    id: '$1screens.OrganizationSetup.archiveRow',
+    defaultMessage: 'Remote archive',
+  },
+  archivePending: {
+    id: '$1screens.OrganizationSetup.archivePending',
+    defaultMessage: 'Pending',
+  },
+  archiveApplying: {
+    id: '$1screens.OrganizationSetup.archiveApplying',
+    defaultMessage: 'Adding',
+  },
+  archiveDone: {
+    id: '$1screens.OrganizationSetup.archiveDone',
+    defaultMessage: 'Ready',
+  },
+  archiveFailed: {
+    id: '$1screens.OrganizationSetup.archiveFailed',
+    defaultMessage: 'Not added',
+  },
+  retryArchiveButton: {
+    id: '$1screens.OrganizationSetup.retryArchiveButton',
+    defaultMessage: 'Try again',
+    description: 'Retries applying the remote archive to this territory only',
   },
   failureTitle: {
     id: '$1screens.OrganizationSetup.failureTitle',
@@ -158,6 +182,20 @@ function statusMessageForEtapa(etapa: EtapaArea['etapa']) {
   }
 }
 
+/** The journal's remote-archive states, in the screen's own vocabulary. */
+function archiveStatusMessage(estado: EstadoArquivoRemoto) {
+  switch (estado) {
+    case 'pendente':
+      return m.archivePending;
+    case 'aplicando':
+      return m.archiveApplying;
+    case 'concluido':
+      return m.archiveDone;
+    case 'falha_recuperavel':
+      return m.archiveFailed;
+  }
+}
+
 /** One row per area, in the document's own preparation vocabulary. */
 function AreaStepRows({organizacao}: {organizacao: OrganizacaoLocal}) {
   const {formatMessage: t} = useIntl();
@@ -187,6 +225,28 @@ function AreaStepRows({organizacao}: {organizacao: OrganizacaoLocal}) {
           </View>
         );
       })}
+    </View>
+  );
+}
+
+/**
+ * #142: the remote archive is a step of the SAME journal, so its progress is
+ * shown beside the local areas. A failure is recoverable and NEVER gates the
+ * organization's `pronta` state or its "Abrir território" action.
+ */
+function ArchiveStepRow({organizacao}: {organizacao: OrganizacaoLocal}) {
+  const {formatMessage: t} = useIntl();
+  const arquivo = organizacao.arquivoRemoto;
+  if (!arquivo) return null;
+  const failed = arquivo.estado === 'falha_recuperavel';
+  return (
+    <View style={styles.row} testID="ORG.provisioning-archive-row">
+      <BodyText style={styles.rowArea}>{t(m.archiveRow)}</BodyText>
+      <BodyText
+        testID="ORG.provisioning-archive-status"
+        style={failed ? styles.rowStatusError : styles.rowStatus}>
+        {t(archiveStatusMessage(arquivo.estado))}
+      </BodyText>
     </View>
   );
 }
@@ -227,6 +287,7 @@ function DocumentDrivenProvisioning({
   const {formatMessage: t} = useIntl();
   const {status, error, activate, retryPreparation, recoverPendingWork} =
     useOrganizationActivationContext();
+  const materializador = useOrganizationMaterializer();
   // Review fronteira P1: `preparando` with nothing alive was interrupted
   // (the process died mid-preparation) — the resume is offered instead of a
   // spinner that would never end.
@@ -235,6 +296,8 @@ function DocumentDrivenProvisioning({
   // Synchronous guard: the disabled prop alone lets a double tap queue a
   // second activate before the rerender publishes it.
   const ativandoRef = React.useRef(false);
+  const [retentandoArquivo, setRetentandoArquivo] = React.useState(false);
+  const retentandoArquivoRef = React.useRef(false);
 
   // SPEC A §4.4:149 (CA15): a blocked boot with work in progress maps to the
   // single canonical pending-work string. Reopening the work's persisted
@@ -268,6 +331,18 @@ function DocumentDrivenProvisioning({
     } finally {
       ativandoRef.current = false;
       setAtivando(false);
+    }
+  };
+
+  const tentarArquivoNovamente = async () => {
+    if (retentandoArquivoRef.current || !materializador) return;
+    retentandoArquivoRef.current = true;
+    setRetentandoArquivo(true);
+    try {
+      await materializador.retomarArquivo(organizacao.id);
+    } finally {
+      retentandoArquivoRef.current = false;
+      setRetentandoArquivo(false);
     }
   };
 
@@ -349,6 +424,18 @@ function DocumentDrivenProvisioning({
         </BodyText>
       )}
       <AreaStepRows organizacao={organizacao} />
+      <ArchiveStepRow organizacao={organizacao} />
+      {organizacao.arquivoRemoto?.estado === 'falha_recuperavel' && (
+        <PrimaryButton
+          testID="ORG.provisioning-retry-archive-btn"
+          fullSize
+          text={t(m.retryArchiveButton)}
+          disabled={retentandoArquivo || !materializador}
+          onPress={() => {
+            void tentarArquivoNovamente();
+          }}
+        />
+      )}
       {(organizacao.estado === 'falha_recuperavel' || interrompida) && (
         <PrimaryButton
           testID="ORG.provisioning-retry-preparation-btn"
@@ -469,90 +556,7 @@ export const OrganizationProvisioning = ({
   const organizacaoDocument =
     emPreparo ?? organizacaoAtiva ?? estado.organizacoes[0];
   // P1-1: creation is coordinator-only; a participant gets no control.
-  const {coordinationRole, pendingArchives} = useUserProfileState();
-  const {updatePendingArchiveIntent, removePendingArchiveIntent} =
-    useUserProfileActions();
-  // #129/P1-A: the application itself belongs to ONE owner (the navigator's
-  // resume hook). This surface only pins the target id of the intent created
-  // by the navigation that reached it (`intentId` route param): without that
-  // scope an intent could be handed to whatever organization happens to be in
-  // preparation, which is exactly the leak the review found. No param means
-  // this surface owns no intent and pins nothing.
-  const intentId = route.params?.intentId;
-  // #129/P1-A (round 5): the resolved target is CAPTURED per intent. A retry
-  // of the pin write always addresses that same id; it never resolves a new
-  // organization. If the captured id left the document while the write was
-  // failing, the intent is dropped — a later organization entering
-  // `preparando` must not inherit this URL.
-  const alvoRef = React.useRef<Record<string, string>>({});
-  const [pinTick, setPinTick] = React.useState(0);
-  const pinRetryRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const agendarPinRetry = React.useCallback(() => {
-    if (pinRetryRef.current !== null) return;
-    pinRetryRef.current = setTimeout(() => {
-      pinRetryRef.current = null;
-      setPinTick(tick => tick + 1);
-    }, 1_000);
-  }, []);
-  React.useEffect(
-    () => () => {
-      if (pinRetryRef.current !== null) {
-        clearTimeout(pinRetryRef.current);
-        pinRetryRef.current = null;
-      }
-    },
-    [],
-  );
-  React.useEffect(() => {
-    // `pinTick` carries no value: it is the failed pin's signal to re-run.
-    if (pinTick < 0 || !intentId) return;
-    const intent = pendingArchives.find(item => item.id === intentId);
-    if (!intent) {
-      delete alvoRef.current[intentId];
-      return;
-    }
-    if (intent.organizationId !== null) {
-      // Already pinned (by an earlier render or a previous session): keep the
-      // captured id in sync, never look for another target.
-      alvoRef.current[intentId] = intent.organizationId;
-      return;
-    }
-    const capturado = alvoRef.current[intentId] ?? emPreparo?.id;
-    if (!capturado) return;
-    alvoRef.current[intentId] = capturado;
-    // The document changed and the captured organization is gone: drop the
-    // intent. Pointing it at whoever is in `preparando` now would apply this
-    // creation's URL to another territory.
-    if (!estado.organizacoes.some(org => org.id === capturado)) {
-      try {
-        removePendingArchiveIntent(intentId);
-      } catch {
-        // The drop itself failed: keep the captured id so the retry below
-        // addresses the SAME organization. Clearing it here would let a later
-        // `preparando` organization inherit this creation's URL on the next
-        // tick — the exact retarget this capture exists to prevent.
-        agendarPinRetry();
-        return;
-      }
-      delete alvoRef.current[intentId];
-      return;
-    }
-    try {
-      updatePendingArchiveIntent(intentId, {organizationId: capturado});
-    } catch {
-      // Persistence failed: retry ONLY the captured id while it still exists.
-      agendarPinRetry();
-    }
-  }, [
-    intentId,
-    pinTick,
-    pendingArchives,
-    emPreparo,
-    estado.organizacoes,
-    updatePendingArchiveIntent,
-    removePendingArchiveIntent,
-    agendarPinRetry,
-  ]);
+  const {coordinationRole} = useUserProfileState();
   const {status: activationStatus, preparacaoViva} =
     useOrganizationActivationContext();
   // The document's own operational id (SPEC A §4.2 regra 5): null while the

@@ -81,7 +81,6 @@ function mockCoordinationRole(role: CoordinationRole) {
     ethnicity: null,
     village: null,
     coordinationRole: role,
-    pendingArchives: [],
   });
 }
 

@@ -32,10 +32,7 @@ import {OrganizationOperationError} from '../../lib/organization/fanout';
 import {AppStackParamsList} from '../../sharedTypes/navigation';
 import territoriesData from '../../lib/territories.json';
 import {normalizeRemoteArchiveUrl} from '../../utils/normalizeRemoteArchiveUrl';
-import {
-  useUserProfileActions,
-  useUserProfileState,
-} from '../../contexts/UserProfileStoreContext';
+import {useUserProfileState} from '../../contexts/UserProfileStoreContext';
 
 const m = defineMessages({
   // SPEC B :54/:55: both stages share the title and the submit button
@@ -139,17 +136,6 @@ function toError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
 
-/**
- * #129/P1-B: the intent identity. It scopes every later write, so a
- * completion can never touch an intent created by another attempt. Hermes has
- * no guaranteed `crypto.randomUUID`, hence the fallback.
- */
-function novoIntentId(): string {
-  const cripto = (globalThis as {crypto?: {randomUUID?: () => string}}).crypto;
-  if (cripto?.randomUUID) return cripto.randomUUID();
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-}
-
 export const CreateOrganization = ({
   navigation,
 }: NativeStackScreenProps<AppStackParamsList, 'CreateOrganization'>) => {
@@ -172,15 +158,6 @@ export const CreateOrganization = ({
   // P1-1: creation belongs to coordinators. A participant reaching this route
   // (drawer, provisioning, direct navigation) is sent to the waiting screen.
   const {coordinationRole} = useUserProfileState();
-  const {addPendingArchiveIntent} = useUserProfileActions();
-  // The id of the intent created by THIS screen, handed to the provisioning
-  // route so only that screen pins the target. It is set only once this
-  // attempt PROVED the organization in the document belongs to it (the start
-  // resolved, or it registered the organization before failing recoverably),
-  // so a handover caused by another creation never carries it.
-  const [intentIdConfirmado, setIntentIdConfirmado] = React.useState<
-    string | null
-  >(null);
   // One-shot guard: the redirect must land once even if the effect re-runs.
   const redirecionouParticipanteRef = React.useRef(false);
   // SPEC B §3.3 items 2-3 and §5.5: a document with a creation in flight
@@ -304,19 +281,8 @@ export const CreateOrganization = ({
     // P1-1: a participant's destination is the waiting screen, never the
     // provisioning surface.
     if (coordinationRole === 'participant') return;
-    // The intent of THIS creation travels with the route: the provisioning
-    // surface pins only it, so a different territory can never inherit the
-    // URL (P1-A). Only an attempt that PROVED the organization belongs to it
-    // may carry the id; a handover caused by another creation's document
-    // must not carry this screen's orphan id.
-    if (intentIdConfirmado) {
-      navigation.replace('OrganizationProvisioning', {
-        intentId: intentIdConfirmado,
-      });
-    } else {
-      navigation.replace('OrganizationProvisioning');
-    }
-  }, [deveTrocar, coordinationRole, intentIdConfirmado, navigation]);
+    navigation.replace('OrganizationProvisioning');
+  }, [deveTrocar, coordinationRole, navigation]);
 
   const territoryOptions = territoriesData.territories;
   const selectedTerritory = territoryOptions.find(
@@ -397,23 +363,6 @@ export const CreateOrganization = ({
       setErro(new Error('materialization-unavailable'));
       return;
     }
-    // #129/P1-2: record the normalized URL + target BEFORE the start. The
-    // global resume hook is the only owner of the network add. A failed
-    // persistence must not arm the latch: the form stays usable and explains
-    // the existing error path instead of trapping a press that was never
-    // recorded.
-    const intentId = novoIntentId();
-    try {
-      addPendingArchiveIntent({
-        id: intentId,
-        url: normalizedArchiveUrl,
-        organizationId: null,
-      });
-    } catch (error) {
-      setErro(toError(error));
-      return;
-    }
-    setIntentIdConfirmado(null);
     iniciandoRef.current = true;
     // The blocked state re-arms HERE, at the start of a new attempt (the
     // state's own contract): a message that survived into a fresh press
@@ -422,15 +371,8 @@ export const CreateOrganization = ({
     // leaves it cleared.
     setBloqueado(false);
     setIniciando(true);
-    // Organization ids already in the document when THIS start began. A
-    // rejection may then tell which un-settled entries are ours (new ids) and
-    // which belong to another creation/pending work (pre-existing ids) —
-    // only the former may receive this attempt's intent.
-    const organizacoesAntes = new Set(
-      instance.getState().organizacoes.map(organizacao => organizacao.id),
-    );
     materializador
-      .iniciar(trimmedName)
+      .iniciar(trimmedName, {arquivoRemotoUrl: normalizedArchiveUrl})
       .then(() => {
         // BLOCKER 2: a resolved start means the operation is alive and the
         // provisioning surface owns it (it renders `preparando`/
@@ -443,7 +385,6 @@ export const CreateOrganization = ({
         // creation the predicate has already replaced this screen (no
         // selection ⇒ null ⇒ no spurious second replace). `.then` before
         // `.catch`: a refusal must never navigate.
-        setIntentIdConfirmado(intentId);
         setStartResolvido(true);
       })
       .catch((error: unknown) => {
@@ -466,23 +407,9 @@ export const CreateOrganization = ({
         // 4: this is the SAME predicate as the error-sheet effect's gate
         // above — the twin gates must evolve together.
         const estadoAtual = instance.getState();
-        const registradaAqui = estadoAtual.organizacoes.find(
-          organizacao =>
-            !organizacoesAntes.has(organizacao.id) &&
-            (organizacao.estado !== 'pronta' ||
-              organizacao.confirmacaoPendente),
-        );
-        if (registradaAqui) {
-          // The start failed AFTER registering the organization: the document
-          // entry is this attempt's, so the intent may be pinned to it by the
-          // provisioning surface.
-          setIntentIdConfirmado(intentId);
-          return;
-        }
         if (organizacaoEmPreparo(estadoAtual)) {
           // The un-settled organization predates this attempt (another
-          // creation or pending work). Its surface owns the handover and this
-          // attempt's intent must NOT travel with it.
+          // creation or pending work). Its surface owns the handover.
           return;
         }
         const falha = toError(error);

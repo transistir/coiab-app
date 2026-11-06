@@ -12,6 +12,7 @@ import {createStore, useStore, type StoreApi} from 'zustand';
 
 import {
   createArquivoRemotoExecutor,
+  criarArquivoRemotoPendente,
   criarRedeArquivoRemoto,
   type ModoArquivoRemoto,
   type ResultadoArquivoRemoto,
@@ -32,6 +33,7 @@ import {criarTemplateSourceInstalado} from '../lib/organization/pacotesInstalado
 import {SLOTS, type Slot} from '../lib/organization/marker';
 import {membersQueryKey, projectsQueryKey} from '../lib/organization/queryKeys';
 import {repositorioDoStore} from '../lib/organization/repositorio';
+import {normalizeRemoteArchiveUrl} from '../utils/normalizeRemoteArchiveUrl';
 import {useCoiabOrganizationsStoreContext} from './CoiabOrganizationsStoreContext';
 
 const AREA_DO_SLOT: Record<Slot, 'monitoramento' | 'alertas'> = {
@@ -63,6 +65,16 @@ export type OrganizationMaterializerHandle = {
    * or re-confirm the organization.
    */
   retomarArquivo(organizacaoId: string): Promise<ResultadoArquivoRemoto>;
+  /**
+   * Journalizes a MANUAL request and runs it through the SAME executor/lock.
+   * A different URL (or a missing journal entry) resets the archive step to
+   * `pendente`; the executor then decides which slots still need a send, so a
+   * manual submission can never race an automatic pass.
+   */
+  solicitarArquivo(
+    organizacaoId: string,
+    url: string,
+  ): Promise<ResultadoArquivoRemoto>;
 };
 
 const OrganizationMaterializerContext =
@@ -153,6 +165,43 @@ export function OrganizationMaterializerProvider({
       await invalidarMembros(organizacaoId);
       return resultado;
     };
+    /**
+     * #142 fase C1: the manual screen's request is journalized before it runs.
+     * The journal URL is the single source of truth for the executor, and the
+     * shared repository-keyed lock makes a concurrent automatic pass join or
+     * refuse instead of doubling the network calls.
+     */
+    const solicitarArquivo = async (
+      organizacaoId: string,
+      url: string,
+    ): Promise<ResultadoArquivoRemoto> => {
+      const normalizada = normalizeRemoteArchiveUrl(url);
+      const documento = repository.read();
+      const organizacao = documento.organizacoes.find(
+        item => item.id === organizacaoId,
+      );
+      if (!organizacao) throw new Error('organization-not-found');
+      const atual = organizacao.arquivoRemoto;
+      const mesmaUrl = atual?.url === normalizada;
+      if (!mesmaUrl) {
+        repository.write({
+          ...documento,
+          organizacoes: documento.organizacoes.map(item =>
+            item.id === organizacaoId
+              ? {
+                  ...item,
+                  arquivoRemoto: criarArquivoRemotoPendente(normalizada),
+                }
+              : item,
+          ),
+        });
+      }
+      // An interrupted/in-flight pass keeps its replay budget and joins the
+      // live execution; anything else is the user's explicit retry.
+      const modo: ModoArquivoRemoto =
+        mesmaUrl && atual?.estado === 'aplicando' ? 'automatico' : 'retry';
+      return executarArquivo(organizacaoId, modo);
+    };
     const retomar = async (organizacaoId: string) => {
       const organizacao = store.instance
         .getState()
@@ -205,6 +254,8 @@ export function OrganizationMaterializerProvider({
         ),
       retomar: organizacaoId => acompanhar(() => retomar(organizacaoId)),
       retomarArquivo: organizacaoId => executarArquivo(organizacaoId, 'retry'),
+      solicitarArquivo: (organizacaoId, url) =>
+        solicitarArquivo(organizacaoId, url),
     };
     return {handle, executarArquivo};
   }, [store, clientApi, templates, queryClient, vivas]);

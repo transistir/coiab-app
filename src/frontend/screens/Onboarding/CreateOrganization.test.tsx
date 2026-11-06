@@ -291,15 +291,6 @@ const HomeStub = () => <Text>HOME-REACHED</Text>;
 const ProvisioningStub = () => <Text>PROVISIONING-REACHED</Text>;
 const JoinStub = () => <Text>JOIN-REACHED</Text>;
 
-/** Records the route params the handover actually carried. */
-const provisioningRouteParams: Array<{intentId?: string} | undefined> = [];
-const ParamsProvisioningStub = ({
-  route,
-}: NativeStackScreenProps<AppStackParamsList, 'OrganizationProvisioning'>) => {
-  provisioningRouteParams.push(route.params);
-  return <Text>PROVISIONING-PARAMS</Text>;
-};
-
 const ErrorStub = ({
   route,
 }: NativeStackScreenProps<AppStackParamsList, 'ErrorBottomSheet'>) => (
@@ -401,7 +392,6 @@ async function preencherUrl(url = 'https://exemplo.org/') {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  provisioningRouteParams.length = 0;
   backHandlerMock.__live.length = 0;
   store = createCoiabOrganizationsStore();
   profileStore = createUserProfileStore();
@@ -537,7 +527,7 @@ describe('CreateOrganization', () => {
     ).not.toBeOnTheScreen();
   });
 
-  test('presses create with the territory name from the selector and never writes the active project', async () => {
+  test('presses create with the territory name and the normalized archive URL', async () => {
     // SPEC B §3.3/§5.3: between `pronta` and the "Abrir organização" tap the
     // device has NO active selection — `ativa` is born only in that tap's
     // single write, so the form must hand the materializer the selected
@@ -546,28 +536,21 @@ describe('CreateOrganization', () => {
     await irParaEtapaNome();
 
     await selecionarTerritorio();
-    await preencherUrl('https://exemplo.org/');
+    await preencherUrl('https://exemplo.org');
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
     await waitFor(() => {
-      expect(iniciar).toHaveBeenCalledWith('Kaxuyana-Tunayana');
+      expect(iniciar).toHaveBeenCalledWith('Kaxuyana-Tunayana', {
+        arquivoRemotoUrl: 'https://exemplo.org/',
+      });
     });
     await waitFor(() => {
       expect(projetar).not.toHaveBeenCalled();
     });
   });
 
-  test('records an intent with an id before starting and never applies the archive from this screen (#129)', async () => {
+  test('iniciar recebe a URL normalizada e não grava intent (#142 fase C1)', async () => {
     const iniciarComProjetos = jest.fn(async (nome: string) => {
-      // The intent must already be durable when the materialization starts.
-      const [intent] = profileStore.instance.getState().pendingArchives;
-      expect(intent).toMatchObject({
-        url: 'https://exemplo.org/',
-        organizationId: null,
-        appliedFor: null,
-        sendingSince: null,
-      });
-      expect(typeof intent?.id).toBe('string');
       await registrarComProjetos(nome);
     });
     mockMaterializador({iniciar: iniciarComProjetos});
@@ -580,51 +563,22 @@ describe('CreateOrganization', () => {
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
     expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
-    expect(iniciarComProjetos).toHaveBeenCalledWith('Kaxuyana-Tunayana');
-    // The network add belongs to the global resume hook, never to the form —
-    // even when both project ids are already published.
+    expect(iniciarComProjetos).toHaveBeenCalledWith('Kaxuyana-Tunayana', {
+      arquivoRemotoUrl: 'https://exemplo.org/',
+    });
+    // The network add belongs to the journal, never to the form — even when
+    // both project ids are already published.
     expect(archiveStart).not.toHaveBeenCalled();
-    const intents = profileStore.instance.getState().pendingArchives;
-    expect(intents).toHaveLength(1);
-    expect(intents[0]).toMatchObject({
-      url: 'https://exemplo.org/',
-      organizationId: null,
-      appliedFor: null,
-    });
+    expect(Object.keys(profileStore.instance.getState()).sort()).toStrictEqual([
+      'coordinationRole',
+      'ethnicity',
+      'village',
+    ]);
   });
 
-  test('a persistence failure before the latch leaves the form usable and never starts the materialization (#129/P2)', async () => {
-    mockMaterializador({iniciar: registrar});
-    await renderScreen();
-    await irParaEtapaNome();
-    await selecionarTerritorio();
-    await preencherUrl('https://exemplo.org/');
-
-    const setState = jest.spyOn(profileStore.instance, 'setState');
-    setState.mockImplementationOnce(() => {
-      throw new Error('disk full');
-    });
-    try {
-      await fireEvent.press(screen.getByTestId('ORG.create-btn'));
-    } finally {
-      setState.mockRestore();
-    }
-
-    expect(await screen.findByText('ERROR: disk full')).toBeOnTheScreen();
-    expect(iniciar).not.toHaveBeenCalled();
-    // The latch was never armed: the button is back, not a stuck spinner.
-    expect(
-      screen.getByTestId('ORG.create-btn', {includeHiddenElements: true}),
-    ).toBeOnTheScreen();
-    expect(
-      screen.queryByText('Creating Territory…', {
-        includeHiddenElements: true,
-      }),
-    ).not.toBeOnTheScreen();
-  });
-
-  test('a recoverable failure keeps the intent pinned to THIS creation target (#129/P1-A)', async () => {
-    mockMaterializador({iniciar: registrarComFalhaRecuperavel});
+  test('a recoverable failure keeps the archive URL in the journal, not in the profile (#142 fase C1)', async () => {
+    const iniciarComFalha = jest.fn(registrarComFalhaRecuperavel);
+    mockMaterializador({iniciar: iniciarComFalha});
     await renderScreen(OrganizationProvisioning);
     await irParaEtapaNome();
 
@@ -635,64 +589,15 @@ describe('CreateOrganization', () => {
     expect(
       await screen.findByText('Could not finish creating the territory.'),
     ).toBeOnTheScreen();
-    // The form recorded the intent; the provisioning surface pinned the
-    // target id received through the route param. The global owner applies
-    // it — never the form, and never a guessed organization.
-    expect(profileStore.instance.getState().pendingArchives).toHaveLength(1);
-    expect(profileStore.instance.getState().pendingArchives[0]).toMatchObject({
-      url: 'https://exemplo.org/',
-      organizationId: '0123456789abcdef',
-      appliedFor: null,
+    expect(iniciarComFalha).toHaveBeenCalledWith('Kaxuyana-Tunayana', {
+      arquivoRemotoUrl: 'https://exemplo.org/',
     });
+    expect(Object.keys(profileStore.instance.getState()).sort()).toStrictEqual([
+      'coordinationRole',
+      'ethnicity',
+      'village',
+    ]);
     expect(archiveStart).not.toHaveBeenCalled();
-  });
-
-  test('a refused attempt never hands its orphan intent to another creation (P1-A)', async () => {
-    // The materializer's own typed refusal: nothing was registered, so the
-    // intent is orphan. The form stays with the blocked notice.
-    mockMaterializador({
-      iniciar: async () => {
-        throw new OrganizationOperationError(
-          'creation-in-progress',
-          'another creation is in flight',
-        );
-      },
-    });
-    await renderScreen(ParamsProvisioningStub);
-    await irParaEtapaNome();
-    await selecionarTerritorio();
-    await preencherUrl('https://exemplo.org/');
-    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
-
-    expect(
-      await screen.findByTestId('ORG.create-blocked', {
-        includeHiddenElements: true,
-      }),
-    ).toBeOnTheScreen();
-    expect(profileStore.instance.getState().pendingArchives).toHaveLength(1);
-
-    // Another creation's organization enters preparation: the provisioning
-    // surface takes over, but this screen's orphan intent must not travel
-    // with it (it would be pinned to that territory).
-    const outra = {
-      ...documentoComOrganizacao('Outra').organizacoes[0]!,
-      id: 'fedcba9876543210',
-    };
-    store.instance.setState({
-      versao: 1,
-      organizacoes: [outra],
-      ativa: null,
-    });
-
-    expect(
-      await screen.findByText('PROVISIONING-PARAMS', {
-        includeHiddenElements: true,
-      }),
-    ).toBeOnTheScreen();
-    expect(provisioningRouteParams).toHaveLength(1);
-    expect(provisioningRouteParams[0]?.intentId).toBeUndefined();
-    // The orphan stays put: it is never applied to that territory.
-    expect(profileStore.instance.getState().pendingArchives).toHaveLength(1);
   });
 
   test('shows the loading state instead of the button while creating', async () => {
@@ -939,7 +844,9 @@ describe('CreateOrganization', () => {
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
     await waitFor(() => {
-      expect(iniciar).toHaveBeenCalledWith('Kaxuyana-Tunayana');
+      expect(iniciar).toHaveBeenCalledWith('Kaxuyana-Tunayana', {
+        arquivoRemotoUrl: 'https://exemplo.org/',
+      });
     });
     // Once `iniciar` resolves, the provisioning surface owns the living
     // operation. The redirect effect stays silent here because
@@ -1000,7 +907,9 @@ describe('CreateOrganization', () => {
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
     await waitFor(() => {
-      expect(iniciar).toHaveBeenCalledWith('Kaxuyana-Tunayana');
+      expect(iniciar).toHaveBeenCalledWith('Kaxuyana-Tunayana', {
+        arquivoRemotoUrl: 'https://exemplo.org/',
+      });
     });
     expect(await screen.findByTestId('ORG.create-blocked')).toBeOnTheScreen();
     // The form stays usable and the press never crashed it.

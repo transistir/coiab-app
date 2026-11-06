@@ -563,9 +563,11 @@ describe('OrganizationMaterializerContext', () => {
     });
 
     // A rerender of the same provider is not a second boot: nothing resends.
-    await act(async () => {
-      hook.rerender(undefined as never);
-    });
+    // `renderHook().rerender` is async and already wraps the update in act;
+    // awaiting it keeps the act scope from leaking into the next test (an
+    // unawaited rerender left effects unflushed there, so the following
+    // provider neither reported its handle nor ran its boot reconciliation).
+    await hook.rerender(undefined as never);
     await act(async () => {
       await Promise.resolve();
     });

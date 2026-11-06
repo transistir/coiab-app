@@ -20,6 +20,8 @@ import {useActiveProject} from '../../contexts/ActiveProjectContext';
 import {useActiveProjectId} from '../../contexts/ActiveProjectIdStoreContext';
 import {useOrganizations} from '../../hooks/organization/useOrganizations';
 import {useAddRemoteArchiveToOrganization} from '../../hooks/organization/useAddRemoteArchiveToOrganization';
+import {useOrganizationMaterializer} from '../../contexts/OrganizationMaterializerContext';
+import {useCoiabOrganizationsState} from '../../contexts/CoiabOrganizationsStoreContext';
 import type {ReconstructedOrganization} from '../../lib/organization/reconstruct';
 import * as Sentry from '@sentry/react-native';
 
@@ -202,6 +204,13 @@ const AddFoundArchive = ({name, url}: AddFoundArchiveProps) => {
   const activeProjectId = useActiveProjectId();
   const organizations = useOrganizations();
   const organizationArchive = useAddRemoteArchiveToOrganization();
+  const materializador = useOrganizationMaterializer();
+  const estadoOrganizacoes = useCoiabOrganizationsState();
+  // #142 fase C1: an organization with a journal entry must NOT be modified
+  // through the independent manual fan-out — that could race the journal's
+  // automatic application. The journal executor owns the lock.
+  const [journalBusy, setJournalBusy] = React.useState(false);
+  const journalBusyRef = React.useRef(false);
 
   // SPEC 11: when the active project belongs to a ready Organization, one
   // submission fans the archive out to both of its projects. Otherwise the
@@ -215,10 +224,51 @@ const AddFoundArchive = ({name, url}: AddFoundArchiveProps) => {
     );
   }, [organizations, activeProjectId]);
 
-  const pending = status === 'pending' || organizationArchive.busy;
+  const journalOrganization = React.useMemo(() => {
+    if (!activeOrganization) return undefined;
+    return estadoOrganizacoes.organizacoes.find(
+      organizacao => organizacao.id === activeOrganization.organizationId,
+    );
+  }, [activeOrganization, estadoOrganizacoes.organizacoes]);
+
+  const pending =
+    status === 'pending' || organizationArchive.busy || journalBusy;
 
   async function handleAddRemoteArchive() {
     if (activeOrganization) {
+      // #142 fase C1: a journalized organization runs through the SAME
+      // executor/lock. It re-reads both project ids from the journal and can
+      // neither recreate a project nor race a manual fan-out.
+      if (materializador && journalOrganization && !journalBusyRef.current) {
+        journalBusyRef.current = true;
+        setJournalBusy(true);
+        try {
+          const outcome = await materializador.solicitarArquivo(
+            journalOrganization.id,
+            url,
+          );
+          if (outcome.estado === 'concluido') {
+            navigate('SuccessfullyAddedArchive', {archiveName: name, url});
+          } else if (
+            outcome.estado === 'falha_recuperavel' ||
+            outcome.estado === 'sem-arquivo' ||
+            outcome.estado === 'organizacao-ausente'
+          ) {
+            const error = new Error(`archive-${outcome.estado}`);
+            Sentry.captureException(error);
+            navigate('ErrorBottomSheet', {error});
+          }
+          // `aplicando`/`em-andamento`/`pendente`: the journal still owns the
+          // operation; the screen must not start a second manual send.
+        } catch (error) {
+          Sentry.captureException(error);
+          navigate('ErrorBottomSheet', {error: toError(error)});
+        } finally {
+          journalBusyRef.current = false;
+          setJournalBusy(false);
+        }
+        return;
+      }
       // SPEC 11 / E8 fan-out: both slots via manager APIs, without switching
       // activeProjectId. A partial failure (one slot done, one error) leaves
       // the Organization half-configured and surfaces as an error; the retry

@@ -31,6 +31,14 @@ jest.mock('../../hooks/organization/useAddRemoteArchiveToOrganization', () => ({
   useAddRemoteArchiveToOrganization: jest.fn(),
 }));
 
+jest.mock('../../contexts/OrganizationMaterializerContext', () => ({
+  useOrganizationMaterializer: jest.fn(),
+}));
+
+jest.mock('../../contexts/CoiabOrganizationsStoreContext', () => ({
+  useCoiabOrganizationsState: jest.fn(),
+}));
+
 jest.mock('../../contexts/ActiveProjectContext', () => ({
   useActiveProject: () => ({projectId: mockActiveProjectId, projectApi: {}}),
 }));
@@ -61,11 +69,21 @@ const mockNavigation: {
 
 const mutate = jest.fn();
 const orgStart = jest.fn();
+const solicitarArquivo = jest.fn();
 
 const useAddServerPeerMock = useAddServerPeer as jest.Mock;
 const useFindRemoteArchiveMock = useFindRemoteArchive as jest.Mock;
 const useOrganizationsMock = useOrganizations as jest.Mock;
 const useAddRemoteArchiveMock = useAddRemoteArchiveToOrganization as jest.Mock;
+const useMaterializadorMock = jest.requireMock(
+  '../../contexts/OrganizationMaterializerContext',
+) as {useOrganizationMaterializer: jest.Mock};
+const useOrganizationsStateMock = jest.requireMock(
+  '../../contexts/CoiabOrganizationsStoreContext',
+) as {useCoiabOrganizationsState: jest.Mock};
+
+/** The persisted journal the screen checks before journalizing a manual add. */
+let journalOrganizations: Array<{id: string}> = [];
 
 // Value "returned" by the (mocked) archive lookup once a URL was submitted.
 let foundArchiveName: string | undefined;
@@ -173,6 +191,18 @@ beforeEach(() => {
   mockCoreReact();
   mockOrganizations([]);
   mockOrgArchive();
+  journalOrganizations = [];
+  useOrganizationsStateMock.useCoiabOrganizationsState.mockImplementation(
+    () => ({versao: 1, organizacoes: journalOrganizations, ativa: null}),
+  );
+  solicitarArquivo.mockReset();
+  solicitarArquivo.mockResolvedValue({estado: 'concluido', slots: {}});
+  useMaterializadorMock.useOrganizationMaterializer.mockReturnValue({
+    iniciar: jest.fn(),
+    retomar: jest.fn(),
+    retomarArquivo: jest.fn(),
+    solicitarArquivo,
+  });
 });
 
 describe('AddRemoteArchive', () => {
@@ -200,6 +230,52 @@ describe('AddRemoteArchive', () => {
     expect(mockNavigation.navigate).toHaveBeenCalledWith(
       'SuccessfullyAddedArchive',
       {archiveName: 'Archive A', url: 'https://archive.example.com/'},
+    );
+  });
+
+  test('journalized organization runs through the shared executor, not the manual fan-out', async () => {
+    mockOrganizations([READY_ORG]);
+    journalOrganizations = [{id: READY_ORG.organizationId}];
+    await renderScreen();
+    await findArchive();
+
+    await pressAdd();
+
+    await waitFor(() => {
+      expect(solicitarArquivo).toHaveBeenCalledWith(
+        READY_ORG.organizationId,
+        'https://archive.example.com/',
+      );
+    });
+    expect(orgStart).not.toHaveBeenCalled();
+    expect(mockNavigation.navigate).toHaveBeenCalledWith(
+      'SuccessfullyAddedArchive',
+      {archiveName: 'Archive A', url: 'https://archive.example.com/'},
+    );
+  });
+
+  test('manual submission concurrent with a journal application never starts a second fan-out', async () => {
+    mockOrganizations([READY_ORG]);
+    // The journal is already applying this URL: the shared executor joins or
+    // refuses, and the manual adapter must stay untouched.
+    journalOrganizations = [{id: READY_ORG.organizationId}];
+    solicitarArquivo.mockResolvedValue({estado: 'aplicando', slots: {}});
+    await renderScreen();
+    await findArchive();
+
+    await pressAdd();
+
+    await waitFor(() => {
+      expect(solicitarArquivo).toHaveBeenCalledTimes(1);
+    });
+    expect(orgStart).not.toHaveBeenCalled();
+    expect(mockNavigation.navigate).not.toHaveBeenCalledWith(
+      'SuccessfullyAddedArchive',
+      expect.anything(),
+    );
+    expect(mockNavigation.navigate).not.toHaveBeenCalledWith(
+      'ErrorBottomSheet',
+      expect.anything(),
     );
   });
 

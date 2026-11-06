@@ -324,7 +324,6 @@ describe('perfil de onboarding no navigator real (#128)', () => {
         ethnicity: ETNIA,
         village: 'Aldeia de teste',
         coordinationRole: 'coordinator',
-        pendingArchives: [],
       },
     });
 
@@ -340,7 +339,6 @@ describe('perfil de onboarding no navigator real (#128)', () => {
         ethnicity: ETNIA,
         village: 'Aldeia de teste',
         coordinationRole: 'participant',
-        pendingArchives: [],
       },
     });
 
@@ -369,7 +367,6 @@ describe('perfil de onboarding no navigator real (#128)', () => {
       ethnicity: ETNIA,
       village: 'Aldeia do caso 1',
       coordinationRole: null,
-      pendingArchives: [],
     });
   }, 30000);
 
@@ -412,7 +409,6 @@ describe('perfil de onboarding no navigator real (#128)', () => {
       ethnicity: ETNIA,
       village: null,
       coordinationRole: null,
-      pendingArchives: [],
     });
 
     await freshSetup.renderNavigationAsync({userProfile: 'keep'});
@@ -438,7 +434,6 @@ describe('perfil de onboarding no navigator real (#128)', () => {
       ethnicity: ETNIA,
       village: 'Aldeia retomada',
       coordinationRole: null,
-      pendingArchives: [],
     });
   }, 30000);
 

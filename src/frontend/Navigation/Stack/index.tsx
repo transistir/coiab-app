@@ -36,7 +36,6 @@ import {JoinOrganizationIntro} from '../../screens/Onboarding/JoinOrganizationIn
 import {OrganizationProvisioning} from '../../screens/Onboarding/OrganizationProvisioning';
 import {Organizations} from '../../screens/Organizations';
 import {ActiveProjectProvider} from '../../contexts/ActiveProjectContext';
-import {usePendingArchiveResume} from '../../hooks/organization/usePendingArchiveResume';
 import {RootStack} from './RootStack';
 import {InviteSuccessfullyAccepted} from '../../screens/Invites/InviteSuccessfullyAccepted';
 import {ErrorBottomSheet} from '../../sharedComponents/ErrorBottomSheet';
@@ -224,11 +223,6 @@ export function GenerationTransitionGate({
 }
 
 export const RootStackNavigator = () => {
-  // #129/P1: ONE lifecycle-safe owner for the pending remote archive. Home
-  // and OrganizationProvisioning are both screens of this navigator, so the
-  // root is the always-mounted point — a per-screen mount would duplicate the
-  // application when the stack keeps Home underneath the provisioning surface.
-  usePendingArchiveResume();
   const security = useAuthContext();
   const {data: deviceInfo} = useOwnDeviceInfo();
   const activeProjectId = useActiveProjectId();
