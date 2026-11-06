@@ -1,3 +1,5 @@
+import type {Slot} from './marker';
+
 /** Canonical document shared by SPEC A §4.2 and SPEC B §5.3. */
 export type Area = 'monitoramento' | 'alertas';
 export const AREAS: readonly Area[] = ['monitoramento', 'alertas'];
@@ -8,6 +10,32 @@ export type EtapaArea = {
   template: TemplateRef | null;
   idsAntesDaCriacao: string[] | null;
 };
+export type EstadoArquivoRemoto =
+  'pendente' | 'aplicando' | 'concluido' | 'falha_recuperavel';
+/**
+ * One project slot of the remote archive step (#142). `tentativaId` names the
+ * attempt that owns the current state, so a late response can only ever patch
+ * the attempt it belongs to. `replayConsumido` is the durable one-replay
+ * budget: it is written BEFORE an interrupted attempt is replayed, so a crash
+ * during that replay requires an explicit retry.
+ */
+export type EstadoSlotArquivoRemoto = {
+  estado: EstadoArquivoRemoto;
+  tentativaId?: string;
+  iniciadaEm?: number;
+  replayConsumido?: boolean;
+  erro?: string;
+};
+/**
+ * The remote archive step lives inside the SAME materialization journal as
+ * the local preparation. Its absence means "no archive was requested" (an
+ * invite-created organization); the URL is never mirrored anywhere else.
+ */
+export type ArquivoRemoto = {
+  url: string;
+  estado: EstadoArquivoRemoto;
+  slots: Record<Slot, EstadoSlotArquivoRemoto>;
+};
 export type OrganizacaoLocal = {
   id: string;
   nome: string;
@@ -16,6 +44,7 @@ export type OrganizacaoLocal = {
   materializacao: Record<Area, EtapaArea>;
   areaEmExecucao: Area | null;
   ultimoErro: null | {codigo: string; area: Area | null; ocorridoEm: string};
+  arquivoRemoto?: ArquivoRemoto;
 };
 export type EstadoOrganizacoes = {
   versao: 1;

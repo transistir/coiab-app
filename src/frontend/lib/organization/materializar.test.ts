@@ -118,10 +118,16 @@ function harness() {
       document = next;
     }),
   };
+  const arquivoRemotoRede = {
+    addServerPeer: jest.fn<Promise<void>, [{projectId: string; url: string}]>(
+      async () => {},
+    ),
+  };
   return {
     client,
     templates,
     repository,
+    arquivoRemotoRede,
     events,
     projects,
     imported,
@@ -133,6 +139,7 @@ function harness() {
       client,
       templates,
       repository,
+      arquivoRemoto: arquivoRemotoRede,
       generateId: () => ORG_ID,
     }),
   };
@@ -240,10 +247,16 @@ function harnessMulti() {
       document = next;
     }),
   };
+  const arquivoRemotoRede = {
+    addServerPeer: jest.fn<Promise<void>, [{projectId: string; url: string}]>(
+      async () => {},
+    ),
+  };
   return {
     client,
     templates,
     repository,
+    arquivoRemotoRede,
     events,
     projects,
     settings,
@@ -255,6 +268,7 @@ function harnessMulti() {
       client,
       templates,
       repository,
+      arquivoRemoto: arquivoRemotoRede,
       generateId: () => ORG_ID,
     }),
   };
@@ -321,6 +335,120 @@ describe('materialização da organização', () => {
         },
       ],
     });
+  });
+
+  test('#142: URL já pertence ao registro no primeiro checkpoint, antes de criar qualquer projeto', async () => {
+    const h = harness();
+    h.repository.write.mockImplementationOnce(() => {
+      throw new Error('mmkv-write-failed');
+    });
+
+    await expect(
+      h.service.start('Associação', {arquivoRemotoUrl: 'arquivo.example'}),
+    ).rejects.toThrow('mmkv-write-failed');
+
+    // The URL is part of the SAME `preparando` write — already normalized and
+    // before any project creation or network send.
+    expect(h.repository.write).toHaveBeenCalledTimes(1);
+    const primeiroCheckpoint = h.repository.write.mock.calls[0]?.[0] as
+      EstadoOrganizacoes | undefined;
+    expect(primeiroCheckpoint?.organizacoes[0]).toMatchObject({
+      estado: 'preparando',
+      arquivoRemoto: {
+        url: 'https://arquivo.example/',
+        estado: 'pendente',
+        slots: {m: {estado: 'pendente'}, a: {estado: 'pendente'}},
+      },
+    });
+    expect(h.client.createProject).not.toHaveBeenCalled();
+    expect(h.arquivoRemotoRede.addServerPeer).not.toHaveBeenCalled();
+  });
+
+  test('#142: interrupção em preparando antes do handover reidrata B e aplica somente a B', async () => {
+    const primeiraExecucao = harnessMulti();
+    const ORG_A = '1111111111111111';
+    // harnessMulti mints this id for the organization it creates.
+    const ORG_B = ORG_ID;
+    const area = (projectId: string, hash: string): EtapaArea => ({
+      etapa: 'verificado',
+      projectId,
+      template: {versao: '1', hash},
+      idsAntesDaCriacao: null,
+    });
+    const organizacaoA = organizacaoProntaReconhecida({
+      id: ORG_A,
+      nome: 'Primeira',
+      materializacao: {
+        monitoramento: area(`${ORG_A}-m`, 'm'),
+        alertas: area(`${ORG_A}-a`, 'a'),
+      },
+    });
+    primeiraExecucao.repository.write({
+      versao: 1,
+      organizacoes: [organizacaoA],
+      ativa: null,
+    });
+    // Capture the EXACT intermediate document the process would leave behind
+    // in `preparando` — URL and initial step already in the same write — then
+    // let the first run die before creating any project.
+    let documentoIntermediario: EstadoOrganizacoes | undefined;
+    primeiraExecucao.client.createProject.mockImplementationOnce(async () => {
+      documentoIntermediario = primeiraExecucao.document;
+      throw new Error('processo-interrompido');
+    });
+    await primeiraExecucao.service.start('Segunda', {
+      arquivoRemotoUrl: 'https://b.example/',
+    });
+    const intermediario = documentoIntermediario!;
+    expect(intermediario.organizacoes[1]).toMatchObject({
+      id: ORG_B,
+      estado: 'preparando',
+      arquivoRemoto: {
+        url: 'https://b.example/',
+        estado: 'pendente',
+      },
+    });
+    expect(
+      intermediario.organizacoes[1]?.materializacao.monitoramento.projectId,
+    ).toBeNull();
+    expect(
+      primeiraExecucao.arquivoRemotoRede.addServerPeer,
+    ).not.toHaveBeenCalled();
+
+    // New instances over the captured document: resume B by id only.
+    const h = harnessMulti();
+    h.repository.write(intermediario);
+    await h.service.resume(ORG_B);
+
+    expect(h.arquivoRemotoRede.addServerPeer).toHaveBeenCalledTimes(2);
+    expect(
+      h.arquivoRemotoRede.addServerPeer.mock.calls
+        .map(([entrada]) => entrada.projectId)
+        .sort(),
+    ).toEqual(['id-0', 'id-1']);
+    expect(h.arquivoRemotoRede.addServerPeer).toHaveBeenCalledWith({
+      projectId: 'id-0',
+      url: 'https://b.example/',
+    });
+    expect(h.document.organizacoes[1]).toMatchObject({
+      id: ORG_B,
+      estado: 'pronta',
+      arquivoRemoto: {
+        estado: 'concluido',
+        slots: {
+          m: {estado: 'concluido'},
+          a: {estado: 'concluido'},
+        },
+      },
+    });
+    // A is untouched — never a target inferred from the active/first entry.
+    expect(h.document.organizacoes[0]).toBe(organizacaoA);
+    // B's projects are the created ones; none of A's ids were ever used.
+    expect(
+      h.arquivoRemotoRede.addServerPeer.mock.calls.some(([entrada]) =>
+        entrada.projectId.startsWith(ORG_A),
+      ),
+    ).toBe(false);
   });
 
   test('CA4: createProject receives the organization marker as projectDescription', async () => {

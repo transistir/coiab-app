@@ -1,4 +1,10 @@
 import type {ComapeoCoreClientApi} from '@comapeo/ipc';
+import {normalizeRemoteArchiveUrl} from '../../utils/normalizeRemoteArchiveUrl';
+import {
+  createArquivoRemotoExecutor,
+  criarArquivoRemotoPendente,
+  type ArquivoRemotoRede,
+} from './arquivoRemoto';
 import {CREATOR_ROLE_ID, OrganizationOperationError} from './fanout';
 import {markerFor, type Slot} from './marker';
 import {
@@ -156,12 +162,30 @@ export function createMaterializer<
   templates,
   repository,
   generateId,
+  arquivoRemoto,
+  arquivoRemotoTimeoutMs,
 }: {
   client: CreationClient<P>;
   templates: TemplateSource<P, T>;
   repository: OrganizationRepository;
   generateId(): string;
+  /**
+   * Injected network boundary for the journal's remote-archive step (#142).
+   * The engine never imports React/hooks; the app wires the Core adapter.
+   */
+  arquivoRemoto?: ArquivoRemotoRede;
+  /** Test hook for the 60 s "promise without response" window. */
+  arquivoRemotoTimeoutMs?: number;
 }) {
+  const executorArquivoRemoto = arquivoRemoto
+    ? createArquivoRemotoExecutor({
+        repository,
+        rede: arquivoRemoto,
+        ...(arquivoRemotoTimeoutMs !== undefined
+          ? {timeoutMs: arquivoRemotoTimeoutMs}
+          : {}),
+      })
+    : undefined;
   /** Upsert by id: the operation's own entry is replaced in place or
    * appended — the array is NEVER replaced wholesale, so the other
    * organizations in the document always survive a checkpoint. */
@@ -395,6 +419,16 @@ export function createMaterializer<
       // §5.4 step 6: the final conferência gates publication on BOTH paths.
       await conferenciaFinal(op, packages);
       assertViva(op);
+      // #142: the remote archive is a STEP of the SAME journal, only after
+      // both local slots are verified. The executor re-reads and patches the
+      // organization by id, persists `aplicando` before each send, skips
+      // concluded slots and bounds an unanswered promise (never hanging
+      // publication forever). An archive failure never changes `org.estado`.
+      const organizacaoDoArquivo = currentFor(op);
+      if (organizacaoDoArquivo.arquivoRemoto && executorArquivoRemoto) {
+        await executorArquivoRemoto.executar(organizacaoDoArquivo.id);
+        assertViva(op);
+      }
       save({...currentFor(op), estado: 'pronta', confirmacaoPendente: true});
     } catch (error) {
       // A superseded operation exits silently: the journal now belongs to
@@ -417,7 +451,7 @@ export function createMaterializer<
     });
   }
 
-  async function start(name: string, op: Operacao) {
+  async function start(name: string, op: Operacao, arquivoRemotoUrl?: string) {
     if (condicaoDeRecusaDeCriacao())
       throw new OrganizationOperationError(
         'creation-in-progress',
@@ -425,6 +459,15 @@ export function createMaterializer<
       );
     const error = organizationNameError(name);
     if (error) throw new Error(error);
+    // #142: normalize/validate the URL BEFORE any effect. An invalid URL must
+    // fail before `prepare`, before the journal write and before Core.
+    const urlArquivo =
+      arquivoRemotoUrl === undefined
+        ? undefined
+        : normalizeRemoteArchiveUrl(arquivoRemotoUrl);
+    if (urlArquivo !== undefined && !arquivoRemoto) {
+      throw new Error('remote-archive-adapter-missing');
+    }
     // The document id IS the marker's organization id (SPEC B §4.1), so the
     // id and name are validated by minting the Monitoramento marker BEFORE
     // prepare() — a bad id or name must throw before any write.
@@ -458,6 +501,12 @@ export function createMaterializer<
       },
       areaEmExecucao: null,
       ultimoErro: null,
+      // The URL and the journal's initial state are part of THIS single
+      // `preparando` write — there is no window between creating the
+      // organization and recording where its archive must be applied.
+      ...(urlArquivo !== undefined
+        ? {arquivoRemoto: criarArquivoRemotoPendente(urlArquivo)}
+        : {}),
     });
     op.organizacaoId = id;
     await materialize(op, packages);
@@ -704,8 +753,12 @@ export function createMaterializer<
     return operation;
   }
   return {
-    start: (name: string) =>
-      exclusive('start', op => start(name, op), name.trim()),
+    start: (name: string, opcoes?: {arquivoRemotoUrl?: string}) =>
+      exclusive(
+        'start',
+        op => start(name, op, opcoes?.arquivoRemotoUrl),
+        name.trim(),
+      ),
     resume: (id?: string) =>
       exclusive('resume', op => resume(op, id), undefined, id),
     retry: () => {
