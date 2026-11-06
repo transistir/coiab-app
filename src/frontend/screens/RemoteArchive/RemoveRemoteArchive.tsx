@@ -1,6 +1,7 @@
 import {useRemoveServerPeer} from '@comapeo/core-react';
 import {type NativeStackNavigationOptions} from '@react-navigation/native-stack';
 import * as Sentry from '@sentry/react-native';
+import {useEffect, useRef} from 'react';
 import {defineMessages, useIntl} from 'react-intl';
 import {StyleSheet, View} from 'react-native';
 import {LoadingIndicator} from '../../sharedComponents/LoadingIndicator';
@@ -54,6 +55,17 @@ export function RemoveRemoteArchive({
   const removeServerPeer = useRemoveServerPeer({projectId});
   const materializador = useOrganizationMaterializer();
 
+  // UI callbacks (navigate/goBack) are meaningless after unmount, but the
+  // journal finalization must still run: going to background can replace this
+  // screen with `AuthScreen` while Core is still answering.
+  const montada = useRef(true);
+  useEffect(() => {
+    montada.current = true;
+    return () => {
+      montada.current = false;
+    };
+  }, []);
+
   return (
     <BottomSheetWrapper>
       <View style={styles.container}>
@@ -101,39 +113,57 @@ export function RemoveRemoteArchive({
                     return;
                   }
 
-                  removeServerPeer.mutate(
-                    {serverDeviceId},
-                    {
-                      onError: err => {
-                        // Core kept the server: restore the exact previous
-                        // slot. If that write also fails, the durable mark
-                        // stays and Core reconciliation decides later.
-                        try {
-                          materializador.cancelarRemocao(projectId, anterior);
-                        } catch (error) {
-                          Sentry.captureException(error);
-                        }
-                        Sentry.captureException(err);
-                        navigation.navigate('ErrorBottomSheet', {error: err});
-                      },
-                      onSuccess: () => {
-                        // Finalize only after Core removed the server. A
-                        // false return means the journal is still `removendo`;
-                        // its timer/boot reconciliation will finish it, so the
-                        // screen must not claim a durable success.
-                        try {
+                  // #142 review P2 (6ª rodada): the journal transition lives
+                  // in the `mutateAsync` chain, NOT in mutation observer
+                  // callbacks. An unmount (e.g. background → `AuthScreen`)
+                  // drops the observer callbacks, which used to leave the
+                  // slot `removendo` and the in-flight removal guard marked
+                  // until restart. Awaited work survives the unmount.
+                  void (async () => {
+                    let sucesso = false;
+                    let erro: unknown;
+                    try {
+                      await removeServerPeer.mutateAsync({serverDeviceId});
+                      sucesso = true;
+                    } catch (err) {
+                      erro = err;
+                    } finally {
+                      try {
+                        if (sucesso) {
+                          // Finalize only after Core removed the server. A
+                          // false return means the journal is still
+                          // `removendo`; its timer/boot reconciliation will
+                          // finish it, so the screen must not claim a durable
+                          // success.
                           if (!materializador.removerArquivo(projectId)) {
                             Sentry.captureException(
                               new Error('archive-removal-checkpoint-pending'),
                             );
                           }
-                        } catch (error) {
-                          Sentry.captureException(error);
+                        } else {
+                          // Core kept the server: restore the exact previous
+                          // slot. If that write also fails, the durable mark
+                          // stays and Core reconciliation decides later.
+                          materializador.cancelarRemocao(projectId, anterior);
                         }
-                        navigation.goBack();
-                      },
-                    },
-                  );
+                      } catch (journalError) {
+                        Sentry.captureException(journalError);
+                      }
+                    }
+                    if (sucesso) {
+                      if (montada.current) navigation.goBack();
+                      return;
+                    }
+                    Sentry.captureException(erro);
+                    if (montada.current) {
+                      navigation.navigate('ErrorBottomSheet', {
+                        error:
+                          erro instanceof Error
+                            ? erro
+                            : new Error(String(erro)),
+                      });
+                    }
+                  })();
                 }}
               />
               <SecondaryButton
