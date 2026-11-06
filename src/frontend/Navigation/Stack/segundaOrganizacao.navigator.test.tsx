@@ -180,6 +180,7 @@ import {
   setupIntegrationTest,
   semearDocumentoPronta,
 } from '../../../../tests/integration/helpers/setupIntegrationTest';
+import {COMPLETE_USER_PROFILE} from '../../../../tests/integration/helpers/react';
 
 /**
  * The RAW persisted document, exactly as the store writes it: `ativa` and
@@ -300,48 +301,45 @@ describe('segunda organização (navigator real)', () => {
   // #129: the name now comes from the predefined territory selector.
   const SEGUNDA_NOME = 'Kaxuyana-Tunayana';
 
-  async function habilitarEarlyAccessEAbrirMenu() {
-    await act(async () => {
-      mockNavigation.navigate('EarlyAccess');
-    });
+  async function abrirCriarTerritorioEmConfiguracoes() {
     await fireEvent.press(
-      await screen.findByTestId('EA.checkbox-off', {}, {timeout: 15_000}),
+      await screen.findByTestId(
+        'tabBarButtonConfiguracoes',
+        {},
+        {timeout: 15_000},
+      ),
     );
-    await act(async () => {
-      mockNavigation.goBack();
-    });
     await fireEvent.press(
-      await screen.findByTestId('tabBarButtonMenu', {}, {timeout: 15_000}),
+      await screen.findByTestId(
+        'settingsCreateOrganizationButton',
+        {},
+        {timeout: 15_000},
+      ),
     );
   }
 
-  test('criar a segunda organização pela página de Menu preserva A e abre B pela confirmação (CA06)', async () => {
+  test('criar a segunda organização por Configurações preserva A e abre B pela confirmação (CA06)', async () => {
     semearDocumentoPronta(
       orgSetup.projectId,
       orgSetup.alertasProjectId,
       orgSetup.orgId,
       orgSetup.orgName,
     );
-    await orgSetup.renderNavigation();
+    await orgSetup.renderNavigation({
+      userProfile: {...COMPLETE_USER_PROFILE, coordinationRole: 'coordinator'},
+    });
     expect(
       // Home pós-login é o Entroncamento (tab bar 5 abas, #32).
       await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 15_000}),
     ).toBeOnTheScreen();
 
-    // Early access + menu page entry → CreateOrganization.
-    await habilitarEarlyAccessEAbrirMenu();
-    await fireEvent.press(
-      await screen.findByTestId(
-        'MENU.criar-organizacao',
-        {},
-        {timeout: 15_000},
-      ),
-    );
+    // Configurações → Criar território → CreateOrganization.
+    await abrirCriarTerritorioEmConfiguracoes();
     await waitFor(
       () =>
         expect(
           mockNavigation.getRootState().routes.map(route => route.name),
-        ).toEqual(['Home', 'CreateOrganization']),
+        ).toEqual(['Home', 'AppSettings', 'CreateOrganization']),
       {timeout: 15_000},
     );
     await fireEvent.press(screen.getByTestId('ORG.create-intro-continue-btn'));
@@ -358,7 +356,7 @@ describe('segunda organização (navigator real)', () => {
       () =>
         expect(
           mockNavigation.getRootState().routes.map(route => route.name),
-        ).toEqual(['Home', 'OrganizationProvisioning']),
+        ).toEqual(['Home', 'AppSettings', 'OrganizationProvisioning']),
       {timeout: 15_000},
     );
     // B materialized for real: 2/2 verified → pending confirmation, with
@@ -410,13 +408,18 @@ describe('segunda organização (navigator real)', () => {
       await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
     ).toHaveTextContent(SEGUNDA_NOME);
 
-    // The selector now exists (length >= 2) and switches back to A.
+    // The selector now exists (length >= 2) and switches back to A. The
+    // entry lives in Configurações (AppSettings), not in the Menu.
     await fireEvent.press(
-      await screen.findByTestId('tabBarButtonMenu', {}, {timeout: 15_000}),
+      await screen.findByTestId(
+        'tabBarButtonConfiguracoes',
+        {},
+        {timeout: 15_000},
+      ),
     );
     await fireEvent.press(
       await screen.findByTestId(
-        'MENU.trocar-organizacao',
+        'settingsSwitchTerritoryButton',
         {},
         {
           timeout: 15_000,
@@ -427,7 +430,7 @@ describe('segunda organização (navigator real)', () => {
       () =>
         expect(
           mockNavigation.getRootState().routes.map(route => route.name),
-        ).toEqual(['Home', 'Organizations']),
+        ).toEqual(['Home', 'AppSettings', 'Organizations']),
       {timeout: 15_000},
     );
     expect(

@@ -97,7 +97,7 @@ import {
   SecondOrganizationProvisioning,
 } from '../../src/frontend/flows/OrgLayer.stories';
 import OrgLayerDrawerMeta, {
-  CreateOrganizationEntry,
+  SingleOrganizationMenu,
   SwitchOrganizationEntry,
 } from '../../src/frontend/flows/OrgLayerDrawer.stories';
 import {withFlowState} from '../decorators/withFlowState';
@@ -166,7 +166,7 @@ function SecondOrganizationProvisioningStory() {
 }
 
 const DRAWER_STORY_ID = 'flows-orglayerdrawer--switch-organization-entry';
-const CREATE_ENTRY_STORY_ID = 'flows-orglayerdrawer--create-organization-entry';
+const SINGLE_ORG_STORY_ID = 'flows-orglayerdrawer--single-organization-menu';
 
 /**
  * `Flows/OrgLayerDrawer` declares `[withFlowState, withNavigation]`; Storybook
@@ -333,12 +333,12 @@ describe('organization stories (FlowStateScope)', () => {
     ]);
   }, 60_000);
 
-  test('the drawer row: the switch-organization entry is shown', async () => {
+  test('the drawer row: the switch-organization entry is gone', async () => {
     await renderStory(drawerStory(SwitchOrganizationEntry.parameters));
 
     expect(
       await screen.findByTestId(
-        'MENU.trocar-organizacao',
+        'MENU.main-action-button',
         {},
         {timeout: 30_000},
       ),
@@ -346,27 +346,32 @@ describe('organization stories (FlowStateScope)', () => {
     expect(
       screen.getByTestId(`STORYBOOK.flow-ready.${DRAWER_STORY_ID}`),
     ).toBeOnTheScreen();
-    // Página Entroncamento: the Menu no longer lists the organizations' rows
-    // (ORGANIZATIONS.row-*) — the entry navigates to the Organizations
-    // screen, so only the entry itself is rendered here.
+    // Página Entroncamento: switching territory moved to Configurações
+    // (AppSettings), so the Menu shows no switch entry even over two
+    // organizations. The coordinator-only invite entry stays.
+    expect(screen.queryByTestId('MENU.trocar-organizacao')).toBeNull();
+    expect(screen.getByTestId('MENU.convidar')).toBeOnTheScreen();
     expectPersistedOrganizations();
   }, 60_000);
 
-  test('the drawer create row: one ready organization offers the create entry, not the selector', async () => {
+  test('the drawer single-organization row: no create entry and no selector', async () => {
     await renderStory(
-      drawerStory(CreateOrganizationEntry.parameters, CREATE_ENTRY_STORY_ID),
+      drawerStory(SingleOrganizationMenu.parameters, SINGLE_ORG_STORY_ID),
     );
 
     expect(
       await screen.findByTestId(
-        'MENU.criar-organizacao',
+        'MENU.main-action-button',
         {},
         {timeout: 30_000},
       ),
     ).toBeOnTheScreen();
     expect(
-      screen.getByTestId(`STORYBOOK.flow-ready.${CREATE_ENTRY_STORY_ID}`),
+      screen.getByTestId(`STORYBOOK.flow-ready.${SINGLE_ORG_STORY_ID}`),
     ).toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('MENU.criar-organizacao'),
+    ).not.toBeOnTheScreen();
     expect(
       screen.queryByTestId('MENU.trocar-organizacao'),
     ).not.toBeOnTheScreen();
@@ -447,7 +452,7 @@ describe('organization stories (FlowStateScope)', () => {
     ]);
   }, 60_000);
 
-  test('without the earlyAccess axis two organizations still show the switch entry', async () => {
+  test('without the earlyAccess axis two organizations keep the switch entry out of the drawer', async () => {
     await renderStory(
       drawerStory({
         flow: {
@@ -459,8 +464,8 @@ describe('organization stories (FlowStateScope)', () => {
       }),
     );
 
-    // Early access no longer gates the entry: two organizations are the
-    // whole condition, even when the story does not request the axis.
+    // Neither early access nor the organization count brings the entry back:
+    // it lives in Configurações (AppSettings) now.
     expect(
       await screen.findByTestId(
         'MENU.area-monitoramento',
@@ -468,9 +473,9 @@ describe('organization stories (FlowStateScope)', () => {
         {timeout: 30_000},
       ),
     ).toBeOnTheScreen();
-    expect(screen.getByTestId('MENU.trocar-organizacao')).toBeOnTheScreen();
+    expect(screen.queryByTestId('MENU.trocar-organizacao')).toBeNull();
     // The app flag itself was not turned on to get there: the early-access
-    // banner stays absent, so this is the count rule, not a flag leak.
+    // banner stays absent, so the story's override really did drop the axis.
     expect(screen.queryByText('Early Access ON')).not.toBeOnTheScreen();
   }, 60_000);
 });

@@ -24,7 +24,7 @@ menu	flows-menu--map	testID:MAIN.map-screen	10	01 Map
 menu	flows-menu--observations-list	testID:OBS.list-scrn	2	02 Observations List
 menu	flows-menu--map-tracking-open	testID:MAP:track-bottom-sheet	10	04 Map Tracking Open
 menu	menu-drawermenu--default	testID:MENU.main-action-button	2	05 Drawer Menu
-menu	menu-drawermenu--with-organizations	testID:MENU.trocar-organizacao	2	06 With Organizations
+menu	menu-drawermenu--with-organizations	testID:MENU.main-action-button	2	06 With Organizations
 settings	flows-settings--settings-home	route:AppSettings	2	01 Settings Home
 settings	flows-settings--device-name-display	route:DeviceNameDisplay	2	02 Device Name Display
 settings	flows-settings--device-name-edit	route:DeviceNameEdit	2	03 Device Name Edit
@@ -48,8 +48,8 @@ exchange	exchange-screen--syncing	testID:EXCHANGE.devices-available-header	2	06 
 exchange	exchange-screen--wifi-disconnected	testID:no-wifi-icon	2	07 Wifi Disconnected
 exchange	exchange-nowifidisplay--no-wifi	testID:EXCHANGE.no-wifi-display	2	08 No Wifi Display
 org-layer	flows-orglayer--organization-selector	testID:ORGANIZATIONS.list	10	05 Organization Selector
-org-layer	flows-orglayerdrawer--switch-organization-entry	testID:MENU.trocar-organizacao	2	06 Drawer Switch Organization Entry
-org-layer	flows-orglayerdrawer--create-organization-entry	testID:MENU.criar-organizacao	2	07 Drawer Create Organization Entry
+org-layer	flows-orglayerdrawer--switch-organization-entry	testID:MENU.main-action-button	2	06 Drawer Menu Without Switch Entry
+org-layer	flows-orglayerdrawer--single-organization-menu	testID:MENU.main-action-button	2	07 Drawer Single Organization Menu
 org-layer	flows-orglayer--create-second-organization	route:CreateOrganization	2	08 Create Second Organization
 org-layer	flows-orglayer--second-organization-provisioning	route:OrganizationProvisioning	2	09 Second Organization Provisioning
 org-layer	flows-orglayer--organization-unavailable	testID:ORG.provisioning-unavailable-name	2	10 Organization Unavailable

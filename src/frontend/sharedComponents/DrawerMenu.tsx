@@ -34,7 +34,6 @@ import {useEarlyAccessState} from '../contexts/EarlyAccessContext';
 import {useCoiabOrganizationsState} from '../contexts/CoiabOrganizationsStoreContext';
 import {derivarProjectIdAtivo} from '../lib/organization/coiabOrganizations';
 import {OrganizationAreaAccesses} from './OrganizationAreaAccesses.tsx';
-import {useUserProfileState} from '../contexts/UserProfileStoreContext';
 
 const m = defineMessages({
   greeting: {
@@ -42,18 +41,6 @@ const m = defineMessages({
     defaultMessage: 'Olá, Parente',
     description:
       'Página Entroncamento greeting (Figma Kutary App V2, 2668:4539)',
-  },
-  switchOrganizationTitle: {
-    id: '$1Navigation.Menu.switchOrganizationTitle',
-    defaultMessage: 'Trocar de território',
-    // SPEC A §6.1:201 — pt-BR ships the verbatim string; a nova página usa
-    // id próprio para não divergir da duplicata canônica do seletor.
-    description: 'Menu list entry that opens the organization selector',
-  },
-  switchOrganizationSubtitle: {
-    id: '$1Navigation.Menu.switchOrganizationSubtitle',
-    defaultMessage: 'Escolher outro território',
-    description: 'Subtitle of the organization selector menu entry',
   },
   convidar: {
     id: '$1Navigation.Menu.convidar',
@@ -64,11 +51,6 @@ const m = defineMessages({
     id: '$1Navigation.Menu.convidarSubtitle',
     defaultMessage: 'Adicionar pessoas',
     description: 'Subtitle of the invite menu entry',
-  },
-  criarOrganizacao: {
-    id: '$1Navigation.Menu.criarOrganizacao',
-    defaultMessage: 'Criar território',
-    description: 'Menu list entry that opens the organization creation flow',
   },
   exchange: {
     id: '$1Navigation.Menu.exchange',
@@ -132,26 +114,22 @@ function MenuListItem({
  * "Olá, Parente" + nome do projeto corrente, os DOIS cards clicáveis de
  * área (Monitoramento Territorial e Alertas — Cadeias Produtivas e Censo
  * Demográfico ficam para fases seguintes, decisão do dono do produto) e a
- * lista: Trocar de organização (≥2 organizações), Convidar (somente
- * coordinator) e Criar organização (organização operável). Early access
- * não condiciona mais essas entradas. As 5 entradas legadas do CoMapeo
+ * lista: Convidar (somente coordinator). A criação e a troca de território
+ * migraram para Configurações (AppSettings): a criação é visível apenas
+ * para coordenador e a troca somente com duas ou mais organizações. Early access não
+ * condiciona mais essas entradas. As 5 entradas legadas do CoMapeo
  * (Team, Coordinator Tools, Gather Observations, Background Map,
  * AppSettings) migraram: Background Maps/Project Settings/Your Team agora
  * vivem em AppSettings (ComapeoSettings). O botão Exchange permanece no
  * rodapé.
  */
-export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
+export function DrawerMenu() {
   const {formatMessage} = useIntl();
   const navigation = useNavigationFromRoot();
 
   const {projectId} = useActiveProject();
   const {role, projectHeader} = useProjectRoleAndDetails(projectId);
   const estadoOrganizacoes = useCoiabOrganizationsState();
-  // P1-1: only coordinators may create a territory. The entry is absent for
-  // participants (no disabled control), mirroring the create screen's own
-  // redirect guard.
-  const {coordinationRole} = useUserProfileState();
-  const podeCriar = coordinationRole !== 'participant';
   // SEM organização operável (solo/sem doc): os cards não existem — a
   // página mostra saudação + lista (paridade com o comportamento anterior
   // que retornava null).
@@ -219,24 +197,8 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
         </View>
         {!semOrganizacaoOperavel && <OrganizationAreaAccesses />}
         <View style={styles.listContainer}>
-          {/* Owner decision (f12641db, consistency fix): the selector
-              entry is part of the normal app and early access gates it no
-              longer. It exists whenever there are two or more
-              organizations; with fewer it does not exist (no hidden or
-              disabled control). */}
-          {estadoOrganizacoes.organizacoes.length >= 2 && (
-            <MenuListItem
-              testID="MENU.trocar-organizacao"
-              onPress={() => {
-                closeMenu();
-                navigation.navigate('Organizations');
-              }}
-              titulo={m.switchOrganizationTitle}
-              subtitulo={m.switchOrganizationSubtitle}
-              icone="swap-horiz"
-              accessibilityLabel="Open the territory selector."
-            />
-          )}
+          {/* A troca de território migrou para Configurações (AppSettings),
+              logo abaixo de "Criar território" na seção Territory. */}
           {/* O acesso à equipe fica COORD-only nesta página; participants
               seguem usando Your Team em AppSettings. */}
           {role === 'coordinator' && (
@@ -247,22 +209,6 @@ export function DrawerMenu({closeMenu}: {closeMenu: () => void}) {
               subtitulo={m.convidarSubtitle}
               icone="person-add"
               accessibilityLabel="Invite people to the territory."
-            />
-          )}
-          {/* Same owner decision (f12641db): the create entry is part of
-              the normal app and early access gates it no longer. It exists
-              whenever there is an operating organization; without one it
-              does not exist (no hidden or disabled control). */}
-          {!semOrganizacaoOperavel && podeCriar && (
-            <MenuListItem
-              testID="MENU.criar-organizacao"
-              onPress={() => {
-                closeMenu();
-                navigation.navigate('CreateOrganization');
-              }}
-              titulo={m.criarOrganizacao}
-              icone="business"
-              accessibilityLabel="Open the territory creation flow."
             />
           )}
         </View>

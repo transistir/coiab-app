@@ -28,10 +28,10 @@ import {DrawerMenu} from './DrawerMenu';
  * `AppProviders`/global context, `useManyProjects` by the ambient
  * `ComapeoCoreProvider`, and navigation by `withNavigation`.
  *
- * Readiness markers (capture manifest): "01 Default" waits on
- * `MENU.main-action-button`, the footer's always-rendered button;
- * "02 With Organizations" waits on `MENU.trocar-organizacao`, the entry
- * that story exists to show. No app-source change was needed.
+ * Readiness markers (capture manifest): both "01 Default" and
+ * "02 With Organizations" wait on `MENU.main-action-button`, the footer's
+ * always-rendered button — the switch entry moved to Configurações, so the
+ * two-organization story no longer has it to wait on.
  */
 function DrawerMenuStory() {
   const activeProjectId = useActiveProjectId();
@@ -40,7 +40,7 @@ function DrawerMenuStory() {
   return (
     <View style={{flex: 1}}>
       <ActiveProjectProvider activeProjectId={activeProjectId}>
-        <DrawerMenu closeMenu={() => {}} />
+        <DrawerMenu />
       </ActiveProjectProvider>
     </View>
   );

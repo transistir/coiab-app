@@ -11,7 +11,7 @@ import {NativeHomeTabsNavigationProps} from '../sharedTypes/navigation';
  * chegou: o conteúdo é agora a "Página Entroncamento" do Figma Kutary App
  * V2 (`2668:4539`) — saudação "Olá, Parente" + projeto corrente, os dois
  * cards clicáveis (Monitoramento Territorial/Alertas) e a lista
- * trocar/convidar/criar. A gaveta (drawer) do header não existe mais — ver
+ * trocar/convidar. A gaveta (drawer) do header não existe mais — ver
  * `docs/navegacao-coiab.md`.
  *
  * #118: a página usa o fundo do tema (DARK_GREY) — o DrawerMenu cobre o
@@ -28,9 +28,7 @@ export const MenuScreen: React.FC<
   return (
     <View style={styles.container} testID="ENTRONCAMENTO.scrn">
       <View style={styles.inner} testID="MENU.scrn">
-        {/* Sem gaveta para fechar quando o menu é uma página: closeMenu é
-            no-op; as entradas que navegam para outras telas seguem iguais. */}
-        <DrawerMenu closeMenu={() => {}} />
+        <DrawerMenu />
       </View>
     </View>
   );

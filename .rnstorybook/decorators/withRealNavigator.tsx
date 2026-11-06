@@ -193,11 +193,20 @@ type ConsumeHardwareBackPressProps = {
  * onboarding flow renders its screens with an inert `navigation` prop directly,
  * as the profile stories do (they do not use `withNavigation`).
  */
-function StoryUserProfileProvider({children}: {children: React.ReactNode}) {
+function StoryUserProfileProvider({
+  coordinationRole,
+  children,
+}: {
+  coordinationRole?: 'coordinator' | 'participant' | null;
+  children: React.ReactNode;
+}) {
   const [store] = React.useState(() => {
     const profileStore = createUserProfileStore();
     profileStore.actions.setEthnicity('Tunayana');
     profileStore.actions.setVillage('Aldeia de teste');
+    if (coordinationRole) {
+      profileStore.actions.setCoordinationRole(coordinationRole);
+    }
     return profileStore;
   });
 
@@ -380,7 +389,7 @@ export const withRealNavigator: Decorator = (Story, context) => {
     <View style={{flex: 1}} testID={storyReadyTestId}>
       <View style={{flex: 1}} testID={routeReadyTestId}>
         <FlowStateScope key={`${context.id}:${ready.key}`} resolved={ready}>
-          <StoryUserProfileProvider>
+          <StoryUserProfileProvider coordinationRole={ready.coordinationRole}>
             <NavigationContainer
               key={`${context.id}:${ready.key}`}
               ref={navigationRef}

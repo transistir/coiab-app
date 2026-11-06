@@ -136,11 +136,35 @@ export const Walkthrough: Story = {
   },
 };
 
-/** The Settings home screen, reached from the map. */
+/**
+ * The Settings home screen, reached from the map, over two organizations:
+ * the organization count reveals the "Trocar de território" row migrated out
+ * of the Menu.
+ */
 export const SettingsHome: Story = {
   name: '01 Settings Home',
   parameters: {
-    flow: {state: onboardedNoDraft, initialState: settingsState},
+    flow: {
+      state: FLOW_STATES.twoOrganizations,
+      initialState: settingsState,
+    },
+  },
+};
+
+/**
+ * The Settings home screen for a coordinator: the profile role reveals the
+ * "Criar território" row migrated out of the Menu.
+ */
+export const SettingsHomeCoordinator: Story = {
+  name: '01b Settings Home Coordinator',
+  parameters: {
+    flow: {
+      state: {
+        ...onboardedNoDraft,
+        coordinationRole: 'coordinator' as const,
+      },
+      initialState: settingsState,
+    },
   },
 };
 

@@ -27,6 +27,7 @@ import {
   useDraftObservationActions,
   useDraftObservationState,
 } from '../../src/frontend/contexts/DraftObservationContext';
+import type {CoordinationRole} from '../../src/frontend/contexts/UserProfileStoreContext';
 import {expoToCoreDeviceType} from '../../src/frontend/lib/deviceTypeMap';
 import {
   criarEstadoInicialOrganizacoes,
@@ -86,6 +87,11 @@ export type FlowStateSpec = {
    * leaves the app's persisted flag in charge.
    */
   earlyAccess?: boolean;
+  /**
+   * Coordination role the story's profile should carry. The story decorator
+   * seeds it into its scoped profile store; unset keeps the role null.
+   */
+  coordinationRole?: CoordinationRole;
   draftObservation?: DraftObservationSpec;
 };
 
@@ -103,6 +109,8 @@ export type ResolvedFlowState = {
   presetFieldIds?: readonly string[];
   /** `earlyAccess` as requested, for the decorators to provide story-scoped. */
   earlyAccess?: boolean;
+  /** Coordination role as requested, seeded into the story's profile store. */
+  coordinationRole?: CoordinationRole;
 };
 
 /**
@@ -295,6 +303,9 @@ function buildKey(spec?: FlowStateSpec) {
       : null,
     ...(spec.organizations ? {organizations: spec.organizations} : {}),
     ...(spec.earlyAccess === undefined ? {} : {earlyAccess: spec.earlyAccess}),
+    ...(spec.coordinationRole === undefined
+      ? {}
+      : {coordinationRole: spec.coordinationRole}),
     draftObservation: spec.draftObservation ?? null,
   });
 }
@@ -757,6 +768,7 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
         observationIds,
         presetFieldIds,
         earlyAccess: spec_.earlyAccess,
+        coordinationRole: spec_.coordinationRole,
       });
     }
 

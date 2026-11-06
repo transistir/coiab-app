@@ -852,7 +852,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     expect(await freshSetup.manager.listProjects()).toHaveLength(2);
   }, 20000);
 
-  test('par ativo mantém a entrada da página de Menu capaz de abrir Organizations', async () => {
+  test('par ativo mantém a entrada de Configurações capaz de abrir Organizations', async () => {
     const segundaId = 'fedcba9876543210';
     const segundaMonitoramentoId = await orgSetup.client.createProject({
       name: 'Monitoramento Beta',
@@ -887,23 +887,17 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 15_000}),
     ).toBeOnTheScreen();
 
-    // Enable the existing feature flag through its real registered screen,
-    // then return to Home and exercise the menu page entry itself.
-    await act(async () => {
-      mockNavigation.navigate('EarlyAccess');
-    });
+    // The selector entry lives in Configurações (AppSettings) since #145.
     await fireEvent.press(
-      await screen.findByTestId('EA.checkbox-off', {}, {timeout: 15_000}),
-    );
-    await act(async () => {
-      mockNavigation.goBack();
-    });
-    await fireEvent.press(
-      await screen.findByTestId('tabBarButtonMenu', {}, {timeout: 15_000}),
+      await screen.findByTestId(
+        'tabBarButtonConfiguracoes',
+        {},
+        {timeout: 15_000},
+      ),
     );
     await fireEvent.press(
       await screen.findByTestId(
-        'MENU.trocar-organizacao',
+        'settingsSwitchTerritoryButton',
         {},
         {timeout: 15_000},
       ),
@@ -913,7 +907,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       () =>
         expect(
           mockNavigation.getRootState().routes.map(route => route.name),
-        ).toEqual(['Home', 'Organizations']),
+        ).toEqual(['Home', 'AppSettings', 'Organizations']),
       {timeout: 15_000},
     );
     expect(
