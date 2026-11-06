@@ -138,13 +138,19 @@ function localizarSlotDoProjeto(
 }
 
 /**
- * Live sends, keyed by the repository OBJECT. A remount creates a new
- * executor but usually shares the repository, so the live-promise guard
- * survives it: a second automatic pass joins, and an explicit retry refuses
- * while the native operation is still in flight.
+ * One pass, keyed by the repository OBJECT. A remount creates a new executor
+ * but usually shares the repository, so the guard survives it: a second
+ * automatic pass joins, and an explicit retry refuses while the pass is
+ * alive. `executando` is registered SYNCHRONOUSLY at `executar` entry — before
+ * the first `await` and therefore before reconciliation — so two consecutive
+ * calls can never both select a slot and double the Core calls. `envios`
+ * outlives `executando` on purpose: after the 60 s deadline the presentation
+ * is released, but the native promise is still live and a retry must refuse
+ * until it really settles.
  */
 type Voo = {
   envios: Set<Promise<void>>;
+  executando: boolean;
   execucao: Promise<ResultadoArquivoRemoto>;
 };
 const voos = new WeakMap<object, Map<string, Voo>>();
@@ -893,12 +899,37 @@ export function createArquivoRemotoExecutor({
       }
     },
     /**
-     * Whether a pass for this organization is still alive. The caller uses it
+     * Resolves every durable `removendo` slot against Core WITHOUT selecting a
+     * send. The manual path calls it BEFORE replacing the journal URL: a
+     * removal whose Core outcome is still unknown must never be erased by a
+     * new URL. It is also the restart path — the journal state, not a live
+     * promise, drives the guard.
+     */
+    async reconciliar(organizacaoId: string): Promise<void> {
+      await reconciliarRemocoes(organizacaoId);
+    },
+    /**
+     * Whether the organization still owns an unresolved archive operation.
+     * A live pass counts, AND so does any durable slot in a non-terminal state
+     * that a restart would otherwise forget: `removendo` (Core outcome
+     * unknown) and `aplicando` (send outcome unknown). The caller uses it
      * BEFORE replacing the journal with a new URL: a refusal must leave the
      * live attempt (its URL, tentativaId and slot states) untouched.
      */
     emAndamento(organizacaoId: string): boolean {
-      return (mapaDeVoos().get(organizacaoId)?.envios.size ?? 0) > 0;
+      const voo = mapaDeVoos().get(organizacaoId);
+      if (voo && (voo.executando || voo.envios.size > 0)) return true;
+      try {
+        const arquivo = lerOrganizacao(organizacaoId)?.arquivoRemoto;
+        if (!arquivo) return false;
+        return SLOTS.some(slot => {
+          const estado = arquivo.slots[slot].estado;
+          return estado === 'aplicando' || estado === 'removendo';
+        });
+      } catch {
+        // An unreadable journal keeps the conservative refusal.
+        return true;
+      }
     },
     executar(
       organizacaoId: string,
@@ -907,20 +938,27 @@ export function createArquivoRemotoExecutor({
       const modo = opcoes.modo ?? 'automatico';
       const mapa = mapaDeVoos();
       const existente = mapa.get(organizacaoId);
-      if (existente && existente.envios.size > 0) {
+      if (existente && (existente.executando || existente.envios.size > 0)) {
         if (modo === 'retry') {
           return Promise.resolve(resultadoAtual(organizacaoId, 'em-andamento'));
         }
         return existente.execucao;
       }
 
-      const voo = {envios: new Set<Promise<void>>()} as Voo;
+      const voo = {
+        envios: new Set<Promise<void>>(),
+        executando: true,
+      } as Voo;
+      // Register BEFORE `executarInterno` reaches its first `await` (the
+      // reconciliation): the lock is owned from entry, not from the first
+      // send. A second call in the same tick therefore joins this pass.
+      mapa.set(organizacaoId, voo);
       voo.execucao = executarInterno(organizacaoId, modo, voo).finally(() => {
+        voo.executando = false;
         if (voo.envios.size === 0 && mapa.get(organizacaoId) === voo) {
           mapa.delete(organizacaoId);
         }
       });
-      mapa.set(organizacaoId, voo);
       return voo.execucao;
     },
   };

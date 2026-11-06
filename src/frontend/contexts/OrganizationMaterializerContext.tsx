@@ -187,27 +187,39 @@ export function OrganizationMaterializerProvider({
       url: string,
     ): Promise<ResultadoArquivoRemoto> => {
       const normalizada = normalizeRemoteArchiveUrl(url);
-      const documento = repository.read();
-      const organizacao = documento.organizacoes.find(
-        item => item.id === organizacaoId,
-      );
-      if (!organizacao) throw new Error('organization-not-found');
-      const atual = organizacao.arquivoRemoto;
-      const mesmaUrl = atual?.url === normalizada;
-      // #142 review P2: the journal must not be replaced while a pass is
-      // alive. A second URL is REFUSED by the shared lock, preserving the
-      // live attempt's URL, tentativaId and slot states; a refusal is never
-      // a journal write that the executor will not run.
-      if (!mesmaUrl && executorArquivoRemoto.emAndamento(organizacaoId)) {
-        return {
-          estado: 'em-andamento',
-          slots: atual ? {...atual.slots} : {},
-        };
-      }
+      const lerAtual = () => {
+        const documento = repository.read();
+        const organizacao = documento.organizacoes.find(
+          item => item.id === organizacaoId,
+        );
+        if (!organizacao) throw new Error('organization-not-found');
+        return {documento, arquivo: organizacao.arquivoRemoto};
+      };
+      const inicial = lerAtual();
+      const mesmaUrl = inicial.arquivo?.url === normalizada;
+      // #142 review P2 (5ª rodada): the journal must not be replaced while an
+      // archive operation is unresolved. This is checked on the DURABLE slots,
+      // not only on a live promise: after a failed Core read the removal stays
+      // `removendo`, and after a restart every in-memory guard is gone. A new
+      // URL is refused until the removal is reconciled — the old intention is
+      // never erased and can never turn into a false `concluido`.
       if (!mesmaUrl) {
+        // A durable `removendo` may have reached Core before the checkpoint
+        // write failed. Resolve it first; this does NOT select or send a slot.
+        await executorArquivoRemoto.reconciliar(organizacaoId);
+        if (executorArquivoRemoto.emAndamento(organizacaoId)) {
+          const atual = lerAtual();
+          return {
+            estado: 'em-andamento',
+            slots: atual.arquivo ? {...atual.arquivo.slots} : {},
+          };
+        }
+        // Re-read AFTER the reconciliation: it may have written the resolved
+        // slot, and the replacement must start from the current document.
+        const atual = lerAtual();
         repository.write({
-          ...documento,
-          organizacoes: documento.organizacoes.map(item =>
+          ...atual.documento,
+          organizacoes: atual.documento.organizacoes.map(item =>
             item.id === organizacaoId
               ? {
                   ...item,
@@ -217,6 +229,7 @@ export function OrganizationMaterializerProvider({
           ),
         });
       }
+      const atual = lerAtual().arquivo;
       // An interrupted/in-flight pass keeps its replay budget and joins the
       // live execution; anything else is the user's explicit retry. A pending
       // removal is always explicit: the user is deliberately re-adding the

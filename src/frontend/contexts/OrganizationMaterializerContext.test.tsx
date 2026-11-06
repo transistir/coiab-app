@@ -6,6 +6,7 @@ import type {ComapeoCoreClientApi} from '@comapeo/ipc';
 import type {ReactNode} from 'react';
 
 import {CREATOR_ROLE_ID, MEMBER_ROLE_ID} from '../sharedTypes';
+import type {ResultadoArquivoRemoto} from '../lib/organization/arquivoRemoto';
 import {clienteDeCriacao} from '../lib/organization/clienteDeCriacao';
 import type {
   EstadoOrganizacoes,
@@ -1047,6 +1048,92 @@ describe('OrganizationMaterializerContext', () => {
     await act(async () => {
       await hook.unmount();
     });
+  });
+
+  test('#142 5ª rodada P2: outra URL não apaga remoção não reconciliada', async () => {
+    jest.useFakeTimers();
+    try {
+      let coreOffline = true;
+      const addServerPeer = jest.fn(async (url: string) => url);
+      clientApi.getProject = jest.fn(async () => ({
+        $member: {
+          addServerPeer,
+          getMany: jest.fn(async () => {
+            if (coreOffline) throw new Error('core-offline');
+            // Core no longer has the archive server: the removal landed.
+            return [];
+          }),
+        },
+      }));
+
+      // Durable intent survived a failed checkpoint write / restart: the slot
+      // is `removendo` and NO in-memory removal guard exists at boot.
+      const store = createCoiabOrganizationsStore();
+      store.instance.setState(
+        readyDocumentWithArchive({
+          url: 'https://primeiro.example/',
+          estado: 'pendente',
+          slots: {
+            m: {estado: 'removendo'},
+            a: {estado: 'concluido', tentativaId: 'tentativa-a'},
+          },
+        }),
+        true,
+      );
+      const {hook} = await renderMaterializador(store);
+      await act(async () => {
+        for (let i = 0; i < 20; i += 1) await Promise.resolve();
+      });
+      expect(addServerPeer).not.toHaveBeenCalled();
+
+      const antes = store.instance.getState().organizacoes[0]!.arquivoRemoto!;
+      let resultado!: ResultadoArquivoRemoto;
+      await act(async () => {
+        resultado = await hook.result.current!.solicitarArquivo(
+          ORG_ID,
+          'https://segundo.example/',
+        );
+        for (let i = 0; i < 20; i += 1) await Promise.resolve();
+      });
+
+      // Core cannot confirm the removal. The new URL is refused BEFORE any
+      // send, and the durable intention stays byte-identical in the journal.
+      expect(resultado.estado).toBe('em-andamento');
+      expect(resultado.estado).not.toBe('concluido');
+      expect(addServerPeer).not.toHaveBeenCalled();
+      const durante = store.instance.getState().organizacoes[0]!.arquivoRemoto!;
+      expect(durante).toBe(antes);
+      expect(durante.url).toBe('https://primeiro.example/');
+      expect(durante.slots.m.estado).toBe('removendo');
+
+      // Core is reachable again and confirms the server is gone. The next
+      // request reconciles FIRST (slot becomes `pendente`/`removido`), then
+      // the new URL is journalized and really sent to both slots.
+      coreOffline = false;
+      await act(async () => {
+        resultado = await hook.result.current!.solicitarArquivo(
+          ORG_ID,
+          'https://segundo.example/',
+        );
+        for (let i = 0; i < 50; i += 1) await Promise.resolve();
+      });
+
+      expect(resultado.estado).toBe('concluido');
+      expect(addServerPeer).toHaveBeenCalledTimes(2);
+      expect(addServerPeer.mock.calls.map(([url]) => url)).toEqual([
+        'https://segundo.example/',
+        'https://segundo.example/',
+      ]);
+      const final = store.instance.getState().organizacoes[0]!.arquivoRemoto!;
+      expect(final.url).toBe('https://segundo.example/');
+      expect(final.estado).toBe('concluido');
+
+      await act(async () => {
+        await hook.unmount();
+      });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test('iniciar repassa a URL do arquivo remoto ao motor e grava no journal', async () => {

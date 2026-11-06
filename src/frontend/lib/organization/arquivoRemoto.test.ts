@@ -199,6 +199,41 @@ describe('arquivo remoto no journal da organização (#142)', () => {
     }
   });
 
+  test('execuções concorrentes adquirem o lock na entrada e não duplicam o Core', async () => {
+    const org = organizacao('org-1', arquivo());
+    const h = harness({documentoInicial: documento(org)});
+    const executor = h.criar();
+
+    // Both calls happen in the same tick, BEFORE the first pass reaches its
+    // reconciliation await. The lock must be owned from entry, not from the
+    // first send, or the second pass replays the first as an interrupted
+    // attempt and doubles the Core calls (2 slots × 2 passes = 4).
+    const [primeira, segunda] = await Promise.all([
+      executor.executar('org-1'),
+      executor.executar('org-1'),
+    ]);
+
+    expect(h.addServerPeer).toHaveBeenCalledTimes(2);
+    expect(
+      h.addServerPeer.mock.calls.map(([entrada]) => entrada.projectId).sort(),
+    ).toEqual(['org-1-a', 'org-1-m']);
+    expect(primeira.estado).toBe('concluido');
+    expect(segunda.estado).toBe('concluido');
+  });
+
+  test('retry concorrente à entrada recusa e não reenvia', async () => {
+    const org = organizacao('org-1', arquivo());
+    const h = harness({documentoInicial: documento(org)});
+    const executor = h.criar();
+
+    const primeira = executor.executar('org-1');
+    const recusa = await executor.executar('org-1', {modo: 'retry'});
+
+    expect(recusa.estado).toBe('em-andamento');
+    await primeira;
+    expect(h.addServerPeer).toHaveBeenCalledTimes(2);
+  });
+
   test('retry recusa promessa ainda viva', async () => {
     jest.useFakeTimers();
     try {
