@@ -806,6 +806,112 @@ describe('OrganizationMaterializerContext', () => {
     }
   });
 
+  test('#142 3ª rodada P2: criação com arquivo remoto invalida membros só na conclusão real', async () => {
+    jest.useFakeTimers();
+    try {
+      const pendentes: Array<{
+        projectId: string;
+        liberar: () => void;
+        addServerPeer: jest.Mock;
+      }> = [];
+      const projetos = new Map<
+        string,
+        ReturnType<typeof fakeCreationProject>
+      >();
+      clientApi.getProject = jest.fn(async (id: string) => {
+        let projeto = projetos.get(id);
+        if (!projeto) {
+          const base = fakeCreationProject();
+          let liberar!: () => void;
+          const pendente = new Promise<void>(resolve => {
+            liberar = resolve;
+          });
+          const addServerPeer = jest.fn(() => pendente);
+          projeto = {
+            ...base,
+            $member: {...base.$member, addServerPeer},
+          } as ReturnType<typeof fakeCreationProject>;
+          projetos.set(id, projeto);
+          pendentes.push({projectId: id, liberar, addServerPeer});
+        }
+        return projeto;
+      });
+
+      const store = createCoiabOrganizationsStore();
+      const {hook, invalidateQueries} = await renderMaterializador(store);
+
+      // Invalidating the project-list PREFIX also reaches every member query;
+      // the test counts that as a member invalidation unless the call is
+      // exact. Explicit member keys always count. A prefix call is represented
+      // by a sentinel so it cannot hide behind an empty member-id list.
+      const projetosComMembrosInvalidados = () =>
+        invalidateQueries.mock.calls
+          .map(([arg]) => arg as {queryKey?: unknown[]; exact?: boolean})
+          .flatMap(arg => {
+            const queryKey = arg.queryKey;
+            if (!Array.isArray(queryKey)) return [];
+            if (queryKey[3] === 'members') return [queryKey[2] as string];
+            const prefixoDeProjetos = projectsQueryKey.every(
+              (parte, indice) => queryKey[indice] === parte,
+            );
+            return prefixoDeProjetos && arg.exact !== true
+              ? ['__prefixo__']
+              : [];
+          });
+
+      let iniciar!: Promise<void>;
+      await act(async () => {
+        iniciar = hook.result.current!.iniciar('Nova', {
+          arquivoRemotoUrl: 'https://arquivo.example/',
+        });
+        for (let i = 0; i < 200; i += 1) await Promise.resolve();
+      });
+
+      expect(pendentes.map(p => p.projectId).sort()).toEqual([
+        'criado-Alertas',
+        'criado-Monitoramento',
+      ]);
+      expect(
+        pendentes.every(p => p.addServerPeer.mock.calls.length === 1),
+      ).toBe(true);
+      expect(projetosComMembrosInvalidados()).toEqual([]);
+
+      // The deadline is not a server effect: it opens the slots for recovery
+      // and must not refresh any member cache, not even through the project
+      // list prefix.
+      await act(async () => {
+        jest.advanceTimersByTime(60_000);
+        for (let i = 0; i < 50; i += 1) await Promise.resolve();
+      });
+      expect(
+        store.instance.getState().organizacoes[0]?.arquivoRemoto?.slots.m
+          .estado,
+      ).toBe('falha_recuperavel');
+      expect(projetosComMembrosInvalidados()).toEqual([]);
+
+      // The REAL responses still settle each slot; now the member cache of
+      // every project that received the archive is refreshed.
+      await act(async () => {
+        for (const pendente of pendentes) pendente.liberar();
+        for (let i = 0; i < 50; i += 1) await Promise.resolve();
+      });
+      await iniciar;
+
+      expect(
+        store.instance.getState().organizacoes[0]?.arquivoRemoto?.estado,
+      ).toBe('concluido');
+      expect(new Set(projetosComMembrosInvalidados())).toEqual(
+        new Set(['criado-Alertas', 'criado-Monitoramento']),
+      );
+
+      await act(async () => {
+        await hook.unmount();
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   test('retry por id não recria projeto nem reimporta categorias', async () => {
     const store = createCoiabOrganizationsStore();
     // `aplicando` with the replay budget already consumed: the boot pass can

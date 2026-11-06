@@ -11,9 +11,10 @@ import {SLOTS, type Slot} from './marker';
 export const PRAZO_ARQUIVO_REMOTO_MS = 60_000;
 
 /**
- * Space between attempts to re-write a conclusion checkpoint whose journal
- * write failed. The local write is retried WITHOUT ever repeating the send,
- * so a transient MMKV failure cannot leave the step stuck in `aplicando`.
+ * Space between attempts to re-write a journal checkpoint (a send conclusion
+ * or a removal) whose write failed. The local write is retried WITHOUT ever
+ * repeating the native effect, so a transient MMKV failure cannot leave the
+ * step stuck in `aplicando`/`concluido`.
  */
 export const RETENTATIVA_CHECKPOINT_MS = 1_000;
 
@@ -189,6 +190,19 @@ type SucessoPendente = {
 };
 const sucessosPendentes = new WeakMap<object, Map<string, SucessoPendente>>();
 
+/**
+ * Session-only record of a Core removal whose journal checkpoint could not be
+ * written. The slot is still `concluido` on disk, so a later request for the
+ * SAME URL would skip the send. The next pass repeats ONLY the journal write,
+ * BEFORE selecting slots, so reconciliation always precedes a new success.
+ */
+type RemocaoPendente = {
+  organizacaoId: string;
+  slot: Slot;
+  projectId: string;
+};
+const remocoesPendentes = new WeakMap<object, Map<string, RemocaoPendente>>();
+
 let sequenciaTentativa = 0;
 
 function proximaTentativa(now: () => number): string {
@@ -261,15 +275,35 @@ export function createArquivoRemotoExecutor({
     return mapa;
   }
 
+  function mapaDeRemocoes(): Map<string, RemocaoPendente> {
+    let mapa = remocoesPendentes.get(repository);
+    if (!mapa) {
+      mapa = new Map();
+      remocoesPendentes.set(repository, mapa);
+    }
+    return mapa;
+  }
+
   /**
    * One spaced retry timer per organization, owned by this executor. The
-   * timer only re-applies a conclusion checkpoint; it never selects a slot
-   * for sending, so a failed write cannot turn into a duplicate send.
+   * timer only re-applies a journal checkpoint (a conclusion or a removal); it
+   * never selects a slot for sending, so a failed write cannot turn into a
+   * duplicate send.
    */
   const retentativas = new Map<string, ReturnType<typeof setTimeout>>();
 
   function temSucessosPendentes(organizacaoId: string): boolean {
     const mapa = sucessosPendentes.get(repository);
+    if (!mapa) return false;
+    const prefixo = `${organizacaoId}:`;
+    for (const chave of mapa.keys()) {
+      if (chave.startsWith(prefixo)) return true;
+    }
+    return false;
+  }
+
+  function temRemocoesPendentes(organizacaoId: string): boolean {
+    const mapa = remocoesPendentes.get(repository);
     if (!mapa) return false;
     const prefixo = `${organizacaoId}:`;
     for (const chave of mapa.keys()) {
@@ -312,11 +346,17 @@ export function createArquivoRemotoExecutor({
     const timer = setTimeout(() => {
       retentativas.delete(organizacaoId);
       try {
+        // Removals first: reopening a slot supersedes any pending success for
+        // it, so a stale conclusion can never win over a Core removal.
+        reaplicarRemocoesPendentes(organizacaoId);
         reaplicarSucessosPendentes(organizacaoId);
       } catch {
         // A failed read/write keeps the in-memory guard; retry later.
       }
-      if (temSucessosPendentes(organizacaoId))
+      if (
+        temRemocoesPendentes(organizacaoId) ||
+        temSucessosPendentes(organizacaoId)
+      )
         agendarReaplicacao(organizacaoId);
     }, RETENTATIVA_CHECKPOINT_MS);
     // Do not keep the Node/Jest process alive for a checkpoint retry.
@@ -394,6 +434,51 @@ export function createArquivoRemotoExecutor({
   }
 
   /**
+   * Repeats only the journal write of removals whose checkpoint was lost.
+   * Called BEFORE any new selection (and before re-applying success
+   * checkpoints), so a stale `concluido` cannot make the executor skip a slot
+   * that Core no longer archives.
+   */
+  function reaplicarRemocoesPendentes(organizacaoId?: string): void {
+    const mapa = remocoesPendentes.get(repository);
+    if (!mapa) return;
+    for (const [chave, remocao] of Array.from(mapa)) {
+      if (
+        organizacaoId !== undefined &&
+        remocao.organizacaoId !== organizacaoId
+      )
+        continue;
+      const documento = repository.read();
+      // The slot must still be the one that owns this project; otherwise the
+      // journal moved on and this pending removal is obsolete.
+      const alvo = localizarSlotDoProjeto(documento, remocao.projectId);
+      if (
+        !alvo ||
+        alvo.organizacaoId !== remocao.organizacaoId ||
+        alvo.slot !== remocao.slot
+      ) {
+        mapa.delete(chave);
+        continue;
+      }
+      const proximo = marcarSlotRemovido(
+        documento,
+        remocao.organizacaoId,
+        remocao.slot,
+      );
+      if (!proximo) {
+        mapa.delete(chave);
+        continue;
+      }
+      try {
+        repository.write(proximo);
+        mapa.delete(chave);
+      } catch {
+        // Keep the guard: the next pass writes again, still without sending.
+      }
+    }
+  }
+
+  /**
    * Repeats only the checkpoint of sends that already succeeded. Called
    * BEFORE any new selection, so a failed write can never cause a resend.
    */
@@ -402,6 +487,12 @@ export function createArquivoRemotoExecutor({
     if (!mapa) return;
     for (const [chave, sucesso] of Array.from(mapa)) {
       if (sucesso.organizacaoId !== organizacaoId) continue;
+      // A pending removal of the same slot wins: concluding it here would
+      // recreate the false success the removal is reconciling.
+      if (remocoesPendentes.get(repository)?.has(chave)) {
+        mapa.delete(chave);
+        continue;
+      }
       const organizacao = lerOrganizacao(organizacaoId);
       if (!organizacao?.arquivoRemoto) {
         mapa.delete(chave);
@@ -533,6 +624,10 @@ export function createArquivoRemotoExecutor({
     modo: ModoArquivoRemoto,
     voo: Voo,
   ): Promise<ResultadoArquivoRemoto> {
+    // Reconciliation always precedes selection: a removal whose checkpoint was
+    // lost must reopen its slot BEFORE a new pass can treat it as concluded.
+    reaplicarRemocoesPendentes(organizacaoId);
+    reaplicarSucessosPendentes(organizacaoId);
     let organizacao = lerOrganizacao(organizacaoId);
     if (!organizacao) {
       return {estado: 'organizacao-ausente', slots: {}};
@@ -541,7 +636,6 @@ export function createArquivoRemotoExecutor({
       return {estado: 'sem-arquivo', slots: {}};
     }
 
-    reaplicarSucessosPendentes(organizacaoId);
     organizacao = lerOrganizacao(organizacaoId);
     if (!organizacao?.arquivoRemoto) {
       return {estado: 'sem-arquivo', slots: {}};
@@ -590,16 +684,28 @@ export function createArquivoRemotoExecutor({
       const documento = repository.read();
       const alvo = localizarSlotDoProjeto(documento, projectId);
       if (!alvo) return;
-      sucessosPendentes
-        .get(repository)
-        ?.delete(`${alvo.organizacaoId}:${alvo.slot}`);
+      const chave = `${alvo.organizacaoId}:${alvo.slot}`;
+      sucessosPendentes.get(repository)?.delete(chave);
       const proximo = marcarSlotRemovido(
         documento,
         alvo.organizacaoId,
         alvo.slot,
       );
-      if (!proximo) return;
-      repository.write(proximo);
+      if (!proximo) {
+        // Already reconciled (or the journal moved on): nothing to retain.
+        remocoesPendentes.get(repository)?.delete(chave);
+        return;
+      }
+      try {
+        repository.write(proximo);
+        remocoesPendentes.get(repository)?.delete(chave);
+      } catch {
+        // The Core server is gone but the journal still says `concluido`.
+        // Retain the removal checkpoint and re-apply it (no send) until it
+        // lands, and re-apply it before any new selection.
+        mapaDeRemocoes().set(chave, {...alvo, projectId});
+        agendarReaplicacao(alvo.organizacaoId);
+      }
     },
     /**
      * Whether a pass for this organization is still alive. The caller uses it

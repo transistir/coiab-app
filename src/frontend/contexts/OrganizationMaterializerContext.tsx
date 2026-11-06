@@ -139,7 +139,10 @@ export function OrganizationMaterializerProvider({
       templates: fonte,
       repository,
       generateId: generateOrganizationId,
-      arquivoRemoto: redeArquivoRemoto,
+      // The SAME configured executor the manual/boot paths use: the creation
+      // path's late settlement must refresh members exactly like an explicit
+      // retry. A second executor here would silently skip that callback.
+      executorArquivoRemoto,
     });
     /**
      * The shared archive operation: re-reads the target by id and delegates to
@@ -230,24 +233,29 @@ export function OrganizationMaterializerProvider({
           templates: fonte,
           organizacaoId,
         }).finally(() =>
-          queryClient.invalidateQueries({queryKey: projectsQueryKey}),
+          queryClient.invalidateQueries({
+            queryKey: projectsQueryKey,
+            exact: true,
+          }),
         );
       } else {
-        await materializer
-          .resume(organizacaoId)
-          .finally(() =>
-            queryClient.invalidateQueries({queryKey: projectsQueryKey}),
-          );
+        await materializer.resume(organizacaoId).finally(() =>
+          queryClient.invalidateQueries({
+            queryKey: projectsQueryKey,
+            exact: true,
+          }),
+        );
       }
     };
     const handle: OrganizationMaterializerHandle = {
       iniciar: (nome, opcoes) =>
         acompanhar(() =>
-          materializer
-            .start(nome, opcoes)
-            .finally(() =>
-              queryClient.invalidateQueries({queryKey: projectsQueryKey}),
-            ),
+          materializer.start(nome, opcoes).finally(() =>
+            queryClient.invalidateQueries({
+              queryKey: projectsQueryKey,
+              exact: true,
+            }),
+          ),
         ),
       retomar: organizacaoId => acompanhar(() => retomar(organizacaoId)),
       retomarArquivo: organizacaoId => executarArquivo(organizacaoId, 'retry'),

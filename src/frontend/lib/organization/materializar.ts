@@ -1,9 +1,8 @@
 import type {ComapeoCoreClientApi} from '@comapeo/ipc';
 import {normalizeRemoteArchiveUrl} from '../../utils/normalizeRemoteArchiveUrl';
 import {
-  createArquivoRemotoExecutor,
   criarArquivoRemotoPendente,
-  type ArquivoRemotoRede,
+  type ArquivoRemotoExecutor,
 } from './arquivoRemoto';
 import {CREATOR_ROLE_ID, OrganizationOperationError} from './fanout';
 import {markerFor, type Slot} from './marker';
@@ -162,30 +161,21 @@ export function createMaterializer<
   templates,
   repository,
   generateId,
-  arquivoRemoto,
-  arquivoRemotoTimeoutMs,
+  executorArquivoRemoto,
 }: {
   client: CreationClient<P>;
   templates: TemplateSource<P, T>;
   repository: OrganizationRepository;
   generateId(): string;
   /**
-   * Injected network boundary for the journal's remote-archive step (#142).
-   * The engine never imports React/hooks; the app wires the Core adapter.
+   * Injected journal executor for the remote-archive step (#142). The engine
+   * never imports React/hooks; the app builds the SINGLE executor (with its
+   * member-cache callback) and shares it with the manual/boot paths. Building
+   * a second executor here would diverge: a creation's late response would
+   * write `concluido` without refreshing the member cache.
    */
-  arquivoRemoto?: ArquivoRemotoRede;
-  /** Test hook for the 60 s "promise without response" window. */
-  arquivoRemotoTimeoutMs?: number;
+  executorArquivoRemoto?: ArquivoRemotoExecutor;
 }) {
-  const executorArquivoRemoto = arquivoRemoto
-    ? createArquivoRemotoExecutor({
-        repository,
-        rede: arquivoRemoto,
-        ...(arquivoRemotoTimeoutMs !== undefined
-          ? {timeoutMs: arquivoRemotoTimeoutMs}
-          : {}),
-      })
-    : undefined;
   /** Upsert by id: the operation's own entry is replaced in place or
    * appended — the array is NEVER replaced wholesale, so the other
    * organizations in the document always survive a checkpoint. */
@@ -465,7 +455,7 @@ export function createMaterializer<
       arquivoRemotoUrl === undefined
         ? undefined
         : normalizeRemoteArchiveUrl(arquivoRemotoUrl);
-    if (urlArquivo !== undefined && !arquivoRemoto) {
+    if (urlArquivo !== undefined && !executorArquivoRemoto) {
       throw new Error('remote-archive-adapter-missing');
     }
     // The document id IS the marker's organization id (SPEC B §4.1), so the

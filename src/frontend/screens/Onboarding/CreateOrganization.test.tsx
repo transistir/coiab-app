@@ -34,6 +34,7 @@ import {useProjetarProjectIdAtivo} from '../../contexts/ActiveProjectIdStoreCont
 import {ErroPacote} from '../../lib/organization/pacotes';
 import {OrganizationOperationError} from '../../lib/organization/fanout';
 import {createMaterializer} from '../../lib/organization/materializar';
+import {createArquivoRemotoExecutor} from '../../lib/organization/arquivoRemoto';
 import {repositorioDoStore} from '../../lib/organization/repositorio';
 import {
   parseEstadoOrganizacoes,
@@ -618,12 +619,16 @@ describe('CreateOrganization', () => {
       })),
       verify: jest.fn(async () => true),
     };
+    const repository = repositorioDoStore(store);
     const materializer = createMaterializer({
       client,
       templates,
-      repository: repositorioDoStore(store),
+      repository,
       generateId: () => '0123456789abcdef',
-      arquivoRemoto: {addServerPeer: jest.fn(async () => {})},
+      executorArquivoRemoto: createArquivoRemotoExecutor({
+        repository,
+        rede: {addServerPeer: jest.fn(async () => {})},
+      }),
     });
     const iniciarReal = jest.fn(
       (nome: string, opcoes?: {arquivoRemotoUrl?: string}) =>

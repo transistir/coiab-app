@@ -315,4 +315,76 @@ describe('arquivo remoto no journal da organização (#142)', () => {
       jest.useRealTimers();
     }
   });
+
+  test('falha transitória de escrita na remoção converge e reenvia a mesma URL', async () => {
+    jest.useFakeTimers();
+    try {
+      const org = organizacao(
+        'org-1',
+        arquivo({
+          estado: 'concluido',
+          slots: {
+            m: {estado: 'concluido', tentativaId: 'tentativa-m'},
+            a: {estado: 'concluido', tentativaId: 'tentativa-a'},
+          },
+        }),
+      );
+      const h = harness({documentoInicial: documento(org)});
+      const write = h.repository.write.getMockImplementation()!;
+      let falhar = true;
+      h.repository.write.mockImplementation((next: EstadoOrganizacoes) => {
+        const slot = next.organizacoes[0]?.arquivoRemoto?.slots.m;
+        if (
+          falhar &&
+          slot?.estado === 'falha_recuperavel' &&
+          slot.erro === 'removido'
+        ) {
+          falhar = false;
+          throw new Error('mmkv-write-failed');
+        }
+        write(next);
+      });
+
+      const executor = h.criar();
+      // The screen catches this failure and still reports the removal as a
+      // success; the journal, however, must not keep claiming the project is
+      // archived.
+      try {
+        executor.removerArquivo('org-1-m');
+      } catch {
+        /* RemoveRemoteArchive's catch */
+      }
+      expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m.estado).toBe(
+        'concluido',
+      );
+
+      // The pending removal checkpoint is retried WITHOUT a resend: the slot is
+      // durably reopened.
+      jest.advanceTimersByTime(RETENTATIVA_CHECKPOINT_MS);
+      await microtarefas();
+      expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
+        estado: 'falha_recuperavel',
+        erro: 'removido',
+      });
+
+      // Re-adding the SAME URL must really send the reopened slot — and only
+      // it.
+      const resultado = await executor.executar('org-1', {modo: 'retry'});
+      expect(h.addServerPeer).toHaveBeenCalledTimes(1);
+      expect(h.addServerPeer).toHaveBeenCalledWith({
+        projectId: 'org-1-m',
+        url: URL_ARQUIVO,
+      });
+      expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m.estado).toBe(
+        'concluido',
+      );
+      expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.a).toMatchObject({
+        estado: 'concluido',
+        tentativaId: 'tentativa-a',
+      });
+      expect(resultado.estado).toBe('concluido');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });

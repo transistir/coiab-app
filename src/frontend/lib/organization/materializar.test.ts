@@ -13,6 +13,7 @@ import {
   type TemplateRef,
 } from './documento';
 import {createMaterializer} from './materializar';
+import {createArquivoRemotoExecutor} from './arquivoRemoto';
 import {OrganizationOperationError} from './fanout';
 import {markerFor} from './marker';
 import {reconstructOrganizations} from './reconstruct';
@@ -139,7 +140,10 @@ function harness() {
       client,
       templates,
       repository,
-      arquivoRemoto: arquivoRemotoRede,
+      executorArquivoRemoto: createArquivoRemotoExecutor({
+        repository,
+        rede: arquivoRemotoRede,
+      }),
       generateId: () => ORG_ID,
     }),
   };
@@ -268,7 +272,10 @@ function harnessMulti() {
       client,
       templates,
       repository,
-      arquivoRemoto: arquivoRemotoRede,
+      executorArquivoRemoto: createArquivoRemotoExecutor({
+        repository,
+        rede: arquivoRemotoRede,
+      }),
       generateId: () => ORG_ID,
     }),
   };
