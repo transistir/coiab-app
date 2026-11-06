@@ -7,7 +7,10 @@ import type {ReactNode} from 'react';
 
 import {CREATOR_ROLE_ID, MEMBER_ROLE_ID} from '../sharedTypes';
 import {clienteDeCriacao} from '../lib/organization/clienteDeCriacao';
-import type {EstadoOrganizacoes} from '../lib/organization/coiabOrganizations';
+import type {
+  EstadoOrganizacoes,
+  EstadoSlotArquivoRemoto,
+} from '../lib/organization/coiabOrganizations';
 import {readyOrganization} from '../lib/organization/fixtures';
 import {confirmarEntrada} from '../lib/organization/entrada';
 import {
@@ -693,16 +696,24 @@ describe('OrganizationMaterializerContext', () => {
     expect(monitoramento.$member.addServerPeer).not.toHaveBeenCalled();
     expect(alertas.$member.addServerPeer).not.toHaveBeenCalled();
 
-    // The real removal flow (RemoveRemoteArchive's success callback) reconciles
-    // the journal: the removed project's slot is no longer `concluido`.
+    // The real removal flow (RemoveRemoteArchive): durable mark BEFORE the
+    // Core call, then finalize after it succeeds.
+    let anterior: EstadoSlotArquivoRemoto | undefined;
     await act(async () => {
-      hook.result.current!.removerArquivo(`${ORG_ID}-m`);
+      anterior = hook.result.current!.marcarRemocao(`${ORG_ID}-m`);
+      expect(
+        store.instance.getState().organizacoes[0]?.arquivoRemoto?.slots.m
+          .estado,
+      ).toBe('removendo');
+      expect(hook.result.current!.removerArquivo(`${ORG_ID}-m`)).toBe(true);
     });
+    expect(anterior!).toMatchObject({estado: 'concluido'});
     const aposRemocao =
       store.instance.getState().organizacoes[0]!.arquivoRemoto!;
-    expect(aposRemocao.estado).toBe('falha_recuperavel');
+    // Reopened only for an explicit request (never auto-sent by the boot).
+    expect(aposRemocao.estado).toBe('pendente');
     expect(aposRemocao.slots.m).toEqual({
-      estado: 'falha_recuperavel',
+      estado: 'pendente',
       erro: 'removido',
     });
     // The untouched project keeps its successful slot byte-identical.

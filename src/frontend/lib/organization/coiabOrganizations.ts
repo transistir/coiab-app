@@ -63,6 +63,7 @@ export const EtapaAreaSchema = v.object({
 const ESTADOS_ARQUIVO_REMOTO = [
   'pendente',
   'aplicando',
+  'removendo',
   'concluido',
   'falha_recuperavel',
 ] as const;

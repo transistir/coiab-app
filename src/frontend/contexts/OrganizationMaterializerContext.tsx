@@ -17,7 +17,9 @@ import {
   type ModoArquivoRemoto,
   type ResultadoArquivoRemoto,
 } from '../lib/organization/arquivoRemoto';
+import {consultarArquivoRemotoAtivo} from '../lib/organization/archiveServer';
 import {clienteDeCriacao} from '../lib/organization/clienteDeCriacao';
+import type {EstadoSlotArquivoRemoto} from '../lib/organization/documento';
 import {
   confirmarEntrada,
   origemDaOrganizacao,
@@ -70,11 +72,25 @@ export type OrganizationMaterializerHandle = {
     url: string,
   ): Promise<ResultadoArquivoRemoto>;
   /**
-   * Reconciles a Core-level removal of the archive server with the journal.
-   * Only the slot that owns `projectId` is reopened (explicit retry required);
-   * the organization's other project stays `concluido`.
+   * Durable removal intent, written BEFORE `useRemoveServerPeer` reaches
+   * Core. Throws when the journal cannot persist it, so the screen aborts the
+   * Core removal instead of removing without a registered intent.
    */
-  removerArquivo(projectId: string): void;
+  marcarRemocao(projectId: string): EstadoSlotArquivoRemoto | undefined;
+  /**
+   * Finalizes a Core removal that succeeded. Returns false while the slot is
+   * still `removendo` (checkpoint write failed); the executor keeps retrying
+   * and reconciles against Core, so this is never a false success.
+   */
+  removerArquivo(projectId: string): boolean;
+  /**
+   * Restores the pre-removal slot after Core REFUSED the removal. A failed
+   * write keeps `removendo` and lets Core reconciliation decide.
+   */
+  cancelarRemocao(
+    projectId: string,
+    anterior: EstadoSlotArquivoRemoto | undefined,
+  ): boolean;
 };
 
 const OrganizationMaterializerContext =
@@ -121,9 +137,14 @@ export function OrganizationMaterializerProvider({
     const redeArquivoRemoto = criarRedeArquivoRemoto(projectId =>
       clientApi.getProject(projectId),
     );
+    const consultarArquivo = (projectId: string) =>
+      consultarArquivoRemotoAtivo(id => clientApi.getProject(id), projectId);
     const executorArquivoRemoto = createArquivoRemotoExecutor({
       repository,
       rede: redeArquivoRemoto,
+      // Same Core read `useActiveArchiveServer` exposes: only a durable
+      // `removendo` slot uses it, at boot or on the checkpoint timer.
+      consultarArquivo,
       // The member cache of a project changes when the server REALLY applies
       // the archive — even if that response lands after the 60 s deadline.
       // Invalidate per slot on the real settlement; the executor's return is
@@ -197,9 +218,17 @@ export function OrganizationMaterializerProvider({
         });
       }
       // An interrupted/in-flight pass keeps its replay budget and joins the
-      // live execution; anything else is the user's explicit retry.
+      // live execution; anything else is the user's explicit retry. A pending
+      // removal is always explicit: the user is deliberately re-adding the
+      // archive, so the automatic selector must not swallow it.
+      const temRemocaoPendente =
+        atual !== undefined &&
+        (atual.slots.m.estado === 'removendo' ||
+          atual.slots.a.estado === 'removendo');
       const modo: ModoArquivoRemoto =
-        mesmaUrl && atual?.estado === 'aplicando' ? 'automatico' : 'retry';
+        mesmaUrl && atual?.estado === 'aplicando' && !temRemocaoPendente
+          ? 'automatico'
+          : 'retry';
       return executarArquivo(organizacaoId, modo);
     };
     const retomar = async (organizacaoId: string) => {
@@ -261,8 +290,12 @@ export function OrganizationMaterializerProvider({
       retomarArquivo: organizacaoId => executarArquivo(organizacaoId, 'retry'),
       solicitarArquivo: (organizacaoId, url) =>
         solicitarArquivo(organizacaoId, url),
+      marcarRemocao: projectId =>
+        executorArquivoRemoto.marcarRemocao(projectId),
       removerArquivo: projectId =>
         executorArquivoRemoto.removerArquivo(projectId),
+      cancelarRemocao: (projectId, anterior) =>
+        executorArquivoRemoto.cancelarRemocao(projectId, anterior),
     };
     return {handle, executarArquivo};
   }, [store, clientApi, templates, queryClient, vivas]);

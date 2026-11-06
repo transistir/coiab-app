@@ -189,6 +189,10 @@ function archiveStatusMessage(estado: EstadoArquivoRemoto) {
       return m.archivePending;
     case 'aplicando':
       return m.archiveApplying;
+    case 'removendo':
+      // A removal is a live journal operation, so it shares the applying
+      // vocabulary while Core/checkpoint reconciliation finishes.
+      return m.archiveApplying;
     case 'concluido':
       return m.archiveDone;
     case 'falha_recuperavel':

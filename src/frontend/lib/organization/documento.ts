@@ -11,7 +11,7 @@ export type EtapaArea = {
   idsAntesDaCriacao: string[] | null;
 };
 export type EstadoArquivoRemoto =
-  'pendente' | 'aplicando' | 'concluido' | 'falha_recuperavel';
+  'pendente' | 'aplicando' | 'removendo' | 'concluido' | 'falha_recuperavel';
 /**
  * One project slot of the remote archive step (#142). `tentativaId` names the
  * attempt that owns the current state, so a late response can only ever patch

@@ -8,7 +8,7 @@ import MaterialIcons from '@react-native-vector-icons/material-icons';
 
 import {useActiveProject} from '../../contexts/ActiveProjectContext';
 import {useOrganizationMaterializer} from '../../contexts/OrganizationMaterializerContext';
-import Error from '../../images/Error.svg';
+import ErrorIcon from '../../images/Error.svg';
 import {BottomSheetWrapper} from '../../sharedComponents/BottomSheetWrapper';
 import {
   DestructiveButton,
@@ -58,7 +58,7 @@ export function RemoveRemoteArchive({
     <BottomSheetWrapper>
       <View style={styles.container}>
         <IconTitleDescription
-          icon={<Error />}
+          icon={<ErrorIcon />}
           title={t(m.title, {name: name || baseUrl})}
           description={t(m.description)}
         />
@@ -75,19 +75,58 @@ export function RemoveRemoteArchive({
                   <MaterialIcons name="delete" size={size} color={color} />
                 )}
                 onPress={() => {
+                  // Durable intent BEFORE the Core effect. Without a
+                  // persisted `removendo` mark there is no way to reconcile a
+                  // lost checkpoint after a restart, so a failed mark aborts
+                  // the removal rather than removing unrecorded.
+                  if (!materializador) {
+                    const error = new Error(
+                      'organization-materializer-unavailable',
+                    );
+                    Sentry.captureException(error);
+                    navigation.navigate('ErrorBottomSheet', {error});
+                    return;
+                  }
+                  let anterior;
+                  try {
+                    anterior = materializador.marcarRemocao(projectId);
+                  } catch (error) {
+                    Sentry.captureException(error);
+                    navigation.navigate('ErrorBottomSheet', {
+                      error:
+                        error instanceof Error
+                          ? error
+                          : new Error(String(error)),
+                    });
+                    return;
+                  }
+
                   removeServerPeer.mutate(
                     {serverDeviceId},
                     {
                       onError: err => {
+                        // Core kept the server: restore the exact previous
+                        // slot. If that write also fails, the durable mark
+                        // stays and Core reconciliation decides later.
+                        try {
+                          materializador.cancelarRemocao(projectId, anterior);
+                        } catch (error) {
+                          Sentry.captureException(error);
+                        }
                         Sentry.captureException(err);
                         navigation.navigate('ErrorBottomSheet', {error: err});
                       },
                       onSuccess: () => {
-                        // The journal must not keep claiming success after
-                        // Core lost the server: reopen only this project's
-                        // slot so the same URL can really be requested again.
+                        // Finalize only after Core removed the server. A
+                        // false return means the journal is still `removendo`;
+                        // its timer/boot reconciliation will finish it, so the
+                        // screen must not claim a durable success.
                         try {
-                          materializador?.removerArquivo(projectId);
+                          if (!materializador.removerArquivo(projectId)) {
+                            Sentry.captureException(
+                              new Error('archive-removal-checkpoint-pending'),
+                            );
+                          }
                         } catch (error) {
                           Sentry.captureException(error);
                         }

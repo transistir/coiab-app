@@ -55,31 +55,48 @@ function arquivo(overrides: Partial<ArquivoRemoto> = {}): ArquivoRemoto {
 }
 
 type Rede = (input: {projectId: string; url: string}) => Promise<void>;
+type Consulta = (projectId: string) => Promise<boolean>;
 
 function harness({
   documentoInicial: inicial,
   rede,
+  consulta,
 }: {
   documentoInicial: EstadoOrganizacoes;
   rede?: Rede;
+  consulta?: Consulta;
 }) {
   let document = inicial;
-  const repository = {
+  const novoRepositorio = () => ({
     read: () => document,
     write: jest.fn((next: EstadoOrganizacoes) => {
       document = next;
     }),
-  };
+  });
+  const repository = novoRepositorio();
   const addServerPeer = jest.fn(rede ?? (async () => {}));
-  const criar = () =>
+  const criarSobre = (
+    repo: ReturnType<typeof novoRepositorio>,
+    consultarArquivo = consulta,
+  ) =>
     createArquivoRemotoExecutor({
-      repository,
+      repository: repo,
       rede: {addServerPeer},
+      ...(consultarArquivo ? {consultarArquivo} : {}),
     });
+  const criar = () => criarSobre(repository);
   return {
     repository,
     addServerPeer,
     criar,
+    /** New repository OBJECT over the SAME storage: a process restart. */
+    reiniciar: () => {
+      const novo = novoRepositorio();
+      return {
+        repository: novo,
+        criar: () => criarSobre(novo),
+      };
+    },
     get document() {
       return document;
     },
@@ -316,7 +333,39 @@ describe('arquivo remoto no journal da organização (#142)', () => {
     }
   });
 
-  test('falha transitória de escrita na remoção converge e reenvia a mesma URL', async () => {
+  test('remoção: falha ao gravar a marca aborta antes de qualquer remoção do Core', () => {
+    const org = organizacao(
+      'org-1',
+      arquivo({
+        estado: 'concluido',
+        slots: {
+          m: {estado: 'concluido', tentativaId: 'tentativa-m'},
+          a: {estado: 'concluido', tentativaId: 'tentativa-a'},
+        },
+      }),
+    );
+    const h = harness({documentoInicial: documento(org)});
+    h.repository.write.mockImplementationOnce(() => {
+      throw new Error('mmkv-write-failed');
+    });
+
+    const executor = h.criar();
+    let removeuDoCore = false;
+    expect(() => {
+      // RemoveRemoteArchive only reaches `useRemoveServerPeer` after this
+      // call returns; a throw IS the abort signal.
+      executor.marcarRemocao('org-1-m');
+      removeuDoCore = true;
+    }).toThrow('mmkv-write-failed');
+
+    expect(removeuDoCore).toBe(false);
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
+      estado: 'concluido',
+      tentativaId: 'tentativa-m',
+    });
+  });
+
+  test('remoção: Core OK com checkpoint final perdido reconcilia no restart e readd envia', async () => {
     jest.useFakeTimers();
     try {
       const org = organizacao(
@@ -329,60 +378,122 @@ describe('arquivo remoto no journal da organização (#142)', () => {
           },
         }),
       );
-      const h = harness({documentoInicial: documento(org)});
+      // Core no longer has an archive server for m: the removal really landed.
+      const consultarArquivo = jest.fn(async () => false);
+      const h = harness({
+        documentoInicial: documento(org),
+        consulta: consultarArquivo,
+      });
+      const executor = h.criar();
+
+      // 1. Durable intent BEFORE Core removal.
+      const anterior = executor.marcarRemocao('org-1-m');
+      expect(anterior).toMatchObject({estado: 'concluido'});
+      expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
+        estado: 'removendo',
+      });
+
+      // 2. Core removal OK, but the final `pendente` checkpoint write fails.
       const write = h.repository.write.getMockImplementation()!;
-      let falhar = true;
+      let falharFinal = true;
       h.repository.write.mockImplementation((next: EstadoOrganizacoes) => {
         const slot = next.organizacoes[0]?.arquivoRemoto?.slots.m;
         if (
-          falhar &&
-          slot?.estado === 'falha_recuperavel' &&
+          falharFinal &&
+          slot?.estado === 'pendente' &&
           slot.erro === 'removido'
         ) {
-          falhar = false;
+          falharFinal = false;
           throw new Error('mmkv-write-failed');
         }
         write(next);
       });
-
-      const executor = h.criar();
-      // The screen catches this failure and still reports the removal as a
-      // success; the journal, however, must not keep claiming the project is
-      // archived.
-      try {
-        executor.removerArquivo('org-1-m');
-      } catch {
-        /* RemoveRemoteArchive's catch */
-      }
-      expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m.estado).toBe(
-        'concluido',
-      );
-
-      // The pending removal checkpoint is retried WITHOUT a resend: the slot is
-      // durably reopened.
-      jest.advanceTimersByTime(RETENTATIVA_CHECKPOINT_MS);
-      await microtarefas();
+      // Never a success while the removal is unreconciled.
+      expect(executor.removerArquivo('org-1-m')).toBe(false);
       expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
-        estado: 'falha_recuperavel',
-        erro: 'removido',
+        estado: 'removendo',
       });
 
-      // Re-adding the SAME URL must really send the reopened slot — and only
-      // it.
-      const resultado = await executor.executar('org-1', {modo: 'retry'});
+      // 3. Restart: new executor AND new repository object over the same
+      // storage. The WeakMaps are gone; only the durable journal survives.
+      const reinicio = h.reiniciar();
+      const resultado = await reinicio.criar().executar('org-1', {
+        modo: 'automatico',
+      });
+
+      expect(consultarArquivo).toHaveBeenCalledWith('org-1-m');
+      // Reconciliation reopens the slot but the AUTOMATIC boot pass must not
+      // re-add an archive the user removed...
+      expect(h.addServerPeer).not.toHaveBeenCalled();
+      expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
+        estado: 'pendente',
+        erro: 'removido',
+      });
+      expect(resultado.estado).toBe('pendente');
+
+      // ...an explicit re-add of the SAME URL sends for real, and only for it.
+      await reinicio.criar().executar('org-1', {modo: 'retry'});
       expect(h.addServerPeer).toHaveBeenCalledTimes(1);
       expect(h.addServerPeer).toHaveBeenCalledWith({
         projectId: 'org-1-m',
         url: URL_ARQUIVO,
       });
-      expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m.estado).toBe(
-        'concluido',
-      );
+      expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+        estado: 'concluido',
+      });
       expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.a).toMatchObject({
         estado: 'concluido',
         tentativaId: 'tentativa-a',
       });
-      expect(resultado.estado).toBe('concluido');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('rejeição do Core com falha de escrita converge pelo timer sem novo envio', async () => {
+    jest.useFakeTimers();
+    try {
+      const org = organizacao('org-1', arquivo());
+      const h = harness({
+        documentoInicial: documento(org),
+        rede: async () => {
+          throw new Error('core-rejected');
+        },
+      });
+      const write = h.repository.write.getMockImplementation()!;
+      let falharFalhaDeM = true;
+      h.repository.write.mockImplementation((next: EstadoOrganizacoes) => {
+        const slot = next.organizacoes[0]?.arquivoRemoto?.slots.m;
+        if (
+          falharFalhaDeM &&
+          slot?.estado === 'falha_recuperavel' &&
+          slot.erro === 'arquivo-indisponivel'
+        ) {
+          falharFalhaDeM = false;
+          throw new Error('mmkv-write-failed');
+        }
+        write(next);
+      });
+
+      await h.criar().executar('org-1');
+      expect(h.addServerPeer).toHaveBeenCalledTimes(2);
+      // The rejection is real but its checkpoint was lost: the slot must not
+      // stay in `aplicando` without a live operation.
+      expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m.estado).toBe(
+        'aplicando',
+      );
+
+      jest.advanceTimersByTime(RETENTATIVA_CHECKPOINT_MS);
+      await microtarefas();
+
+      expect(h.addServerPeer).toHaveBeenCalledTimes(2);
+      expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+        estado: 'falha_recuperavel',
+        erro: 'arquivo-indisponivel',
+      });
+      expect(h.document.organizacoes[0]?.arquivoRemoto?.estado).toBe(
+        'falha_recuperavel',
+      );
     } finally {
       jest.useRealTimers();
     }
