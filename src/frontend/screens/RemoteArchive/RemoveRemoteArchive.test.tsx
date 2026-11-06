@@ -14,6 +14,7 @@ import {
   createArquivoRemotoExecutor,
   criarArquivoRemotoPendente,
 } from '../../lib/organization/arquivoRemoto';
+import type {IdentidadeArquivoRemoto} from '../../lib/organization/identidadeArquivo';
 
 jest.mock('@sentry/react-native', () => ({
   captureException: jest.fn(),
@@ -139,8 +140,10 @@ function criarCenario(
   const executor = criarExecutor();
 
   useMaterializadorMock.mockReturnValue({
-    marcarRemocao: (projectId: string) => executor.marcarRemocao(projectId),
-    removerArquivo: (projectId: string) => executor.removerArquivo(projectId),
+    marcarRemocao: (projectId: string, identidade: IdentidadeArquivoRemoto) =>
+      executor.marcarRemocao(projectId, identidade),
+    removerArquivo: (projectId: string, identidade: IdentidadeArquivoRemoto) =>
+      executor.removerArquivo(projectId, identidade),
     reconciliarRemocao: (projectId: string) =>
       executor.reconciliarRemocao(projectId),
     cancelarRemocao: (

@@ -1,6 +1,10 @@
 import type {MemberApi} from '@comapeo/core';
 
 import {MEMBER_ROLE_ID} from '../../sharedTypes';
+import {
+  type IdentidadeArquivoRemoto,
+  normalizarBaseUrl,
+} from './identidadeArquivo';
 
 // TODO: Ideally this is handled in @comapeo/core (https://github.com/digidem/comapeo-core/issues/1031)
 export type ArchiveServerMemberInfo = MemberApi.MemberInfo & {
@@ -20,6 +24,26 @@ export function isActiveArchiveServerMember(
   return true;
 }
 
+/**
+ * Whether a Core member IS the archive server named by an identity (#142 10ª
+ * rodada). The device id is authoritative when both sides know it; otherwise
+ * the normalized self-hosted base URL is compared, because the journal may
+ * only know the URL (`addServerPeer` returns `void`). An identity with no
+ * usable field never matches — a removal must be specific, not "any active
+ * archive server".
+ */
+export function archiveServerMatchesIdentity(
+  member: MemberApi.MemberInfo,
+  identidade: IdentidadeArquivoRemoto,
+): boolean {
+  const deviceId = identidade.deviceId?.trim();
+  if (deviceId) return member.deviceId === deviceId;
+  const baseUrl = identidade.baseUrl;
+  const doMembro = member.selfHostedServerDetails?.baseUrl;
+  if (!baseUrl || !doMembro) return false;
+  return normalizarBaseUrl(doMembro) === normalizarBaseUrl(baseUrl);
+}
+
 /** The minimal Core project read used to reconcile a removal checkpoint. */
 export type ArquivoRemotoProjetoComMembros = {
   $member: {
@@ -28,16 +52,25 @@ export type ArquivoRemotoProjetoComMembros = {
 };
 
 /**
- * Whether Core still has an active archive server for the project. This is the
- * SAME read `useActiveArchiveServer` exposes to the UI; it is kept outside the
- * React hook so the journal executor can reconcile a durable `removendo` slot
- * at boot without rendering a component.
+ * Whether Core still has the archive server named by `identidade` for the
+ * project. This is the SAME read `useActiveArchiveServer` exposes to the UI;
+ * it is kept outside the React hook so the journal executor can reconcile a
+ * durable `removendo` slot at boot without rendering a component.
+ *
+ * #142 10ª rodada: the query is scoped to the identity being removed, never
+ * "is ANY archive server active". With A and B both applied, removing A must
+ * not be reported as still present just because B is active.
  */
 export async function consultarArquivoRemotoAtivo(
   getProject: (projectId: string) => Promise<ArquivoRemotoProjetoComMembros>,
   projectId: string,
+  identidade: IdentidadeArquivoRemoto,
 ): Promise<boolean> {
   const projeto = await getProject(projectId);
   const membros = await projeto.$member.getMany({includeLeft: false});
-  return membros.some(isActiveArchiveServerMember);
+  return membros.some(
+    membro =>
+      isActiveArchiveServerMember(membro) &&
+      archiveServerMatchesIdentity(membro, identidade),
+  );
 }

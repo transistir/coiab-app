@@ -48,6 +48,10 @@ export function RemoveRemoteArchive({
   route,
 }: NativeRootNavigationProps<'RemoveRemoteArchive'>) {
   const {baseUrl, name, serverDeviceId} = route.params;
+  // The journal only finalizes the slot that records THIS server. Removing a
+  // different archive (A) from a project that currently records B must be a
+  // journal no-op; only the Core removal happens.
+  const identidade = {baseUrl, deviceId: serverDeviceId};
 
   const {formatMessage: t} = useIntl();
   const {projectId} = useActiveProject();
@@ -101,7 +105,10 @@ export function RemoveRemoteArchive({
                   }
                   let anterior;
                   try {
-                    anterior = materializador.marcarRemocao(projectId);
+                    anterior = materializador.marcarRemocao(
+                      projectId,
+                      identidade,
+                    );
                   } catch (error) {
                     Sentry.captureException(error);
                     navigation.navigate('ErrorBottomSheet', {
@@ -150,7 +157,9 @@ export function RemoveRemoteArchive({
                         // `removendo`; its timer/boot reconciliation will
                         // finish it, so the screen must not claim a durable
                         // success.
-                        if (!materializador.removerArquivo(projectId)) {
+                        if (
+                          !materializador.removerArquivo(projectId, identidade)
+                        ) {
                           Sentry.captureException(
                             new Error('archive-removal-checkpoint-pending'),
                           );

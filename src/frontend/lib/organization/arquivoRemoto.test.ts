@@ -5,10 +5,12 @@ import type {
 } from './documento';
 import {
   createArquivoRemotoExecutor,
+  criarArquivoRemotoPendente,
   RETENTATIVA_CHECKPOINT_MS,
 } from './arquivoRemoto';
 
 const URL_ARQUIVO = 'https://arquivo.example/';
+const IDENTIDADE_PADRAO = {baseUrl: URL_ARQUIVO};
 
 function area(projectId: string, hash: string) {
   return {
@@ -389,7 +391,7 @@ describe('arquivo remoto no journal da organização (#142)', () => {
     expect(() => {
       // RemoveRemoteArchive only reaches `useRemoveServerPeer` after this
       // call returns; a throw IS the abort signal.
-      executor.marcarRemocao('org-1-m');
+      executor.marcarRemocao('org-1-m', IDENTIDADE_PADRAO);
       removeuDoCore = true;
     }).toThrow('mmkv-write-failed');
 
@@ -422,7 +424,7 @@ describe('arquivo remoto no journal da organização (#142)', () => {
       const executor = h.criar();
 
       // 1. Durable intent BEFORE Core removal.
-      const anterior = executor.marcarRemocao('org-1-m');
+      const anterior = executor.marcarRemocao('org-1-m', IDENTIDADE_PADRAO);
       expect(anterior).toMatchObject({estado: 'concluido'});
       expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
         estado: 'removendo',
@@ -440,7 +442,7 @@ describe('arquivo remoto no journal da organização (#142)', () => {
         write(next);
       });
       // Never a success while the removal is unreconciled.
-      expect(executor.removerArquivo('org-1-m')).toBe(false);
+      expect(executor.removerArquivo('org-1-m', IDENTIDADE_PADRAO)).toBe(false);
       expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
         estado: 'removendo',
       });
@@ -452,7 +454,9 @@ describe('arquivo remoto no journal da organização (#142)', () => {
         modo: 'automatico',
       });
 
-      expect(consultarArquivo).toHaveBeenCalledWith('org-1-m');
+      expect(consultarArquivo).toHaveBeenCalledWith('org-1-m', {
+        baseUrl: 'https://arquivo.example',
+      });
       // Reconciliation reopens the slot but the AUTOMATIC boot pass must not
       // re-add an archive the user removed...
       expect(h.addServerPeer).not.toHaveBeenCalled();
@@ -498,8 +502,8 @@ describe('arquivo remoto no journal da organização (#142)', () => {
     });
     const executor = h.criar();
 
-    executor.marcarRemocao('org-1-m');
-    expect(executor.removerArquivo('org-1-m')).toBe(true);
+    executor.marcarRemocao('org-1-m', IDENTIDADE_PADRAO);
+    expect(executor.removerArquivo('org-1-m', IDENTIDADE_PADRAO)).toBe(true);
 
     expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
       estado: 'removido',
@@ -539,8 +543,8 @@ describe('arquivo remoto no journal da organização (#142)', () => {
     });
     const executor = h.criar();
 
-    executor.marcarRemocao('org-1-m');
-    expect(executor.removerArquivo('org-1-m')).toBe(true);
+    executor.marcarRemocao('org-1-m', IDENTIDADE_PADRAO);
+    expect(executor.removerArquivo('org-1-m', IDENTIDADE_PADRAO)).toBe(true);
 
     const parcial = h.document.organizacoes[0]!.arquivoRemoto!;
     expect(parcial.slots.m).toEqual({estado: 'removido'});
@@ -550,8 +554,8 @@ describe('arquivo remoto no journal da organização (#142)', () => {
     expect(parcial.estado).toBe('concluido');
 
     // Absence is only true once BOTH slots are removed.
-    executor.marcarRemocao('org-1-a');
-    expect(executor.removerArquivo('org-1-a')).toBe(true);
+    executor.marcarRemocao('org-1-a', IDENTIDADE_PADRAO);
+    expect(executor.removerArquivo('org-1-a', IDENTIDADE_PADRAO)).toBe(true);
     expect(h.document.organizacoes[0]?.arquivoRemoto?.estado).toBe('removido');
   });
 
@@ -800,13 +804,13 @@ describe('arquivo remoto no journal da organização (#142)', () => {
     const executor = h.criar();
 
     // Removal #1 rejects; its reconciliation read is suspended.
-    executor.marcarRemocao('org-1-m');
+    executor.marcarRemocao('org-1-m', IDENTIDADE_PADRAO);
     const reconciliacaoAntiga = executor.reconciliarRemocao('org-1-m');
     await microtarefas();
     expect(consultarArquivo).toHaveBeenCalledTimes(1);
 
     // Removal #2 starts and queries Core WHILE #1's read is still pending.
-    executor.marcarRemocao('org-1-m');
+    executor.marcarRemocao('org-1-m', IDENTIDADE_PADRAO);
     const reconciliacaoNova = executor.reconciliarRemocao('org-1-m');
     await microtarefas();
     expect(consultarArquivo).toHaveBeenCalledTimes(2);
@@ -833,6 +837,123 @@ describe('arquivo remoto no journal da organização (#142)', () => {
     expect(h.addServerPeer).toHaveBeenCalledWith({
       projectId: 'org-1-m',
       url: URL_ARQUIVO,
+    });
+  });
+});
+
+describe('identidade do arquivo remoto na remoção (#142 10ª rodada)', () => {
+  const URL_B = 'https://b.example/';
+  const IDENTIDADE_A = {
+    baseUrl: 'https://arquivo.example/',
+    deviceId: 'server-a',
+  };
+
+  function trocarArquivo(h: ReturnType<typeof harness>, url: string): void {
+    h.repository.write({
+      ...h.document,
+      organizacoes: h.document.organizacoes.map(organizacao => ({
+        ...organizacao,
+        arquivoRemoto: criarArquivoRemotoPendente(url),
+      })),
+    });
+  }
+
+  test('remover A de `a` depois que B ocupou o slot não marca B', async () => {
+    const h = harness({
+      documentoInicial: documento(organizacao('org-1')),
+      consulta: async () => false,
+    });
+    const executor = h.criar();
+
+    // 1. A aplicado nos dois projetos.
+    trocarArquivo(h, URL_ARQUIVO);
+    await executor.executar('org-1', {modo: 'retry'});
+    expect(h.addServerPeer).toHaveBeenCalledTimes(2);
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'concluido',
+    });
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.a).toMatchObject({
+      estado: 'concluido',
+    });
+
+    // 2. A é removido de `m`; o journal registra a remoção.
+    executor.marcarRemocao('org-1-m', IDENTIDADE_A);
+    expect(executor.removerArquivo('org-1-m', IDENTIDADE_A)).toBe(true);
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
+      estado: 'removido',
+    });
+
+    // 3. B é adicionado aos dois projetos: em Core `a` fica com A+B, mas o
+    // journal passa a referenciar B.
+    trocarArquivo(h, URL_B);
+    await executor.executar('org-1', {modo: 'retry'});
+    expect(h.addServerPeer).toHaveBeenCalledTimes(4);
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.a).toMatchObject({
+      estado: 'concluido',
+    });
+
+    // 4. Remover A de `a` NÃO pode marcar o slot que registra B.
+    expect(executor.marcarRemocao('org-1-a', IDENTIDADE_A)).toBeUndefined();
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.a).toMatchObject({
+      estado: 'concluido',
+    });
+    expect(executor.removerArquivo('org-1-a', IDENTIDADE_A)).toBe(true);
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.a).toMatchObject({
+      estado: 'concluido',
+    });
+    // O agregado continua indicando que B está aplicado.
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.estado).toBe('concluido');
+
+    // 5. Nenhum passe automático reenvia B.
+    await executor.executar('org-1', {modo: 'automatico'});
+    expect(h.addServerPeer).toHaveBeenCalledTimes(4);
+    // A remoção de A de `a` é um no-op no journal; ela não reabre nenhum slot.
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.a).toMatchObject({
+      estado: 'concluido',
+    });
+
+    // 6. O readd de A continua funcionando (pedido explícito).
+    trocarArquivo(h, URL_ARQUIVO);
+    await executor.executar('org-1', {modo: 'retry'});
+    expect(h.addServerPeer).toHaveBeenCalledTimes(6);
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'concluido',
+    });
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.a).toMatchObject({
+      estado: 'concluido',
+    });
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.estado).toBe('concluido');
+  });
+
+  test('reconciliação consulta Core com a identidade do servidor removido', async () => {
+    const consulta = jest.fn(async () => false);
+    const h = harness({
+      documentoInicial: documento(
+        organizacao(
+          'org-1',
+          arquivo({
+            estado: 'concluido',
+            slots: {
+              m: {estado: 'concluido', tentativaId: 'tentativa-m'},
+              a: {estado: 'concluido', tentativaId: 'tentativa-a'},
+            },
+          }),
+        ),
+      ),
+      consulta,
+    });
+    const executor = h.criar();
+
+    executor.marcarRemocao('org-1-m', IDENTIDADE_A);
+    const result = await executor.reconciliarRemocao('org-1-m');
+
+    expect(consulta).toHaveBeenCalledWith('org-1-m', {
+      baseUrl: 'https://arquivo.example',
+      deviceId: 'server-a',
+    });
+    expect(result).toBe(true);
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
+      estado: 'removido',
     });
   });
 });

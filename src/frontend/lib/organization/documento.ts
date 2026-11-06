@@ -41,6 +41,16 @@ export type EstadoSlotArquivoRemoto = {
    * matches the slot.
    */
   remocaoId?: string;
+  /**
+   * Identity of the archive server recorded in this slot (#142 10ª rodada).
+   * A removal is only allowed to transition THIS slot when the removed
+   * server matches it; otherwise removing A would mark the slot that records
+   * B and the next pass would replay B. `deviceId` is filled when the caller
+   * knows it (Core's `addServerPeer` returns void); `baseUrl` is the
+   * normalized URL and always available as the fallback identity.
+   */
+  baseUrl?: string;
+  deviceId?: string;
   iniciadaEm?: number;
   replayConsumido?: boolean;
   erro?: string;

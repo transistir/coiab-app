@@ -5,6 +5,12 @@ import type {
   EstadoSlotArquivoRemoto,
   OrganizacaoLocal,
 } from './documento';
+import {
+  type IdentidadeArquivoRemoto,
+  identidadeCorresponde,
+  normalizarBaseUrl,
+  normalizarIdentidade,
+} from './identidadeArquivo';
 import {SLOTS, type Slot} from './marker';
 
 /** A promise without a response is failed after this window. */
@@ -45,10 +51,15 @@ export type ArquivoRemotoRede = {
 
 /**
  * Core read used to reconcile a durable `removendo` intent lost to a failed
- * journal write. `true` means Core still has the archive server for that
- * project; `false` means the removal really happened.
+ * journal write. `true` means Core still has the archive server NAMED BY THE
+ * IDENTITY for that project; `false` means the removal really happened. The
+ * identity matters when several servers were applied (A and B): "any active
+ * archive server" would report A as present because B is.
  */
-export type ArquivoRemotoConsulta = (projectId: string) => Promise<boolean>;
+export type ArquivoRemotoConsulta = (
+  projectId: string,
+  identidade: IdentidadeArquivoRemoto,
+) => Promise<boolean>;
 
 /** The minimal project surface the archive adapter needs. */
 export type ArquivoRemotoProjeto = {
@@ -216,6 +227,43 @@ function estadoAgregado(
   return 'pendente';
 }
 
+/**
+ * Identity of the archive server recorded in a journal slot. The slot's own
+ * fields win; a legacy slot (URL only) falls back to the journal URL, which is
+ * the archive that slot was applied from.
+ */
+function identidadeRegistrada(
+  organizacao: OrganizacaoLocal,
+  slot: Slot,
+): IdentidadeArquivoRemoto {
+  const arquivo = organizacao.arquivoRemoto;
+  if (!arquivo) return {};
+  const estado = arquivo.slots[slot];
+  return (
+    normalizarIdentidade(
+      {baseUrl: estado.baseUrl, deviceId: estado.deviceId},
+      arquivo.url,
+    ) ?? {baseUrl: normalizarBaseUrl(arquivo.url)}
+  );
+}
+
+/**
+ * Whether a removal request names the archive recorded in the slot. A removal
+ * of another server (A while the slot records B) is ignored: it must neither
+ * mark the slot nor block it.
+ */
+function remocaoCorrespondeAoSlot(
+  organizacao: OrganizacaoLocal,
+  slot: Slot,
+  identidade: IdentidadeArquivoRemoto | undefined,
+): boolean {
+  if (!organizacao.arquivoRemoto) return false;
+  return identidadeCorresponde(
+    identidadeRegistrada(organizacao, slot),
+    normalizarIdentidade(identidade, organizacao.arquivoRemoto.url),
+  );
+}
+
 function limparSlot(slot: EstadoSlotArquivoRemoto): EstadoSlotArquivoRemoto {
   return Object.fromEntries(
     Object.entries(slot).filter(([, valor]) => valor !== undefined),
@@ -223,12 +271,16 @@ function limparSlot(slot: EstadoSlotArquivoRemoto): EstadoSlotArquivoRemoto {
 }
 
 export function criarArquivoRemotoPendente(url: string): ArquivoRemoto {
+  // The slot records WHICH archive it is meant to hold before any send. A
+  // removal of a different server must not touch it, even in the window
+  // between this journal write and the first `addServerPeer`.
+  const baseUrl = normalizarBaseUrl(url);
   return {
     url,
     estado: 'pendente',
     slots: {
-      m: {estado: 'pendente'},
-      a: {estado: 'pendente'},
+      m: {estado: 'pendente', baseUrl},
+      a: {estado: 'pendente', baseUrl},
     },
   };
 }
@@ -626,9 +678,11 @@ export function createArquivoRemotoExecutor({
         // The Core callback owns this window; reconciling here could read the
         // pre-removal state and write a false `concluido`.
         if (remocaoEmVoo(projectId)) continue;
+        // Which server this removal is about. A, not "any archive server".
+        const identidade = identidadeRegistrada(organizacao, slot);
         let existe: boolean;
         try {
-          existe = await consultarArquivo(projectId);
+          existe = await consultarArquivo(projectId, identidade);
         } catch {
           // Unknown Core state: keep the intent and retry, never guess.
           agendarReaplicacao(organizacao.id);
@@ -704,6 +758,14 @@ export function createArquivoRemotoExecutor({
 
     const replay = modo === 'automatico' && atual.estado === 'aplicando';
     const tentativaId = proximaTentativa(now);
+    const urlNormalizada = normalizarBaseUrl(url);
+    // Identity is durable BEFORE the send, exactly like the attempt id. A
+    // removal that races this attempt therefore matches the archive this slot
+    // is actually being filled with, not whatever URL the journal had before.
+    const identidadeAnterior = normalizarIdentidade({
+      baseUrl: atual.baseUrl,
+      deviceId: atual.deviceId,
+    });
     try {
       gravarSlot(organizacaoId, slot, atual.tentativaId ?? null, {
         estado: 'aplicando',
@@ -713,6 +775,13 @@ export function createArquivoRemotoExecutor({
         // during this replay therefore requires an explicit retry.
         replayConsumido: replay,
         erro: undefined,
+        baseUrl: urlNormalizada,
+        // Keep the device id only while the slot still records the SAME URL;
+        // a new archive must never inherit the previous server's deviceId.
+        deviceId:
+          identidadeAnterior?.baseUrl === urlNormalizada
+            ? identidadeAnterior.deviceId
+            : undefined,
       });
     } catch {
       // Cannot record the attempt (no `start` without its durable record), so
@@ -892,7 +961,10 @@ export function createArquivoRemotoExecutor({
      * registered intent. Returns the previous slot state so a Core failure can
      * restore it exactly.
      */
-    marcarRemocao(projectId: string): EstadoSlotArquivoRemoto | undefined {
+    marcarRemocao(
+      projectId: string,
+      identidade: IdentidadeArquivoRemoto,
+    ): EstadoSlotArquivoRemoto | undefined {
       const documento = repository.read();
       const alvo = localizarSlotDoProjeto(documento, projectId);
       // The journal only owns COIAB organizations. A standalone project has
@@ -902,6 +974,17 @@ export function createArquivoRemotoExecutor({
         item => item.id === alvo.organizacaoId,
       );
       if (!organizacao?.arquivoRemoto) return undefined;
+      // Removing another archive server (A) from a project whose slot records
+      // B is a no-op for the journal: no `removendo`, no in-flight guard, no
+      // error for the user. The Core removal still proceeds for A.
+      if (!remocaoCorrespondeAoSlot(organizacao, alvo.slot, identidade)) {
+        return undefined;
+      }
+      const registrada = identidadeRegistrada(organizacao, alvo.slot);
+      const removida = normalizarIdentidade(
+        identidade,
+        organizacao.arquivoRemoto.url,
+      );
       const anterior = {...organizacao.arquivoRemoto.slots[alvo.slot]};
       gravarSlotDireto(alvo.organizacaoId, alvo.slot, {
         estado: 'removendo',
@@ -909,6 +992,10 @@ export function createArquivoRemotoExecutor({
         // started by an older removal carries the old id and is discarded once
         // this new attempt owns the slot.
         remocaoId: proximaTentativa(now),
+        // Keep the archive identity so reconciliation can ask Core about THIS
+        // server, enriched with the deviceId the removal request knows.
+        baseUrl: registrada?.baseUrl,
+        deviceId: removida?.deviceId ?? registrada?.deviceId,
       });
       // The removal supersedes any pending send conclusion for this slot.
       limparCheckpointPendente(alvo.organizacaoId, alvo.slot);
@@ -922,7 +1009,10 @@ export function createArquivoRemotoExecutor({
      * journal no longer claims the archive; when the final write fails the
      * durable `removendo` stays and a timer keeps reconciling it.
      */
-    removerArquivo(projectId: string): boolean {
+    removerArquivo(
+      projectId: string,
+      identidade: IdentidadeArquivoRemoto,
+    ): boolean {
       try {
         const documento = repository.read();
         const alvo = localizarSlotDoProjeto(documento, projectId);
@@ -931,6 +1021,12 @@ export function createArquivoRemotoExecutor({
           item => item.id === alvo.organizacaoId,
         );
         if (!organizacao?.arquivoRemoto) return true;
+        // The Core removal succeeded, but the journal slot may record ANOTHER
+        // archive server (A removed while B is the applied one). Finalizing it
+        // would make the next pass replay B; a no-op is the correct outcome.
+        if (!remocaoCorrespondeAoSlot(organizacao, alvo.slot, identidade)) {
+          return true;
+        }
         const atual = organizacao.arquivoRemoto.slots[alvo.slot];
         if (
           atual.estado !== 'removendo' &&
@@ -984,15 +1080,17 @@ export function createArquivoRemotoExecutor({
       const organizacao = documento.organizacoes.find(
         item => item.id === alvo.organizacaoId,
       );
-      const slotInicial = organizacao?.arquivoRemoto?.slots[alvo.slot];
+      if (!organizacao?.arquivoRemoto) return true;
+      const slotInicial = organizacao.arquivoRemoto.slots[alvo.slot];
       if (slotInicial?.estado !== 'removendo') return true;
       // Identity of THIS removal attempt. If a newer removal starts while the
       // Core read is in flight, its id replaces this one and the result below
       // is discarded instead of overwriting the new attempt.
       const remocaoId = slotInicial.remocaoId;
+      const identidade = identidadeRegistrada(organizacao, alvo.slot);
       let existe: boolean;
       try {
-        existe = await consultarArquivo(projectId);
+        existe = await consultarArquivo(projectId, identidade);
       } catch {
         // Unknown Core state: keep the durable intent and retry later.
         agendarReaplicacao(alvo.organizacaoId);

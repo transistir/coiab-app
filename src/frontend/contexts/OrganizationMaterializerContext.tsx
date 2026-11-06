@@ -20,6 +20,7 @@ import {
 import {consultarArquivoRemotoAtivo} from '../lib/organization/archiveServer';
 import {clienteDeCriacao} from '../lib/organization/clienteDeCriacao';
 import type {EstadoSlotArquivoRemoto} from '../lib/organization/documento';
+import type {IdentidadeArquivoRemoto} from '../lib/organization/identidadeArquivo';
 import {
   confirmarEntrada,
   origemDaOrganizacao,
@@ -76,13 +77,19 @@ export type OrganizationMaterializerHandle = {
    * Core. Throws when the journal cannot persist it, so the screen aborts the
    * Core removal instead of removing without a registered intent.
    */
-  marcarRemocao(projectId: string): EstadoSlotArquivoRemoto | undefined;
+  marcarRemocao(
+    projectId: string,
+    identidade: IdentidadeArquivoRemoto,
+  ): EstadoSlotArquivoRemoto | undefined;
   /**
    * Finalizes a Core removal that succeeded. Returns false while the slot is
    * still `removendo` (checkpoint write failed); the executor keeps retrying
    * and reconciles against Core, so this is never a false success.
    */
-  removerArquivo(projectId: string): boolean;
+  removerArquivo(
+    projectId: string,
+    identidade: IdentidadeArquivoRemoto,
+  ): boolean;
   /**
    * Reconciles a removal whose Core call REJECTED. Core blocks the peer
    * before syncing, so the error alone does not say whether the file became
@@ -144,8 +151,15 @@ export function OrganizationMaterializerProvider({
     const redeArquivoRemoto = criarRedeArquivoRemoto(projectId =>
       clientApi.getProject(projectId),
     );
-    const consultarArquivo = (projectId: string) =>
-      consultarArquivoRemotoAtivo(id => clientApi.getProject(id), projectId);
+    const consultarArquivo = (
+      projectId: string,
+      identidade: IdentidadeArquivoRemoto,
+    ) =>
+      consultarArquivoRemotoAtivo(
+        id => clientApi.getProject(id),
+        projectId,
+        identidade,
+      );
     const executorArquivoRemoto = createArquivoRemotoExecutor({
       repository,
       rede: redeArquivoRemoto,
@@ -327,10 +341,10 @@ export function OrganizationMaterializerProvider({
       retomarArquivo: organizacaoId => executarArquivo(organizacaoId, 'retry'),
       solicitarArquivo: (organizacaoId, url) =>
         solicitarArquivo(organizacaoId, url),
-      marcarRemocao: projectId =>
-        executorArquivoRemoto.marcarRemocao(projectId),
-      removerArquivo: projectId =>
-        executorArquivoRemoto.removerArquivo(projectId),
+      marcarRemocao: (projectId, identidade) =>
+        executorArquivoRemoto.marcarRemocao(projectId, identidade),
+      removerArquivo: (projectId, identidade) =>
+        executorArquivoRemoto.removerArquivo(projectId, identidade),
       reconciliarRemocao: projectId =>
         executorArquivoRemoto.reconciliarRemocao(projectId),
       cancelarRemocao: (projectId, anterior) =>

@@ -701,12 +701,18 @@ describe('OrganizationMaterializerContext', () => {
     // Core call, then finalize after it succeeds.
     let anterior: EstadoSlotArquivoRemoto | undefined;
     await act(async () => {
-      anterior = hook.result.current!.marcarRemocao(`${ORG_ID}-m`);
+      anterior = hook.result.current!.marcarRemocao(`${ORG_ID}-m`, {
+        baseUrl: 'https://arquivo.example/',
+      });
       expect(
         store.instance.getState().organizacoes[0]?.arquivoRemoto?.slots.m
           .estado,
       ).toBe('removendo');
-      expect(hook.result.current!.removerArquivo(`${ORG_ID}-m`)).toBe(true);
+      expect(
+        hook.result.current!.removerArquivo(`${ORG_ID}-m`, {
+          baseUrl: 'https://arquivo.example/',
+        }),
+      ).toBe(true);
     });
     expect(anterior!).toMatchObject({estado: 'concluido'});
     const aposRemocao =
