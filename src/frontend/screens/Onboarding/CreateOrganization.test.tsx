@@ -501,18 +501,19 @@ describe('CreateOrganization', () => {
     expect(store.instance.getState().organizacoes).toHaveLength(0);
   });
 
-  test('the create button stays disabled without a name and without a valid URL', async () => {
+  test('the create button needs a selected territory; the archive URL is optional (#142)', async () => {
     await renderScreen();
     await irParaEtapaNome();
 
     // Nothing selected, empty URL.
     expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
 
-    // Selecting a territory alone is not enough.
+    // #142: the remote archive is optional — selecting a territory with the
+    // field blank is enough to create.
     await selecionarTerritorio();
-    expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+    expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
 
-    // A malformed URL keeps the button disabled and explains why.
+    // A typed malformed URL DOES gate creation and explains why.
     await preencherUrl('not a url');
     expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
     expect(
@@ -525,6 +526,60 @@ describe('CreateOrganization', () => {
     expect(
       screen.getByTestId('ORG.create-archive-url-invalid'),
     ).toBeOnTheScreen();
+  });
+
+  test('campo vazio: botão habilita, nenhum fetch, sem feedback; URL inválida desabilita (#142 regressão)', async () => {
+    // The field is optional: an empty field must not schedule any request at
+    // all, and no spinner/check/error may appear for a field nobody filled.
+    jest.useFakeTimers();
+    const fetchOriginal = global.fetch;
+    try {
+      mockValidarImpl = jest.requireActual(
+        '../../hooks/server/useValidarArquivoRemoto',
+      ).useValidarArquivoRemoto;
+      const fetchMock = jest.fn();
+      (global as unknown as {fetch: jest.Mock}).fetch = fetchMock;
+
+      await renderScreen();
+      await irParaEtapaNome();
+      await selecionarTerritorio();
+
+      expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
+
+      // Well past the hook's debounce: an empty URL never reaches the wire.
+      await act(async () => {
+        jest.advanceTimersByTime(5_000);
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(
+        screen.queryByTestId('ORG.create-archive-url-checking'),
+      ).not.toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('ORG.create-archive-url-valid'),
+      ).not.toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('ORG.create-archive-url-invalid'),
+      ).not.toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('ORG.create-archive-url-unreachable'),
+      ).not.toBeOnTheScreen();
+
+      // Typing an invalid URL turns the blank field into a gate: the button
+      // disables and the request is still never made (format rejection).
+      await preencherUrl('not a url');
+      expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+      expect(
+        screen.getByTestId('ORG.create-archive-url-invalid'),
+      ).toBeOnTheScreen();
+      await act(async () => {
+        jest.advanceTimersByTime(5_000);
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      jest.clearAllTimers();
+      jest.useRealTimers();
+      global.fetch = fetchOriginal;
+    }
   });
 
   test('the create button is enabled with a selected territory and a valid HTTPS URL', async () => {

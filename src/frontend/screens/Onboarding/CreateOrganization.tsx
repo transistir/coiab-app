@@ -314,8 +314,11 @@ export const CreateOrganization = ({
   const tooLong = trimmedName.length > 0 && isNameTooLong(trimmedName);
   // #142: the archive URL is now validated LIVE against the server, not just
   // for format. The hook debounces the typing, calls `/info`, and reports an
-  // explicit positive (`valido`) state — the only state that unlocks create.
+  // explicit positive (`valido`) state — the only state that unlocks create
+  // WHEN A URL WAS TYPED. The field is optional: an empty field means "no
+  // remote archive", so it neither calls the server nor gates creation.
   const validacaoArquivo = useValidarArquivoRemoto(archiveUrl);
+  const arquivoVazio = archiveUrl.trim().length === 0;
   const archiveUrlInvalid =
     validacaoArquivo.estado === 'invalido' ||
     validacaoArquivo.estado === 'formato-invalido';
@@ -329,7 +332,9 @@ export const CreateOrganization = ({
       ? (validacaoArquivo.urlNormalizada ?? null)
       : null;
   const canCreate =
-    !!selectedTerritory && validacaoArquivo.estado === 'valido' && !tooLong;
+    !!selectedTerritory &&
+    !tooLong &&
+    (arquivoVazio || validacaoArquivo.estado === 'valido');
 
   // SPEC B :54/:55: Back from the name stage returns to the intro and
   // creates nothing; from the intro, Back pops to the choice (Success).
@@ -379,9 +384,14 @@ export const CreateOrganization = ({
     if (iniciandoRef.current || deveTrocar) {
       return;
     }
-    if (!selectedTerritory || !normalizedArchiveUrl || tooLong) {
+    if (
+      !selectedTerritory ||
+      tooLong ||
+      (!arquivoVazio && !normalizedArchiveUrl)
+    ) {
       // The button is disabled in these states; the guard keeps a stale
-      // press from calling the core anyway.
+      // press from calling the core anyway. An empty archive field is a
+      // valid "no remote archive" choice, so it does not block.
       return;
     }
     if (!materializador) {
@@ -398,7 +408,12 @@ export const CreateOrganization = ({
     setBloqueado(false);
     setIniciando(true);
     materializador
-      .iniciar(trimmedName, {arquivoRemotoUrl: normalizedArchiveUrl})
+      .iniciar(
+        trimmedName,
+        normalizedArchiveUrl
+          ? {arquivoRemotoUrl: normalizedArchiveUrl}
+          : undefined,
+      )
       .then(() => {
         // BLOCKER 2: a resolved start means the operation is alive and the
         // provisioning surface owns it (it renders `preparando`/

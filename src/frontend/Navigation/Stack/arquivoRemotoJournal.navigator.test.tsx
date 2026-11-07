@@ -407,6 +407,24 @@ describe('arquivo remoto no journal da organização (#142, navigator real)', ()
       orgSetup.orgName,
     );
 
+    // #142: typing the archive URL gates create on the live `/info`
+    // validation. Answer that single probe with a valid archive name; every
+    // other request falls through to the real fetch so Core is unaffected.
+    const fetchOriginal = global.fetch;
+    global.fetch = jest.fn((input: unknown, init?: unknown) => {
+      const url = typeof input === 'string' ? input : String(input);
+      if (url === new URL('/info', URL_B).toString()) {
+        return Promise.resolve({
+          status: 200,
+          json: async () => ({data: {name: 'Arquivo B'}}),
+        } as Response);
+      }
+      return (fetchOriginal as (i: unknown, n?: unknown) => Promise<Response>)(
+        input,
+        init,
+      );
+    }) as unknown as typeof global.fetch;
+
     const rede = espiarArquivoRemoto(orgSetup.manager, async () => {});
     // The FIRST project creation of B never returns: the process "dies"
     // while the materializer is awaiting Core, with B already persisted as
@@ -463,6 +481,12 @@ describe('arquivo remoto no journal da organização (#142, navigator real)', ()
       await fireEvent.changeText(
         screen.getByTestId('ORG.create-archive-url-inp'),
         URL_B,
+      );
+      // The 600 ms debounce must elapse and the mocked 200 must land before
+      // the button unlocks.
+      await waitFor(
+        () => expect(screen.getByTestId('ORG.create-btn')).toBeEnabled(),
+        {timeout: 15_000},
       );
       await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
@@ -561,6 +585,7 @@ describe('arquivo remoto no journal da organização (#142, navigator real)', ()
       if (segundo) await segundo.stop({drainTimeoutMs: 1_000});
       criarSpy.mockRestore();
       rede.spy.mockRestore();
+      global.fetch = fetchOriginal;
     }
   }, 90_000);
 

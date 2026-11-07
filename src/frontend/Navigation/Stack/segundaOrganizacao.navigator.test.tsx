@@ -344,10 +344,8 @@ describe('segunda organização (navigator real)', () => {
     );
     await fireEvent.press(screen.getByTestId('ORG.create-intro-continue-btn'));
     await fireEvent.press(screen.getByTestId('ORG.create-name-option-4999'));
-    await fireEvent.changeText(
-      screen.getByTestId('ORG.create-archive-url-inp'),
-      'https://exemplo.org/',
-    );
+    // #142: the remote archive is optional and this suite is not about it —
+    // leave the field empty so creation needs no `/info` validation.
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
     // The document took over the journey: the provisioning surface owns
