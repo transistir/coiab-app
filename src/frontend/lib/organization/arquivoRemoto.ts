@@ -259,7 +259,12 @@ function localizarSlotDoProjeto(
  * until it really settles.
  */
 type Voo = {
-  envios: Set<Promise<void>>;
+  /**
+   * Live native sends, keyed by the project each one targets. The project is
+   * needed to scope a removal's refusal: a live `a` send no longer blocks
+   * removing the archive from `m`.
+   */
+  envios: Map<Promise<void>, string>;
   executando: boolean;
   execucao: Promise<ResultadoArquivoRemoto>;
 };
@@ -464,15 +469,21 @@ export function createArquivoRemotoExecutor({
   }
 
   /**
-   * Whether a real addition is still in flight for this organization (#142 17ª
+   * Whether a real addition is still in flight for this project (#142 18ª
    * rodada). The send owns the delayed member read and may persist the
    * `deviceId`/`concluido` AFTER the caller decides. A removal must refuse
-   * before Core instead of racing that write: a live send can otherwise
-   * reactivate the server that was just removed.
+   * before Core instead of racing that write — but ONLY when the live send is
+   * for the SAME project: a send to `a` cannot resurrect the archive removed
+   * from `m`, and treating the whole organization as busy left `m` blocked
+   * until the unrelated deadline.
    */
-  function envioEmAndamento(organizacaoId: string): boolean {
+  function envioEmAndamento(organizacaoId: string, projectId: string): boolean {
     const voo = mapaDeVoos().get(organizacaoId);
-    return voo !== undefined && voo.envios.size > 0;
+    if (!voo) return false;
+    for (const projectIdDoEnvio of voo.envios.values()) {
+      if (projectIdDoEnvio === projectId) return true;
+    }
+    return false;
   }
 
   /**
@@ -897,7 +908,9 @@ export function createArquivoRemotoExecutor({
       return;
     }
 
-    const replay = modo === 'automatico' && atual.estado === 'aplicando';
+    const replay =
+      modo === 'automatico' &&
+      (atual.estado === 'aplicando' || atual.replayConsumido === true);
     const tentativaId = proximaTentativa(now);
     const urlNormalizada = normalizarBaseUrl(url);
     // Identity is durable BEFORE the send, exactly like the attempt id. A
@@ -931,10 +944,16 @@ export function createArquivoRemotoExecutor({
       // attempt as a recoverable failure instead; the executor result then
       // reports it and a later pass can retake the slot.
       const tentativaEsperada = atual.tentativaId ?? null;
+      // A failed initial write must not refund the one-replay budget: the
+      // attempt already spent it, even though its `aplicando` checkpoint was
+      // lost. Persisting the budget here keeps the next automatic pass from
+      // sending again without an explicit retry.
+      const replayConsumido = replay || Boolean(atual.replayConsumido);
       try {
         gravarSlot(organizacaoId, slot, tentativaEsperada, {
           estado: 'falha_recuperavel',
           erro: 'checkpoint-inicial',
+          replayConsumido,
         });
         limparCheckpointPendente(organizacaoId, slot);
       } catch {
@@ -943,6 +962,7 @@ export function createArquivoRemotoExecutor({
         guardarCheckpointPendente(organizacaoId, slot, tentativaEsperada, {
           estado: 'falha_recuperavel',
           erro: 'checkpoint-inicial',
+          replayConsumido,
         });
       }
       return;
@@ -1003,7 +1023,7 @@ export function createArquivoRemotoExecutor({
       terminou = true;
       voo.envios.delete(envio);
     });
-    voo.envios.add(envio);
+    voo.envios.set(envio, projectId);
 
     let timer: ReturnType<typeof setTimeout> | undefined;
     const prazo = new Promise<void>(resolve => {
@@ -1076,27 +1096,33 @@ export function createArquivoRemotoExecutor({
         // must not re-add an archive the user removed. Only an explicit
         // request reopens it.
         if (atual.estado === 'removido') continue;
-        if (atual.estado === 'aplicando') {
-          if (atual.replayConsumido) {
-            const tentativaEsperada = atual.tentativaId ?? null;
-            try {
-              gravarSlot(organizacaoId, slot, tentativaEsperada, {
-                estado: 'falha_recuperavel',
-                erro: 'replay-esgotado',
-              });
-              limparCheckpointPendente(organizacaoId, slot);
-            } catch {
-              // A terminal failure checkpoint must never be lost: re-apply it
-              // by timer, still without sending.
-              guardarCheckpointPendente(
-                organizacaoId,
-                slot,
-                tentativaEsperada,
-                {estado: 'falha_recuperavel', erro: 'replay-esgotado'},
-              );
-            }
-            continue;
+        // The one-replay budget already spent is never retaken automatically.
+        // This covers both a crash DURING the replay (`aplicando`) and a
+        // replay whose initial checkpoint write was lost (`checkpoint-inicial`
+        // plus the durable `replayConsumido` the failure checkpoint now
+        // preserves). Only an explicit retry may send again.
+        const replayEsgotado =
+          atual.replayConsumido === true &&
+          (atual.estado === 'aplicando' ||
+            (atual.estado === 'falha_recuperavel' &&
+              atual.erro === 'checkpoint-inicial'));
+        if (replayEsgotado) {
+          const tentativaEsperada = atual.tentativaId ?? null;
+          try {
+            gravarSlot(organizacaoId, slot, tentativaEsperada, {
+              estado: 'falha_recuperavel',
+              erro: 'replay-esgotado',
+            });
+            limparCheckpointPendente(organizacaoId, slot);
+          } catch {
+            // A terminal failure checkpoint must never be lost: re-apply it
+            // by timer, still without sending.
+            guardarCheckpointPendente(organizacaoId, slot, tentativaEsperada, {
+              estado: 'falha_recuperavel',
+              erro: 'replay-esgotado',
+            });
           }
+          continue;
         }
       }
       alvos.push(slot);
@@ -1135,7 +1161,7 @@ export function createArquivoRemotoExecutor({
       // decision. A removal must refuse instead of racing it — a live send can
       // otherwise reactivate the server that was just removed. The refusal
       // writes nothing, so it is not terminal: retry after the send settles.
-      if (envioEmAndamento(alvoInicial.organizacaoId)) {
+      if (envioEmAndamento(alvoInicial.organizacaoId, projectId)) {
         throw new Error('archive-apply-in-flight');
       }
       // #142 review P2 (13ª rodada): a TERMINAL checkpoint whose write was
@@ -1166,8 +1192,24 @@ export function createArquivoRemotoExecutor({
       // alias/canonical pair makes the URL useless. Refuse BEFORE Core and
       // write nothing; the executor persists the id when the addition settles,
       // so a later attempt succeeds.
+      //
+      // #142 18ª rodada: a slot that already reached `concluido` never goes
+      // through another send, so a member read that failed at addition would
+      // leave it without a `deviceId` FOREVER and lock every removal. For that
+      // terminal state the slot's OWN recorded URL is the remaining proof: a
+      // removal naming the same normalized URL proceeds; a different URL keeps
+      // the refusal. There is deliberately no late identity resolution here.
       const slotAlvo = organizacao.arquivoRemoto.slots[alvo.slot];
-      if (!slotAlvo.deviceId?.trim() && removida?.deviceId) {
+      const baseUrlDoSlot = normalizarBaseUrl(
+        slotAlvo.baseUrl ?? organizacao.arquivoRemoto.url,
+      );
+      const provadoPelaUrlDoJournal =
+        slotAlvo.estado === 'concluido' && removida?.baseUrl === baseUrlDoSlot;
+      if (
+        !slotAlvo.deviceId?.trim() &&
+        removida?.deviceId &&
+        !provadoPelaUrlDoJournal
+      ) {
         throw new Error('archive-identity-pending');
       }
       // A slot WITH a `deviceId` is compared by id: equal proceeds, a distinct
@@ -1419,7 +1461,7 @@ export function createArquivoRemotoExecutor({
       }
 
       const voo = {
-        envios: new Set<Promise<void>>(),
+        envios: new Map<Promise<void>, string>(),
         executando: true,
       } as Voo;
       // Register BEFORE `executarInterno` reaches its first `await` (the

@@ -129,9 +129,17 @@ export const AddRemoteArchive: NativeNavigationComponent<
     setSubmetido(false);
   }
 
+  const {estado: estadoValidacao, tentarNovamente} = validacaoArquivo;
   const marcarSubmetido = React.useCallback(() => {
     setSubmetido(true);
-  }, []);
+    // A settled failure keeps the header enabled so the user can press it
+    // again. Re-submitting must actually re-run the lookup: marking the form
+    // as submitted while reusing `invalido`/`indisponivel` did nothing.
+    // `verificando` and `valido` keep the single-source behaviour.
+    if (estadoValidacao === 'invalido' || estadoValidacao === 'indisponivel') {
+      tentarNovamente();
+    }
+  }, [estadoValidacao, tentarNovamente]);
 
   React.useLayoutEffect(() => {
     navigation.setOptions({

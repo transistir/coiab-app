@@ -557,4 +557,44 @@ describe('RemoveRemoteArchive refuses before Core (#142 P2 14ª/17ª rodada)', (
       await flushMicrotasks();
     });
   });
+
+  test('slot concluido sem deviceId com a mesma URL remove via Core e finaliza', async () => {
+    // The member read failed at addition: `concluido` without a `deviceId`.
+    // Since boot/retry skip concluded slots, the recorded URL is the only
+    // proof left; matching it must let the removal reach Core.
+    const arquivo: ArquivoRemoto = {
+      url: URL_ANTIGA,
+      estado: 'concluido',
+      slots: {
+        m: {
+          estado: 'concluido',
+          tentativaId: 'tentativa-m',
+          baseUrl: 'https://arquivo.example',
+        },
+        a: {
+          estado: 'concluido',
+          tentativaId: 'tentativa-a',
+          baseUrl: 'https://arquivo.example',
+        },
+      },
+    };
+    const cenario = criarCenario(async () => false, arquivo);
+    await renderScreen();
+
+    await pressRemove();
+
+    const removeServerPeer = useRemoveServerPeerMock.mock.results[0]!.value as {
+      mutateAsync: jest.Mock;
+    };
+    expect(removeServerPeer.mutateAsync).toHaveBeenCalledWith({
+      serverDeviceId: 'server-device-1',
+    });
+    expect(cenario.slot().m).toEqual({
+      estado: 'removido',
+      baseUrl: 'https://arquivo.example',
+      deviceId: 'server-device-1',
+    });
+    expect(mockNavigation.goBack).toHaveBeenCalled();
+    expect(mockNavigation.navigate).not.toHaveBeenCalled();
+  });
 });

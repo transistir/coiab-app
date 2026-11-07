@@ -614,6 +614,80 @@ describe('AddRemoteArchive', () => {
     }
   });
 
+  test('#142 P2: header re-tenta uma validação indisponível e chega ao arquivo encontrado', async () => {
+    mockHookReal = true;
+    jest.useFakeTimers();
+    const fetchOriginal = global.fetch;
+    const fetchMock = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({
+        status: 200,
+        json: async () => ({data: {name: 'Archive Recovered'}}),
+      } as Response);
+    (global as unknown as {fetch: jest.Mock}).fetch = fetchMock;
+    try {
+      await renderScreen();
+      await fireEvent.changeText(
+        screen.getByTestId('RA.url-inp'),
+        'https://archive.example.com/',
+      );
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      // First lookup failed: the settled `indisponivel` state keeps the header
+      // enabled.
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('RA.url-unreachable')).toBeOnTheScreen();
+
+      const options = mockNavigation.setOptions.mock.calls
+        .map(([opts]) => opts as HeaderOptions)
+        .reverse()
+        .find(
+          opts =>
+            typeof opts.headerRight === 'function' &&
+            opts.headerRight() !== null,
+        )!;
+
+      await act(async () => {
+        await options.headerRight!()!.props.onPress();
+      });
+
+      // Submitting a failed validation re-runs the lookup instead of reusing
+      // the settled failure; `submetido` is kept so the answer lands on the
+      // found-archive surface.
+      expect(
+        screen.getByText('Looking for Remote Archive...'),
+      ).toBeOnTheScreen();
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        2,
+        'https://archive.example.com/info',
+        expect.objectContaining({signal: expect.anything()}),
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(await screen.findByText('You are adding:')).toBeOnTheScreen();
+      expect(screen.getByText('Archive Recovered')).toBeOnTheScreen();
+    } finally {
+      jest.clearAllTimers();
+      jest.useRealTimers();
+      global.fetch = fetchOriginal;
+    }
+  });
+
   test('#142: inline feedback shows the checking spinner while the user types', async () => {
     mockValidacaoAoVivo = {estado: 'verificando'};
     await renderScreen();
@@ -674,27 +748,11 @@ describe('AddRemoteArchive', () => {
       expect(screen.getByTestId('RA.url-retry')).toBeOnTheScreen();
       expect(screen.queryByText('Invalid URL')).not.toBeOnTheScreen();
 
-      // Pressing the header while offline keeps the single-fetch contract and
-      // leaves the user on the search surface with the retry affordance.
-      const options = mockNavigation.setOptions.mock.calls
-        .map(([opts]) => opts as HeaderOptions)
-        .reverse()
-        .find(
-          opts =>
-            typeof opts.headerRight === 'function' &&
-            opts.headerRight() !== null,
-        )!;
-      await act(async () => {
-        await options.headerRight!()!.props.onPress();
-      });
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-      expect(screen.getByTestId('RA.url-unreachable')).toBeOnTheScreen();
-
-      // The retry keeps the URL and issues a NEW request.
+      // The inline retry keeps the URL and issues a NEW request. (The header
+      // re-submission path is covered separately above: it now re-runs the
+      // lookup instead of reusing the settled failure.)
       await fireEvent.press(screen.getByTestId('RA.url-retry'));
-      expect(
-        screen.getByText('Looking for Remote Archive...'),
-      ).toBeOnTheScreen();
+      expect(screen.getByTestId('RA.url-checking')).toBeOnTheScreen();
       await act(async () => {
         jest.advanceTimersByTime(600);
       });
@@ -709,8 +767,22 @@ describe('AddRemoteArchive', () => {
         await Promise.resolve();
         await Promise.resolve();
       });
-      // The submission was already marked, so the recovered answer lands on
-      // the found-archive surface without another header press.
+      // The recovered answer is reused by the submission, so pressing the
+      // header now lands on the found-archive surface without a third lookup.
+      expect(screen.getByTestId('RA.url-valid')).toBeOnTheScreen();
+
+      const options = mockNavigation.setOptions.mock.calls
+        .map(([opts]) => opts as HeaderOptions)
+        .reverse()
+        .find(
+          opts =>
+            typeof opts.headerRight === 'function' &&
+            opts.headerRight() !== null,
+        )!;
+      await act(async () => {
+        await options.headerRight!()!.props.onPress();
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
       expect(await screen.findByText('You are adding:')).toBeOnTheScreen();
       expect(screen.getByText('Archive Recovered')).toBeOnTheScreen();
     } finally {

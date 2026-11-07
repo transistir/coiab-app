@@ -339,6 +339,78 @@ describe('arquivo remoto no journal da organização (#142)', () => {
     );
   });
 
+  test('replay com write inicial perdido preserva o orçamento e só reenvia no retry manual', async () => {
+    const org = organizacao(
+      'org-1',
+      arquivo({
+        estado: 'aplicando',
+        slots: {
+          m: {
+            estado: 'aplicando',
+            tentativaId: 'tentativa-interrompida',
+            iniciadaEm: 1,
+            replayConsumido: false,
+          },
+          a: {estado: 'concluido', tentativaId: 'tentativa-a'},
+        },
+      }),
+    );
+    const h = harness({documentoInicial: documento(org)});
+    const write = h.repository.write.getMockImplementation()!;
+    let falharCheckpointInicial = true;
+    h.repository.write.mockImplementation((next: EstadoOrganizacoes) => {
+      const slot = next.organizacoes[0]?.arquivoRemoto?.slots.m;
+      // The `aplicando` write that carries `replayConsumido: true` is the one
+      // that is lost; nothing was sent, but the budget was already spent.
+      if (
+        falharCheckpointInicial &&
+        slot?.estado === 'aplicando' &&
+        slot.replayConsumido === true
+      ) {
+        falharCheckpointInicial = false;
+        throw new Error('mmkv-write-failed');
+      }
+      write(next);
+    });
+
+    const primeira = await h.criar().executar('org-1');
+
+    expect(h.addServerPeer).not.toHaveBeenCalled();
+    expect(primeira.estado).toBe('falha_recuperavel');
+    // The failure checkpoint kept the budget even though the `aplicando`
+    // checkpoint was never persisted.
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'falha_recuperavel',
+      erro: 'checkpoint-inicial',
+      replayConsumido: true,
+    });
+
+    // The next AUTOMATIC pass now knows the replay was already spent: it must
+    // not resend on its own.
+    const segunda = await h.criar().executar('org-1');
+
+    expect(h.addServerPeer).not.toHaveBeenCalled();
+    expect(segunda.estado).toBe('falha_recuperavel');
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'falha_recuperavel',
+      erro: 'replay-esgotado',
+      replayConsumido: true,
+    });
+
+    // Only the explicit request reopens the budget and really sends.
+    const terceira = await h.criar().executar('org-1', {modo: 'retry'});
+
+    expect(h.addServerPeer).toHaveBeenCalledTimes(1);
+    expect(h.addServerPeer).toHaveBeenCalledWith({
+      projectId: 'org-1-m',
+      url: URL_ARQUIVO,
+    });
+    expect(terceira.estado).toBe('concluido');
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'concluido',
+    });
+  });
+
   test('sucesso seguido de falha de persistência converge sem novo envio', async () => {
     jest.useFakeTimers();
     try {
@@ -1938,5 +2010,187 @@ describe('identidade desconhecida é indeterminada na remoção (#142 16ª/17ª 
       estado: 'removendo',
       deviceId: DEVICE_ID,
     });
+  });
+
+  test('concluido sem deviceId: a URL do próprio journal libera a remoção', async () => {
+    // The member read failed at addition, so the slot is `concluido` without a
+    // `deviceId`. No later send will ever resolve it, and boot/retry skip
+    // concluded slots — without the URL proof the removal would be locked
+    // forever.
+    const org = organizacao(
+      'org-1',
+      arquivo({
+        url: URL_ALIAS,
+        estado: 'concluido',
+        slots: {
+          m: {
+            estado: 'concluido',
+            tentativaId: 'tentativa-m',
+            baseUrl: 'https://alias.example',
+          },
+          a: {
+            estado: 'concluido',
+            tentativaId: 'tentativa-a',
+            baseUrl: 'https://alias.example',
+          },
+        },
+      }),
+    );
+    const consulta = jest.fn(async () => false);
+    const h = harness({documentoInicial: documento(org), consulta});
+    const executor = h.criar();
+    const identidade = {baseUrl: URL_ALIAS, deviceId: DEVICE_ID};
+
+    const anterior = await executor.marcarRemocao('org-1-m', identidade);
+
+    expect(anterior).toBeDefined();
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'removendo',
+      baseUrl: 'https://alias.example',
+      deviceId: DEVICE_ID,
+    });
+
+    // The screen reaches Core and finalizes the same slot.
+    expect(executor.removerArquivo('org-1-m', identidade)).toBe(true);
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
+      estado: 'removido',
+      baseUrl: 'https://alias.example',
+      deviceId: DEVICE_ID,
+    });
+  });
+
+  test('concluido sem deviceId: URL divergente mantém a recusa sem escrita', async () => {
+    const org = organizacao(
+      'org-1',
+      arquivo({
+        url: URL_ALIAS,
+        estado: 'concluido',
+        slots: {
+          m: {
+            estado: 'concluido',
+            tentativaId: 'tentativa-m',
+            baseUrl: 'https://alias.example',
+          },
+          a: {
+            estado: 'concluido',
+            tentativaId: 'tentativa-a',
+            baseUrl: 'https://alias.example',
+          },
+        },
+      }),
+    );
+    const h = harness({documentoInicial: documento(org)});
+    const executor = h.criar();
+
+    const antes = JSON.stringify(h.document);
+    // The alias/canonical pair means a different URL proves nothing: refuse
+    // before Core and write nothing.
+    await expect(
+      executor.marcarRemocao('org-1-m', IDENTIDADE_CANONICA),
+    ).rejects.toThrow('archive-identity-pending');
+    expect(JSON.stringify(h.document)).toBe(antes);
+  });
+
+  test('envio vivo de OUTRO projeto não bloqueia a remoção', async () => {
+    const core = redeRetida();
+    const org = organizacao(
+      'org-1',
+      arquivo({
+        url: URL_ALIAS,
+        estado: 'concluido',
+        slots: {
+          m: {
+            estado: 'concluido',
+            tentativaId: 'tentativa-m',
+            baseUrl: 'https://alias.example',
+            deviceId: DEVICE_ID,
+          },
+          a: {
+            estado: 'pendente',
+            baseUrl: 'https://alias.example',
+            deviceId: DEVICE_ID,
+          },
+        },
+      }),
+    );
+    const h = harness({documentoInicial: documento(org), rede: core.rede});
+    const executor = h.criar();
+
+    // A real send to `a` is alive; it owns only `org-1-a`.
+    const execucao = executor.executar('org-1', {modo: 'retry'});
+    await ate(
+      () =>
+        h.document.organizacoes[0]?.arquivoRemoto?.slots.a.estado ===
+          'aplicando' && h.addServerPeer.mock.calls.length === 1,
+    );
+
+    // Removing `m` is about a different project: the unrelated live send must
+    // not block it.
+    const anterior = await executor.marcarRemocao('org-1-m', {
+      baseUrl: URL_ALIAS,
+      deviceId: DEVICE_ID,
+    });
+    expect(anterior).toBeDefined();
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'removendo',
+      deviceId: DEVICE_ID,
+    });
+
+    expect(
+      executor.removerArquivo('org-1-m', {
+        baseUrl: URL_ALIAS,
+        deviceId: DEVICE_ID,
+      }),
+    ).toBe(true);
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'removido',
+    });
+
+    core.liberar();
+    await execucao;
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.a).toMatchObject({
+      estado: 'concluido',
+    });
+  });
+
+  test('envio vivo do MESMO projeto bloqueia a remoção', async () => {
+    const core = redeRetida();
+    const org = organizacao(
+      'org-1',
+      arquivo({
+        url: URL_ALIAS,
+        estado: 'pendente',
+        slots: {
+          m: {
+            estado: 'pendente',
+            baseUrl: 'https://alias.example',
+            deviceId: DEVICE_ID,
+          },
+          a: {estado: 'concluido', tentativaId: 'tentativa-a'},
+        },
+      }),
+    );
+    const h = harness({documentoInicial: documento(org), rede: core.rede});
+    const executor = h.criar();
+
+    const execucao = executor.executar('org-1', {modo: 'retry'});
+    await ate(
+      () =>
+        h.document.organizacoes[0]?.arquivoRemoto?.slots.m.estado ===
+          'aplicando' && h.addServerPeer.mock.calls.length === 1,
+    );
+
+    const antes = JSON.stringify(h.document);
+    await expect(
+      executor.marcarRemocao('org-1-m', {
+        baseUrl: URL_ALIAS,
+        deviceId: DEVICE_ID,
+      }),
+    ).rejects.toThrow('archive-apply-in-flight');
+    // The refusal writes nothing.
+    expect(JSON.stringify(h.document)).toBe(antes);
+
+    core.liberar();
+    await execucao;
   });
 });
