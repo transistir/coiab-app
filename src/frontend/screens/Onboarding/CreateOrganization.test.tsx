@@ -32,6 +32,7 @@ import {
 import {MMKVStoreInitializer} from '../../hooks/persistedState/createPersistedState';
 import {useProjetarProjectIdAtivo} from '../../contexts/ActiveProjectIdStoreContext';
 import {ErroPacote} from '../../lib/organization/pacotes';
+import territoriesData from '../../lib/territories.json';
 import {OrganizationOperationError} from '../../lib/organization/fanout';
 import {createMaterializer} from '../../lib/organization/materializar';
 import {createArquivoRemotoExecutor} from '../../lib/organization/arquivoRemoto';
@@ -76,7 +77,20 @@ const PT_MESSAGES = {
   '$1screens.Onboarding.CreateOrganization.archiveUrlRetry': 'Tentar novamente',
   '$1screens.Onboarding.CreateOrganization.creationInProgress':
     'Já existe uma criação de território em andamento.',
+  '$1screens.Onboarding.CreateOrganization.missingTerritory':
+    'Selecione o território acima para continuar',
+  '$1screens.Onboarding.CreateOrganization.waitingValidation':
+    'Aguardando verificação do arquivo remoto',
 };
+
+// #142: the catalog is mocked so a test can turn its single entry into a
+// 2+ catalog WITHOUT touching the shipped JSON. The factory returns the real
+// module (the default export is the live object the component imports), so
+// mutating `territoriesData.territories` below is observed by the screen.
+jest.mock('../../lib/territories.json', () => {
+  const real = jest.requireActual('../../lib/territories.json');
+  return {__esModule: true, default: real.default ?? real};
+});
 
 jest.mock('../../contexts/OrganizationMaterializerContext', () => ({
   useOrganizationMaterializer: jest.fn(),
@@ -169,6 +183,23 @@ const backHandlerMock = jest.requireMock(
 };
 
 const useArchiveMock = useAddRemoteArchiveToOrganization as jest.Mock;
+
+// #142: the shipped catalog, snapshotted so a test can temporarily add a
+// second territory and the whole file returns to the real one afterwards.
+const CATALOGO_PADRAO = territoriesData.territories.map(territory => ({
+  ...territory,
+}));
+
+function adicionarSegundoTerritorio() {
+  territoriesData.territories.push({
+    id: '5000',
+    name: 'Segundo Território',
+    states: 'AM',
+    legalStatus: 'Homologada',
+    areaHa: 1000,
+    population: 100,
+  });
+}
 
 const projetar = jest.fn();
 // The screen chains `.catch/.finally` on the returned promise, so the
@@ -417,6 +448,12 @@ beforeEach(() => {
 afterEach(() => {
   // The persistence test writes the real key; never leak it into a sibling.
   MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
+  // #142: restore the shipped single-territory catalog for the next test.
+  territoriesData.territories.splice(
+    0,
+    territoriesData.territories.length,
+    ...CATALOGO_PADRAO,
+  );
 });
 
 describe('CreateOrganization', () => {
@@ -501,16 +538,63 @@ describe('CreateOrganization', () => {
     expect(store.instance.getState().organizacoes).toHaveLength(0);
   });
 
-  test('the create button needs a selected territory; the archive URL is optional (#142)', async () => {
+  test('um único território no catálogo auto-seleciona: URL válida habilita sem tocar na opção (#142)', async () => {
     await renderScreen();
     await irParaEtapaNome();
 
-    // Nothing selected, empty URL.
-    expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+    // The option was never pressed: the single-entry catalog starts selected.
+    await preencherUrl('https://exemplo.org/');
 
-    // #142: the remote archive is optional — selecting a territory with the
-    // field blank is enough to create.
-    await selecionarTerritorio();
+    expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
+    expect(
+      screen.queryByTestId('ORG.create-missing-territory'),
+    ).not.toBeOnTheScreen();
+  });
+
+  test('campo vazio com um único território: botão habilitado (#142)', async () => {
+    await renderScreen();
+    await irParaEtapaNome();
+
+    expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
+    expect(
+      screen.queryByTestId('ORG.create-missing-territory'),
+    ).not.toBeOnTheScreen();
+  });
+
+  test('catálogo com 2+ territórios: sem escolha o botão fica desabilitado e a dica aparece (#142)', async () => {
+    adicionarSegundoTerritorio();
+    await renderScreen();
+    await irParaEtapaNome();
+    await preencherUrl('https://exemplo.org/');
+
+    expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+    expect(
+      screen.getByTestId('ORG.create-missing-territory'),
+    ).toHaveTextContent('Selecione o território acima para continuar');
+  });
+
+  test('verificando com território escolhido mostra só a dica de verificação (#142)', async () => {
+    mockValidarImpl = () => ({estado: 'verificando'});
+    await renderScreen();
+    await irParaEtapaNome();
+    await preencherUrl('https://exemplo.org/');
+
+    expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+    expect(
+      screen.getByTestId('ORG.create-waiting-validation'),
+    ).toHaveTextContent('Aguardando verificação do arquivo remoto');
+    // One hint at a time: the territory hint is NOT duplicated.
+    expect(
+      screen.queryByTestId('ORG.create-missing-territory'),
+    ).not.toBeOnTheScreen();
+  });
+
+  test('the single catalog territory starts selected; the archive URL is optional (#142)', async () => {
+    await renderScreen();
+    await irParaEtapaNome();
+
+    // #142: the one-option catalog is auto-selected, so the button is enabled
+    // even before touching the option and with the URL field blank.
     expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
 
     // A typed malformed URL DOES gate creation and explains why.

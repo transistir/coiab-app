@@ -657,8 +657,14 @@
   "$1screens.Onboarding.CreateOrganization.creationInProgress": {
     "message": "A criação de um território já está em andamento."
   },
+  "$1screens.Onboarding.CreateOrganization.missingTerritory": {
+    "message": "Selecione o território acima para continuar"
+  },
   "$1screens.Onboarding.CreateOrganization.tooLong": {
     "message": "Nome do território é muito longo"
+  },
+  "$1screens.Onboarding.CreateOrganization.waitingValidation": {
+    "message": "Aguardando verificação do arquivo remoto"
   },
   "$1screens.Onboarding.EthnicGroupSelection.continue": {
     "message": "Continuar"

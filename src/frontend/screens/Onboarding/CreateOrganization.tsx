@@ -132,7 +132,23 @@ const m = defineMessages({
     id: '$1screens.Onboarding.CreateOrganization.tooLong',
     defaultMessage: 'Territory name is too long',
   },
+  // #142: the create button used to disable with no visible reason. One
+  // hint explains it, priority: missing territory > pending validation >
+  // name too long.
+  missingTerritory: {
+    id: '$1screens.Onboarding.CreateOrganization.missingTerritory',
+    defaultMessage: 'Select the territory above to continue',
+  },
+  waitingValidation: {
+    id: '$1screens.Onboarding.CreateOrganization.waitingValidation',
+    defaultMessage: 'Waiting for remote archive validation',
+  },
 });
+
+// #129: the catalog is fixed at module load. #142: with a single entry the
+// selection is initialized to it — the screen never shows a selector whose
+// only option is already the answer, with no hint that it must be picked.
+const TERRITORY_OPTIONS = territoriesData.territories;
 
 // SPEC 4.1/E3: the name's real bound is the minted marker's, not the
 // input's — `coiab-org:v1:<16-hex>:<slot>:<encoded-name>` must fit 60 chars,
@@ -166,9 +182,14 @@ export const CreateOrganization = ({
   const [etapa, setEtapa] = React.useState<'introducao' | 'nome'>('introducao');
   // #129: the name is picked from the predefined territory catalog — never
   // typed — and the remote archive URL is required to create.
+  // #142: a single-option catalog starts SELECTED (lazy initializer, so a
+  // re-render can never overwrite the user's own choice). With 2+ options
+  // the selection still starts empty and must be made on the screen.
   const [selectedTerritoryId, setSelectedTerritoryId] = React.useState<
     string | null
-  >(null);
+  >(() =>
+    TERRITORY_OPTIONS.length === 1 ? (TERRITORY_OPTIONS[0]?.id ?? null) : null,
+  );
   const [archiveUrl, setArchiveUrl] = React.useState('');
   const {formatMessage: t} = useIntl();
   // The root-owned materialization engine (SPEC B §5.4): the screen only
@@ -306,7 +327,7 @@ export const CreateOrganization = ({
     navigation.replace('OrganizationProvisioning');
   }, [deveTrocar, coordinationRole, navigation]);
 
-  const territoryOptions = territoriesData.territories;
+  const territoryOptions = TERRITORY_OPTIONS;
   const selectedTerritory = territoryOptions.find(
     territory => territory.id === selectedTerritoryId,
   );
@@ -335,6 +356,18 @@ export const CreateOrganization = ({
     !!selectedTerritory &&
     !tooLong &&
     (arquivoVazio || validacaoArquivo.estado === 'valido');
+
+  // #142: one hint explains a disabled create button, in priority order.
+  // The territory hint is what the release build was missing: the catalog has
+  // a single entry, the selector does not advertise itself, and the button
+  // stayed grey with no reason on screen.
+  const creationHint = !selectedTerritory
+    ? {testID: 'ORG.create-missing-territory', text: t(m.missingTerritory)}
+    : validacaoArquivo.estado === 'verificando'
+      ? {testID: 'ORG.create-waiting-validation', text: t(m.waitingValidation)}
+      : tooLong
+        ? {testID: 'ORG.create-name-too-long', text: t(m.tooLong)}
+        : null;
 
   // SPEC B :54/:55: Back from the name stage returns to the intro and
   // creates nothing; from the intro, Back pops to the choice (Success).
@@ -544,11 +577,6 @@ export const CreateOrganization = ({
                   );
                 })}
               </View>
-              {tooLong && (
-                <BodyText variant="smallMeta" testID="ORG.create-name-too-long">
-                  {t(m.tooLong)}
-                </BodyText>
-              )}
               <BodyText variant="smallMeta">{t(m.archiveUrlLabel)}</BodyText>
               <TextInput
                 testID="ORG.create-archive-url-inp"
@@ -615,6 +643,14 @@ export const CreateOrganization = ({
             {bloqueado && (
               <BodyText variant="smallMeta" testID="ORG.create-blocked">
                 {t(m.creationInProgress)}
+              </BodyText>
+            )}
+            {!iniciando && creationHint && (
+              <BodyText
+                variant="smallMeta"
+                testID={creationHint.testID}
+                style={styles.creationHint}>
+                {creationHint.text}
               </BodyText>
             )}
             {iniciando ? (
@@ -696,5 +732,9 @@ const styles = StyleSheet.create({
   buttonContainer: {
     paddingVertical: 20,
     alignItems: 'center',
+  },
+  creationHint: {
+    marginBottom: 8,
+    textAlign: 'center',
   },
 });
