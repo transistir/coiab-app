@@ -187,13 +187,22 @@ export function setupIntegrationTest() {
     isOnline = true,
     activeProjectId = projectId,
     userProfile,
+    mapeoApi,
   }: Readonly<{
     isOnline?: boolean;
     activeProjectId?: string;
     userProfile?: UserProfileSeed;
+    /**
+     * Alternative IPC client over the SAME manager. A process restart in
+     * production starts with empty module-level registries (the materializer
+     * keys its live-operation locks on the client object); a test that kills
+     * and reopens the app must therefore mount the new tree with a fresh
+     * client instead of reusing the one the dead operation still holds.
+     */
+    mapeoApi?: ComapeoCoreClientApi;
   }> = {}) => {
     const appProviders = createAppProvidersWrapper({
-      mapeoApi: client,
+      mapeoApi: mapeoApi ?? client,
       isOnline,
       activeProjectId,
       userProfile,

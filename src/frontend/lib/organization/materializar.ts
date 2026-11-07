@@ -1,4 +1,9 @@
 import type {ComapeoCoreClientApi} from '@comapeo/ipc';
+import {normalizeRemoteArchiveUrl} from '../../utils/normalizeRemoteArchiveUrl';
+import {
+  criarArquivoRemotoPendente,
+  type ArquivoRemotoExecutor,
+} from './arquivoRemoto';
 import {CREATOR_ROLE_ID, OrganizationOperationError} from './fanout';
 import {markerFor, type Slot} from './marker';
 import {
@@ -156,11 +161,20 @@ export function createMaterializer<
   templates,
   repository,
   generateId,
+  executorArquivoRemoto,
 }: {
   client: CreationClient<P>;
   templates: TemplateSource<P, T>;
   repository: OrganizationRepository;
   generateId(): string;
+  /**
+   * Injected journal executor for the remote-archive step (#142). The engine
+   * never imports React/hooks; the app builds the SINGLE executor (with its
+   * member-cache callback) and shares it with the manual/boot paths. Building
+   * a second executor here would diverge: a creation's late response would
+   * write `concluido` without refreshing the member cache.
+   */
+  executorArquivoRemoto?: ArquivoRemotoExecutor;
 }) {
   /** Upsert by id: the operation's own entry is replaced in place or
    * appended — the array is NEVER replaced wholesale, so the other
@@ -280,7 +294,11 @@ export function createMaterializer<
     }
   }
 
-  async function materialize(op: Operacao, packages: Record<Area, T>) {
+  async function materialize(
+    op: Operacao,
+    packages: Record<Area, T>,
+    opcoes: {arquivoRemotoEmSegundoPlano?: boolean} = {},
+  ) {
     try {
       for (const area of AREAS) {
         assertViva(op);
@@ -395,6 +413,39 @@ export function createMaterializer<
       // §5.4 step 6: the final conferência gates publication on BOTH paths.
       await conferenciaFinal(op, packages);
       assertViva(op);
+      // #142: the remote archive is a STEP of the SAME journal, only after
+      // both local slots are verified. The executor re-reads and patches the
+      // organization by id, persists `aplicando` before each send, skips
+      // concluded slots and bounds an unanswered promise (never hanging
+      // publication forever). An archive failure never changes `org.estado`.
+      const organizacaoDoArquivo = currentFor(op);
+      if (organizacaoDoArquivo.arquivoRemoto && executorArquivoRemoto) {
+        if (opcoes.arquivoRemotoEmSegundoPlano) {
+          // #142 CI: a FRESH creation publishes `pronta` BEFORE the network
+          // step and applies the archive detached. `start` is the promise the
+          // creation screen awaits (`iniciando` → handover), so awaiting the
+          // two bounded sends here made the transition race the server: with
+          // an unreachable archive the journal already existed (the
+          // `preparando` write above) while `pronta` — and therefore the
+          // handover to the provisioning surface — waited on I/O. The archive
+          // stays durable as a journal step: the slots are `pendente` in the
+          // SAME `preparando` entry, and the executor owns its own lock and
+          // boot resume, so a process death here is recovered exactly like
+          // an interrupted send. Resume/retry keep awaiting it: there the
+          // promise is background work, not a UI handover boundary.
+          save({
+            ...currentFor(op),
+            estado: 'pronta',
+            confirmacaoPendente: true,
+          });
+          void executorArquivoRemoto
+            .executar(organizacaoDoArquivo.id)
+            .catch(() => {});
+          return;
+        }
+        await executorArquivoRemoto.executar(organizacaoDoArquivo.id);
+        assertViva(op);
+      }
       save({...currentFor(op), estado: 'pronta', confirmacaoPendente: true});
     } catch (error) {
       // A superseded operation exits silently: the journal now belongs to
@@ -417,7 +468,7 @@ export function createMaterializer<
     });
   }
 
-  async function start(name: string, op: Operacao) {
+  async function start(name: string, op: Operacao, arquivoRemotoUrl?: string) {
     if (condicaoDeRecusaDeCriacao())
       throw new OrganizationOperationError(
         'creation-in-progress',
@@ -425,6 +476,15 @@ export function createMaterializer<
       );
     const error = organizationNameError(name);
     if (error) throw new Error(error);
+    // #142: normalize/validate the URL BEFORE any effect. An invalid URL must
+    // fail before `prepare`, before the journal write and before Core.
+    const urlArquivo =
+      arquivoRemotoUrl === undefined
+        ? undefined
+        : normalizeRemoteArchiveUrl(arquivoRemotoUrl);
+    if (urlArquivo !== undefined && !executorArquivoRemoto) {
+      throw new Error('remote-archive-adapter-missing');
+    }
     // The document id IS the marker's organization id (SPEC B §4.1), so the
     // id and name are validated by minting the Monitoramento marker BEFORE
     // prepare() — a bad id or name must throw before any write.
@@ -458,9 +518,15 @@ export function createMaterializer<
       },
       areaEmExecucao: null,
       ultimoErro: null,
+      // The URL and the journal's initial state are part of THIS single
+      // `preparando` write — there is no window between creating the
+      // organization and recording where its archive must be applied.
+      ...(urlArquivo !== undefined
+        ? {arquivoRemoto: criarArquivoRemotoPendente(urlArquivo)}
+        : {}),
     });
     op.organizacaoId = id;
-    await materialize(op, packages);
+    await materialize(op, packages, {arquivoRemotoEmSegundoPlano: true});
   }
   /**
    * With an id, targets the `preparando` journal of THAT organization only —
@@ -704,8 +770,12 @@ export function createMaterializer<
     return operation;
   }
   return {
-    start: (name: string) =>
-      exclusive('start', op => start(name, op), name.trim()),
+    start: (name: string, opcoes?: {arquivoRemotoUrl?: string}) =>
+      exclusive(
+        'start',
+        op => start(name, op, opcoes?.arquivoRemotoUrl),
+        name.trim(),
+      ),
     resume: (id?: string) =>
       exclusive('resume', op => resume(op, id), undefined, id),
     retry: () => {

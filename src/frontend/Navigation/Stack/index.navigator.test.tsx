@@ -318,13 +318,37 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
   const freshSetup = setupIntegrationTestWithoutProject();
   const orgSetup = setupIntegrationTest();
 
+  // #142: the create button now unlocks only after the live validation hook
+  // reaches the archive's `/info` endpoint. The integration test drives the
+  // REAL hook, so a global `fetch` mock must answer 200 with an archive name
+  // for the button to enable. Saved/restored around each test.
+  let fetchOriginal: typeof global.fetch;
+
   afterEach(() => {
     // The document is durable by design too: a seeded pending confirmation
     // must not leak from the test that wrote it into the next device state.
     MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
+    global.fetch = fetchOriginal;
   });
 
   beforeEach(() => {
+    fetchOriginal = global.fetch;
+    // Only intercept the archive `/info` probe the live-validation hook makes;
+    // everything else (including Core's own networking) falls through to the
+    // real fetch so project creation is unaffected.
+    global.fetch = jest.fn((input: unknown, init?: unknown) => {
+      const url = typeof input === 'string' ? input : String(input);
+      if (url.endsWith('/info')) {
+        return Promise.resolve({
+          status: 200,
+          json: async () => ({data: {name: 'Arquivo Remoto'}}),
+        } as Response);
+      }
+      return (fetchOriginal as (i: unknown, n?: unknown) => Promise<Response>)(
+        input,
+        init,
+      );
+    }) as unknown as typeof global.fetch;
     // The teardown of a FAILED test cannot be awaited by the next one: an
     // engine operation left mid-flight by a failure is killed when Core's
     // IPC stops, and its rejection path writes the recovered journal
@@ -403,6 +427,12 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     await fireEvent.changeText(
       screen.getByTestId('ORG.create-archive-url-inp'),
       'https://exemplo.org/',
+    );
+    // #142: the create button unlocks only after the live validation reaches
+    // `/info` (600 ms debounce + the mocked 200 response).
+    await waitFor(
+      () => expect(screen.getByTestId('ORG.create-btn')).toBeEnabled(),
+      {timeout: 15_000},
     );
 
     const listProjects = freshSetup.manager.listProjects.bind(
@@ -762,6 +792,12 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       screen.getByTestId('ORG.create-archive-url-inp'),
       'https://exemplo.org/',
     );
+    // #142: wait for the live validation to unlock the button (debounce +
+    // mocked 200 `/info`) before pressing create.
+    await waitFor(
+      () => expect(screen.getByTestId('ORG.create-btn')).toBeEnabled(),
+      {timeout: 15_000},
+    );
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
     // O documento assumiu a viagem: a tela substituiu o formulário pela
@@ -826,6 +862,12 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     await fireEvent.changeText(
       screen.getByTestId('ORG.create-archive-url-inp'),
       'https://exemplo.org/',
+    );
+    // #142: wait for the live validation to unlock the button (debounce +
+    // mocked 200 `/info`) before pressing create.
+    await waitFor(
+      () => expect(screen.getByTestId('ORG.create-btn')).toBeEnabled(),
+      {timeout: 15_000},
     );
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
     // Aguarda a publicação pronta SEM tocar em Abrir organização. Espera de

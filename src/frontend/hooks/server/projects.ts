@@ -1,4 +1,3 @@
-import type {MemberApi} from '@comapeo/core';
 import {
   useProjectSettings as useComapeoProjectSettings,
   useExportGeoJSON,
@@ -9,7 +8,7 @@ import {
 import {useMutation, useQuery} from '@tanstack/react-query';
 
 import {useActiveProject} from '../../contexts/ActiveProjectContext';
-import {MEMBER_ROLE_ID} from '../../sharedTypes';
+import {isActiveArchiveServerMember} from '../../lib/organization/archiveServer';
 import {saveDocuments} from '@react-native-documents/picker';
 import {Exports} from '../../sharedTypes/navigation';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -36,23 +35,10 @@ export function useGetOwnRole() {
   return useOwnRoleInProject({projectId});
 }
 
-// TODO: Ideally this is handled in @comapeo/core (https://github.com/digidem/comapeo-core/issues/1031)
-export type ArchiveServerMemberInfo = MemberApi.MemberInfo & {
-  deviceType: 'selfHostedServer';
-  selfHostedServerDetails: NonNullable<
-    MemberApi.MemberInfo['selfHostedServerDetails']
-  >;
-};
-
-// TODO: Ideally this is handled in @comapeo/core (https://github.com/digidem/comapeo-core/issues/1031)
-export function isActiveArchiveServerMember(
-  member: MemberApi.MemberInfo,
-): member is ArchiveServerMemberInfo & MemberApi.ActiveMemberInfo {
-  if (member.deviceType !== 'selfHostedServer') return false;
-  if (!member.selfHostedServerDetails) return false;
-  if (member.role.roleId !== MEMBER_ROLE_ID) return false;
-  return true;
-}
+export {
+  isActiveArchiveServerMember,
+  type ArchiveServerMemberInfo,
+} from '../../lib/organization/archiveServer';
 
 export function useActiveArchiveServer({projectId}: {projectId: string}) {
   const {data: members} = useManyMembers({projectId, includeLeft: false});
