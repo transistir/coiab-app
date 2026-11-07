@@ -57,11 +57,23 @@
     "message": "Discard changes?",
     "description": "Title of dialog that shows when cancelling observation edits"
   },
+  "$1ProjectSettings.RemoteArchive.AddRemoteArchive.checkingUrl": {
+    "message": "Checking remote archive…"
+  },
   "$1ProjectSettings.RemoteArchive.AddRemoteArchive.looking": {
     "message": "Looking for Remote Archive..."
   },
   "$1ProjectSettings.RemoteArchive.AddRemoteArchive.navTitle": {
     "message": "Add Remote Archive"
+  },
+  "$1ProjectSettings.RemoteArchive.AddRemoteArchive.urlRetry": {
+    "message": "Try again"
+  },
+  "$1ProjectSettings.RemoteArchive.AddRemoteArchive.urlUnreachable": {
+    "message": "Could not reach the remote archive. Check the connection and try again."
+  },
+  "$1ProjectSettings.RemoteArchive.AddRemoteArchive.validUrl": {
+    "message": "Remote archive found"
   },
   "$1ProjectSettings.RemoteArchive.AddRemoteArchive.youAreAdding": {
     "message": "You are adding:"
@@ -581,6 +593,9 @@
     "message": "Go to the map",
     "description": "Action that opens the map of the current work area from the empty observation list"
   },
+  "$1screens.Onboarding.CreateOrganization.archiveUrlChecking": {
+    "message": "Checking remote archive…"
+  },
   "$1screens.Onboarding.CreateOrganization.archiveUrlInvalid": {
     "message": "Enter a valid HTTPS URL"
   },
@@ -590,14 +605,29 @@
   "$1screens.Onboarding.CreateOrganization.archiveUrlPlaceholder": {
     "message": "https://…"
   },
+  "$1screens.Onboarding.CreateOrganization.archiveUrlRetry": {
+    "message": "Try again"
+  },
+  "$1screens.Onboarding.CreateOrganization.archiveUrlUnreachable": {
+    "message": "Could not reach the remote archive. Check the connection and try again."
+  },
+  "$1screens.Onboarding.CreateOrganization.archiveUrlValid": {
+    "message": "Remote archive found"
+  },
   "$1screens.Onboarding.CreateOrganization.creating": {
     "message": "Creating Territory…"
   },
   "$1screens.Onboarding.CreateOrganization.creationInProgress": {
     "message": "A Territory creation is already in progress."
   },
+  "$1screens.Onboarding.CreateOrganization.missingTerritory": {
+    "message": "Select the territory above to continue"
+  },
   "$1screens.Onboarding.CreateOrganization.tooLong": {
     "message": "Territory name is too long"
+  },
+  "$1screens.Onboarding.CreateOrganization.waitingValidation": {
+    "message": "Waiting for remote archive validation"
   },
   "$1screens.Onboarding.EthnicGroupSelection.continue": {
     "message": "Continue"
@@ -667,6 +697,21 @@
   },
   "$1screens.OrganizationSetup.alertsRow": {
     "message": "Alerts"
+  },
+  "$1screens.OrganizationSetup.archiveApplying": {
+    "message": "Adding"
+  },
+  "$1screens.OrganizationSetup.archiveDone": {
+    "message": "Ready"
+  },
+  "$1screens.OrganizationSetup.archiveFailed": {
+    "message": "Not added"
+  },
+  "$1screens.OrganizationSetup.archivePending": {
+    "message": "Pending"
+  },
+  "$1screens.OrganizationSetup.archiveRow": {
+    "message": "Remote archive"
   },
   "$1screens.OrganizationSetup.areaNotComplete": {
     "message": "Not completed"
@@ -750,6 +795,10 @@
   "$1screens.OrganizationSetup.retryActivationButton": {
     "message": "Try again",
     "description": "Reactivates the settled organization after a failed open (SPEC B §4.4:120, “Tentar novamente”)"
+  },
+  "$1screens.OrganizationSetup.retryArchiveButton": {
+    "message": "Try again",
+    "description": "Retries applying the remote archive to this territory only"
   },
   "$1screens.OrganizationSetup.retryPreparationButton": {
     "message": "Try again"

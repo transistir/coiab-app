@@ -525,10 +525,8 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
       ),
     );
     await fireEvent.press(screen.getByTestId('ORG.create-name-option-4999'));
-    await fireEvent.changeText(
-      screen.getByTestId('ORG.create-archive-url-inp'),
-      'https://exemplo.org/',
-    );
+    // #142: the remote archive is optional and this suite is not about it —
+    // leave the field empty so creation needs no `/info` validation.
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
     // The document takes over the journey: C's provisioning surface owns the
@@ -1133,10 +1131,8 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
       ),
     );
     await fireEvent.press(screen.getByTestId('ORG.create-name-option-4999'));
-    await fireEvent.changeText(
-      screen.getByTestId('ORG.create-archive-url-inp'),
-      'https://exemplo.org/',
-    );
+    // #142: the remote archive is optional and this suite is not about it —
+    // leave the field empty so creation needs no `/info` validation.
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
     expect(
       await screen.findAllByText('Territory created', {}, {timeout: 30_000}),
@@ -1231,10 +1227,8 @@ describe('#89 fase 2 — saída navegável da recovery de cold start (navigator 
       ),
     );
     await fireEvent.press(screen.getByTestId('ORG.create-name-option-4999'));
-    await fireEvent.changeText(
-      screen.getByTestId('ORG.create-archive-url-inp'),
-      'https://exemplo.org/',
-    );
+    // #142: the remote archive is optional and this suite is not about it —
+    // leave the field empty so creation needs no `/info` validation.
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
     await waitFor(

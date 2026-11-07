@@ -436,7 +436,17 @@ export function createOrganizationActivation({
     const org = store.instance
       .getState()
       .organizacoes.find(item => item.id === id);
-    if (!org || org.estado === 'pronta') return false;
+    if (!org) return false;
+    // #142 fase B: a `pronta` organization whose archive step is still
+    // pending stays retomável through this SAME adapter, but it is NOT a
+    // preparation: its journal must not be downgraded to `preparando` and no
+    // second materialization loop may start. Only the archive step runs.
+    const arquivoPendente =
+      org.arquivoRemoto !== undefined &&
+      org.arquivoRemoto.estado !== 'concluido' &&
+      org.arquivoRemoto.estado !== 'removido';
+    const prontaComArquivo = org.estado === 'pronta' && arquivoPendente;
+    if (org.estado === 'pronta' && !arquivoPendente) return false;
     // SPEC A §4.2 regra 7: 'falha_recuperavel' is recorded when a resume was
     // ATTEMPTED and failed. A missing adapter is absent capability, not a
     // failed attempt: the organization stays exactly as persisted
@@ -449,12 +459,14 @@ export function createOrganizationActivation({
       });
       return false;
     }
-    store.instance.setState(state => ({
-      organizacoes: state.organizacoes.map(item =>
-        item.id === id ? {...item, estado: 'preparando' as const} : item,
-      ),
-    }));
-    publish({status: 'preparing'});
+    if (!prontaComArquivo) {
+      store.instance.setState(state => ({
+        organizacoes: state.organizacoes.map(item =>
+          item.id === id ? {...item, estado: 'preparando' as const} : item,
+        ),
+      }));
+      publish({status: 'preparing'});
+    }
     try {
       await resumePreparation(id);
       const completed = store.instance
@@ -462,7 +474,9 @@ export function createOrganizationActivation({
         .organizacoes.find(item => item.id === id);
       if (completed?.estado !== 'pronta')
         throw new Error('preparation-incomplete');
-      publish({status: 'confirmation'});
+      // The archive-only path must not publish a preparation/confirmation
+      // status over an already ready context.
+      if (!prontaComArquivo) publish({status: 'confirmation'});
       return true;
     } catch {
       // Publication may have succeeded before the adapter's late rejection.
@@ -472,7 +486,8 @@ export function createOrganizationActivation({
         .getState()
         .organizacoes.find(item => item.id === id);
       if (completed?.estado === 'pronta') {
-        publish({status: 'confirmation', error: undefined});
+        if (!prontaComArquivo)
+          publish({status: 'confirmation', error: undefined});
         return true;
       }
       store.instance.setState(state => ({

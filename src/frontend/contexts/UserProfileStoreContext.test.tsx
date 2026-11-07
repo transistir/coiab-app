@@ -9,7 +9,6 @@ import {
   isProfileComplete,
   useUserProfileActions,
   useUserProfileState,
-  type PendingArchiveIntent,
   type UserProfileStore,
 } from './UserProfileStoreContext';
 
@@ -17,7 +16,6 @@ const EMPTY_PROFILE = {
   ethnicity: null,
   village: null,
   coordinationRole: null,
-  pendingArchives: [],
 };
 
 function createWrapper(store: UserProfileStore) {
@@ -67,14 +65,12 @@ describe('UserProfileStore', () => {
       ethnicity: 'Kaxuyana-Tunayana',
       village: 'Aldeia X',
       coordinationRole: null,
-      pendingArchives: [],
     });
     expect(readEnvelope()).toStrictEqual({
       state: {
         ethnicity: 'Kaxuyana-Tunayana',
         village: 'Aldeia X',
         coordinationRole: null,
-        pendingArchives: [],
       },
       version: 6,
     });
@@ -90,13 +86,11 @@ describe('UserProfileStore', () => {
       ethnicity: 'Etnia que não está no catálogo',
       village: 'Aldeia inventada pela comunidade',
       coordinationRole: null,
-      pendingArchives: [],
     });
     expect(readEnvelope()?.state).toStrictEqual({
       ethnicity: 'Etnia que não está no catálogo',
       village: 'Aldeia inventada pela comunidade',
       coordinationRole: null,
-      pendingArchives: [],
     });
   });
 
@@ -124,7 +118,6 @@ describe('UserProfileStore', () => {
       ethnicity: 'Mawayana',
       village: 'Aldeia Y',
       coordinationRole: null,
-      pendingArchives: [],
     });
   });
 
@@ -166,7 +159,6 @@ describe('UserProfileStore', () => {
         ethnicity: 'Tunayana',
         village: null,
         coordinationRole: null,
-        pendingArchives: [],
       },
       version: 6,
     });
@@ -237,11 +229,10 @@ describe('UserProfileStore', () => {
       ethnicity: 'Etnia livre',
       village: 'Aldeia livre',
       coordinationRole: null,
-      pendingArchives: [],
     });
   });
 
-  test('envelope v3 reidrata o papel e pendingArchives vazio', () => {
+  test('envelope v3 reidrata o papel', () => {
     writeRaw(
       persistedRaw({
         state: {
@@ -259,7 +250,6 @@ describe('UserProfileStore', () => {
       ethnicity: 'Tunayana',
       village: 'Aldeia X',
       coordinationRole: 'coordinator',
-      pendingArchives: [],
     });
   });
 
@@ -274,7 +264,6 @@ describe('UserProfileStore', () => {
         ethnicity: null,
         village: null,
         coordinationRole: 'coordinator',
-        pendingArchives: [],
       },
       version: 6,
     });
@@ -285,185 +274,6 @@ describe('UserProfileStore', () => {
         .coordinationRole,
     ).toBe('coordinator');
   });
-
-  test('addPendingArchiveIntent persiste a lista por id e update/remove são funcionais', () => {
-    const store = createUserProfileStore({persist: true});
-
-    const a: PendingArchiveIntent = {
-      id: 'intent-a',
-      url: 'https://exemplo.org/',
-      organizationId: null,
-      createdAt: 1_000,
-      sendingSince: null,
-      appliedFor: null,
-    };
-    store.actions.addPendingArchiveIntent(a);
-
-    expect(store.instance.getState().pendingArchives).toStrictEqual([a]);
-    expect(readEnvelope()).toStrictEqual({
-      state: {
-        ethnicity: null,
-        village: null,
-        coordinationRole: null,
-        pendingArchives: [a],
-      },
-      version: 6,
-    });
-
-    const reidratado = createUserProfileStore({persist: true});
-    expect(reidratado.instance.getState().pendingArchives).toStrictEqual([a]);
-
-    store.actions.updatePendingArchiveIntent('intent-a', {
-      organizationId: 'org-1',
-      sendingSince: 2_000,
-    });
-    expect(store.instance.getState().pendingArchives[0]).toStrictEqual({
-      ...a,
-      organizationId: 'org-1',
-      sendingSince: 2_000,
-    });
-
-    store.actions.removePendingArchiveIntent('intent-a');
-    expect(store.instance.getState().pendingArchives).toStrictEqual([]);
-    expect(
-      createUserProfileStore({persist: true}).instance.getState()
-        .pendingArchives,
-    ).toStrictEqual([]);
-  });
-
-  test('conclusão antiga não apaga o intent criado depois (P1-B)', () => {
-    const store = createUserProfileStore({persist: true});
-    store.actions.addPendingArchiveIntent({
-      id: 'intent-a',
-      url: 'https://a.example/',
-    });
-    // B is created while A is still in flight.
-    store.actions.addPendingArchiveIntent({
-      id: 'intent-b',
-      url: 'https://b.example/',
-    });
-
-    // A completes: only the addressed id is touched.
-    store.actions.updatePendingArchiveIntent('intent-a', {
-      appliedFor: 'org-a',
-    });
-    store.actions.removePendingArchiveIntent('intent-a');
-
-    expect(
-      store.instance.getState().pendingArchives.map(intent => intent.id),
-    ).toEqual(['intent-b']);
-  });
-
-  test('envelope v4 hidrata lista vazia e ignora pendingArchiveUrl', () => {
-    writeRaw(
-      persistedRaw({
-        state: {
-          ethnicity: 'Tunayana',
-          village: 'Aldeia X',
-          coordinationRole: 'coordinator',
-          pendingArchiveUrl: 'https://legado.example/',
-        },
-        version: 4,
-      }),
-    );
-
-    expect(
-      createUserProfileStore({persist: true}).instance.getState(),
-    ).toStrictEqual({
-      ethnicity: 'Tunayana',
-      village: 'Aldeia X',
-      coordinationRole: 'coordinator',
-      pendingArchives: [],
-    });
-  });
-
-  test('envelope v5 (intent único) hidrata lista vazia, sem migração', () => {
-    writeRaw(
-      persistedRaw({
-        state: {
-          ethnicity: 'Tunayana',
-          village: 'Aldeia X',
-          coordinationRole: null,
-          pendingArchive: {
-            url: 'https://legado.example/',
-            organizationId: 'org-legada',
-            appliedFor: null,
-          },
-        },
-        version: 5,
-      }),
-    );
-
-    expect(
-      createUserProfileStore({persist: true}).instance.getState(),
-    ).toStrictEqual({
-      ethnicity: 'Tunayana',
-      village: 'Aldeia X',
-      coordinationRole: null,
-      pendingArchives: [],
-    });
-  });
-
-  test.each([
-    ['lista não-array', 'x'],
-    ['item não-objeto', ['x']],
-    ['id ausente', [{url: 'https://exemplo.org/', createdAt: 1}]],
-    ['url vazia', [{id: 'a', url: '   ', createdAt: 1}]],
-    ['url numérica', [{id: 'a', url: 7, createdAt: 1}]],
-    ['createdAt inválido', [{id: 'a', url: 'https://exemplo.org/'}]],
-    [
-      'organizationId numérico',
-      [
-        {
-          id: 'a',
-          url: 'https://exemplo.org/',
-          organizationId: 7,
-          createdAt: 1,
-        },
-      ],
-    ],
-    [
-      'appliedFor numérico',
-      [
-        {
-          id: 'a',
-          url: 'https://exemplo.org/',
-          appliedFor: 7,
-          createdAt: 1,
-        },
-      ],
-    ],
-    [
-      'sendingSince string',
-      [
-        {
-          id: 'a',
-          url: 'https://exemplo.org/',
-          sendingSince: 'agora',
-          createdAt: 1,
-        },
-      ],
-    ],
-  ])(
-    'pendingArchives inválido no envelope v6 (%s) hidrata vazio',
-    (_nome, pendingArchives) => {
-      writeRaw(
-        persistedRaw({
-          state: {
-            ethnicity: 'Tunayana',
-            village: 'Aldeia X',
-            coordinationRole: null,
-            pendingArchives,
-          },
-          version: 6,
-        }),
-      );
-
-      expect(
-        createUserProfileStore({persist: true}).instance.getState(),
-      ).toStrictEqual(EMPTY_PROFILE);
-    },
-  );
 
   test('papel inválido no envelope v3 hidrata o perfil vazio', () => {
     writeRaw(
@@ -509,7 +319,6 @@ describe('UserProfileStore', () => {
         ethnicity: 'Tunayana',
         village: 'Aldeia X',
         coordinationRole: null,
-        pendingArchives: [],
       },
       true,
     ],
@@ -519,7 +328,6 @@ describe('UserProfileStore', () => {
         ethnicity: null,
         village: 'Aldeia X',
         coordinationRole: null,
-        pendingArchives: [],
       },
       false,
     ],
@@ -529,7 +337,6 @@ describe('UserProfileStore', () => {
         ethnicity: '',
         village: 'Aldeia X',
         coordinationRole: null,
-        pendingArchives: [],
       },
       false,
     ],
@@ -539,7 +346,6 @@ describe('UserProfileStore', () => {
         ethnicity: '   ',
         village: 'Aldeia X',
         coordinationRole: null,
-        pendingArchives: [],
       },
       false,
     ],
@@ -549,7 +355,6 @@ describe('UserProfileStore', () => {
         ethnicity: 'Tunayana',
         village: null,
         coordinationRole: null,
-        pendingArchives: [],
       },
       false,
     ],
@@ -559,7 +364,6 @@ describe('UserProfileStore', () => {
         ethnicity: 'Tunayana',
         village: '',
         coordinationRole: null,
-        pendingArchives: [],
       },
       false,
     ],
@@ -569,7 +373,6 @@ describe('UserProfileStore', () => {
         ethnicity: 'Tunayana',
         village: '   ',
         coordinationRole: null,
-        pendingArchives: [],
       },
       false,
     ],
@@ -597,7 +400,6 @@ describe('UserProfileStore', () => {
       ethnicity: 'Mawayana',
       village: 'Aldeia W',
       coordinationRole: null,
-      pendingArchives: [],
     });
   });
 });

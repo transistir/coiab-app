@@ -24,17 +24,25 @@ import {
   type OrganizationMaterializerHandle,
 } from '../../contexts/OrganizationMaterializerContext';
 import {
+  COIAB_ORGANIZATIONS_STORAGE_KEY,
   CoiabOrganizationsStoreProvider,
   createCoiabOrganizationsStore,
   type CoiabOrganizationsStore,
 } from '../../contexts/CoiabOrganizationsStoreContext';
+import {MMKVStoreInitializer} from '../../hooks/persistedState/createPersistedState';
 import {useProjetarProjectIdAtivo} from '../../contexts/ActiveProjectIdStoreContext';
 import {ErroPacote} from '../../lib/organization/pacotes';
+import territoriesData from '../../lib/territories.json';
 import {OrganizationOperationError} from '../../lib/organization/fanout';
-import type {
-  EstadoOrganizacoes,
-  OrganizacaoLocal,
+import {createMaterializer} from '../../lib/organization/materializar';
+import {createArquivoRemotoExecutor} from '../../lib/organization/arquivoRemoto';
+import {repositorioDoStore} from '../../lib/organization/repositorio';
+import {
+  parseEstadoOrganizacoes,
+  type EstadoOrganizacoes,
+  type OrganizacaoLocal,
 } from '../../lib/organization/coiabOrganizations';
+import {CREATOR_ROLE_ID} from '../../sharedTypes';
 import type {AppStackParamsList} from '../../sharedTypes/navigation';
 import {useAddRemoteArchiveToOrganization} from '../../hooks/organization/useAddRemoteArchiveToOrganization';
 import {
@@ -60,15 +68,61 @@ const PT_MESSAGES = {
     'Endereço do arquivo remoto',
   '$1screens.Onboarding.CreateOrganization.archiveUrlInvalid':
     'Informe uma URL HTTPS válida',
+  '$1screens.Onboarding.CreateOrganization.archiveUrlChecking':
+    'Verificando arquivo remoto…',
+  '$1screens.Onboarding.CreateOrganization.archiveUrlValid':
+    'Arquivo remoto encontrado',
+  '$1screens.Onboarding.CreateOrganization.archiveUrlUnreachable':
+    'Não foi possível falar com o arquivo remoto. Verifique a conexão e tente novamente.',
+  '$1screens.Onboarding.CreateOrganization.archiveUrlRetry': 'Tentar novamente',
   '$1screens.Onboarding.CreateOrganization.creationInProgress':
     'Já existe uma criação de território em andamento.',
+  '$1screens.Onboarding.CreateOrganization.missingTerritory':
+    'Selecione o território acima para continuar',
+  '$1screens.Onboarding.CreateOrganization.waitingValidation':
+    'Aguardando verificação do arquivo remoto',
 };
+
+// #142: the catalog is mocked so a test can turn its single entry into a
+// 2+ catalog WITHOUT touching the shipped JSON. The factory returns the real
+// module (the default export is the live object the component imports), so
+// mutating `territoriesData.territories` below is observed by the screen.
+jest.mock('../../lib/territories.json', () => {
+  const real = jest.requireActual('../../lib/territories.json');
+  return {__esModule: true, default: real.default ?? real};
+});
 
 jest.mock('../../contexts/OrganizationMaterializerContext', () => ({
   useOrganizationMaterializer: jest.fn(),
 }));
 
 const useMaterializadorMock = useOrganizationMaterializer as jest.Mock;
+
+// #142: the live-validation hook is mocked here so the existing button-enable
+// assertions stay SYNCHRONOUS. The mock derives the same states the real hook
+// would from the FORMAT (via the real normalizer): a well-formed HTTPS URL is
+// `valido` with its normalized form (what the real hook reaches on a 200),
+// anything malformed is `formato-invalido`, and an empty string is `vazio`.
+// A test can swap in the REAL hook through `mockValidarImpl` to exercise the live
+// spinner→check→fetch chain end to end (see the "feedback ao vivo" test).
+let mockValidarImpl: (url: string) => unknown;
+jest.mock('../../hooks/server/useValidarArquivoRemoto', () => ({
+  useValidarArquivoRemoto: (url: string) => mockValidarImpl(url),
+}));
+
+const {
+  normalizeRemoteArchiveUrl: normalizeParaMock,
+} = require('../../utils/normalizeRemoteArchiveUrl');
+
+function validacaoSincronaPorFormato(url: string) {
+  if (!url.trim()) return {estado: 'vazio'};
+  try {
+    const urlNormalizada = normalizeParaMock(url);
+    return {estado: 'valido', nome: 'Arquivo Remoto', urlNormalizada};
+  } catch {
+    return {estado: 'formato-invalido'};
+  }
+}
 
 jest.mock('../../contexts/ActiveProjectIdStoreContext', () => ({
   useProjetarProjectIdAtivo: jest.fn(),
@@ -129,6 +183,23 @@ const backHandlerMock = jest.requireMock(
 };
 
 const useArchiveMock = useAddRemoteArchiveToOrganization as jest.Mock;
+
+// #142: the shipped catalog, snapshotted so a test can temporarily add a
+// second territory and the whole file returns to the real one afterwards.
+const CATALOGO_PADRAO = territoriesData.territories.map(territory => ({
+  ...territory,
+}));
+
+function adicionarSegundoTerritorio() {
+  territoriesData.territories.push({
+    id: '5000',
+    name: 'Segundo Território',
+    states: 'AM',
+    legalStatus: 'Homologada',
+    areaHa: 1000,
+    population: 100,
+  });
+}
 
 const projetar = jest.fn();
 // The screen chains `.catch/.finally` on the returned promise, so the
@@ -243,41 +314,8 @@ const registrarComProjetos = async (nome: string) => {
   });
 };
 
-/** The organization registered, then the materialization fails recoverably. */
-const registrarComFalhaRecuperavel = async (nome: string) => {
-  await Promise.resolve();
-  const base = documentoComOrganizacao(nome).organizacoes[0]!;
-  store.instance.setState({
-    versao: 1,
-    organizacoes: [
-      {
-        ...base,
-        estado: 'falha_recuperavel',
-        materializacao: {
-          monitoramento: {
-            etapa: 'criado',
-            projectId: 'p-m',
-            template: null,
-            idsAntesDaCriacao: null,
-          },
-          alertas: {
-            etapa: 'criado',
-            projectId: 'p-a',
-            template: null,
-            idsAntesDaCriacao: null,
-          },
-        },
-        ultimoErro: {
-          codigo: 'preparation-failed',
-          area: 'alertas',
-          ocorridoEm: '2026-11-04T00:00:00.000Z',
-        },
-      },
-    ],
-    ativa: null,
-  });
-  throw new Error('materialization interrupted');
-};
+// A recoverable archive failure is exercised through the REAL materializer
+// below; no mock journals an organization without `arquivoRemoto`.
 
 let store: CoiabOrganizationsStore;
 let profileStore: UserProfileStore;
@@ -290,15 +328,6 @@ const SuccessStub = () => <Text>SUCCESS-STUB</Text>;
 const HomeStub = () => <Text>HOME-REACHED</Text>;
 const ProvisioningStub = () => <Text>PROVISIONING-REACHED</Text>;
 const JoinStub = () => <Text>JOIN-REACHED</Text>;
-
-/** Records the route params the handover actually carried. */
-const provisioningRouteParams: Array<{intentId?: string} | undefined> = [];
-const ParamsProvisioningStub = ({
-  route,
-}: NativeStackScreenProps<AppStackParamsList, 'OrganizationProvisioning'>) => {
-  provisioningRouteParams.push(route.params);
-  return <Text>PROVISIONING-PARAMS</Text>;
-};
 
 const ErrorStub = ({
   route,
@@ -401,7 +430,7 @@ async function preencherUrl(url = 'https://exemplo.org/') {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  provisioningRouteParams.length = 0;
+  mockValidarImpl = validacaoSincronaPorFormato;
   backHandlerMock.__live.length = 0;
   store = createCoiabOrganizationsStore();
   profileStore = createUserProfileStore();
@@ -414,6 +443,17 @@ beforeEach(() => {
     progress: {monitoramento: 'idle', alertas: 'idle'},
     reset: jest.fn(),
   });
+});
+
+afterEach(() => {
+  // The persistence test writes the real key; never leak it into a sibling.
+  MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
+  // #142: restore the shipped single-territory catalog for the next test.
+  territoriesData.territories.splice(
+    0,
+    territoriesData.territories.length,
+    ...CATALOGO_PADRAO,
+  );
 });
 
 describe('CreateOrganization', () => {
@@ -498,18 +538,66 @@ describe('CreateOrganization', () => {
     expect(store.instance.getState().organizacoes).toHaveLength(0);
   });
 
-  test('the create button stays disabled without a name and without a valid URL', async () => {
+  test('um único território no catálogo auto-seleciona: URL válida habilita sem tocar na opção (#142)', async () => {
     await renderScreen();
     await irParaEtapaNome();
 
-    // Nothing selected, empty URL.
-    expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+    // The option was never pressed: the single-entry catalog starts selected.
+    await preencherUrl('https://exemplo.org/');
 
-    // Selecting a territory alone is not enough.
-    await selecionarTerritorio();
-    expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+    expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
+    expect(
+      screen.queryByTestId('ORG.create-missing-territory'),
+    ).not.toBeOnTheScreen();
+  });
 
-    // A malformed URL keeps the button disabled and explains why.
+  test('campo vazio com um único território: botão habilitado (#142)', async () => {
+    await renderScreen();
+    await irParaEtapaNome();
+
+    expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
+    expect(
+      screen.queryByTestId('ORG.create-missing-territory'),
+    ).not.toBeOnTheScreen();
+  });
+
+  test('catálogo com 2+ territórios: sem escolha o botão fica desabilitado e a dica aparece (#142)', async () => {
+    adicionarSegundoTerritorio();
+    await renderScreen();
+    await irParaEtapaNome();
+    await preencherUrl('https://exemplo.org/');
+
+    expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+    expect(
+      screen.getByTestId('ORG.create-missing-territory'),
+    ).toHaveTextContent('Selecione o território acima para continuar');
+  });
+
+  test('verificando com território escolhido mostra só a dica de verificação (#142)', async () => {
+    mockValidarImpl = () => ({estado: 'verificando'});
+    await renderScreen();
+    await irParaEtapaNome();
+    await preencherUrl('https://exemplo.org/');
+
+    expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+    expect(
+      screen.getByTestId('ORG.create-waiting-validation'),
+    ).toHaveTextContent('Aguardando verificação do arquivo remoto');
+    // One hint at a time: the territory hint is NOT duplicated.
+    expect(
+      screen.queryByTestId('ORG.create-missing-territory'),
+    ).not.toBeOnTheScreen();
+  });
+
+  test('the single catalog territory starts selected; the archive URL is optional (#142)', async () => {
+    await renderScreen();
+    await irParaEtapaNome();
+
+    // #142: the one-option catalog is auto-selected, so the button is enabled
+    // even before touching the option and with the URL field blank.
+    expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
+
+    // A typed malformed URL DOES gate creation and explains why.
     await preencherUrl('not a url');
     expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
     expect(
@@ -522,6 +610,60 @@ describe('CreateOrganization', () => {
     expect(
       screen.getByTestId('ORG.create-archive-url-invalid'),
     ).toBeOnTheScreen();
+  });
+
+  test('campo vazio: botão habilita, nenhum fetch, sem feedback; URL inválida desabilita (#142 regressão)', async () => {
+    // The field is optional: an empty field must not schedule any request at
+    // all, and no spinner/check/error may appear for a field nobody filled.
+    jest.useFakeTimers();
+    const fetchOriginal = global.fetch;
+    try {
+      mockValidarImpl = jest.requireActual(
+        '../../hooks/server/useValidarArquivoRemoto',
+      ).useValidarArquivoRemoto;
+      const fetchMock = jest.fn();
+      (global as unknown as {fetch: jest.Mock}).fetch = fetchMock;
+
+      await renderScreen();
+      await irParaEtapaNome();
+      await selecionarTerritorio();
+
+      expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
+
+      // Well past the hook's debounce: an empty URL never reaches the wire.
+      await act(async () => {
+        jest.advanceTimersByTime(5_000);
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(
+        screen.queryByTestId('ORG.create-archive-url-checking'),
+      ).not.toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('ORG.create-archive-url-valid'),
+      ).not.toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('ORG.create-archive-url-invalid'),
+      ).not.toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('ORG.create-archive-url-unreachable'),
+      ).not.toBeOnTheScreen();
+
+      // Typing an invalid URL turns the blank field into a gate: the button
+      // disables and the request is still never made (format rejection).
+      await preencherUrl('not a url');
+      expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+      expect(
+        screen.getByTestId('ORG.create-archive-url-invalid'),
+      ).toBeOnTheScreen();
+      await act(async () => {
+        jest.advanceTimersByTime(5_000);
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      jest.clearAllTimers();
+      jest.useRealTimers();
+      global.fetch = fetchOriginal;
+    }
   });
 
   test('the create button is enabled with a selected territory and a valid HTTPS URL', async () => {
@@ -537,7 +679,230 @@ describe('CreateOrganization', () => {
     ).not.toBeOnTheScreen();
   });
 
-  test('presses create with the territory name from the selector and never writes the active project', async () => {
+  test('feedback ao vivo: verificando → valido, uma chamada de fetch, botão habilita (prova 1 no nível da tela)', async () => {
+    // Exercises the REAL hook end to end through the screen: the spinner
+    // shows immediately, exactly one `/info` request fires after the 600 ms
+    // debounce, and the check + enabled button appear once the server
+    // answers 200 with a name.
+    jest.useFakeTimers();
+    try {
+      mockValidarImpl = jest.requireActual(
+        '../../hooks/server/useValidarArquivoRemoto',
+      ).useValidarArquivoRemoto;
+      const fetchMock = jest.fn().mockResolvedValue({
+        status: 200,
+        json: async () => ({data: {name: 'Arquivo do Servidor'}}),
+      });
+      (global as unknown as {fetch: jest.Mock}).fetch = fetchMock;
+
+      await renderScreen();
+      await irParaEtapaNome();
+      await selecionarTerritorio();
+      await preencherUrl('https://exemplo.org/');
+
+      // Immediate spinner, before the debounced request goes out.
+      expect(
+        screen.getByTestId('ORG.create-archive-url-checking'),
+      ).toBeOnTheScreen();
+      expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      // The debounce elapses: a single request fires.
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://exemplo.org/info',
+        expect.objectContaining({signal: expect.anything()}),
+      );
+
+      // The server answers: the check appears and the button unlocks.
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(
+        screen.getByTestId('ORG.create-archive-url-valid'),
+      ).toBeOnTheScreen();
+      expect(screen.getByText('Arquivo do Servidor')).toBeOnTheScreen();
+      expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
+      expect(
+        screen.queryByTestId('ORG.create-archive-url-checking'),
+      ).not.toBeOnTheScreen();
+    } finally {
+      jest.clearAllTimers();
+      jest.useRealTimers();
+    }
+  });
+
+  test('A válido → B pendente → volta A mostra verificando e trava o botão até a nova resposta de A (#142 P2)', async () => {
+    jest.useFakeTimers();
+    const fetchOriginal = global.fetch;
+    try {
+      mockValidarImpl = jest.requireActual(
+        '../../hooks/server/useValidarArquivoRemoto',
+      ).useValidarArquivoRemoto;
+
+      function respostaControlada() {
+        let liberar!: (nome: string) => void;
+        const promise = new Promise<Response>(resolve => {
+          liberar = (nome: string) =>
+            resolve({
+              status: 200,
+              json: async () => ({data: {name: nome}}),
+            } as Response);
+        });
+        return {promise, liberar};
+      }
+      const respostaA1 = respostaControlada();
+      const respostaB = respostaControlada();
+      const respostaA2 = respostaControlada();
+      const fetchMock = jest
+        .fn()
+        .mockReturnValueOnce(respostaA1.promise)
+        .mockReturnValueOnce(respostaB.promise)
+        .mockReturnValueOnce(respostaA2.promise);
+      (global as unknown as {fetch: jest.Mock}).fetch = fetchMock;
+
+      await renderScreen();
+      await irParaEtapaNome();
+      await selecionarTerritorio();
+
+      // A answers valid — the button unlocks.
+      await preencherUrl('https://a.example/');
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      await act(async () => {
+        respostaA1.liberar('Arquivo A');
+      });
+      expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
+
+      // B's request is issued but never answers.
+      await preencherUrl('https://b.example/');
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+
+      // Back to A BEFORE B answered: A's old `valido` must not come back.
+      await preencherUrl('https://a.example/');
+      expect(
+        screen.getByTestId('ORG.create-archive-url-checking'),
+      ).toBeOnTheScreen();
+      expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+
+      // The fresh request for A goes out; B's late answer changes nothing.
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      await act(async () => {
+        respostaB.liberar('Arquivo B');
+      });
+      expect(
+        screen.getByTestId('ORG.create-archive-url-checking'),
+      ).toBeOnTheScreen();
+      expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+
+      // Only the NEW answer for A unlocks the button.
+      await act(async () => {
+        respostaA2.liberar('Arquivo A novo');
+      });
+      expect(
+        screen.getByTestId('ORG.create-archive-url-valid'),
+      ).toBeOnTheScreen();
+      expect(screen.getByText('Arquivo A novo')).toBeOnTheScreen();
+      expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
+    } finally {
+      jest.clearAllTimers();
+      jest.useRealTimers();
+      global.fetch = fetchOriginal;
+    }
+  });
+
+  test('rede caindo: indisponivel tem mensagem própria e o retry reexecuta até validar (#142 P3)', async () => {
+    jest.useFakeTimers();
+    const fetchOriginal = global.fetch;
+    try {
+      mockValidarImpl = jest.requireActual(
+        '../../hooks/server/useValidarArquivoRemoto',
+      ).useValidarArquivoRemoto;
+      const fetchMock = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('offline'))
+        .mockResolvedValueOnce({
+          status: 200,
+          json: async () => ({data: {name: 'Arquivo Recuperado'}}),
+        });
+      (global as unknown as {fetch: jest.Mock}).fetch = fetchMock;
+
+      await renderScreen();
+      await irParaEtapaNome();
+      await selecionarTerritorio();
+      await preencherUrl('https://exemplo.org/');
+
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      // A connectivity failure is NOT presented as a malformed URL.
+      expect(
+        screen.getByTestId('ORG.create-archive-url-unreachable'),
+      ).toHaveTextContent(
+        'Não foi possível falar com o arquivo remoto. Verifique a conexão e tente novamente.',
+      );
+      expect(
+        screen.queryByTestId('ORG.create-archive-url-invalid'),
+      ).not.toBeOnTheScreen();
+      expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+
+      // Retry re-runs the check for the SAME URL.
+      await fireEvent.press(screen.getByTestId('ORG.create-archive-url-retry'));
+      expect(
+        screen.getByTestId('ORG.create-archive-url-checking'),
+      ).toBeOnTheScreen();
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        1,
+        'https://exemplo.org/info',
+        expect.objectContaining({signal: expect.anything()}),
+      );
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        2,
+        'https://exemplo.org/info',
+        expect.objectContaining({signal: expect.anything()}),
+      );
+      expect(
+        screen.getByTestId('ORG.create-archive-url-valid'),
+      ).toBeOnTheScreen();
+      expect(screen.getByText('Arquivo Recuperado')).toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('ORG.create-archive-url-unreachable'),
+      ).not.toBeOnTheScreen();
+      expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
+    } finally {
+      jest.clearAllTimers();
+      jest.useRealTimers();
+      global.fetch = fetchOriginal;
+    }
+  });
+
+  test('presses create with the territory name and the normalized archive URL', async () => {
     // SPEC B §3.3/§5.3: between `pronta` and the "Abrir organização" tap the
     // device has NO active selection — `ativa` is born only in that tap's
     // single write, so the form must hand the materializer the selected
@@ -546,28 +911,21 @@ describe('CreateOrganization', () => {
     await irParaEtapaNome();
 
     await selecionarTerritorio();
-    await preencherUrl('https://exemplo.org/');
+    await preencherUrl('https://exemplo.org');
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
     await waitFor(() => {
-      expect(iniciar).toHaveBeenCalledWith('Kaxuyana-Tunayana');
+      expect(iniciar).toHaveBeenCalledWith('Kaxuyana-Tunayana', {
+        arquivoRemotoUrl: 'https://exemplo.org/',
+      });
     });
     await waitFor(() => {
       expect(projetar).not.toHaveBeenCalled();
     });
   });
 
-  test('records an intent with an id before starting and never applies the archive from this screen (#129)', async () => {
+  test('iniciar recebe a URL normalizada e não grava intent (#142 fase C1)', async () => {
     const iniciarComProjetos = jest.fn(async (nome: string) => {
-      // The intent must already be durable when the materialization starts.
-      const [intent] = profileStore.instance.getState().pendingArchives;
-      expect(intent).toMatchObject({
-        url: 'https://exemplo.org/',
-        organizationId: null,
-        appliedFor: null,
-        sendingSince: null,
-      });
-      expect(typeof intent?.id).toBe('string');
       await registrarComProjetos(nome);
     });
     mockMaterializador({iniciar: iniciarComProjetos});
@@ -580,51 +938,99 @@ describe('CreateOrganization', () => {
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
     expect(await screen.findByText('PROVISIONING-REACHED')).toBeOnTheScreen();
-    expect(iniciarComProjetos).toHaveBeenCalledWith('Kaxuyana-Tunayana');
-    // The network add belongs to the global resume hook, never to the form —
-    // even when both project ids are already published.
+    expect(iniciarComProjetos).toHaveBeenCalledWith('Kaxuyana-Tunayana', {
+      arquivoRemotoUrl: 'https://exemplo.org/',
+    });
+    // The network add belongs to the journal, never to the form — even when
+    // both project ids are already published.
     expect(archiveStart).not.toHaveBeenCalled();
-    const intents = profileStore.instance.getState().pendingArchives;
-    expect(intents).toHaveLength(1);
-    expect(intents[0]).toMatchObject({
-      url: 'https://exemplo.org/',
-      organizationId: null,
-      appliedFor: null,
-    });
+    expect(Object.keys(profileStore.instance.getState()).sort()).toStrictEqual([
+      'coordinationRole',
+      'ethnicity',
+      'village',
+    ]);
   });
 
-  test('a persistence failure before the latch leaves the form usable and never starts the materialization (#129/P2)', async () => {
-    mockMaterializador({iniciar: registrar});
-    await renderScreen();
-    await irParaEtapaNome();
-    await selecionarTerritorio();
-    await preencherUrl('https://exemplo.org/');
-
-    const setState = jest.spyOn(profileStore.instance, 'setState');
-    setState.mockImplementationOnce(() => {
-      throw new Error('disk full');
-    });
-    try {
-      await fireEvent.press(screen.getByTestId('ORG.create-btn'));
-    } finally {
-      setState.mockRestore();
+  test('a recoverable failure keeps the archive URL in the journal, not in the profile (#142 fase C1)', async () => {
+    // Persistence proof: this test runs over the REAL per-device storage —
+    // the in-memory document tends to pass even when nothing was written.
+    MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
+    store = createCoiabOrganizationsStore({persist: true});
+    // The REAL materializer, over this screen's real store: the journal must
+    // carry the URL through the first checkpoint and a later failure, and
+    // survive a rehydration — a mock that registers an organization without
+    // `arquivoRemoto` proves nothing about persistence.
+    const projetos = new Map<string, ReturnType<typeof criarProjetoFake>>();
+    function criarProjetoFake() {
+      return {
+        $member: {
+          getById: jest.fn(async () => ({
+            name: 'Teste',
+            deviceType: 'mobile',
+            role: {roleId: CREATOR_ROLE_ID},
+          })),
+        },
+        $importCategories: jest.fn(async () => {}),
+        $setProjectSettings: jest.fn(async () => {}),
+        $getProjectSettings: jest.fn(async () => ({
+          name: 'Monitoramento',
+          sendStats: false,
+          projectDescription: 'marker',
+        })),
+      };
     }
-
-    expect(await screen.findByText('ERROR: disk full')).toBeOnTheScreen();
-    expect(iniciar).not.toHaveBeenCalled();
-    // The latch was never armed: the button is back, not a stuck spinner.
-    expect(
-      screen.getByTestId('ORG.create-btn', {includeHiddenElements: true}),
-    ).toBeOnTheScreen();
-    expect(
-      screen.queryByText('Creating Territory…', {
-        includeHiddenElements: true,
+    const client = {
+      getDeviceInfo: jest.fn(async () => ({
+        deviceId: 'device-1',
+        name: 'Teste',
+        deviceType: 'mobile' as const,
+      })),
+      setDeviceInfo: jest.fn(async () => {}),
+      listProjects: jest.fn(async () => []),
+      createProject: jest.fn(async ({name}: {name: string}) => {
+        // The SECOND area fails, i.e. AFTER the first checkpoint and after
+        // Monitoramento was fully materialized.
+        if (name === 'Alertas') throw new Error('alertas-failed');
+        return 'projeto-m';
       }),
-    ).not.toBeOnTheScreen();
-  });
-
-  test('a recoverable failure keeps the intent pinned to THIS creation target (#129/P1-A)', async () => {
-    mockMaterializador({iniciar: registrarComFalhaRecuperavel});
+      getProject: jest.fn(async () => {
+        let projeto = projetos.get('projeto-m');
+        if (!projeto) {
+          projeto = criarProjetoFake();
+          projetos.set('projeto-m', projeto);
+        }
+        return projeto;
+      }),
+    };
+    const templates = {
+      prepare: jest.fn(async () => ({
+        monitoramento: {
+          ref: {versao: '1', hash: 'monitoramento'},
+          filePath: '/fake/monitoramento.comapeocat',
+        },
+        alertas: {
+          ref: {versao: '1', hash: 'alertas'},
+          filePath: '/fake/alertas.comapeocat',
+        },
+      })),
+      verify: jest.fn(async () => true),
+    };
+    const repository = repositorioDoStore(store);
+    const materializer = createMaterializer({
+      client,
+      templates,
+      repository,
+      generateId: () => '0123456789abcdef',
+      executorArquivoRemoto: createArquivoRemotoExecutor({
+        repository,
+        rede: {addServerPeer: jest.fn(async () => {})},
+      }),
+    });
+    const iniciarReal = jest.fn(
+      (nome: string, opcoes?: {arquivoRemotoUrl?: string}) =>
+        materializer.start(nome, opcoes),
+    );
+    mockMaterializador({iniciar: iniciarReal});
     await renderScreen(OrganizationProvisioning);
     await irParaEtapaNome();
 
@@ -635,64 +1041,48 @@ describe('CreateOrganization', () => {
     expect(
       await screen.findByText('Could not finish creating the territory.'),
     ).toBeOnTheScreen();
-    // The form recorded the intent; the provisioning surface pinned the
-    // target id received through the route param. The global owner applies
-    // it — never the form, and never a guessed organization.
-    expect(profileStore.instance.getState().pendingArchives).toHaveLength(1);
-    expect(profileStore.instance.getState().pendingArchives[0]).toMatchObject({
-      url: 'https://exemplo.org/',
-      organizationId: '0123456789abcdef',
-      appliedFor: null,
+    expect(iniciarReal).toHaveBeenCalledWith('Kaxuyana-Tunayana', {
+      arquivoRemotoUrl: 'https://exemplo.org/',
     });
+    expect(Object.keys(profileStore.instance.getState()).sort()).toStrictEqual([
+      'coordinationRole',
+      'ethnicity',
+      'village',
+    ]);
     expect(archiveStart).not.toHaveBeenCalled();
-  });
 
-  test('a refused attempt never hands its orphan intent to another creation (P1-A)', async () => {
-    // The materializer's own typed refusal: nothing was registered, so the
-    // intent is orphan. The form stays with the blocked notice.
-    mockMaterializador({
-      iniciar: async () => {
-        throw new OrganizationOperationError(
-          'creation-in-progress',
-          'another creation is in flight',
-        );
-      },
-    });
-    await renderScreen(ParamsProvisioningStub);
-    await irParaEtapaNome();
-    await selecionarTerritorio();
-    await preencherUrl('https://exemplo.org/');
-    await fireEvent.press(screen.getByTestId('ORG.create-btn'));
-
-    expect(
-      await screen.findByTestId('ORG.create-blocked', {
-        includeHiddenElements: true,
-      }),
-    ).toBeOnTheScreen();
-    expect(profileStore.instance.getState().pendingArchives).toHaveLength(1);
-
-    // Another creation's organization enters preparation: the provisioning
-    // surface takes over, but this screen's orphan intent must not travel
-    // with it (it would be pinned to that territory).
-    const outra = {
-      ...documentoComOrganizacao('Outra').organizacoes[0]!,
-      id: 'fedcba9876543210',
-    };
-    store.instance.setState({
-      versao: 1,
-      organizacoes: [outra],
-      ativa: null,
+    // Failure after the FIRST checkpoint, with the URL already in the same
+    // `preparando` write: the persisted journal keeps it and a rehydration
+    // reads it back.
+    const persistida = store.instance.getState().organizacoes[0]!;
+    expect(client.createProject).toHaveBeenCalledTimes(2);
+    expect(persistida.estado).toBe('falha_recuperavel');
+    expect(persistida.materializacao.monitoramento.etapa).toBe('verificado');
+    expect(persistida.arquivoRemoto).toMatchObject({
+      url: 'https://exemplo.org/',
+      estado: 'pendente',
     });
 
+    // The assertion is against the DOCUMENT ACTUALLY WRITTEN to storage —
+    // deleting the persist branch would leave this raw slice absent.
+    const cru = MMKVStoreInitializer.getItem(
+      COIAB_ORGANIZATIONS_STORAGE_KEY,
+    ) as string | null;
+    expect(typeof cru).toBe('string');
+    const gravado = JSON.parse(cru as string).state;
+    const reidratado = parseEstadoOrganizacoes(gravado);
+    expect(reidratado?.organizacoes[0]?.arquivoRemoto).toMatchObject({
+      url: 'https://exemplo.org/',
+      estado: 'pendente',
+    });
+    // A NEW store built with persistence reopens the same document.
+    const reaberto = createCoiabOrganizationsStore({persist: true});
     expect(
-      await screen.findByText('PROVISIONING-PARAMS', {
-        includeHiddenElements: true,
-      }),
-    ).toBeOnTheScreen();
-    expect(provisioningRouteParams).toHaveLength(1);
-    expect(provisioningRouteParams[0]?.intentId).toBeUndefined();
-    // The orphan stays put: it is never applied to that territory.
-    expect(profileStore.instance.getState().pendingArchives).toHaveLength(1);
+      reaberto.instance.getState().organizacoes[0]?.arquivoRemoto,
+    ).toMatchObject({
+      url: 'https://exemplo.org/',
+      estado: 'pendente',
+    });
   });
 
   test('shows the loading state instead of the button while creating', async () => {
@@ -939,7 +1329,9 @@ describe('CreateOrganization', () => {
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
     await waitFor(() => {
-      expect(iniciar).toHaveBeenCalledWith('Kaxuyana-Tunayana');
+      expect(iniciar).toHaveBeenCalledWith('Kaxuyana-Tunayana', {
+        arquivoRemotoUrl: 'https://exemplo.org/',
+      });
     });
     // Once `iniciar` resolves, the provisioning surface owns the living
     // operation. The redirect effect stays silent here because
@@ -1000,7 +1392,9 @@ describe('CreateOrganization', () => {
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
     await waitFor(() => {
-      expect(iniciar).toHaveBeenCalledWith('Kaxuyana-Tunayana');
+      expect(iniciar).toHaveBeenCalledWith('Kaxuyana-Tunayana', {
+        arquivoRemotoUrl: 'https://exemplo.org/',
+      });
     });
     expect(await screen.findByTestId('ORG.create-blocked')).toBeOnTheScreen();
     // The form stays usable and the press never crashed it.

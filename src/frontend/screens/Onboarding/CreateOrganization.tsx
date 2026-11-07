@@ -11,12 +11,13 @@ import {
 } from 'react-native';
 import {defineMessages, useIntl} from 'react-intl';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
+import MaterialIcons from '@react-native-vector-icons/material-icons';
 
 import {HeaderText} from '../../sharedComponents/Text/HeaderText';
 import {BodyText} from '../../sharedComponents/Text/BodyText';
 import {PrimaryButton} from '../../sharedComponents/Buttons';
 import {LoadingIndicator} from '../../sharedComponents/LoadingIndicator';
-import {BLACK, COMAPEO_BLUE, LIGHT_GREY} from '../../lib/styles';
+import {BLACK, COMAPEO_BLUE, DARK_GREEN, LIGHT_GREY} from '../../lib/styles';
 import {useOrganizationMaterializer} from '../../contexts/OrganizationMaterializerContext';
 import {
   useCoiabOrganizationsState,
@@ -31,11 +32,8 @@ import {ErroPacote} from '../../lib/organization/pacotes';
 import {OrganizationOperationError} from '../../lib/organization/fanout';
 import {AppStackParamsList} from '../../sharedTypes/navigation';
 import territoriesData from '../../lib/territories.json';
-import {normalizeRemoteArchiveUrl} from '../../utils/normalizeRemoteArchiveUrl';
-import {
-  useUserProfileActions,
-  useUserProfileState,
-} from '../../contexts/UserProfileStoreContext';
+import {useValidarArquivoRemoto} from '../../hooks/server/useValidarArquivoRemoto';
+import {useUserProfileState} from '../../contexts/UserProfileStoreContext';
 
 const m = defineMessages({
   // SPEC B :54/:55: both stages share the title and the submit button
@@ -85,6 +83,27 @@ const m = defineMessages({
     id: '$1screens.Onboarding.CreateOrganization.archiveUrlInvalid',
     defaultMessage: 'Enter a valid HTTPS URL',
   },
+  // #142 P3: an unreachable archive (no network / timeout / abort) is NOT a
+  // malformed URL; it gets its own message and a retry affordance.
+  archiveUrlUnreachable: {
+    id: '$1screens.Onboarding.CreateOrganization.archiveUrlUnreachable',
+    defaultMessage:
+      'Could not reach the remote archive. Check the connection and try again.',
+  },
+  archiveUrlRetry: {
+    id: '$1screens.Onboarding.CreateOrganization.archiveUrlRetry',
+    defaultMessage: 'Try again',
+  },
+  // #142: live validation feedback. The user must see the check reach the
+  // server BEFORE the create button unlocks.
+  archiveUrlChecking: {
+    id: '$1screens.Onboarding.CreateOrganization.archiveUrlChecking',
+    defaultMessage: 'Checking remote archive…',
+  },
+  archiveUrlValid: {
+    id: '$1screens.Onboarding.CreateOrganization.archiveUrlValid',
+    defaultMessage: 'Remote archive found',
+  },
   creating: {
     id: '$1screens.Onboarding.CreateOrganization.creating',
     defaultMessage: 'Creating Territory…',
@@ -113,7 +132,23 @@ const m = defineMessages({
     id: '$1screens.Onboarding.CreateOrganization.tooLong',
     defaultMessage: 'Territory name is too long',
   },
+  // #142: the create button used to disable with no visible reason. One
+  // hint explains it, priority: missing territory > pending validation >
+  // name too long.
+  missingTerritory: {
+    id: '$1screens.Onboarding.CreateOrganization.missingTerritory',
+    defaultMessage: 'Select the territory above to continue',
+  },
+  waitingValidation: {
+    id: '$1screens.Onboarding.CreateOrganization.waitingValidation',
+    defaultMessage: 'Waiting for remote archive validation',
+  },
 });
+
+// #129: the catalog is fixed at module load. #142: with a single entry the
+// selection is initialized to it — the screen never shows a selector whose
+// only option is already the answer, with no hint that it must be picked.
+const TERRITORY_OPTIONS = territoriesData.territories;
 
 // SPEC 4.1/E3: the name's real bound is the minted marker's, not the
 // input's — `coiab-org:v1:<16-hex>:<slot>:<encoded-name>` must fit 60 chars,
@@ -139,17 +174,6 @@ function toError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
 
-/**
- * #129/P1-B: the intent identity. It scopes every later write, so a
- * completion can never touch an intent created by another attempt. Hermes has
- * no guaranteed `crypto.randomUUID`, hence the fallback.
- */
-function novoIntentId(): string {
-  const cripto = (globalThis as {crypto?: {randomUUID?: () => string}}).crypto;
-  if (cripto?.randomUUID) return cripto.randomUUID();
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-}
-
 export const CreateOrganization = ({
   navigation,
 }: NativeStackScreenProps<AppStackParamsList, 'CreateOrganization'>) => {
@@ -158,9 +182,14 @@ export const CreateOrganization = ({
   const [etapa, setEtapa] = React.useState<'introducao' | 'nome'>('introducao');
   // #129: the name is picked from the predefined territory catalog — never
   // typed — and the remote archive URL is required to create.
+  // #142: a single-option catalog starts SELECTED (lazy initializer, so a
+  // re-render can never overwrite the user's own choice). With 2+ options
+  // the selection still starts empty and must be made on the screen.
   const [selectedTerritoryId, setSelectedTerritoryId] = React.useState<
     string | null
-  >(null);
+  >(() =>
+    TERRITORY_OPTIONS.length === 1 ? (TERRITORY_OPTIONS[0]?.id ?? null) : null,
+  );
   const [archiveUrl, setArchiveUrl] = React.useState('');
   const {formatMessage: t} = useIntl();
   // The root-owned materialization engine (SPEC B §5.4): the screen only
@@ -172,15 +201,6 @@ export const CreateOrganization = ({
   // P1-1: creation belongs to coordinators. A participant reaching this route
   // (drawer, provisioning, direct navigation) is sent to the waiting screen.
   const {coordinationRole} = useUserProfileState();
-  const {addPendingArchiveIntent} = useUserProfileActions();
-  // The id of the intent created by THIS screen, handed to the provisioning
-  // route so only that screen pins the target. It is set only once this
-  // attempt PROVED the organization in the document belongs to it (the start
-  // resolved, or it registered the organization before failing recoverably),
-  // so a handover caused by another creation never carries it.
-  const [intentIdConfirmado, setIntentIdConfirmado] = React.useState<
-    string | null
-  >(null);
   // One-shot guard: the redirect must land once even if the effect re-runs.
   const redirecionouParticipanteRef = React.useRef(false);
   // SPEC B §3.3 items 2-3 and §5.5: a document with a creation in flight
@@ -304,40 +324,50 @@ export const CreateOrganization = ({
     // P1-1: a participant's destination is the waiting screen, never the
     // provisioning surface.
     if (coordinationRole === 'participant') return;
-    // The intent of THIS creation travels with the route: the provisioning
-    // surface pins only it, so a different territory can never inherit the
-    // URL (P1-A). Only an attempt that PROVED the organization belongs to it
-    // may carry the id; a handover caused by another creation's document
-    // must not carry this screen's orphan id.
-    if (intentIdConfirmado) {
-      navigation.replace('OrganizationProvisioning', {
-        intentId: intentIdConfirmado,
-      });
-    } else {
-      navigation.replace('OrganizationProvisioning');
-    }
-  }, [deveTrocar, coordinationRole, intentIdConfirmado, navigation]);
+    navigation.replace('OrganizationProvisioning');
+  }, [deveTrocar, coordinationRole, navigation]);
 
-  const territoryOptions = territoriesData.territories;
+  const territoryOptions = TERRITORY_OPTIONS;
   const selectedTerritory = territoryOptions.find(
     territory => territory.id === selectedTerritoryId,
   );
   const trimmedName = selectedTerritory?.name.trim() ?? '';
   const tooLong = trimmedName.length > 0 && isNameTooLong(trimmedName);
-  // The archive URL is validated on every change and only as FORMAT (no
-  // reachability): a normalized URL is the sole valid state.
-  const normalizedArchiveUrl = React.useMemo(() => {
-    if (!archiveUrl.trim()) return null;
-    try {
-      return normalizeRemoteArchiveUrl(archiveUrl);
-    } catch {
-      return null;
-    }
-  }, [archiveUrl]);
+  // #142: the archive URL is now validated LIVE against the server, not just
+  // for format. The hook debounces the typing, calls `/info`, and reports an
+  // explicit positive (`valido`) state — the only state that unlocks create
+  // WHEN A URL WAS TYPED. The field is optional: an empty field means "no
+  // remote archive", so it neither calls the server nor gates creation.
+  const validacaoArquivo = useValidarArquivoRemoto(archiveUrl);
+  const arquivoVazio = archiveUrl.trim().length === 0;
   const archiveUrlInvalid =
-    archiveUrl.trim().length > 0 && normalizedArchiveUrl === null;
+    validacaoArquivo.estado === 'invalido' ||
+    validacaoArquivo.estado === 'formato-invalido';
+  // #142 P3: a network failure is not a format error. Keep it separate so the
+  // user sees a connectivity message with a retry, never "invalid HTTPS URL".
+  const archiveUrlUnreachable = validacaoArquivo.estado === 'indisponivel';
+  // The normalized URL handed to the materializer comes from the validated
+  // result so the created journal carries exactly what was reached.
+  const normalizedArchiveUrl =
+    validacaoArquivo.estado === 'valido'
+      ? (validacaoArquivo.urlNormalizada ?? null)
+      : null;
   const canCreate =
-    !!selectedTerritory && normalizedArchiveUrl !== null && !tooLong;
+    !!selectedTerritory &&
+    !tooLong &&
+    (arquivoVazio || validacaoArquivo.estado === 'valido');
+
+  // #142: one hint explains a disabled create button, in priority order.
+  // The territory hint is what the release build was missing: the catalog has
+  // a single entry, the selector does not advertise itself, and the button
+  // stayed grey with no reason on screen.
+  const creationHint = !selectedTerritory
+    ? {testID: 'ORG.create-missing-territory', text: t(m.missingTerritory)}
+    : validacaoArquivo.estado === 'verificando'
+      ? {testID: 'ORG.create-waiting-validation', text: t(m.waitingValidation)}
+      : tooLong
+        ? {testID: 'ORG.create-name-too-long', text: t(m.tooLong)}
+        : null;
 
   // SPEC B :54/:55: Back from the name stage returns to the intro and
   // creates nothing; from the intro, Back pops to the choice (Success).
@@ -387,9 +417,14 @@ export const CreateOrganization = ({
     if (iniciandoRef.current || deveTrocar) {
       return;
     }
-    if (!selectedTerritory || !normalizedArchiveUrl || tooLong) {
+    if (
+      !selectedTerritory ||
+      tooLong ||
+      (!arquivoVazio && !normalizedArchiveUrl)
+    ) {
       // The button is disabled in these states; the guard keeps a stale
-      // press from calling the core anyway.
+      // press from calling the core anyway. An empty archive field is a
+      // valid "no remote archive" choice, so it does not block.
       return;
     }
     if (!materializador) {
@@ -397,23 +432,6 @@ export const CreateOrganization = ({
       setErro(new Error('materialization-unavailable'));
       return;
     }
-    // #129/P1-2: record the normalized URL + target BEFORE the start. The
-    // global resume hook is the only owner of the network add. A failed
-    // persistence must not arm the latch: the form stays usable and explains
-    // the existing error path instead of trapping a press that was never
-    // recorded.
-    const intentId = novoIntentId();
-    try {
-      addPendingArchiveIntent({
-        id: intentId,
-        url: normalizedArchiveUrl,
-        organizationId: null,
-      });
-    } catch (error) {
-      setErro(toError(error));
-      return;
-    }
-    setIntentIdConfirmado(null);
     iniciandoRef.current = true;
     // The blocked state re-arms HERE, at the start of a new attempt (the
     // state's own contract): a message that survived into a fresh press
@@ -422,15 +440,13 @@ export const CreateOrganization = ({
     // leaves it cleared.
     setBloqueado(false);
     setIniciando(true);
-    // Organization ids already in the document when THIS start began. A
-    // rejection may then tell which un-settled entries are ours (new ids) and
-    // which belong to another creation/pending work (pre-existing ids) —
-    // only the former may receive this attempt's intent.
-    const organizacoesAntes = new Set(
-      instance.getState().organizacoes.map(organizacao => organizacao.id),
-    );
     materializador
-      .iniciar(trimmedName)
+      .iniciar(
+        trimmedName,
+        normalizedArchiveUrl
+          ? {arquivoRemotoUrl: normalizedArchiveUrl}
+          : undefined,
+      )
       .then(() => {
         // BLOCKER 2: a resolved start means the operation is alive and the
         // provisioning surface owns it (it renders `preparando`/
@@ -443,7 +459,6 @@ export const CreateOrganization = ({
         // creation the predicate has already replaced this screen (no
         // selection ⇒ null ⇒ no spurious second replace). `.then` before
         // `.catch`: a refusal must never navigate.
-        setIntentIdConfirmado(intentId);
         setStartResolvido(true);
       })
       .catch((error: unknown) => {
@@ -466,23 +481,9 @@ export const CreateOrganization = ({
         // 4: this is the SAME predicate as the error-sheet effect's gate
         // above — the twin gates must evolve together.
         const estadoAtual = instance.getState();
-        const registradaAqui = estadoAtual.organizacoes.find(
-          organizacao =>
-            !organizacoesAntes.has(organizacao.id) &&
-            (organizacao.estado !== 'pronta' ||
-              organizacao.confirmacaoPendente),
-        );
-        if (registradaAqui) {
-          // The start failed AFTER registering the organization: the document
-          // entry is this attempt's, so the intent may be pinned to it by the
-          // provisioning surface.
-          setIntentIdConfirmado(intentId);
-          return;
-        }
         if (organizacaoEmPreparo(estadoAtual)) {
           // The un-settled organization predates this attempt (another
-          // creation or pending work). Its surface owns the handover and this
-          // attempt's intent must NOT travel with it.
+          // creation or pending work). Its surface owns the handover.
           return;
         }
         const falha = toError(error);
@@ -576,11 +577,6 @@ export const CreateOrganization = ({
                   );
                 })}
               </View>
-              {tooLong && (
-                <BodyText variant="smallMeta" testID="ORG.create-name-too-long">
-                  {t(m.tooLong)}
-                </BodyText>
-              )}
               <BodyText variant="smallMeta">{t(m.archiveUrlLabel)}</BodyText>
               <TextInput
                 testID="ORG.create-archive-url-inp"
@@ -593,6 +589,30 @@ export const CreateOrganization = ({
                 keyboardType="url"
                 autoCorrect={false}
               />
+              {validacaoArquivo.estado === 'verificando' && (
+                <View
+                  testID="ORG.create-archive-url-checking"
+                  style={styles.archiveFeedback}>
+                  <LoadingIndicator size="small" style={{flex: 0}} />
+                  <BodyText variant="smallMeta">
+                    {t(m.archiveUrlChecking)}
+                  </BodyText>
+                </View>
+              )}
+              {validacaoArquivo.estado === 'valido' && (
+                <View
+                  testID="ORG.create-archive-url-valid"
+                  style={styles.archiveFeedback}>
+                  <MaterialIcons
+                    name="check-circle"
+                    size={16}
+                    color={DARK_GREEN}
+                  />
+                  <BodyText variant="smallMeta">
+                    {validacaoArquivo.nome ?? t(m.archiveUrlValid)}
+                  </BodyText>
+                </View>
+              )}
               {archiveUrlInvalid && (
                 <BodyText
                   variant="smallMeta"
@@ -600,12 +620,37 @@ export const CreateOrganization = ({
                   {t(m.archiveUrlInvalid)}
                 </BodyText>
               )}
+              {archiveUrlUnreachable && (
+                <View style={styles.archiveUnreachable}>
+                  <BodyText
+                    variant="smallMeta"
+                    testID="ORG.create-archive-url-unreachable">
+                    {t(m.archiveUrlUnreachable)}
+                  </BodyText>
+                  <Pressable
+                    testID="ORG.create-archive-url-retry"
+                    accessibilityRole="button"
+                    onPress={validacaoArquivo.tentarNovamente}>
+                    <BodyText variant="smallMeta" style={{color: COMAPEO_BLUE}}>
+                      {t(m.archiveUrlRetry)}
+                    </BodyText>
+                  </Pressable>
+                </View>
+              )}
             </View>
           </View>
           <View style={styles.buttonContainer}>
             {bloqueado && (
               <BodyText variant="smallMeta" testID="ORG.create-blocked">
                 {t(m.creationInProgress)}
+              </BodyText>
+            )}
+            {!iniciando && creationHint && (
+              <BodyText
+                variant="smallMeta"
+                testID={creationHint.testID}
+                style={styles.creationHint}>
+                {creationHint.text}
               </BodyText>
             )}
             {iniciando ? (
@@ -652,6 +697,14 @@ const styles = StyleSheet.create({
     gap: 10,
     width: '100%',
   },
+  archiveFeedback: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  archiveUnreachable: {
+    gap: 4,
+  },
   textInput: {
     borderWidth: 1,
     borderColor: LIGHT_GREY,
@@ -679,5 +732,9 @@ const styles = StyleSheet.create({
   buttonContainer: {
     paddingVertical: 20,
     alignItems: 'center',
+  },
+  creationHint: {
+    marginBottom: 8,
+    textAlign: 'center',
   },
 });
