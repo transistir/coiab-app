@@ -294,7 +294,11 @@ export function createMaterializer<
     }
   }
 
-  async function materialize(op: Operacao, packages: Record<Area, T>) {
+  async function materialize(
+    op: Operacao,
+    packages: Record<Area, T>,
+    opcoes: {arquivoRemotoEmSegundoPlano?: boolean} = {},
+  ) {
     try {
       for (const area of AREAS) {
         assertViva(op);
@@ -416,6 +420,29 @@ export function createMaterializer<
       // publication forever). An archive failure never changes `org.estado`.
       const organizacaoDoArquivo = currentFor(op);
       if (organizacaoDoArquivo.arquivoRemoto && executorArquivoRemoto) {
+        if (opcoes.arquivoRemotoEmSegundoPlano) {
+          // #142 CI: a FRESH creation publishes `pronta` BEFORE the network
+          // step and applies the archive detached. `start` is the promise the
+          // creation screen awaits (`iniciando` → handover), so awaiting the
+          // two bounded sends here made the transition race the server: with
+          // an unreachable archive the journal already existed (the
+          // `preparando` write above) while `pronta` — and therefore the
+          // handover to the provisioning surface — waited on I/O. The archive
+          // stays durable as a journal step: the slots are `pendente` in the
+          // SAME `preparando` entry, and the executor owns its own lock and
+          // boot resume, so a process death here is recovered exactly like
+          // an interrupted send. Resume/retry keep awaiting it: there the
+          // promise is background work, not a UI handover boundary.
+          save({
+            ...currentFor(op),
+            estado: 'pronta',
+            confirmacaoPendente: true,
+          });
+          void executorArquivoRemoto
+            .executar(organizacaoDoArquivo.id)
+            .catch(() => {});
+          return;
+        }
         await executorArquivoRemoto.executar(organizacaoDoArquivo.id);
         assertViva(op);
       }
@@ -499,7 +526,7 @@ export function createMaterializer<
         : {}),
     });
     op.organizacaoId = id;
-    await materialize(op, packages);
+    await materialize(op, packages, {arquivoRemotoEmSegundoPlano: true});
   }
   /**
    * With an id, targets the `preparando` journal of THAT organization only —
