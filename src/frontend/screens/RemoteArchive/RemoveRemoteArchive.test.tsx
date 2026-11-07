@@ -118,10 +118,11 @@ function organizacao(arquivoRemoto: ArquivoRemoto): OrganizacaoLocal {
  */
 function criarCenario(
   consultarArquivo: (projectId: string) => Promise<boolean> = async () => false,
+  arquivoInicial: ArquivoRemoto = arquivoConcluido(),
 ) {
   let documento: EstadoOrganizacoes = {
     versao: 1,
-    organizacoes: [organizacao(arquivoConcluido())],
+    organizacoes: [organizacao(arquivoInicial)],
     ativa: null,
   };
   const repository = {
@@ -388,5 +389,57 @@ describe('RemoveRemoteArchive journal ownership on unmount (#142 P2 6ª rodada)'
     expect(resultado.estado).not.toBe('concluido');
     expect(cenario.addServerPeer).not.toHaveBeenCalled();
     expect(mockNavigation.navigate).not.toHaveBeenCalled();
+  });
+});
+
+describe('RemoveRemoteArchive identity still resolving (#142 P2 14ª rodada)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useRemoveServerPeerMock.mockReturnValue({
+      mutate: jest.fn(),
+      mutateAsync: jest.fn(),
+      status: 'idle',
+    });
+  });
+
+  test('recusa a remoção: erro visível, Core intocado e tela mantida', async () => {
+    const arquivo: ArquivoRemoto = {
+      url: URL_ANTIGA,
+      estado: 'aplicando',
+      slots: {
+        m: {
+          estado: 'aplicando',
+          tentativaId: 'tentativa-m',
+          baseUrl: 'https://arquivo.example',
+        },
+        a: {
+          estado: 'aplicando',
+          tentativaId: 'tentativa-a',
+          baseUrl: 'https://arquivo.example',
+        },
+      },
+    };
+    const cenario = criarCenario(async () => true, arquivo);
+    await renderScreen();
+
+    await pressRemove();
+
+    const removeServerPeer = useRemoveServerPeerMock.mock.results[0]!.value as {
+      mutateAsync: jest.Mock;
+    };
+    // A throw from `marcarRemocao` IS the abort signal: Core is never asked to
+    // remove, so the durable `concluido` can never be written over a server
+    // that is still being added.
+    expect(removeServerPeer.mutateAsync).not.toHaveBeenCalled();
+    expect(mockNavigation.goBack).not.toHaveBeenCalled();
+    expect(cenario.slot().m).toMatchObject({estado: 'aplicando'});
+
+    const chamada = mockNavigation.navigate.mock.calls.find(
+      ([nome]) => nome === 'ErrorBottomSheet',
+    );
+    expect(chamada).toBeDefined();
+    const erro = (chamada as [string, {error: Error}])[1].error;
+    expect(erro).toBeInstanceOf(Error);
+    expect(erro.message).toBe('archive-identity-pending');
   });
 });

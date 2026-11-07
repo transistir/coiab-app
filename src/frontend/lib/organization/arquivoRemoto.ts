@@ -1137,6 +1137,28 @@ export function createArquivoRemotoExecutor({
         item => item.id === alvo.organizacaoId,
       );
       if (!organizacao?.arquivoRemoto) return undefined;
+      const removida = normalizarIdentidade(
+        identidade,
+        organizacao.arquivoRemoto.url,
+      );
+      // #142 review P2 (14ª rodada): a live addition whose identity has not
+      // been resolved yet (`aplicando` without a persisted `deviceId`) cannot
+      // be told apart from the server this removal names when the removal DOES
+      // know a `deviceId`: the alias/canonical pair makes the URL useless for
+      // the comparison. Removing in that window lets Core drop the server
+      // while the delayed read later persists a false `concluido`, and the
+      // next readd sends nothing. Refuse BEFORE any Core effect; the screen
+      // surfaces the error and stays open. The refusal writes nothing, so it
+      // is not terminal: once the executor persists the resolved identity a
+      // new removal attempt matches.
+      const slotAlvo = organizacao.arquivoRemoto.slots[alvo.slot];
+      if (
+        slotAlvo.estado === 'aplicando' &&
+        !slotAlvo.deviceId &&
+        removida?.deviceId
+      ) {
+        throw new Error('archive-identity-pending');
+      }
       // Removing another archive server (A) from a project whose slot records
       // B is a no-op for the journal: no `removendo`, no in-flight guard, no
       // error for the user. The Core removal still proceeds for A.
@@ -1144,10 +1166,6 @@ export function createArquivoRemotoExecutor({
         return undefined;
       }
       const registrada = identidadeRegistrada(organizacao, alvo.slot);
-      const removida = normalizarIdentidade(
-        identidade,
-        organizacao.arquivoRemoto.url,
-      );
       const anterior = {...organizacao.arquivoRemoto.slots[alvo.slot]};
       gravarSlotDireto(alvo.organizacaoId, alvo.slot, {
         estado: 'removendo',

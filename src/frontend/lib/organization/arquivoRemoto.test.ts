@@ -1467,3 +1467,236 @@ describe('checkpoint de sucesso pendente antes da remoção (#142 13ª rodada)',
     }
   });
 });
+
+describe('identidade em resolução na remoção (#142 14ª rodada)', () => {
+  const URL_ALIAS = 'https://alias.example/';
+  const URL_CANONICA = 'https://canonical.example/';
+  const DEVICE_ID = 'srv-1';
+
+  function membroDoServidor() {
+    return {
+      deviceId: DEVICE_ID,
+      deviceType: 'selfHostedServer',
+      role: {roleId: MEMBER_ROLE_ID},
+      selfHostedServerDetails: {baseUrl: URL_CANONICA},
+    };
+  }
+
+  function trocarArquivo(h: ReturnType<typeof harness>, url: string): void {
+    h.repository.write({
+      ...h.document,
+      organizacoes: h.document.organizacoes.map(organizacao => ({
+        ...organizacao,
+        arquivoRemoto: criarArquivoRemotoPendente(url),
+      })),
+    });
+  }
+
+  async function ate(condicao: () => boolean): Promise<void> {
+    for (let i = 0; i < 200 && !condicao(); i += 1) await Promise.resolve();
+    expect(condicao()).toBe(true);
+  }
+
+  /**
+   * Real adapter over fake Core storage. The member read AFTER the addition is
+   * held open until `liberar()`, exactly like the slow `getMany` from the
+   * review: Core already has `srv-1` while the journal still has no
+   * `deviceId` to compare. `liberar()` also disables the delay so the readd
+   * later completes normally.
+   */
+  function coreComIdentidadeLenta() {
+    const membrosPorProjeto = new Map<string, Array<Record<string, unknown>>>();
+    const liberacoes: Array<() => void> = [];
+    let atrasar = true;
+    const getProject = jest.fn(async (projectId: string) => ({
+      $member: {
+        addServerPeer: jest.fn(async () => {
+          const atuais = membrosPorProjeto.get(projectId) ?? [];
+          if (!atuais.some(item => item.deviceId === DEVICE_ID)) {
+            membrosPorProjeto.set(projectId, [...atuais, membroDoServidor()]);
+          }
+        }),
+        getMany: jest.fn(async () => {
+          const atuais = [...(membrosPorProjeto.get(projectId) ?? [])];
+          // The PRE-add read is empty and never blocks; the POST-add read
+          // holds the identity in resolution.
+          if (atrasar && atuais.length > 0) {
+            await new Promise<void>(resolve => liberacoes.push(resolve));
+          }
+          return atuais;
+        }),
+      },
+    }));
+    return {
+      rede: criarRedeArquivoRemoto(getProject as never),
+      removerDe: (projectId: string) => membrosPorProjeto.set(projectId, []),
+      liberar: () => {
+        atrasar = false;
+        while (liberacoes.length > 0) liberacoes.shift()!();
+      },
+    };
+  }
+
+  test('adição com identidade em resolução recusa a remoção antes do Core e o readd envia', async () => {
+    const core = coreComIdentidadeLenta();
+    const h = harness({
+      documentoInicial: documento(organizacao('org-1')),
+      rede: core.rede.addServerPeer,
+    });
+    const executor = h.criar();
+
+    // 1. Add through the ALIAS. Core already registers `srv-1`, but the
+    // post-add member read is still pending, so the slot stays `aplicando`
+    // without a persisted deviceId.
+    trocarArquivo(h, URL_ALIAS);
+    const execucao = executor.executar('org-1', {modo: 'retry'});
+    await ate(
+      () =>
+        h.document.organizacoes[0]?.arquivoRemoto?.slots.m.estado ===
+          'aplicando' &&
+        h.document.organizacoes[0]?.arquivoRemoto?.slots.a.estado ===
+          'aplicando',
+    );
+    expect(h.addServerPeer).toHaveBeenCalledTimes(2);
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'aplicando',
+      baseUrl: 'https://alias.example',
+    });
+    expect(
+      h.document.organizacoes[0]?.arquivoRemoto?.slots.m.deviceId,
+    ).toBeUndefined();
+
+    // 2. Removal through the CANONICAL hostname + `srv-1`. The identity is
+    // still unresolved, so the URL cannot prove it is the same server: the
+    // journal refuses BEFORE Core, the slot stays live and the screen keeps
+    // the error visible instead of closing on a false removal.
+    const identidadeCanonica = {baseUrl: URL_CANONICA, deviceId: DEVICE_ID};
+    expect(() => executor.marcarRemocao('org-1-m', identidadeCanonica)).toThrow(
+      'archive-identity-pending',
+    );
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'aplicando',
+    });
+
+    // 3. The delayed read resolves the identity. The refusal was not terminal.
+    core.liberar();
+    await execucao;
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'concluido',
+      deviceId: DEVICE_ID,
+    });
+
+    // 4. A new removal attempt now works.
+    expect(executor.marcarRemocao('org-1-m', identidadeCanonica)).toBeDefined();
+    core.removerDe('org-1-m');
+    expect(executor.removerArquivo('org-1-m', identidadeCanonica)).toBe(true);
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
+      estado: 'removido',
+      baseUrl: 'https://alias.example',
+      deviceId: DEVICE_ID,
+    });
+
+    // 5. REAL JSON + parser round-trip: restart. The explicit readd must
+    // really send, never inherit the stale `concluido`.
+    const reidratado = parseEstadoOrganizacoes(
+      JSON.parse(JSON.stringify(h.document)),
+    );
+    expect(reidratado).not.toBeNull();
+    const h2 = harness({
+      documentoInicial: reidratado as EstadoOrganizacoes,
+      rede: core.rede.addServerPeer,
+    });
+
+    const antes = h2.addServerPeer.mock.calls.length;
+    await h2.criar().executar('org-1', {modo: 'retry'});
+
+    expect(h2.addServerPeer.mock.calls.length).toBeGreaterThan(antes);
+    expect(h2.addServerPeer).toHaveBeenCalledWith({
+      projectId: 'org-1-m',
+      url: URL_ALIAS,
+    });
+    expect(h2.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'concluido',
+      deviceId: DEVICE_ID,
+    });
+  });
+
+  test('A→B→remover A continua removendo A e deixa B concluído', async () => {
+    const h = harness({
+      documentoInicial: documento(organizacao('org-1')),
+      rede: async ({url}: {projectId: string; url: string}) => ({
+        baseUrl: url.replace(/\/+$/, ''),
+        deviceId: url === URL_ALIAS ? 'server-a' : DEVICE_ID,
+      }),
+    });
+    const executor = h.criar();
+
+    // A applied to both projects.
+    trocarArquivo(h, URL_ALIAS);
+    await executor.executar('org-1', {modo: 'retry'});
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'concluido',
+      deviceId: 'server-a',
+    });
+
+    // B replaces the archive and is fully applied.
+    trocarArquivo(h, URL_CANONICA);
+    await executor.executar('org-1', {modo: 'retry'});
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'concluido',
+      deviceId: DEVICE_ID,
+    });
+
+    // Removing A is provably a DIFFERENT server: never refused, never marks
+    // the slot that records B.
+    const identidadeA = {baseUrl: URL_ALIAS, deviceId: 'server-a'};
+    expect(executor.marcarRemocao('org-1-m', identidadeA)).toBeUndefined();
+    expect(executor.removerArquivo('org-1-m', identidadeA)).toBe(true);
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'concluido',
+      deviceId: DEVICE_ID,
+    });
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.a).toMatchObject({
+      estado: 'concluido',
+      deviceId: DEVICE_ID,
+    });
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.estado).toBe('concluido');
+  });
+
+  test('slot `aplicando` com deviceId já resolvido não é recusado', () => {
+    const org = organizacao(
+      'org-1',
+      arquivo({
+        url: URL_ALIAS,
+        estado: 'aplicando',
+        slots: {
+          m: {
+            estado: 'aplicando',
+            tentativaId: 'tentativa-m',
+            baseUrl: 'https://alias.example',
+            deviceId: DEVICE_ID,
+          },
+          a: {
+            estado: 'aplicando',
+            tentativaId: 'tentativa-a',
+            baseUrl: 'https://alias.example',
+            deviceId: DEVICE_ID,
+          },
+        },
+      }),
+    );
+    const h = harness({documentoInicial: documento(org)});
+    const executor = h.criar();
+
+    const anterior = executor.marcarRemocao('org-1-m', {
+      baseUrl: URL_CANONICA,
+      deviceId: DEVICE_ID,
+    });
+
+    expect(anterior).toMatchObject({estado: 'aplicando'});
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'removendo',
+      deviceId: DEVICE_ID,
+    });
+  });
+});
