@@ -54,6 +54,18 @@ const m = defineMessages({
     id: '$1ProjectSettings.RemoteArchive.AddRemoteArchive.validUrl',
     defaultMessage: 'Remote archive found',
   },
+  // #142 P3: a network failure (offline, timeout, abort) is NOT a malformed
+  // URL. It gets its own message and a retry affordance instead of "Invalid
+  // URL", which would send the user hunting for a typo that isn't there.
+  urlUnreachable: {
+    id: '$1ProjectSettings.RemoteArchive.AddRemoteArchive.urlUnreachable',
+    defaultMessage:
+      'Could not reach the remote archive. Check the connection and try again.',
+  },
+  urlRetry: {
+    id: '$1ProjectSettings.RemoteArchive.AddRemoteArchive.urlRetry',
+    defaultMessage: 'Try again',
+  },
   looking: {
     id: '$1ProjectSettings.RemoteArchive.AddRemoteArchive.looking',
     defaultMessage: 'Looking for Remote Archive...',
@@ -205,11 +217,28 @@ const SearchUrl = ({control, errors, validacao}: SearchUrlProp) => {
       {(errors.url ||
         errors.root ||
         validacao.estado === 'invalido' ||
-        validacao.estado === 'indisponivel' ||
         validacao.estado === 'formato-invalido') && (
         <HeaderText variant="header6" style={{color: RED, marginTop: 10}}>
           {formatMessage(m.invalidUrl)}
         </HeaderText>
+      )}
+      {validacao.estado === 'indisponivel' && (
+        <View style={styles.urlUnreachable}>
+          <HeaderText
+            variant="header6"
+            testID="RA.url-unreachable"
+            style={{color: RED}}>
+            {formatMessage(m.urlUnreachable)}
+          </HeaderText>
+          <TouchableOpacity
+            testID="RA.url-retry"
+            accessibilityRole="button"
+            onPress={validacao.tentarNovamente}>
+            <HeaderText variant="header5" style={{color: COMAPEO_BLUE}}>
+              {formatMessage(m.urlRetry)}
+            </HeaderText>
+          </TouchableOpacity>
+        </View>
       )}
     </View>
   );
@@ -433,6 +462,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    marginTop: 10,
+  },
+  urlUnreachable: {
+    gap: 4,
     marginTop: 10,
   },
   title: {

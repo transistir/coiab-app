@@ -640,4 +640,83 @@ describe('AddRemoteArchive', () => {
     expect(screen.queryByTestId('RA.url-valid')).not.toBeOnTheScreen();
     expect(screen.queryByTestId('RA.url-checking')).not.toBeOnTheScreen();
   });
+
+  test('#142 P3: offline shows its own message with a retry that re-runs the check and finds the archive', async () => {
+    mockHookReal = true;
+    jest.useFakeTimers();
+    const fetchOriginal = global.fetch;
+    const fetchMock = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({
+        status: 200,
+        json: async () => ({data: {name: 'Archive Recovered'}}),
+      } as Response);
+    (global as unknown as {fetch: jest.Mock}).fetch = fetchMock;
+    try {
+      await renderScreen();
+      await fireEvent.changeText(
+        screen.getByTestId('RA.url-inp'),
+        'https://archive.example.com/',
+      );
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      // One lookup went out and failed; a connectivity failure is NOT shown
+      // as a malformed URL.
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('RA.url-unreachable')).toBeOnTheScreen();
+      expect(screen.getByTestId('RA.url-retry')).toBeOnTheScreen();
+      expect(screen.queryByText('Invalid URL')).not.toBeOnTheScreen();
+
+      // Pressing the header while offline keeps the single-fetch contract and
+      // leaves the user on the search surface with the retry affordance.
+      const options = mockNavigation.setOptions.mock.calls
+        .map(([opts]) => opts as HeaderOptions)
+        .reverse()
+        .find(
+          opts =>
+            typeof opts.headerRight === 'function' &&
+            opts.headerRight() !== null,
+        )!;
+      await act(async () => {
+        await options.headerRight!()!.props.onPress();
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('RA.url-unreachable')).toBeOnTheScreen();
+
+      // The retry keeps the URL and issues a NEW request.
+      await fireEvent.press(screen.getByTestId('RA.url-retry'));
+      expect(
+        screen.getByText('Looking for Remote Archive...'),
+      ).toBeOnTheScreen();
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        2,
+        'https://archive.example.com/info',
+        expect.objectContaining({signal: expect.anything()}),
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      // The submission was already marked, so the recovered answer lands on
+      // the found-archive surface without another header press.
+      expect(await screen.findByText('You are adding:')).toBeOnTheScreen();
+      expect(screen.getByText('Archive Recovered')).toBeOnTheScreen();
+    } finally {
+      jest.clearAllTimers();
+      jest.useRealTimers();
+      global.fetch = fetchOriginal;
+    }
+  });
 });

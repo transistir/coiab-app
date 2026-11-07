@@ -66,6 +66,12 @@
   "$1ProjectSettings.RemoteArchive.AddRemoteArchive.navTitle": {
     "message": "Add Remote Archive"
   },
+  "$1ProjectSettings.RemoteArchive.AddRemoteArchive.urlRetry": {
+    "message": "Try again"
+  },
+  "$1ProjectSettings.RemoteArchive.AddRemoteArchive.urlUnreachable": {
+    "message": "Could not reach the remote archive. Check the connection and try again."
+  },
   "$1ProjectSettings.RemoteArchive.AddRemoteArchive.validUrl": {
     "message": "Remote archive found"
   },

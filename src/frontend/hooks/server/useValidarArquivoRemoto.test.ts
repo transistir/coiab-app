@@ -364,4 +364,75 @@ describe('useValidarArquivoRemoto', () => {
     expect(result.current.estado).toBe('valido');
     expect(result.current.nome).toBe('Arquivo Recuperado');
   });
+
+  test('prova 8: abort durante a leitura do corpo vira indisponivel, não invalido', async () => {
+    // The server answered 200, but the body never settles; the 8 s timeout
+    // aborts the request while `response.json()` is still pending. The
+    // rejection comes from the ABORT, not from a malformed body: it must
+    // surface as `indisponivel` (no usable answer), never as `invalido`.
+    fetchMock.mockImplementation((_url: string, opts: {signal: AbortSignal}) =>
+      Promise.resolve({
+        status: 200,
+        json: () =>
+          new Promise((_resolve, reject) => {
+            opts.signal.addEventListener('abort', () => {
+              const erro = new Error('Aborted');
+              erro.name = 'AbortError';
+              reject(erro);
+            });
+          }),
+      } as unknown as Response),
+    );
+
+    const {result} = await renderHook(() =>
+      useValidarArquivoRemoto('https://exemplo.org/'),
+    );
+    await act(async () => {
+      jest.advanceTimersByTime(600);
+    });
+    await flush();
+    // The response arrived and the body read is in flight.
+    expect(result.current.estado).toBe('verificando');
+
+    await act(async () => {
+      jest.advanceTimersByTime(8000);
+    });
+    await flush();
+    expect(result.current.estado).toBe('indisponivel');
+    expect(result.current.nome).toBeUndefined();
+  });
+
+  test('prova 9: corpo JSON malformado (SyntaxError) continua invalido', async () => {
+    fetchMock.mockResolvedValue({
+      status: 200,
+      json: async () => {
+        throw new SyntaxError('Unexpected token');
+      },
+    } as unknown as Response);
+
+    const {result} = await renderHook(() =>
+      useValidarArquivoRemoto('https://exemplo.org/'),
+    );
+    await act(async () => {
+      jest.advanceTimersByTime(600);
+    });
+    await flush();
+    expect(result.current.estado).toBe('invalido');
+  });
+
+  test('prova 9b: 200 sem data.name continua invalido', async () => {
+    fetchMock.mockResolvedValue({
+      status: 200,
+      json: async () => ({data: {}}),
+    } as unknown as Response);
+
+    const {result} = await renderHook(() =>
+      useValidarArquivoRemoto('https://exemplo.org/'),
+    );
+    await act(async () => {
+      jest.advanceTimersByTime(600);
+    });
+    await flush();
+    expect(result.current.estado).toBe('invalido');
+  });
 });

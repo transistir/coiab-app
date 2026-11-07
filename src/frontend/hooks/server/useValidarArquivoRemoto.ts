@@ -131,8 +131,18 @@ export function useValidarArquivoRemoto(url: string): ValidacaoArquivoRemoto {
           let corpo: unknown;
           try {
             corpo = await response.json();
-          } catch {
-            throw new RespostaInvalida('body');
+          } catch (error) {
+            // Classify by ORIGIN, not by phase. A malformed JSON body is a
+            // bad ANSWER (the server replied, we could not use it) →
+            // `invalido`. But the 8 s timeout aborts the request even while
+            // the body is being read; that rejection is an AbortError (or a
+            // transport failure) meaning NO answer arrived — propagating it
+            // lets the outer catch classify `indisponivel`. Never launder an
+            // abort into `RespostaInvalida` here.
+            if (error instanceof SyntaxError) {
+              throw new RespostaInvalida('body');
+            }
+            throw error;
           }
           const nome =
             corpo &&
