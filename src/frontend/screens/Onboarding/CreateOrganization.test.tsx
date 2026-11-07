@@ -71,6 +71,9 @@ const PT_MESSAGES = {
     'Verificando arquivo remoto…',
   '$1screens.Onboarding.CreateOrganization.archiveUrlValid':
     'Arquivo remoto encontrado',
+  '$1screens.Onboarding.CreateOrganization.archiveUrlUnreachable':
+    'Não foi possível falar com o arquivo remoto. Verifique a conexão e tente novamente.',
+  '$1screens.Onboarding.CreateOrganization.archiveUrlRetry': 'Tentar novamente',
   '$1screens.Onboarding.CreateOrganization.creationInProgress':
     'Já existe uma criação de território em andamento.',
 };
@@ -591,6 +594,172 @@ describe('CreateOrganization', () => {
     } finally {
       jest.clearAllTimers();
       jest.useRealTimers();
+    }
+  });
+
+  test('A válido → B pendente → volta A mostra verificando e trava o botão até a nova resposta de A (#142 P2)', async () => {
+    jest.useFakeTimers();
+    const fetchOriginal = global.fetch;
+    try {
+      mockValidarImpl = jest.requireActual(
+        '../../hooks/server/useValidarArquivoRemoto',
+      ).useValidarArquivoRemoto;
+
+      function respostaControlada() {
+        let liberar!: (nome: string) => void;
+        const promise = new Promise<Response>(resolve => {
+          liberar = (nome: string) =>
+            resolve({
+              status: 200,
+              json: async () => ({data: {name: nome}}),
+            } as Response);
+        });
+        return {promise, liberar};
+      }
+      const respostaA1 = respostaControlada();
+      const respostaB = respostaControlada();
+      const respostaA2 = respostaControlada();
+      const fetchMock = jest
+        .fn()
+        .mockReturnValueOnce(respostaA1.promise)
+        .mockReturnValueOnce(respostaB.promise)
+        .mockReturnValueOnce(respostaA2.promise);
+      (global as unknown as {fetch: jest.Mock}).fetch = fetchMock;
+
+      await renderScreen();
+      await irParaEtapaNome();
+      await selecionarTerritorio();
+
+      // A answers valid — the button unlocks.
+      await preencherUrl('https://a.example/');
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      await act(async () => {
+        respostaA1.liberar('Arquivo A');
+      });
+      expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
+
+      // B's request is issued but never answers.
+      await preencherUrl('https://b.example/');
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+
+      // Back to A BEFORE B answered: A's old `valido` must not come back.
+      await preencherUrl('https://a.example/');
+      expect(
+        screen.getByTestId('ORG.create-archive-url-checking'),
+      ).toBeOnTheScreen();
+      expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+
+      // The fresh request for A goes out; B's late answer changes nothing.
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      await act(async () => {
+        respostaB.liberar('Arquivo B');
+      });
+      expect(
+        screen.getByTestId('ORG.create-archive-url-checking'),
+      ).toBeOnTheScreen();
+      expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+
+      // Only the NEW answer for A unlocks the button.
+      await act(async () => {
+        respostaA2.liberar('Arquivo A novo');
+      });
+      expect(
+        screen.getByTestId('ORG.create-archive-url-valid'),
+      ).toBeOnTheScreen();
+      expect(screen.getByText('Arquivo A novo')).toBeOnTheScreen();
+      expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
+    } finally {
+      jest.clearAllTimers();
+      jest.useRealTimers();
+      global.fetch = fetchOriginal;
+    }
+  });
+
+  test('rede caindo: indisponivel tem mensagem própria e o retry reexecuta até validar (#142 P3)', async () => {
+    jest.useFakeTimers();
+    const fetchOriginal = global.fetch;
+    try {
+      mockValidarImpl = jest.requireActual(
+        '../../hooks/server/useValidarArquivoRemoto',
+      ).useValidarArquivoRemoto;
+      const fetchMock = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('offline'))
+        .mockResolvedValueOnce({
+          status: 200,
+          json: async () => ({data: {name: 'Arquivo Recuperado'}}),
+        });
+      (global as unknown as {fetch: jest.Mock}).fetch = fetchMock;
+
+      await renderScreen();
+      await irParaEtapaNome();
+      await selecionarTerritorio();
+      await preencherUrl('https://exemplo.org/');
+
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      // A connectivity failure is NOT presented as a malformed URL.
+      expect(
+        screen.getByTestId('ORG.create-archive-url-unreachable'),
+      ).toHaveTextContent(
+        'Não foi possível falar com o arquivo remoto. Verifique a conexão e tente novamente.',
+      );
+      expect(
+        screen.queryByTestId('ORG.create-archive-url-invalid'),
+      ).not.toBeOnTheScreen();
+      expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+
+      // Retry re-runs the check for the SAME URL.
+      await fireEvent.press(screen.getByTestId('ORG.create-archive-url-retry'));
+      expect(
+        screen.getByTestId('ORG.create-archive-url-checking'),
+      ).toBeOnTheScreen();
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        1,
+        'https://exemplo.org/info',
+        expect.objectContaining({signal: expect.anything()}),
+      );
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        2,
+        'https://exemplo.org/info',
+        expect.objectContaining({signal: expect.anything()}),
+      );
+      expect(
+        screen.getByTestId('ORG.create-archive-url-valid'),
+      ).toBeOnTheScreen();
+      expect(screen.getByText('Arquivo Recuperado')).toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('ORG.create-archive-url-unreachable'),
+      ).not.toBeOnTheScreen();
+      expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
+    } finally {
+      jest.clearAllTimers();
+      jest.useRealTimers();
+      global.fetch = fetchOriginal;
     }
   });
 

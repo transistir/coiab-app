@@ -142,9 +142,10 @@ describe('useValidarArquivoRemoto', () => {
     expect(result.current.nome).toBeUndefined();
   });
 
-  test('prova 3b: um timeout de 8 s leva a invalido', async () => {
+  test('prova 3b: um timeout de 8 s leva a indisponivel', async () => {
     // The request never resolves on its own; the abort after 8 s must settle
-    // it as `invalido`. The fetch rejects when its abort signal fires.
+    // it as `indisponivel` (unreachable), not as a malformed URL.
+    // The fetch rejects when its abort signal fires.
     fetchMock.mockImplementation(
       (_url: string, opts: {signal: AbortSignal}) =>
         new Promise((_resolve, reject) => {
@@ -167,7 +168,7 @@ describe('useValidarArquivoRemoto', () => {
       jest.advanceTimersByTime(8000);
     });
     await flush();
-    expect(result.current.estado).toBe('invalido');
+    expect(result.current.estado).toBe('indisponivel');
   });
 
   test('prova 4: formato inválido não chama fetch', async () => {
@@ -217,10 +218,20 @@ describe('useValidarArquivoRemoto', () => {
       expect.anything(),
     );
 
-    // NOW A answers (late) with a different name — it must be ignored — and B
-    // answers with its own name.
+    // NOW A answers (late) with a different name — it must be ignored. B has
+    // NOT answered yet, so the state must still be `verificando`, proving the
+    // late A result did not leak in.
     await act(async () => {
       respostaA.resolve('Arquivo A');
+    });
+    await flush();
+
+    expect(result.current.estado).toBe('verificando');
+    expect(result.current.nome).toBeUndefined();
+    expect(result.current.urlNormalizada).toBe('https://b.example/');
+
+    // Only now B answers with its own name.
+    await act(async () => {
       respostaB.resolve('Arquivo B');
     });
     await flush();
@@ -228,5 +239,129 @@ describe('useValidarArquivoRemoto', () => {
     expect(result.current.estado).toBe('valido');
     expect(result.current.nome).toBe('Arquivo B');
     expect(result.current.urlNormalizada).toBe('https://b.example/');
+  });
+
+  test('prova 6: A válido → B pendente → volta a A mostra verificando até a nova resposta de A', async () => {
+    const respostaA1 = deferredResponse();
+    const respostaB = deferredResponse();
+    const respostaA2 = deferredResponse();
+    fetchMock
+      .mockReturnValueOnce(respostaA1.promise)
+      .mockReturnValueOnce(respostaB.promise)
+      .mockReturnValueOnce(respostaA2.promise);
+
+    const {result, rerender} = await renderHook(
+      ({url}: {url: string}) => useValidarArquivoRemoto(url),
+      {initialProps: {url: 'https://a.example/'}},
+    );
+
+    // A's first request answers valid.
+    await act(async () => {
+      jest.advanceTimersByTime(600);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      respostaA1.resolve('Arquivo A');
+    });
+    await flush();
+    expect(result.current.estado).toBe('valido');
+    expect(result.current.nome).toBe('Arquivo A');
+
+    // The user types B; its request goes out and stays pending.
+    // eslint-disable-next-line testing-library/no-unnecessary-act
+    await act(async () => {
+      rerender({url: 'https://b.example/'});
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(600);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.current.estado).toBe('verificando');
+
+    // Back to A BEFORE B answered: the previous `valido` result for A must be
+    // invalidated, so the state is `verificando` — never the stale answer.
+    // eslint-disable-next-line testing-library/no-unnecessary-act
+    await act(async () => {
+      rerender({url: 'https://a.example/'});
+    });
+    expect(result.current.estado).toBe('verificando');
+    expect(result.current.nome).toBeUndefined();
+    expect(result.current.urlNormalizada).toBe('https://a.example/');
+
+    // A fresh request for A goes out (one per URL visit, no duplication for a
+    // stable URL), and the button would stay disabled until it answers.
+    await act(async () => {
+      jest.advanceTimersByTime(600);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'https://a.example/info',
+      expect.anything(),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'https://b.example/info',
+      expect.anything(),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      'https://a.example/info',
+      expect.anything(),
+    );
+
+    // B's late answer must not touch A's current round.
+    await act(async () => {
+      respostaB.resolve('Arquivo B');
+    });
+    await flush();
+    expect(result.current.estado).toBe('verificando');
+    expect(result.current.nome).toBeUndefined();
+
+    // The NEW answer for A is what unlocks the state.
+    await act(async () => {
+      respostaA2.resolve('Arquivo A novo');
+    });
+    await flush();
+    expect(result.current.estado).toBe('valido');
+    expect(result.current.nome).toBe('Arquivo A novo');
+    expect(result.current.urlNormalizada).toBe('https://a.example/');
+  });
+
+  test('prova 7: falha de rede vira indisponivel e o retry reexecuta a mesma URL', async () => {
+    fetchMock
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({
+        status: 200,
+        json: async () => ({data: {name: 'Arquivo Recuperado'}}),
+      } as Response);
+
+    const {result} = await renderHook(() =>
+      useValidarArquivoRemoto('https://exemplo.org/'),
+    );
+    await act(async () => {
+      jest.advanceTimersByTime(600);
+    });
+    await flush();
+    expect(result.current.estado).toBe('indisponivel');
+    expect(result.current.nome).toBeUndefined();
+
+    // The retry keeps the URL and re-runs the check.
+    await act(async () => {
+      result.current.tentarNovamente();
+    });
+    expect(result.current.estado).toBe('verificando');
+    await act(async () => {
+      jest.advanceTimersByTime(600);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'https://exemplo.org/info',
+      expect.anything(),
+    );
+    await flush();
+    expect(result.current.estado).toBe('valido');
+    expect(result.current.nome).toBe('Arquivo Recuperado');
   });
 });

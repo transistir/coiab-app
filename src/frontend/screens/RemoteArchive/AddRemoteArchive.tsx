@@ -13,12 +13,10 @@ import {
 import {HookFormTextInput} from '../../sharedComponents/HookFormTextInput';
 import {Control, FieldErrors, useForm} from 'react-hook-form';
 import {SaveButton} from '../../sharedComponents/SaveButton';
-import {useFindRemoteArchive} from '../../hooks/server/projects';
 import {Bar} from 'react-native-progress';
 import {ScreenContentWithDock} from '../../sharedComponents/ScreenContentWithDock';
 import {Button} from '../../sharedComponents/Button';
 import {useNavigationFromRoot} from '../../hooks/useNavigationWithTypes';
-import {normalizeRemoteArchiveUrl} from '../../utils/normalizeRemoteArchiveUrl';
 import {useValidarArquivoRemoto} from '../../hooks/server/useValidarArquivoRemoto';
 import {LoadingIndicator} from '../../sharedComponents/LoadingIndicator';
 import {HeaderText} from '../../sharedComponents/Text/HeaderText';
@@ -94,61 +92,66 @@ export const AddRemoteArchive: NativeNavigationComponent<
   const {
     control,
     handleSubmit,
-    setError,
     watch,
     formState: {errors},
   } = useForm<URLInput>();
-  const [normalizedUrl, setNormalizedUrl] = React.useState<string>('');
 
-  // #142: live inline validation as the user types. The explicit header
-  // search still drives the actual lookup/add — this only surfaces the same
-  // spinner/check/error feedback as the create flow, and never navigates.
+  // #142 P2: ONE source of truth for the `/info` lookup. The live-validation
+  // hook is the only thing that fetches; the header save button merely marks
+  // the form as submitted and the render below reads the hook's current
+  // state. The previous `useFindRemoteArchive` consulted the same endpoint a
+  // second time, so pressing the header before the debounce left two requests
+  // in flight.
+  const [submetido, setSubmetido] = React.useState(false);
   const urlDigitada = watch('url') ?? '';
   const validacaoArquivo = useValidarArquivoRemoto(urlDigitada);
 
-  const {
-    isLoading: urlSearching,
-    data: archiveName,
-    isError,
-  } = useFindRemoteArchive({
-    url: normalizedUrl ? new URL('/info', normalizedUrl).toString() : undefined,
-  });
+  // Editing the URL withdraws a submission: the inline feedback returns until
+  // the header is pressed again. Adjusting state during render (React's
+  // documented prop-change pattern) keeps that invalidation in the same
+  // commit — an effect would paint one frame of the submitted surface for the
+  // new URL first.
+  const [urlDaSubmissao, setUrlDaSubmissao] = React.useState(urlDigitada);
+  if (urlDaSubmissao !== urlDigitada) {
+    setUrlDaSubmissao(urlDigitada);
+    setSubmetido(false);
+  }
 
-  React.useEffect(() => {
-    if (isError) {
-      setError('url', {type: 'required'});
-    }
-  }, [isError, setError]);
-
-  const handleFindRemoteArchive = React.useCallback(
-    ({url}: URLInput) => {
-      try {
-        setNormalizedUrl(normalizeRemoteArchiveUrl(url));
-      } catch {
-        setError('url', {type: 'required'});
-      }
-    },
-    [setNormalizedUrl, setError],
-  );
+  const marcarSubmetido = React.useCallback(() => {
+    setSubmetido(true);
+  }, []);
 
   React.useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () =>
-        !archiveName ? (
+        // Once a valid archive is displayed the header has no job left; a
+        // failed/absent result keeps it so the user can re-submit.
+        submetido && validacaoArquivo.estado === 'valido' ? null : (
           <SaveButton
-            onPress={handleSubmit(handleFindRemoteArchive)}
+            onPress={handleSubmit(marcarSubmetido)}
             isLoading={false}
           />
-        ) : null,
+        ),
     });
-  }, [handleFindRemoteArchive, handleSubmit, navigation, archiveName]);
+  }, [
+    handleSubmit,
+    marcarSubmetido,
+    navigation,
+    submetido,
+    validacaoArquivo.estado,
+  ]);
 
-  if (urlSearching) {
+  if (submetido && validacaoArquivo.estado === 'verificando') {
     return <FindingRemoteArchive />;
   }
 
-  if (archiveName) {
-    return <AddFoundArchive name={archiveName} url={normalizedUrl} />;
+  if (submetido && validacaoArquivo.estado === 'valido') {
+    return (
+      <AddFoundArchive
+        name={validacaoArquivo.nome ?? ''}
+        url={validacaoArquivo.urlNormalizada ?? ''}
+      />
+    );
   }
 
   return (
@@ -202,6 +205,7 @@ const SearchUrl = ({control, errors, validacao}: SearchUrlProp) => {
       {(errors.url ||
         errors.root ||
         validacao.estado === 'invalido' ||
+        validacao.estado === 'indisponivel' ||
         validacao.estado === 'formato-invalido') && (
         <HeaderText variant="header6" style={{color: RED, marginTop: 10}}>
           {formatMessage(m.invalidUrl)}

@@ -636,6 +636,12 @@
   "$1screens.Onboarding.CreateOrganization.archiveUrlPlaceholder": {
     "message": "https://…"
   },
+  "$1screens.Onboarding.CreateOrganization.archiveUrlRetry": {
+    "message": "Tentar novamente"
+  },
+  "$1screens.Onboarding.CreateOrganization.archiveUrlUnreachable": {
+    "message": "Não foi possível falar com o arquivo remoto. Verifique a conexão e tente novamente."
+  },
   "$1screens.Onboarding.CreateOrganization.archiveUrlValid": {
     "message": "Arquivo remoto encontrado"
   },

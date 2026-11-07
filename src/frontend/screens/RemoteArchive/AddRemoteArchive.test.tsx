@@ -1,6 +1,7 @@
 import * as React from 'react';
 import {
   act,
+  fireEvent,
   render,
   screen,
   userEvent,
@@ -10,7 +11,6 @@ import {IntlProvider} from 'react-intl';
 
 import {AddRemoteArchive} from './AddRemoteArchive';
 import {useAddServerPeer} from '@comapeo/core-react';
-import {useFindRemoteArchive} from '../../hooks/server/projects';
 import {useOrganizations} from '../../hooks/organization/useOrganizations';
 import {useAddRemoteArchiveToOrganization} from '../../hooks/organization/useAddRemoteArchiveToOrganization';
 import type {ReconstructedOrganization} from '../../lib/organization/reconstruct';
@@ -25,18 +25,28 @@ jest.mock('@comapeo/core-react', () => ({
   useAddServerPeer: jest.fn(),
 }));
 
-jest.mock('../../hooks/server/projects', () => ({
-  useFindRemoteArchive: jest.fn(),
-}));
-
-// #142: the live-validation hook calls `fetch` off the watched url field. It
-// is mocked here so the existing explicit-search flow stays deterministic; a
-// test drives the inline feedback by swapping `mockValidacaoAoVivo`. The
+// #142 P2: the live-validation hook is the ONLY source of the `/info` lookup.
+// Most tests drive its state directly; the fetch-count regression flips
+// `mockHookReal` so the real hook runs end to end against a fetch mock. The
 // network behaviour itself is proven in useValidarArquivoRemoto.test.ts.
-let mockValidacaoAoVivo: {estado: string; nome?: string} = {estado: 'vazio'};
-jest.mock('../../hooks/server/useValidarArquivoRemoto', () => ({
-  useValidarArquivoRemoto: () => mockValidacaoAoVivo,
-}));
+let mockHookReal = false;
+let mockValidacaoAoVivo: {
+  estado: string;
+  nome?: string;
+  urlNormalizada?: string;
+  tentarNovamente?: () => void;
+} = {estado: 'vazio'};
+jest.mock('../../hooks/server/useValidarArquivoRemoto', () => {
+  const real = jest.requireActual(
+    '../../hooks/server/useValidarArquivoRemoto',
+  ) as {
+    useValidarArquivoRemoto: (url: string) => unknown;
+  };
+  return {
+    useValidarArquivoRemoto: (url: string) =>
+      mockHookReal ? real.useValidarArquivoRemoto(url) : mockValidacaoAoVivo,
+  };
+});
 
 jest.mock('../../hooks/organization/useOrganizations', () => ({
   useOrganizations: jest.fn(),
@@ -87,7 +97,6 @@ const orgStart = jest.fn();
 const solicitarArquivo = jest.fn();
 
 const useAddServerPeerMock = useAddServerPeer as jest.Mock;
-const useFindRemoteArchiveMock = useFindRemoteArchive as jest.Mock;
 const useOrganizationsMock = useOrganizations as jest.Mock;
 const useAddRemoteArchiveMock = useAddRemoteArchiveToOrganization as jest.Mock;
 const useMaterializadorMock = jest.requireMock(
@@ -99,9 +108,6 @@ const useOrganizationsStateMock = jest.requireMock(
 
 /** The persisted journal the screen checks before journalizing a manual add. */
 let journalOrganizations: Array<{id: string}> = [];
-
-// Value "returned" by the (mocked) archive lookup once a URL was submitted.
-let foundArchiveName: string | undefined;
 
 const READY_ORG: ReconstructedOrganization = {
   state: 'ready',
@@ -120,11 +126,6 @@ const INCOMPLETE_ORG: ReconstructedOrganization = {
 
 function mockCoreReact({serverPeerStatus = 'idle'} = {}) {
   useAddServerPeerMock.mockReturnValue({mutate, status: serverPeerStatus});
-  useFindRemoteArchiveMock.mockImplementation(({url}: {url?: string}) => ({
-    isLoading: false,
-    data: url ? foundArchiveName : undefined,
-    isError: false,
-  }));
 }
 
 function mockOrganizations(organizations: ReconstructedOrganization[]) {
@@ -161,7 +162,13 @@ type HeaderOptions = {
 
 /** Types a URL, then presses the header save button that looks it up. */
 async function findArchive() {
-  foundArchiveName = 'Archive A';
+  // The live-validation hook is mocked to report the archive the user is
+  // about to add; the header press only marks the form as submitted.
+  mockValidacaoAoVivo = {
+    estado: 'valido',
+    nome: 'Archive A',
+    urlNormalizada: 'https://archive.example.com/',
+  };
   const user = userEvent.setup();
   await user.type(
     screen.getByTestId('RA.url-inp'),
@@ -235,8 +242,8 @@ function lastBeforeRemoveListener() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockHookReal = false;
   mockValidacaoAoVivo = {estado: 'vazio'};
-  foundArchiveName = undefined;
   mockActiveProjectId = 'project-monitoramento';
   mockCoreReact();
   mockOrganizations([]);
@@ -546,6 +553,65 @@ describe('AddRemoteArchive', () => {
       lastBeforeRemoveListener()({preventDefault});
     });
     expect(preventDefault).toHaveBeenCalled();
+  });
+
+  test('#142 P2: uma única fonte — a URL válida faz 1 fetch e apertar o header mantém 1', async () => {
+    mockHookReal = true;
+    jest.useFakeTimers();
+    const fetchOriginal = global.fetch;
+    const fetchMock = jest.fn().mockResolvedValue({
+      status: 200,
+      json: async () => ({data: {name: 'Archive A'}}),
+    } as Response);
+    (global as unknown as {fetch: jest.Mock}).fetch = fetchMock;
+    try {
+      await renderScreen();
+
+      await fireEvent.changeText(
+        screen.getByTestId('RA.url-inp'),
+        'https://archive.example.com/',
+      );
+
+      // The debounce has not elapsed: no request yet, inline spinner.
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(screen.getByTestId('RA.url-checking')).toBeOnTheScreen();
+
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://archive.example.com/info',
+        expect.objectContaining({signal: expect.anything()}),
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(screen.getByTestId('RA.url-valid')).toBeOnTheScreen();
+
+      const options = mockNavigation.setOptions.mock.calls
+        .map(([opts]) => opts as HeaderOptions)
+        .reverse()
+        .find(
+          opts =>
+            typeof opts.headerRight === 'function' &&
+            opts.headerRight() !== null,
+        )!;
+      await act(async () => {
+        await options.headerRight!()!.props.onPress();
+      });
+
+      // The header press reuses the hook's result: NO second `/info` call.
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(await screen.findByText('You are adding:')).toBeOnTheScreen();
+      expect(screen.getByText('Archive A')).toBeOnTheScreen();
+    } finally {
+      jest.clearAllTimers();
+      jest.useRealTimers();
+      global.fetch = fetchOriginal;
+    }
   });
 
   test('#142: inline feedback shows the checking spinner while the user types', async () => {

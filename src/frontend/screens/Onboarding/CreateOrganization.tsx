@@ -83,6 +83,17 @@ const m = defineMessages({
     id: '$1screens.Onboarding.CreateOrganization.archiveUrlInvalid',
     defaultMessage: 'Enter a valid HTTPS URL',
   },
+  // #142 P3: an unreachable archive (no network / timeout / abort) is NOT a
+  // malformed URL; it gets its own message and a retry affordance.
+  archiveUrlUnreachable: {
+    id: '$1screens.Onboarding.CreateOrganization.archiveUrlUnreachable',
+    defaultMessage:
+      'Could not reach the remote archive. Check the connection and try again.',
+  },
+  archiveUrlRetry: {
+    id: '$1screens.Onboarding.CreateOrganization.archiveUrlRetry',
+    defaultMessage: 'Try again',
+  },
   // #142: live validation feedback. The user must see the check reach the
   // server BEFORE the create button unlocks.
   archiveUrlChecking: {
@@ -308,6 +319,9 @@ export const CreateOrganization = ({
   const archiveUrlInvalid =
     validacaoArquivo.estado === 'invalido' ||
     validacaoArquivo.estado === 'formato-invalido';
+  // #142 P3: a network failure is not a format error. Keep it separate so the
+  // user sees a connectivity message with a retry, never "invalid HTTPS URL".
+  const archiveUrlUnreachable = validacaoArquivo.estado === 'indisponivel';
   // The normalized URL handed to the materializer comes from the validated
   // result so the created journal carries exactly what was reached.
   const normalizedArchiveUrl =
@@ -563,6 +577,23 @@ export const CreateOrganization = ({
                   {t(m.archiveUrlInvalid)}
                 </BodyText>
               )}
+              {archiveUrlUnreachable && (
+                <View style={styles.archiveUnreachable}>
+                  <BodyText
+                    variant="smallMeta"
+                    testID="ORG.create-archive-url-unreachable">
+                    {t(m.archiveUrlUnreachable)}
+                  </BodyText>
+                  <Pressable
+                    testID="ORG.create-archive-url-retry"
+                    accessibilityRole="button"
+                    onPress={validacaoArquivo.tentarNovamente}>
+                    <BodyText variant="smallMeta" style={{color: COMAPEO_BLUE}}>
+                      {t(m.archiveUrlRetry)}
+                    </BodyText>
+                  </Pressable>
+                </View>
+              )}
             </View>
           </View>
           <View style={styles.buttonContainer}>
@@ -619,6 +650,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+  },
+  archiveUnreachable: {
+    gap: 4,
   },
   textInput: {
     borderWidth: 1,

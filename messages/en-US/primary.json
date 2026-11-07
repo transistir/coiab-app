@@ -599,6 +599,12 @@
   "$1screens.Onboarding.CreateOrganization.archiveUrlPlaceholder": {
     "message": "https://…"
   },
+  "$1screens.Onboarding.CreateOrganization.archiveUrlRetry": {
+    "message": "Try again"
+  },
+  "$1screens.Onboarding.CreateOrganization.archiveUrlUnreachable": {
+    "message": "Could not reach the remote archive. Check the connection and try again."
+  },
   "$1screens.Onboarding.CreateOrganization.archiveUrlValid": {
     "message": "Remote archive found"
   },
