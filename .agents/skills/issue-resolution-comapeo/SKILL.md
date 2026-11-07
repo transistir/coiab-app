@@ -37,6 +37,30 @@ Never write to `digidem/*`.
    `workflow_dispatch`; do not claim it can be force-started. Verify required
    `all` and `frontend` checks and post-merge CI separately.
 
+## PR-cycle lessons
+
+- **Recount review threads after every push.** Automated reviewers re-review
+  each new head; a clean thread list earlier in the PR says nothing about the
+  current one. One cycle went from "all resolved" to three fresh P1s on the
+  new head. Fix or rebut with evidence (`file:line`, test, SHA), then resolve.
+- **Rerun the same SHA before calling a regression.** Local passing plus a
+  green rerun of the identical commit separates flake from breakage. Two
+  flake families seen in one cycle: the IPC drain timing out in a slow
+  navigator suite, and unrelated screen suites failing only in CI. File the
+  flake with the observed message and a hypothesis, never as "flake" alone.
+- **A disabled primary button must name what is missing.** When `canCreate`
+  ANDs several conditions, render the unmet one next to the button, in a
+  fixed priority order, and test each state. A green validation check with a
+  grey button reads as a bug to the user even when the gate is correct.
+- **A single-option catalog must not ask for a choice.** Pre-select when the
+  list has exactly one entry and keep `null` for 2+; a forced tap on the only
+  option adds friction and hides why the action stays disabled.
+- **Never hide exit codes behind `| head`, `| grep` or `| tail`.** Reviewer
+  sandboxes are read-only and often cannot bind a port (`listen EPERM`), so
+  navigator suites must run on the host; a filtered pipeline can print a clean
+  line while the command failed.
+
+
 ## Historical cloud-app lessons
 
 The following findings came from `digidem/comapeo-cloud-app`; identifiers are
