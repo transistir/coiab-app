@@ -86,11 +86,17 @@
     "message": "Descartar alterações?",
     "description": "Title of dialog that shows when cancelling observation edits"
   },
+  "$1ProjectSettings.RemoteArchive.AddRemoteArchive.checkingUrl": {
+    "message": "Verificando arquivo remoto…"
+  },
   "$1ProjectSettings.RemoteArchive.AddRemoteArchive.looking": {
     "message": "Procurando pelo Arquivo Remoto..."
   },
   "$1ProjectSettings.RemoteArchive.AddRemoteArchive.navTitle": {
     "message": "Adicionar Arquivo Remoto"
+  },
+  "$1ProjectSettings.RemoteArchive.AddRemoteArchive.validUrl": {
+    "message": "Arquivo remoto encontrado"
   },
   "$1ProjectSettings.RemoteArchive.AddRemoteArchive.youAreAdding": {
     "message": "Você está adicionando:"
@@ -618,6 +624,9 @@
     "message": "Adicionar observações",
     "description": "Title of observation list view when the user has not yet recorded observations"
   },
+  "$1screens.Onboarding.CreateOrganization.archiveUrlChecking": {
+    "message": "Verificando arquivo remoto…"
+  },
   "$1screens.Onboarding.CreateOrganization.archiveUrlInvalid": {
     "message": "Informe uma URL HTTPS válida"
   },
@@ -626,6 +635,9 @@
   },
   "$1screens.Onboarding.CreateOrganization.archiveUrlPlaceholder": {
     "message": "https://…"
+  },
+  "$1screens.Onboarding.CreateOrganization.archiveUrlValid": {
+    "message": "Arquivo remoto encontrado"
   },
   "$1screens.Onboarding.CreateOrganization.creating": {
     "message": "Criando território…"

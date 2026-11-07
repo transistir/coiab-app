@@ -57,11 +57,17 @@
     "message": "Discard changes?",
     "description": "Title of dialog that shows when cancelling observation edits"
   },
+  "$1ProjectSettings.RemoteArchive.AddRemoteArchive.checkingUrl": {
+    "message": "Checking remote archive…"
+  },
   "$1ProjectSettings.RemoteArchive.AddRemoteArchive.looking": {
     "message": "Looking for Remote Archive..."
   },
   "$1ProjectSettings.RemoteArchive.AddRemoteArchive.navTitle": {
     "message": "Add Remote Archive"
+  },
+  "$1ProjectSettings.RemoteArchive.AddRemoteArchive.validUrl": {
+    "message": "Remote archive found"
   },
   "$1ProjectSettings.RemoteArchive.AddRemoteArchive.youAreAdding": {
     "message": "You are adding:"
@@ -581,6 +587,9 @@
     "message": "Go to the map",
     "description": "Action that opens the map of the current work area from the empty observation list"
   },
+  "$1screens.Onboarding.CreateOrganization.archiveUrlChecking": {
+    "message": "Checking remote archive…"
+  },
   "$1screens.Onboarding.CreateOrganization.archiveUrlInvalid": {
     "message": "Enter a valid HTTPS URL"
   },
@@ -589,6 +598,9 @@
   },
   "$1screens.Onboarding.CreateOrganization.archiveUrlPlaceholder": {
     "message": "https://…"
+  },
+  "$1screens.Onboarding.CreateOrganization.archiveUrlValid": {
+    "message": "Remote archive found"
   },
   "$1screens.Onboarding.CreateOrganization.creating": {
     "message": "Creating Territory…"

@@ -67,6 +67,10 @@ const PT_MESSAGES = {
     'Endereço do arquivo remoto',
   '$1screens.Onboarding.CreateOrganization.archiveUrlInvalid':
     'Informe uma URL HTTPS válida',
+  '$1screens.Onboarding.CreateOrganization.archiveUrlChecking':
+    'Verificando arquivo remoto…',
+  '$1screens.Onboarding.CreateOrganization.archiveUrlValid':
+    'Arquivo remoto encontrado',
   '$1screens.Onboarding.CreateOrganization.creationInProgress':
     'Já existe uma criação de território em andamento.',
 };
@@ -76,6 +80,32 @@ jest.mock('../../contexts/OrganizationMaterializerContext', () => ({
 }));
 
 const useMaterializadorMock = useOrganizationMaterializer as jest.Mock;
+
+// #142: the live-validation hook is mocked here so the existing button-enable
+// assertions stay SYNCHRONOUS. The mock derives the same states the real hook
+// would from the FORMAT (via the real normalizer): a well-formed HTTPS URL is
+// `valido` with its normalized form (what the real hook reaches on a 200),
+// anything malformed is `formato-invalido`, and an empty string is `vazio`.
+// A test can swap in the REAL hook through `mockValidarImpl` to exercise the live
+// spinner→check→fetch chain end to end (see the "feedback ao vivo" test).
+let mockValidarImpl: (url: string) => unknown;
+jest.mock('../../hooks/server/useValidarArquivoRemoto', () => ({
+  useValidarArquivoRemoto: (url: string) => mockValidarImpl(url),
+}));
+
+const {
+  normalizeRemoteArchiveUrl: normalizeParaMock,
+} = require('../../utils/normalizeRemoteArchiveUrl');
+
+function validacaoSincronaPorFormato(url: string) {
+  if (!url.trim()) return {estado: 'vazio'};
+  try {
+    const urlNormalizada = normalizeParaMock(url);
+    return {estado: 'valido', nome: 'Arquivo Remoto', urlNormalizada};
+  } catch {
+    return {estado: 'formato-invalido'};
+  }
+}
 
 jest.mock('../../contexts/ActiveProjectIdStoreContext', () => ({
   useProjetarProjectIdAtivo: jest.fn(),
@@ -366,6 +396,7 @@ async function preencherUrl(url = 'https://exemplo.org/') {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockValidarImpl = validacaoSincronaPorFormato;
   backHandlerMock.__live.length = 0;
   store = createCoiabOrganizationsStore();
   profileStore = createUserProfileStore();
@@ -504,6 +535,63 @@ describe('CreateOrganization', () => {
     expect(
       screen.queryByTestId('ORG.create-archive-url-invalid'),
     ).not.toBeOnTheScreen();
+  });
+
+  test('feedback ao vivo: verificando → valido, uma chamada de fetch, botão habilita (prova 1 no nível da tela)', async () => {
+    // Exercises the REAL hook end to end through the screen: the spinner
+    // shows immediately, exactly one `/info` request fires after the 600 ms
+    // debounce, and the check + enabled button appear once the server
+    // answers 200 with a name.
+    jest.useFakeTimers();
+    try {
+      mockValidarImpl = jest.requireActual(
+        '../../hooks/server/useValidarArquivoRemoto',
+      ).useValidarArquivoRemoto;
+      const fetchMock = jest.fn().mockResolvedValue({
+        status: 200,
+        json: async () => ({data: {name: 'Arquivo do Servidor'}}),
+      });
+      (global as unknown as {fetch: jest.Mock}).fetch = fetchMock;
+
+      await renderScreen();
+      await irParaEtapaNome();
+      await selecionarTerritorio();
+      await preencherUrl('https://exemplo.org/');
+
+      // Immediate spinner, before the debounced request goes out.
+      expect(
+        screen.getByTestId('ORG.create-archive-url-checking'),
+      ).toBeOnTheScreen();
+      expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      // The debounce elapses: a single request fires.
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://exemplo.org/info',
+        expect.objectContaining({signal: expect.anything()}),
+      );
+
+      // The server answers: the check appears and the button unlocks.
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(
+        screen.getByTestId('ORG.create-archive-url-valid'),
+      ).toBeOnTheScreen();
+      expect(screen.getByText('Arquivo do Servidor')).toBeOnTheScreen();
+      expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
+      expect(
+        screen.queryByTestId('ORG.create-archive-url-checking'),
+      ).not.toBeOnTheScreen();
+    } finally {
+      jest.clearAllTimers();
+      jest.useRealTimers();
+    }
   });
 
   test('presses create with the territory name and the normalized archive URL', async () => {

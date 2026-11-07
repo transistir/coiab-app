@@ -29,6 +29,15 @@ jest.mock('../../hooks/server/projects', () => ({
   useFindRemoteArchive: jest.fn(),
 }));
 
+// #142: the live-validation hook calls `fetch` off the watched url field. It
+// is mocked here so the existing explicit-search flow stays deterministic; a
+// test drives the inline feedback by swapping `mockValidacaoAoVivo`. The
+// network behaviour itself is proven in useValidarArquivoRemoto.test.ts.
+let mockValidacaoAoVivo: {estado: string; nome?: string} = {estado: 'vazio'};
+jest.mock('../../hooks/server/useValidarArquivoRemoto', () => ({
+  useValidarArquivoRemoto: () => mockValidacaoAoVivo,
+}));
+
 jest.mock('../../hooks/organization/useOrganizations', () => ({
   useOrganizations: jest.fn(),
 }));
@@ -226,6 +235,7 @@ function lastBeforeRemoveListener() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockValidacaoAoVivo = {estado: 'vazio'};
   foundArchiveName = undefined;
   mockActiveProjectId = 'project-monitoramento';
   mockCoreReact();
@@ -536,5 +546,32 @@ describe('AddRemoteArchive', () => {
       lastBeforeRemoveListener()({preventDefault});
     });
     expect(preventDefault).toHaveBeenCalled();
+  });
+
+  test('#142: inline feedback shows the checking spinner while the user types', async () => {
+    mockValidacaoAoVivo = {estado: 'verificando'};
+    await renderScreen();
+
+    expect(screen.getByTestId('RA.url-checking')).toBeOnTheScreen();
+    expect(screen.getByText('Checking remote archive…')).toBeOnTheScreen();
+    expect(screen.queryByTestId('RA.url-valid')).not.toBeOnTheScreen();
+  });
+
+  test('#142: inline feedback shows the found check with the archive name', async () => {
+    mockValidacaoAoVivo = {estado: 'valido', nome: 'Arquivo Encontrado'};
+    await renderScreen();
+
+    expect(screen.getByTestId('RA.url-valid')).toBeOnTheScreen();
+    expect(screen.getByText('Arquivo Encontrado')).toBeOnTheScreen();
+    expect(screen.queryByTestId('RA.url-checking')).not.toBeOnTheScreen();
+  });
+
+  test('#142: inline feedback shows the invalid message on a failed live check', async () => {
+    mockValidacaoAoVivo = {estado: 'invalido'};
+    await renderScreen();
+
+    expect(screen.getByText('Invalid URL')).toBeOnTheScreen();
+    expect(screen.queryByTestId('RA.url-valid')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('RA.url-checking')).not.toBeOnTheScreen();
   });
 });

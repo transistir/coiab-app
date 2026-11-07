@@ -2,7 +2,14 @@ import * as React from 'react';
 import {NativeNavigationComponent} from '../../sharedTypes/navigation';
 import {defineMessages, useIntl} from 'react-intl';
 import {StyleSheet, TouchableOpacity, View} from 'react-native';
-import {COMAPEO_BLUE, BLUE_GREY, RED, VERY_LIGHT_GREY} from '../../lib/styles';
+import MaterialIcons from '@react-native-vector-icons/material-icons';
+import {
+  COMAPEO_BLUE,
+  BLUE_GREY,
+  DARK_GREEN,
+  RED,
+  VERY_LIGHT_GREY,
+} from '../../lib/styles';
 import {HookFormTextInput} from '../../sharedComponents/HookFormTextInput';
 import {Control, FieldErrors, useForm} from 'react-hook-form';
 import {SaveButton} from '../../sharedComponents/SaveButton';
@@ -12,6 +19,7 @@ import {ScreenContentWithDock} from '../../sharedComponents/ScreenContentWithDoc
 import {Button} from '../../sharedComponents/Button';
 import {useNavigationFromRoot} from '../../hooks/useNavigationWithTypes';
 import {normalizeRemoteArchiveUrl} from '../../utils/normalizeRemoteArchiveUrl';
+import {useValidarArquivoRemoto} from '../../hooks/server/useValidarArquivoRemoto';
 import {LoadingIndicator} from '../../sharedComponents/LoadingIndicator';
 import {HeaderText} from '../../sharedComponents/Text/HeaderText';
 import {BodyText} from '../../sharedComponents/Text/BodyText';
@@ -37,6 +45,16 @@ const m = defineMessages({
   invalidUrl: {
     id: 'ProjectSettings.RemoteArchive.AddRemoteArchive.invalidUrl',
     defaultMessage: 'Invalid URL',
+  },
+  // #142: inline live feedback while the user types, mirroring the create
+  // flow — the explicit search button still drives the actual add.
+  checkingUrl: {
+    id: '$1ProjectSettings.RemoteArchive.AddRemoteArchive.checkingUrl',
+    defaultMessage: 'Checking remote archive…',
+  },
+  validUrl: {
+    id: '$1ProjectSettings.RemoteArchive.AddRemoteArchive.validUrl',
+    defaultMessage: 'Remote archive found',
   },
   looking: {
     id: '$1ProjectSettings.RemoteArchive.AddRemoteArchive.looking',
@@ -77,9 +95,16 @@ export const AddRemoteArchive: NativeNavigationComponent<
     control,
     handleSubmit,
     setError,
+    watch,
     formState: {errors},
   } = useForm<URLInput>();
   const [normalizedUrl, setNormalizedUrl] = React.useState<string>('');
+
+  // #142: live inline validation as the user types. The explicit header
+  // search still drives the actual lookup/add — this only surfaces the same
+  // spinner/check/error feedback as the create flow, and never navigates.
+  const urlDigitada = watch('url') ?? '';
+  const validacaoArquivo = useValidarArquivoRemoto(urlDigitada);
 
   const {
     isLoading: urlSearching,
@@ -126,15 +151,18 @@ export const AddRemoteArchive: NativeNavigationComponent<
     return <AddFoundArchive name={archiveName} url={normalizedUrl} />;
   }
 
-  return <SearchUrl control={control} errors={errors} />;
+  return (
+    <SearchUrl control={control} errors={errors} validacao={validacaoArquivo} />
+  );
 };
 
 type SearchUrlProp = {
   control: Control<URLInput>;
   errors: FieldErrors<URLInput>;
+  validacao: ReturnType<typeof useValidarArquivoRemoto>;
 };
 
-const SearchUrl = ({control, errors}: SearchUrlProp) => {
+const SearchUrl = ({control, errors, validacao}: SearchUrlProp) => {
   const {formatMessage} = useIntl();
   const navigation = useNavigationFromRoot();
 
@@ -155,7 +183,26 @@ const SearchUrl = ({control, errors}: SearchUrlProp) => {
         name="url"
         rules={{required: true, minLength: 1}}
       />
-      {(errors.url || errors.root) && (
+      {validacao.estado === 'verificando' && (
+        <View testID="RA.url-checking" style={styles.urlFeedback}>
+          <LoadingIndicator size="small" style={{flex: 0}} />
+          <BodyText variant="smallMeta">
+            {formatMessage(m.checkingUrl)}
+          </BodyText>
+        </View>
+      )}
+      {validacao.estado === 'valido' && (
+        <View testID="RA.url-valid" style={styles.urlFeedback}>
+          <MaterialIcons name="check-circle" size={16} color={DARK_GREEN} />
+          <BodyText variant="smallMeta">
+            {validacao.nome ?? formatMessage(m.validUrl)}
+          </BodyText>
+        </View>
+      )}
+      {(errors.url ||
+        errors.root ||
+        validacao.estado === 'invalido' ||
+        validacao.estado === 'formato-invalido') && (
         <HeaderText variant="header6" style={{color: RED, marginTop: 10}}>
           {formatMessage(m.invalidUrl)}
         </HeaderText>
@@ -377,6 +424,12 @@ const styles = StyleSheet.create({
   container: {
     padding: 20,
     paddingTop: 40,
+  },
+  urlFeedback: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
   },
   title: {
     marginBottom: 20,

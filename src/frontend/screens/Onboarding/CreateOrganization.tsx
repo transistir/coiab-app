@@ -11,12 +11,13 @@ import {
 } from 'react-native';
 import {defineMessages, useIntl} from 'react-intl';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
+import MaterialIcons from '@react-native-vector-icons/material-icons';
 
 import {HeaderText} from '../../sharedComponents/Text/HeaderText';
 import {BodyText} from '../../sharedComponents/Text/BodyText';
 import {PrimaryButton} from '../../sharedComponents/Buttons';
 import {LoadingIndicator} from '../../sharedComponents/LoadingIndicator';
-import {BLACK, COMAPEO_BLUE, LIGHT_GREY} from '../../lib/styles';
+import {BLACK, COMAPEO_BLUE, DARK_GREEN, LIGHT_GREY} from '../../lib/styles';
 import {useOrganizationMaterializer} from '../../contexts/OrganizationMaterializerContext';
 import {
   useCoiabOrganizationsState,
@@ -31,7 +32,7 @@ import {ErroPacote} from '../../lib/organization/pacotes';
 import {OrganizationOperationError} from '../../lib/organization/fanout';
 import {AppStackParamsList} from '../../sharedTypes/navigation';
 import territoriesData from '../../lib/territories.json';
-import {normalizeRemoteArchiveUrl} from '../../utils/normalizeRemoteArchiveUrl';
+import {useValidarArquivoRemoto} from '../../hooks/server/useValidarArquivoRemoto';
 import {useUserProfileState} from '../../contexts/UserProfileStoreContext';
 
 const m = defineMessages({
@@ -81,6 +82,16 @@ const m = defineMessages({
   archiveUrlInvalid: {
     id: '$1screens.Onboarding.CreateOrganization.archiveUrlInvalid',
     defaultMessage: 'Enter a valid HTTPS URL',
+  },
+  // #142: live validation feedback. The user must see the check reach the
+  // server BEFORE the create button unlocks.
+  archiveUrlChecking: {
+    id: '$1screens.Onboarding.CreateOrganization.archiveUrlChecking',
+    defaultMessage: 'Checking remote archive…',
+  },
+  archiveUrlValid: {
+    id: '$1screens.Onboarding.CreateOrganization.archiveUrlValid',
+    defaultMessage: 'Remote archive found',
   },
   creating: {
     id: '$1screens.Onboarding.CreateOrganization.creating',
@@ -290,20 +301,21 @@ export const CreateOrganization = ({
   );
   const trimmedName = selectedTerritory?.name.trim() ?? '';
   const tooLong = trimmedName.length > 0 && isNameTooLong(trimmedName);
-  // The archive URL is validated on every change and only as FORMAT (no
-  // reachability): a normalized URL is the sole valid state.
-  const normalizedArchiveUrl = React.useMemo(() => {
-    if (!archiveUrl.trim()) return null;
-    try {
-      return normalizeRemoteArchiveUrl(archiveUrl);
-    } catch {
-      return null;
-    }
-  }, [archiveUrl]);
+  // #142: the archive URL is now validated LIVE against the server, not just
+  // for format. The hook debounces the typing, calls `/info`, and reports an
+  // explicit positive (`valido`) state — the only state that unlocks create.
+  const validacaoArquivo = useValidarArquivoRemoto(archiveUrl);
   const archiveUrlInvalid =
-    archiveUrl.trim().length > 0 && normalizedArchiveUrl === null;
+    validacaoArquivo.estado === 'invalido' ||
+    validacaoArquivo.estado === 'formato-invalido';
+  // The normalized URL handed to the materializer comes from the validated
+  // result so the created journal carries exactly what was reached.
+  const normalizedArchiveUrl =
+    validacaoArquivo.estado === 'valido'
+      ? (validacaoArquivo.urlNormalizada ?? null)
+      : null;
   const canCreate =
-    !!selectedTerritory && normalizedArchiveUrl !== null && !tooLong;
+    !!selectedTerritory && validacaoArquivo.estado === 'valido' && !tooLong;
 
   // SPEC B :54/:55: Back from the name stage returns to the intro and
   // creates nothing; from the intro, Back pops to the choice (Success).
@@ -520,6 +532,30 @@ export const CreateOrganization = ({
                 keyboardType="url"
                 autoCorrect={false}
               />
+              {validacaoArquivo.estado === 'verificando' && (
+                <View
+                  testID="ORG.create-archive-url-checking"
+                  style={styles.archiveFeedback}>
+                  <LoadingIndicator size="small" style={{flex: 0}} />
+                  <BodyText variant="smallMeta">
+                    {t(m.archiveUrlChecking)}
+                  </BodyText>
+                </View>
+              )}
+              {validacaoArquivo.estado === 'valido' && (
+                <View
+                  testID="ORG.create-archive-url-valid"
+                  style={styles.archiveFeedback}>
+                  <MaterialIcons
+                    name="check-circle"
+                    size={16}
+                    color={DARK_GREEN}
+                  />
+                  <BodyText variant="smallMeta">
+                    {validacaoArquivo.nome ?? t(m.archiveUrlValid)}
+                  </BodyText>
+                </View>
+              )}
               {archiveUrlInvalid && (
                 <BodyText
                   variant="smallMeta"
@@ -578,6 +614,11 @@ const styles = StyleSheet.create({
   nameForm: {
     gap: 10,
     width: '100%',
+  },
+  archiveFeedback: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   textInput: {
     borderWidth: 1,
