@@ -701,7 +701,7 @@ describe('OrganizationMaterializerContext', () => {
     // Core call, then finalize after it succeeds.
     let anterior: EstadoSlotArquivoRemoto | undefined;
     await act(async () => {
-      anterior = hook.result.current!.marcarRemocao(`${ORG_ID}-m`, {
+      anterior = await hook.result.current!.marcarRemocao(`${ORG_ID}-m`, {
         baseUrl: 'https://arquivo.example/',
       });
       expect(

@@ -8,6 +8,7 @@ import {
   createArquivoRemotoExecutor,
   criarArquivoRemotoPendente,
   criarRedeArquivoRemoto,
+  criarResolvedorIdentidadeArquivoRemoto,
   RETENTATIVA_CHECKPOINT_MS,
 } from './arquivoRemoto';
 import {parseEstadoOrganizacoes} from './coiabOrganizations';
@@ -68,15 +69,21 @@ type Consulta = (
   projectId: string,
   identidade: IdentidadeArquivoRemoto,
 ) => Promise<boolean>;
+type ResolverIdentidade = (
+  projectId: string,
+  identidade: IdentidadeArquivoRemoto,
+) => Promise<IdentidadeArquivoRemoto | undefined>;
 
 function harness({
   documentoInicial: inicial,
   rede,
   consulta,
+  resolverIdentidade,
 }: {
   documentoInicial: EstadoOrganizacoes;
   rede?: Rede;
   consulta?: Consulta;
+  resolverIdentidade?: ResolverIdentidade;
 }) {
   let document = inicial;
   const novoRepositorio = () => ({
@@ -90,12 +97,18 @@ function harness({
   const criarSobre = (
     repo: ReturnType<typeof novoRepositorio>,
     consultarArquivo = consulta,
-  ) =>
-    createArquivoRemotoExecutor({
+  ) => {
+    // Kept in a variable so the RED run compiles against the pre-fix option
+    // type: the extra `resolverIdentidade` is simply ignored by the old
+    // executor and the behavioral failure is what the assertions see.
+    const opcoes = {
       repository: repo,
       rede: {addServerPeer},
       ...(consultarArquivo ? {consultarArquivo} : {}),
-    });
+      ...(resolverIdentidade ? {resolverIdentidade} : {}),
+    };
+    return createArquivoRemotoExecutor(opcoes);
+  };
   const criar = () => criarSobre(repository);
   return {
     repository,
@@ -380,7 +393,7 @@ describe('arquivo remoto no journal da organização (#142)', () => {
     }
   });
 
-  test('remoção: falha ao gravar a marca aborta antes de qualquer remoção do Core', () => {
+  test('remoção: falha ao gravar a marca aborta antes de qualquer remoção do Core', async () => {
     const org = organizacao(
       'org-1',
       arquivo({
@@ -397,15 +410,11 @@ describe('arquivo remoto no journal da organização (#142)', () => {
     });
 
     const executor = h.criar();
-    let removeuDoCore = false;
-    expect(() => {
-      // RemoveRemoteArchive only reaches `useRemoveServerPeer` after this
-      // call returns; a throw IS the abort signal.
-      executor.marcarRemocao('org-1-m', IDENTIDADE_PADRAO);
-      removeuDoCore = true;
-    }).toThrow('mmkv-write-failed');
-
-    expect(removeuDoCore).toBe(false);
+    // RemoveRemoteArchive only reaches `useRemoveServerPeer` after this call
+    // settles; a rejection IS the abort signal.
+    await expect(
+      executor.marcarRemocao('org-1-m', IDENTIDADE_PADRAO),
+    ).rejects.toThrow('mmkv-write-failed');
     expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
       estado: 'concluido',
       tentativaId: 'tentativa-m',
@@ -434,7 +443,10 @@ describe('arquivo remoto no journal da organização (#142)', () => {
       const executor = h.criar();
 
       // 1. Durable intent BEFORE Core removal.
-      const anterior = executor.marcarRemocao('org-1-m', IDENTIDADE_PADRAO);
+      const anterior = await executor.marcarRemocao(
+        'org-1-m',
+        IDENTIDADE_PADRAO,
+      );
       expect(anterior).toMatchObject({estado: 'concluido'});
       expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
         estado: 'removendo',
@@ -513,7 +525,7 @@ describe('arquivo remoto no journal da organização (#142)', () => {
     });
     const executor = h.criar();
 
-    executor.marcarRemocao('org-1-m', IDENTIDADE_PADRAO);
+    await executor.marcarRemocao('org-1-m', IDENTIDADE_PADRAO);
     expect(executor.removerArquivo('org-1-m', IDENTIDADE_PADRAO)).toBe(true);
 
     expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
@@ -539,7 +551,7 @@ describe('arquivo remoto no journal da organização (#142)', () => {
     expect(h.document.organizacoes[0]?.arquivoRemoto?.estado).toBe('concluido');
   });
 
-  test('remoção parcial: slot removido com irmão concluído agrega `concluido`', () => {
+  test('remoção parcial: slot removido com irmão concluído agrega `concluido`', async () => {
     const org = organizacao(
       'org-1',
       arquivo({
@@ -556,7 +568,7 @@ describe('arquivo remoto no journal da organização (#142)', () => {
     });
     const executor = h.criar();
 
-    executor.marcarRemocao('org-1-m', IDENTIDADE_PADRAO);
+    await executor.marcarRemocao('org-1-m', IDENTIDADE_PADRAO);
     expect(executor.removerArquivo('org-1-m', IDENTIDADE_PADRAO)).toBe(true);
 
     const parcial = h.document.organizacoes[0]!.arquivoRemoto!;
@@ -570,7 +582,7 @@ describe('arquivo remoto no journal da organização (#142)', () => {
     expect(parcial.estado).toBe('concluido');
 
     // Absence is only true once BOTH slots are removed.
-    executor.marcarRemocao('org-1-a', IDENTIDADE_PADRAO);
+    await executor.marcarRemocao('org-1-a', IDENTIDADE_PADRAO);
     expect(executor.removerArquivo('org-1-a', IDENTIDADE_PADRAO)).toBe(true);
     expect(h.document.organizacoes[0]?.arquivoRemoto?.estado).toBe('removido');
   });
@@ -820,13 +832,13 @@ describe('arquivo remoto no journal da organização (#142)', () => {
     const executor = h.criar();
 
     // Removal #1 rejects; its reconciliation read is suspended.
-    executor.marcarRemocao('org-1-m', IDENTIDADE_PADRAO);
+    await executor.marcarRemocao('org-1-m', IDENTIDADE_PADRAO);
     const reconciliacaoAntiga = executor.reconciliarRemocao('org-1-m');
     await microtarefas();
     expect(consultarArquivo).toHaveBeenCalledTimes(1);
 
     // Removal #2 starts and queries Core WHILE #1's read is still pending.
-    executor.marcarRemocao('org-1-m', IDENTIDADE_PADRAO);
+    await executor.marcarRemocao('org-1-m', IDENTIDADE_PADRAO);
     const reconciliacaoNova = executor.reconciliarRemocao('org-1-m');
     await microtarefas();
     expect(consultarArquivo).toHaveBeenCalledTimes(2);
@@ -879,6 +891,12 @@ describe('identidade do arquivo remoto na remoção (#142 10ª rodada)', () => {
     const h = harness({
       documentoInicial: documento(organizacao('org-1')),
       consulta: async () => false,
+      // The real adapter persists the device id learned at addition; the
+      // A→B comparison below is by ID, exactly as production now does.
+      rede: async ({url}) => ({
+        baseUrl: url.replace(/\/+$/, ''),
+        deviceId: url === URL_B ? 'server-b' : 'server-a',
+      }),
     });
     const executor = h.criar();
 
@@ -894,7 +912,7 @@ describe('identidade do arquivo remoto na remoção (#142 10ª rodada)', () => {
     });
 
     // 2. A é removido de `m`; o journal registra a remoção.
-    executor.marcarRemocao('org-1-m', IDENTIDADE_A);
+    await executor.marcarRemocao('org-1-m', IDENTIDADE_A);
     expect(executor.removerArquivo('org-1-m', IDENTIDADE_A)).toBe(true);
     expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
       estado: 'removido',
@@ -912,7 +930,9 @@ describe('identidade do arquivo remoto na remoção (#142 10ª rodada)', () => {
     });
 
     // 4. Remover A de `a` NÃO pode marcar o slot que registra B.
-    expect(executor.marcarRemocao('org-1-a', IDENTIDADE_A)).toBeUndefined();
+    await expect(
+      executor.marcarRemocao('org-1-a', IDENTIDADE_A),
+    ).resolves.toBeUndefined();
     expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.a).toMatchObject({
       estado: 'concluido',
     });
@@ -953,7 +973,14 @@ describe('identidade do arquivo remoto na remoção (#142 10ª rodada)', () => {
           arquivo({
             estado: 'concluido',
             slots: {
-              m: {estado: 'concluido', tentativaId: 'tentativa-m'},
+              // The slot already knows the server it holds, so the removal is
+              // matched by device id (the 16ª rodada resolution is only for an
+              // UNKNOWN identity).
+              m: {
+                estado: 'concluido',
+                tentativaId: 'tentativa-m',
+                deviceId: 'server-a',
+              },
               a: {estado: 'concluido', tentativaId: 'tentativa-a'},
             },
           }),
@@ -963,7 +990,7 @@ describe('identidade do arquivo remoto na remoção (#142 10ª rodada)', () => {
     });
     const executor = h.criar();
 
-    executor.marcarRemocao('org-1-m', IDENTIDADE_A);
+    await executor.marcarRemocao('org-1-m', IDENTIDADE_A);
     const result = await executor.reconciliarRemocao('org-1-m');
 
     expect(consulta).toHaveBeenCalledWith('org-1-m', {
@@ -1004,7 +1031,9 @@ describe('identidade do arquivo remoto na remoção (#142 10ª rodada)', () => {
     // Same server, reached through another hostname: the removal identifies
     // it by deviceId, not by the URL that happens to be announced.
     const identidadeAlias = {baseUrl: URL_ALIAS, deviceId: 'server-a'};
-    expect(executor.marcarRemocao('org-1-m', identidadeAlias)).toBeDefined();
+    await expect(
+      executor.marcarRemocao('org-1-m', identidadeAlias),
+    ).resolves.toBeDefined();
     expect(executor.removerArquivo('org-1-m', identidadeAlias)).toBe(true);
     expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
       estado: 'removido',
@@ -1223,7 +1252,9 @@ describe('adaptador real: deviceId pelo diff de membros (#142 12ª rodada)', () 
       baseUrl: URL_CANONICA,
       deviceId: DEVICE_ID,
     };
-    expect(executor.marcarRemocao('org-1-m', identidadeCanonica)).toBeDefined();
+    await expect(
+      executor.marcarRemocao('org-1-m', identidadeCanonica),
+    ).resolves.toBeDefined();
     core.removerDe('org-1-m'); // efeito real de Core
     expect(executor.removerArquivo('org-1-m', identidadeCanonica)).toBe(true);
     expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
@@ -1281,6 +1312,63 @@ describe('adaptador real: deviceId pelo diff de membros (#142 12ª rodada)', () 
       core.rede.addServerPeer({projectId: 'org-1-m', url: URL_ALIAS}),
     ).resolves.toBeUndefined();
     expect(core.adicionados).toEqual(['org-1-m']);
+  });
+});
+
+describe('resolvedor de identidade da remoção (#142 16ª rodada)', () => {
+  const URL_ALIAS = 'https://alias.example/';
+  const URL_CANONICA = 'https://canonical.example/';
+  const DEVICE_ID = 'srv-1';
+
+  const membro = {
+    deviceId: DEVICE_ID,
+    deviceType: 'selfHostedServer',
+    role: {roleId: MEMBER_ROLE_ID},
+    selfHostedServerDetails: {baseUrl: URL_CANONICA},
+  };
+
+  function projetoCom(getMany: () => Promise<Array<Record<string, unknown>>>) {
+    return {$member: {addServerPeer: jest.fn(), getMany: jest.fn(getMany)}};
+  }
+
+  test('encontra o membro pelo deviceId e devolve a identidade normalizada', async () => {
+    const getProject = jest.fn(async () => projetoCom(async () => [membro]));
+    const resolver = criarResolvedorIdentidadeArquivoRemoto(
+      getProject as never,
+    );
+
+    await expect(
+      resolver('org-1-m', {baseUrl: URL_ALIAS, deviceId: DEVICE_ID}),
+    ).resolves.toEqual({baseUrl: 'https://alias.example', deviceId: DEVICE_ID});
+    expect(getProject).toHaveBeenCalledWith('org-1-m');
+  });
+
+  test('membro ausente ou leitura falhando devolve undefined (não adivinha)', async () => {
+    const ausente = criarResolvedorIdentidadeArquivoRemoto((async () =>
+      projetoCom(async () => [])) as never);
+    await expect(
+      ausente('org-1-m', {baseUrl: URL_ALIAS, deviceId: DEVICE_ID}),
+    ).resolves.toBeUndefined();
+
+    const falha = criarResolvedorIdentidadeArquivoRemoto((async () =>
+      projetoCom(async () => {
+        throw new Error('member-read-failed');
+      })) as never);
+    await expect(
+      falha('org-1-m', {baseUrl: URL_ALIAS, deviceId: DEVICE_ID}),
+    ).resolves.toBeUndefined();
+  });
+
+  test('remoção sem deviceId nunca consulta (comparação por URL)', async () => {
+    const getProject = jest.fn(async () => projetoCom(async () => [membro]));
+    const resolver = criarResolvedorIdentidadeArquivoRemoto(
+      getProject as never,
+    );
+
+    await expect(
+      resolver('org-1-m', {baseUrl: URL_ALIAS}),
+    ).resolves.toBeUndefined();
+    expect(getProject).not.toHaveBeenCalled();
   });
 });
 
@@ -1386,7 +1474,10 @@ describe('checkpoint de sucesso pendente antes da remoção (#142 13ª rodada)',
       // plus `srv-1`. Without re-applying the checkpoint the identity would
       // not match and the removal would be silently ignored.
       const identidadeCanonica = {baseUrl: URL_CANONICA, deviceId: DEVICE_ID};
-      const anterior = executor.marcarRemocao('org-1-m', identidadeCanonica);
+      const anterior = await executor.marcarRemocao(
+        'org-1-m',
+        identidadeCanonica,
+      );
       expect(anterior).toBeDefined();
       expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
         estado: 'removendo',
@@ -1447,18 +1538,14 @@ describe('checkpoint de sucesso pendente antes da remoção (#142 13ª rodada)',
         estado: 'aplicando',
       });
 
-      // The screen only reaches `useRemoveServerPeer` after this call returns;
-      // a throw IS the abort signal, so Core is never asked to remove.
-      let removeuDoCore = false;
-      expect(() => {
+      // The screen only reaches `useRemoveServerPeer` after this call settles;
+      // a rejection IS the abort signal, so Core is never asked to remove.
+      await expect(
         executor.marcarRemocao('org-1-m', {
           baseUrl: URL_CANONICA,
           deviceId: DEVICE_ID,
-        });
-        removeuDoCore = true;
-      }).toThrow('archive-removal-checkpoint-pending');
-
-      expect(removeuDoCore).toBe(false);
+        }),
+      ).rejects.toThrow('archive-removal-checkpoint-pending');
       expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
         estado: 'aplicando',
       });
@@ -1571,9 +1658,9 @@ describe('identidade em resolução na remoção (#142 14ª rodada)', () => {
     // journal refuses BEFORE Core, the slot stays live and the screen keeps
     // the error visible instead of closing on a false removal.
     const identidadeCanonica = {baseUrl: URL_CANONICA, deviceId: DEVICE_ID};
-    expect(() => executor.marcarRemocao('org-1-m', identidadeCanonica)).toThrow(
-      'archive-identity-pending',
-    );
+    await expect(
+      executor.marcarRemocao('org-1-m', identidadeCanonica),
+    ).rejects.toThrow('archive-identity-pending');
     expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
       estado: 'aplicando',
     });
@@ -1587,7 +1674,9 @@ describe('identidade em resolução na remoção (#142 14ª rodada)', () => {
     });
 
     // 4. A new removal attempt now works.
-    expect(executor.marcarRemocao('org-1-m', identidadeCanonica)).toBeDefined();
+    await expect(
+      executor.marcarRemocao('org-1-m', identidadeCanonica),
+    ).resolves.toBeDefined();
     core.removerDe('org-1-m');
     expect(executor.removerArquivo('org-1-m', identidadeCanonica)).toBe(true);
     expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
@@ -1650,7 +1739,9 @@ describe('identidade em resolução na remoção (#142 14ª rodada)', () => {
     // Removing A is provably a DIFFERENT server: never refused, never marks
     // the slot that records B.
     const identidadeA = {baseUrl: URL_ALIAS, deviceId: 'server-a'};
-    expect(executor.marcarRemocao('org-1-m', identidadeA)).toBeUndefined();
+    await expect(
+      executor.marcarRemocao('org-1-m', identidadeA),
+    ).resolves.toBeUndefined();
     expect(executor.removerArquivo('org-1-m', identidadeA)).toBe(true);
     expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
       estado: 'concluido',
@@ -1663,7 +1754,7 @@ describe('identidade em resolução na remoção (#142 14ª rodada)', () => {
     expect(h.document.organizacoes[0]?.arquivoRemoto?.estado).toBe('concluido');
   });
 
-  test('slot `aplicando` com deviceId já resolvido não é recusado', () => {
+  test('slot `aplicando` com deviceId já resolvido não é recusado', async () => {
     const org = organizacao(
       'org-1',
       arquivo({
@@ -1688,12 +1779,340 @@ describe('identidade em resolução na remoção (#142 14ª rodada)', () => {
     const h = harness({documentoInicial: documento(org)});
     const executor = h.criar();
 
-    const anterior = executor.marcarRemocao('org-1-m', {
+    const anterior = await executor.marcarRemocao('org-1-m', {
       baseUrl: URL_CANONICA,
       deviceId: DEVICE_ID,
     });
 
     expect(anterior).toMatchObject({estado: 'aplicando'});
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'removendo',
+      deviceId: DEVICE_ID,
+    });
+  });
+});
+
+/**
+ * #142 16ª rodada: an UNKNOWN identity (a slot without a persisted `deviceId`)
+ * is indeterminate for EVERY slot state, not only `aplicando`. The removal
+ * must either resolve the identity against the same member source the adapter
+ * uses, or refuse before Core. The previous narrow guard let a timed-out or
+ * late-failed addition be removed while Core still had the server, leaving a
+ * false `concluido` that made the next readd send nothing.
+ */
+describe('identidade desconhecida é indeterminada na remoção (#142 16ª rodada)', () => {
+  const URL_ALIAS = 'https://alias.example/';
+  const URL_CANONICA = 'https://canonical.example/';
+  const DEVICE_ID = 'srv-1';
+  const IDENTIDADE_CANONICA = {baseUrl: URL_CANONICA, deviceId: DEVICE_ID};
+
+  function membroDoServidor() {
+    return {
+      deviceId: DEVICE_ID,
+      deviceType: 'selfHostedServer',
+      role: {roleId: MEMBER_ROLE_ID},
+      selfHostedServerDetails: {baseUrl: URL_CANONICA},
+    };
+  }
+
+  /**
+   * Fake Core with one member list per project, the real adapter and the same
+   * member read used by the identity resolver. `leituraPosAdicao` controls the
+   * read that follows `addServerPeer`:
+   *   - `ok`: resolves normally;
+   *   - `falha`: fails once, leaving `concluido` without `deviceId`;
+   *   - `retida`: hangs until `liberar()` (the timeout scenario);
+   *   - `sempre-falha`: every post-add read fails (resolution impossible).
+   */
+  function coreControlado({
+    leituraPosAdicao = 'ok',
+  }: {
+    leituraPosAdicao?: 'ok' | 'falha' | 'retida' | 'sempre-falha';
+  } = {}) {
+    const membrosPorProjeto = new Map<string, Array<Record<string, unknown>>>();
+    const liberacoes: Array<() => void> = [];
+    let atrasar = leituraPosAdicao === 'retida';
+    let falhasRestantes = leituraPosAdicao === 'falha' ? 1 : 0;
+    const sempreFalha = leituraPosAdicao === 'sempre-falha';
+    const adicionados: string[] = [];
+
+    const getProject = jest.fn(async (projectId: string) => ({
+      $member: {
+        addServerPeer: jest.fn(async () => {
+          adicionados.push(projectId);
+          const atuais = membrosPorProjeto.get(projectId) ?? [];
+          if (!atuais.some(item => item.deviceId === DEVICE_ID)) {
+            membrosPorProjeto.set(projectId, [...atuais, membroDoServidor()]);
+          }
+        }),
+        getMany: jest.fn(async (options: {includeLeft: boolean}) => {
+          // Same call shape as the production adapter.
+          expect(options).toEqual({includeLeft: false});
+          const atuais = [...(membrosPorProjeto.get(projectId) ?? [])];
+          if (atuais.length > 0 && sempreFalha) {
+            throw new Error('member-read-failed');
+          }
+          if (atuais.length > 0 && falhasRestantes > 0) {
+            falhasRestantes -= 1;
+            throw new Error('member-read-failed');
+          }
+          if (atrasar && atuais.length > 0) {
+            await new Promise<void>(resolve => liberacoes.push(resolve));
+          }
+          return atuais;
+        }),
+      },
+    }));
+
+    // Same member source as the production adapter, but written inline so the
+    // RED run does not depend on the fix's new export.
+    const resolverIdentidade: ResolverIdentidade = async (
+      projectId,
+      identidade,
+    ) => {
+      const deviceId = identidade.deviceId?.trim();
+      if (!deviceId) return undefined;
+      try {
+        const projeto = await getProject(projectId);
+        const membros = await projeto.$member.getMany({includeLeft: false});
+        const membro = membros.find(item => item.deviceId === deviceId);
+        if (!membro) return undefined;
+        return {
+          baseUrl: identidade.baseUrl?.replace(/\/+$/, ''),
+          deviceId,
+        };
+      } catch {
+        return undefined;
+      }
+    };
+
+    return {
+      getProject,
+      rede: criarRedeArquivoRemoto(getProject as never),
+      resolverIdentidade,
+      adicionados,
+      removerDe: (projectId: string) => membrosPorProjeto.set(projectId, []),
+      liberar: () => {
+        atrasar = false;
+        while (liberacoes.length > 0) liberacoes.shift()!();
+      },
+    };
+  }
+
+  function trocarArquivo(h: ReturnType<typeof harness>, url: string): void {
+    h.repository.write({
+      ...h.document,
+      organizacoes: h.document.organizacoes.map(organizacao => ({
+        ...organizacao,
+        arquivoRemoto: criarArquivoRemotoPendente(url),
+      })),
+    });
+  }
+
+  async function ate(condicao: () => boolean): Promise<void> {
+    for (let i = 0; i < 300 && !condicao(); i += 1) await Promise.resolve();
+    expect(condicao()).toBe(true);
+  }
+
+  test('timeout: recusa enquanto a adição resolve; depois remove e o readd envia', async () => {
+    jest.useFakeTimers();
+    try {
+      const core = coreControlado({leituraPosAdicao: 'retida'});
+      const h = harness({
+        documentoInicial: documento(organizacao('org-1')),
+        rede: core.rede.addServerPeer,
+        resolverIdentidade: core.resolverIdentidade,
+      });
+      const executor = h.criar();
+
+      // 1. Add through the ALIAS. Core registers `srv-1`, but the post-add
+      // member read is held, so the slot has no persisted `deviceId`.
+      trocarArquivo(h, URL_ALIAS);
+      const execucao = executor.executar('org-1', {modo: 'retry'});
+      await ate(
+        () =>
+          h.document.organizacoes[0]?.arquivoRemoto?.slots.m.estado ===
+            'aplicando' &&
+          h.document.organizacoes[0]?.arquivoRemoto?.slots.a.estado ===
+            'aplicando',
+      );
+
+      // 2. The 60 s deadline expires while the read is still held. The slot
+      // becomes `falha_recuperavel/prazo-excedido` WITHOUT a `deviceId`.
+      jest.advanceTimersByTime(60_000);
+      await execucao;
+      expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+        estado: 'falha_recuperavel',
+        erro: 'prazo-excedido',
+      });
+      expect(
+        h.document.organizacoes[0]?.arquivoRemoto?.slots.m.deviceId,
+      ).toBeUndefined();
+
+      // 3. Removal through the CANONICAL hostname + `srv-1`. The identity is
+      // still unresolved: the journal REFUSES before Core (the throw is the
+      // screen's abort signal, so `removeServerPeer` is never called) and
+      // writes no terminal state.
+      await expect(
+        executor.marcarRemocao('org-1-m', IDENTIDADE_CANONICA),
+      ).rejects.toThrow('archive-identity-pending');
+      expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+        estado: 'falha_recuperavel',
+        erro: 'prazo-excedido',
+      });
+
+      // 4. The delayed read resolves and the executor persists the identity.
+      core.liberar();
+      await ate(
+        () =>
+          h.document.organizacoes[0]?.arquivoRemoto?.slots.m.estado ===
+            'concluido' &&
+          h.document.organizacoes[0]?.arquivoRemoto?.slots.m.deviceId ===
+            DEVICE_ID &&
+          !executor.emAndamento('org-1'),
+      );
+
+      // 5. A new removal attempt now works and really finalizes.
+      await expect(
+        executor.marcarRemocao('org-1-m', IDENTIDADE_CANONICA),
+      ).resolves.toBeDefined();
+      core.removerDe('org-1-m');
+      expect(executor.removerArquivo('org-1-m', IDENTIDADE_CANONICA)).toBe(
+        true,
+      );
+      expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toEqual({
+        estado: 'removido',
+        baseUrl: 'https://alias.example',
+        deviceId: DEVICE_ID,
+      });
+
+      // 6. REAL JSON + parser round-trip: restart. The explicit readd must
+      // really send, never inherit a stale `concluido`.
+      const reidratado = parseEstadoOrganizacoes(
+        JSON.parse(JSON.stringify(h.document)),
+      );
+      expect(reidratado).not.toBeNull();
+      const h2 = harness({
+        documentoInicial: reidratado as EstadoOrganizacoes,
+        rede: core.rede.addServerPeer,
+        resolverIdentidade: core.resolverIdentidade,
+      });
+      const antes = h2.addServerPeer.mock.calls.length;
+      await h2.criar().executar('org-1', {modo: 'retry'});
+
+      expect(h2.addServerPeer.mock.calls.length).toBeGreaterThan(antes);
+      expect(h2.addServerPeer).toHaveBeenCalledWith({
+        projectId: 'org-1-m',
+        url: URL_ALIAS,
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('concluido sem deviceId: a consulta de membros resolve e a remoção procede', async () => {
+    const core = coreControlado({leituraPosAdicao: 'falha'});
+    const h = harness({
+      documentoInicial: documento(organizacao('org-1')),
+      rede: core.rede.addServerPeer,
+      resolverIdentidade: core.resolverIdentidade,
+    });
+    const executor = h.criar();
+
+    // The post-add read failed once: Core has `srv-1` but the journal does not.
+    trocarArquivo(h, URL_ALIAS);
+    await executor.executar('org-1', {modo: 'retry'});
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'concluido',
+    });
+    expect(
+      h.document.organizacoes[0]?.arquivoRemoto?.slots.m.deviceId,
+    ).toBeUndefined();
+
+    // The removal resolves the identity against the member source, persists
+    // it and proceeds with the journal transition.
+    await expect(
+      executor.marcarRemocao('org-1-m', IDENTIDADE_CANONICA),
+    ).resolves.toBeDefined();
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'removendo',
+      deviceId: DEVICE_ID,
+    });
+
+    core.removerDe('org-1-m');
+    expect(executor.removerArquivo('org-1-m', IDENTIDADE_CANONICA)).toBe(true);
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'removido',
+      deviceId: DEVICE_ID,
+    });
+  });
+
+  test('concluido sem deviceId: consulta de membros falhando recusa sem estado terminal', async () => {
+    const core = coreControlado({leituraPosAdicao: 'sempre-falha'});
+    const h = harness({
+      documentoInicial: documento(organizacao('org-1')),
+      rede: core.rede.addServerPeer,
+      resolverIdentidade: core.resolverIdentidade,
+    });
+    const executor = h.criar();
+
+    // Seed the exact post-failure state: `concluido` without `deviceId`.
+    trocarArquivo(h, URL_ALIAS);
+    await executor.executar('org-1', {modo: 'retry'});
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'concluido',
+    });
+    expect(
+      h.document.organizacoes[0]?.arquivoRemoto?.slots.m.deviceId,
+    ).toBeUndefined();
+
+    // Resolution is impossible, so the removal refuses before Core and leaves
+    // the slot exactly as it was (no `removendo`, no `removido`).
+    await expect(
+      executor.marcarRemocao('org-1-m', IDENTIDADE_CANONICA),
+    ).rejects.toThrow('archive-identity-pending');
+    expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
+      estado: 'concluido',
+    });
+    expect(
+      h.document.organizacoes[0]?.arquivoRemoto?.slots.m.deviceId,
+    ).toBeUndefined();
+  });
+
+  test('slot com deviceId igual prossegue sem consultar membros', async () => {
+    const resolverIdentidade = jest.fn(
+      async () => undefined,
+    ) as unknown as ResolverIdentidade & jest.Mock;
+    const org = organizacao(
+      'org-1',
+      arquivo({
+        url: URL_ALIAS,
+        estado: 'concluido',
+        slots: {
+          m: {
+            estado: 'concluido',
+            baseUrl: 'https://alias.example',
+            deviceId: DEVICE_ID,
+          },
+          a: {
+            estado: 'concluido',
+            baseUrl: 'https://alias.example',
+            deviceId: DEVICE_ID,
+          },
+        },
+      }),
+    );
+    const h = harness({
+      documentoInicial: documento(org),
+      resolverIdentidade,
+    });
+    const executor = h.criar();
+
+    await expect(
+      executor.marcarRemocao('org-1-m', IDENTIDADE_CANONICA),
+    ).resolves.toBeDefined();
+
+    expect(resolverIdentidade).not.toHaveBeenCalled();
     expect(h.document.organizacoes[0]?.arquivoRemoto?.slots.m).toMatchObject({
       estado: 'removendo',
       deviceId: DEVICE_ID,

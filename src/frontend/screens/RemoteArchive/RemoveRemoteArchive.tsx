@@ -91,32 +91,12 @@ export function RemoveRemoteArchive({
                   <MaterialIcons name="delete" size={size} color={color} />
                 )}
                 onPress={() => {
-                  // Durable intent BEFORE the Core effect. Without a
-                  // persisted `removendo` mark there is no way to reconcile a
-                  // lost checkpoint after a restart, so a failed mark aborts
-                  // the removal rather than removing unrecorded.
                   if (!materializador) {
                     const error = new Error(
                       'organization-materializer-unavailable',
                     );
                     Sentry.captureException(error);
                     navigation.navigate('ErrorBottomSheet', {error});
-                    return;
-                  }
-                  let anterior;
-                  try {
-                    anterior = materializador.marcarRemocao(
-                      projectId,
-                      identidade,
-                    );
-                  } catch (error) {
-                    Sentry.captureException(error);
-                    navigation.navigate('ErrorBottomSheet', {
-                      error:
-                        error instanceof Error
-                          ? error
-                          : new Error(String(error)),
-                    });
                     return;
                   }
 
@@ -134,6 +114,33 @@ export function RemoveRemoteArchive({
                   // would leave the journal durably wrong and block re-adding
                   // the same URL.
                   void (async () => {
+                    // #142 review P2 (16ª rodada): `marcarRemocao` may need to
+                    // resolve a slot whose identity is still unknown against
+                    // the project members. A rejection (including
+                    // `archive-identity-pending`) is the abort signal: Core is
+                    // never asked to remove, so the journal cannot claim a
+                    // false success.
+                    let anterior: Awaited<
+                      ReturnType<typeof materializador.marcarRemocao>
+                    >;
+                    try {
+                      anterior = await materializador.marcarRemocao(
+                        projectId,
+                        identidade,
+                      );
+                    } catch (error) {
+                      Sentry.captureException(error);
+                      if (montada.current) {
+                        navigation.navigate('ErrorBottomSheet', {
+                          error:
+                            error instanceof Error
+                              ? error
+                              : new Error(String(error)),
+                        });
+                      }
+                      return;
+                    }
+
                     let sucesso = false;
                     let erro: unknown;
                     // Tracks whether the native call actually started. A

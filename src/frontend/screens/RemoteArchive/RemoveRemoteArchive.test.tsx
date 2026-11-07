@@ -119,6 +119,16 @@ function organizacao(arquivoRemoto: ArquivoRemoto): OrganizacaoLocal {
 function criarCenario(
   consultarArquivo: (projectId: string) => Promise<boolean> = async () => false,
   arquivoInicial: ArquivoRemoto = arquivoConcluido(),
+  // The production resolver reads the project members. The screen harness
+  // answers for the server the route names, so a slot that never persisted a
+  // `deviceId` is resolved before Core (16ª rodada).
+  resolverIdentidade: (
+    projectId: string,
+    identidade: IdentidadeArquivoRemoto,
+  ) => Promise<IdentidadeArquivoRemoto | undefined> = async () => ({
+    baseUrl: 'https://arquivo.example',
+    deviceId: 'server-device-1',
+  }),
 ) {
   let documento: EstadoOrganizacoes = {
     versao: 1,
@@ -137,6 +147,7 @@ function criarCenario(
       repository,
       rede: {addServerPeer},
       consultarArquivo,
+      resolverIdentidade,
     });
   const executor = criarExecutor();
 
@@ -203,6 +214,10 @@ function renderScreen() {
 async function pressRemove() {
   const user = userEvent.setup();
   await user.press(screen.getByText('Remove Archive'));
+  // `marcarRemocao` is async (it may resolve an unknown identity against the
+  // member source), so the journal transition is only visible after its
+  // microtasks run.
+  await flushMicrotasks();
 }
 
 async function flushMicrotasks() {
@@ -419,7 +434,12 @@ describe('RemoveRemoteArchive identity still resolving (#142 P2 14ª rodada)', (
         },
       },
     };
-    const cenario = criarCenario(async () => true, arquivo);
+    // Resolution is impossible here: the removal must refuse before Core.
+    const cenario = criarCenario(
+      async () => true,
+      arquivo,
+      async () => undefined,
+    );
     await renderScreen();
 
     await pressRemove();
@@ -440,6 +460,53 @@ describe('RemoveRemoteArchive identity still resolving (#142 P2 14ª rodada)', (
     expect(chamada).toBeDefined();
     const erro = (chamada as [string, {error: Error}])[1].error;
     expect(erro).toBeInstanceOf(Error);
+    expect(erro.message).toBe('archive-identity-pending');
+  });
+
+  test('timeout sem deviceId: identidade indeterminada recusa e Core não é chamado', async () => {
+    // Exact 16ª rodada timeout state: the addition exceeded the deadline, so
+    // the slot is `falha_recuperavel/prazo-excedido` and still has no
+    // `deviceId`. The old narrow guard only covered `aplicando`.
+    const arquivo: ArquivoRemoto = {
+      url: URL_ANTIGA,
+      estado: 'falha_recuperavel',
+      slots: {
+        m: {
+          estado: 'falha_recuperavel',
+          erro: 'prazo-excedido',
+          baseUrl: 'https://arquivo.example',
+        },
+        a: {
+          estado: 'falha_recuperavel',
+          erro: 'prazo-excedido',
+          baseUrl: 'https://arquivo.example',
+        },
+      },
+    };
+    const cenario = criarCenario(
+      async () => true,
+      arquivo,
+      async () => undefined,
+    );
+    await renderScreen();
+
+    await pressRemove();
+
+    const removeServerPeer = useRemoveServerPeerMock.mock.results[0]!.value as {
+      mutateAsync: jest.Mock;
+    };
+    expect(removeServerPeer.mutateAsync).not.toHaveBeenCalled();
+    expect(mockNavigation.goBack).not.toHaveBeenCalled();
+    expect(cenario.slot().m).toMatchObject({
+      estado: 'falha_recuperavel',
+      erro: 'prazo-excedido',
+    });
+
+    const chamada = mockNavigation.navigate.mock.calls.find(
+      ([nome]) => nome === 'ErrorBottomSheet',
+    );
+    expect(chamada).toBeDefined();
+    const erro = (chamada as [string, {error: Error}])[1].error;
     expect(erro.message).toBe('archive-identity-pending');
   });
 });
