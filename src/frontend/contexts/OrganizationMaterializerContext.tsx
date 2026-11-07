@@ -14,7 +14,6 @@ import {
   createArquivoRemotoExecutor,
   criarArquivoRemotoPendente,
   criarRedeArquivoRemoto,
-  criarResolvedorIdentidadeArquivoRemoto,
   type ModoArquivoRemoto,
   type ResultadoArquivoRemoto,
 } from '../lib/organization/arquivoRemoto';
@@ -161,19 +160,12 @@ export function OrganizationMaterializerProvider({
         projectId,
         identidade,
       );
-    // Same member source the addition adapter reads. A removal whose slot has
-    // no persisted `deviceId` resolves it here BEFORE touching Core, or the
-    // journal refuses (#142 16ª rodada).
-    const resolverIdentidade = criarResolvedorIdentidadeArquivoRemoto(
-      projectId => clientApi.getProject(projectId),
-    );
     const executorArquivoRemoto = createArquivoRemotoExecutor({
       repository,
       rede: redeArquivoRemoto,
       // Same Core read `useActiveArchiveServer` exposes: only a durable
       // `removendo` slot uses it, at boot or on the checkpoint timer.
       consultarArquivo,
-      resolverIdentidade,
       // The member cache of a project changes when the server REALLY applies
       // the archive — even if that response lands after the 60 s deadline.
       // Invalidate per slot on the real settlement; the executor's return is

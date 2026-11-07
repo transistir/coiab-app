@@ -79,8 +79,20 @@ function arquivoConcluido(url = URL_ANTIGA): ArquivoRemoto {
     url,
     estado: 'concluido',
     slots: {
-      m: {estado: 'concluido', tentativaId: 'tentativa-m'},
-      a: {estado: 'concluido', tentativaId: 'tentativa-a'},
+      // The journal knows the server identity learned at addition. Removal
+      // has no late resolution anymore (#142 17ª rodada).
+      m: {
+        estado: 'concluido',
+        tentativaId: 'tentativa-m',
+        baseUrl: 'https://arquivo.example',
+        deviceId: 'server-device-1',
+      },
+      a: {
+        estado: 'concluido',
+        tentativaId: 'tentativa-a',
+        baseUrl: 'https://arquivo.example',
+        deviceId: 'server-device-1',
+      },
     },
   };
 }
@@ -119,16 +131,10 @@ function organizacao(arquivoRemoto: ArquivoRemoto): OrganizacaoLocal {
 function criarCenario(
   consultarArquivo: (projectId: string) => Promise<boolean> = async () => false,
   arquivoInicial: ArquivoRemoto = arquivoConcluido(),
-  // The production resolver reads the project members. The screen harness
-  // answers for the server the route names, so a slot that never persisted a
-  // `deviceId` is resolved before Core (16ª rodada).
-  resolverIdentidade: (
-    projectId: string,
-    identidade: IdentidadeArquivoRemoto,
-  ) => Promise<IdentidadeArquivoRemoto | undefined> = async () => ({
-    baseUrl: 'https://arquivo.example',
-    deviceId: 'server-device-1',
-  }),
+  enviar: (input: {
+    projectId: string;
+    url: string;
+  }) => Promise<IdentidadeArquivoRemoto | void> = async () => {},
 ) {
   let documento: EstadoOrganizacoes = {
     versao: 1,
@@ -141,13 +147,12 @@ function criarCenario(
       documento = next;
     },
   };
-  const addServerPeer = jest.fn(async () => {});
+  const addServerPeer = jest.fn(enviar);
   const criarExecutor = () =>
     createArquivoRemotoExecutor({
       repository,
       rede: {addServerPeer},
       consultarArquivo,
-      resolverIdentidade,
     });
   const executor = criarExecutor();
 
@@ -407,7 +412,7 @@ describe('RemoveRemoteArchive journal ownership on unmount (#142 P2 6ª rodada)'
   });
 });
 
-describe('RemoveRemoteArchive identity still resolving (#142 P2 14ª rodada)', () => {
+describe('RemoveRemoteArchive refuses before Core (#142 P2 14ª/17ª rodada)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     useRemoveServerPeerMock.mockReturnValue({
@@ -417,7 +422,15 @@ describe('RemoveRemoteArchive identity still resolving (#142 P2 14ª rodada)', (
     });
   });
 
-  test('recusa a remoção: erro visível, Core intocado e tela mantida', async () => {
+  function erroDaTela(): Error {
+    const chamada = mockNavigation.navigate.mock.calls.find(
+      ([nome]) => nome === 'ErrorBottomSheet',
+    );
+    expect(chamada).toBeDefined();
+    return (chamada as [string, {error: Error}])[1].error;
+  }
+
+  test('slot sem deviceId: recusa visível, journal intacto e Core intocado', async () => {
     const arquivo: ArquivoRemoto = {
       url: URL_ANTIGA,
       estado: 'aplicando',
@@ -434,39 +447,27 @@ describe('RemoveRemoteArchive identity still resolving (#142 P2 14ª rodada)', (
         },
       },
     };
-    // Resolution is impossible here: the removal must refuse before Core.
-    const cenario = criarCenario(
-      async () => true,
-      arquivo,
-      async () => undefined,
-    );
+    const cenario = criarCenario(async () => true, arquivo);
     await renderScreen();
 
+    const antes = JSON.stringify(cenario.documento);
     await pressRemove();
 
     const removeServerPeer = useRemoveServerPeerMock.mock.results[0]!.value as {
       mutateAsync: jest.Mock;
     };
     // A throw from `marcarRemocao` IS the abort signal: Core is never asked to
-    // remove, so the durable `concluido` can never be written over a server
-    // that is still being added.
+    // remove. The refusal wrote nothing, so a retry after the executor
+    // persists the identity works.
     expect(removeServerPeer.mutateAsync).not.toHaveBeenCalled();
     expect(mockNavigation.goBack).not.toHaveBeenCalled();
-    expect(cenario.slot().m).toMatchObject({estado: 'aplicando'});
-
-    const chamada = mockNavigation.navigate.mock.calls.find(
-      ([nome]) => nome === 'ErrorBottomSheet',
-    );
-    expect(chamada).toBeDefined();
-    const erro = (chamada as [string, {error: Error}])[1].error;
-    expect(erro).toBeInstanceOf(Error);
-    expect(erro.message).toBe('archive-identity-pending');
+    expect(JSON.stringify(cenario.documento)).toBe(antes);
+    expect(erroDaTela().message).toBe('archive-identity-pending');
   });
 
-  test('timeout sem deviceId: identidade indeterminada recusa e Core não é chamado', async () => {
-    // Exact 16ª rodada timeout state: the addition exceeded the deadline, so
-    // the slot is `falha_recuperavel/prazo-excedido` and still has no
-    // `deviceId`. The old narrow guard only covered `aplicando`.
+  test('timeout sem deviceId: recusa sem escrita e Core não é chamado', async () => {
+    // Exact timeout state: the addition exceeded the deadline, so the slot is
+    // `falha_recuperavel/prazo-excedido` and still has no `deviceId`.
     const arquivo: ArquivoRemoto = {
       url: URL_ANTIGA,
       estado: 'falha_recuperavel',
@@ -483,13 +484,10 @@ describe('RemoveRemoteArchive identity still resolving (#142 P2 14ª rodada)', (
         },
       },
     };
-    const cenario = criarCenario(
-      async () => true,
-      arquivo,
-      async () => undefined,
-    );
+    const cenario = criarCenario(async () => true, arquivo);
     await renderScreen();
 
+    const antes = JSON.stringify(cenario.documento);
     await pressRemove();
 
     const removeServerPeer = useRemoveServerPeerMock.mock.results[0]!.value as {
@@ -497,16 +495,66 @@ describe('RemoveRemoteArchive identity still resolving (#142 P2 14ª rodada)', (
     };
     expect(removeServerPeer.mutateAsync).not.toHaveBeenCalled();
     expect(mockNavigation.goBack).not.toHaveBeenCalled();
-    expect(cenario.slot().m).toMatchObject({
-      estado: 'falha_recuperavel',
-      erro: 'prazo-excedido',
-    });
+    expect(JSON.stringify(cenario.documento)).toBe(antes);
+    expect(erroDaTela().message).toBe('archive-identity-pending');
+  });
 
-    const chamada = mockNavigation.navigate.mock.calls.find(
-      ([nome]) => nome === 'ErrorBottomSheet',
+  test('P2#3 envio vivo: recusa sem escrita, Core não é chamado e a tela segue aberta', async () => {
+    const liberacoes: Array<() => void> = [];
+    const enviar = jest.fn(
+      () =>
+        new Promise<void>(resolve => {
+          liberacoes.push(resolve);
+        }),
     );
-    expect(chamada).toBeDefined();
-    const erro = (chamada as [string, {error: Error}])[1].error;
-    expect(erro.message).toBe('archive-identity-pending');
+    const arquivo: ArquivoRemoto = {
+      url: URL_ANTIGA,
+      estado: 'pendente',
+      slots: {
+        m: {
+          estado: 'pendente',
+          baseUrl: 'https://arquivo.example',
+          deviceId: 'server-device-1',
+        },
+        a: {
+          estado: 'pendente',
+          baseUrl: 'https://arquivo.example',
+          deviceId: 'server-device-1',
+        },
+      },
+    };
+    const cenario = criarCenario(async () => true, arquivo, enviar);
+
+    const execucao = cenario.executor.executar(ORG_ID, {modo: 'retry'});
+    for (let i = 0; i < 200; i += 1) {
+      if (
+        cenario.slot().m.estado === 'aplicando' &&
+        cenario.slot().a.estado === 'aplicando' &&
+        cenario.addServerPeer.mock.calls.length === 2
+      )
+        break;
+      await Promise.resolve();
+    }
+    expect(cenario.slot().m).toMatchObject({estado: 'aplicando'});
+
+    await renderScreen();
+    const antes = JSON.stringify(cenario.documento);
+    await pressRemove();
+
+    const removeServerPeer = useRemoveServerPeerMock.mock.results[0]!.value as {
+      mutateAsync: jest.Mock;
+    };
+    // A live send can persist `concluido` AFTER the removal. The identity being
+    // known does not help: the journal refuses and is byte-identical.
+    expect(removeServerPeer.mutateAsync).not.toHaveBeenCalled();
+    expect(mockNavigation.goBack).not.toHaveBeenCalled();
+    expect(JSON.stringify(cenario.documento)).toBe(antes);
+    expect(erroDaTela().message).toBe('archive-apply-in-flight');
+
+    while (liberacoes.length > 0) liberacoes.shift()!();
+    await act(async () => {
+      await execucao;
+      await flushMicrotasks();
+    });
   });
 });

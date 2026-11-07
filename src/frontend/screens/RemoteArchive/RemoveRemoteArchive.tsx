@@ -114,12 +114,13 @@ export function RemoveRemoteArchive({
                   // would leave the journal durably wrong and block re-adding
                   // the same URL.
                   void (async () => {
-                    // #142 review P2 (16ª rodada): `marcarRemocao` may need to
-                    // resolve a slot whose identity is still unknown against
-                    // the project members. A rejection (including
-                    // `archive-identity-pending`) is the abort signal: Core is
-                    // never asked to remove, so the journal cannot claim a
-                    // false success.
+                    // #142 review P2 (17ª rodada): `marcarRemocao` is the
+                    // synchronous gate: a live send (`archive-apply-in-flight`)
+                    // or a slot whose identity is unproven
+                    // (`archive-identity-pending`) rejects before Core. The
+                    // rejection is the abort signal: Core is never asked to
+                    // remove, so the journal cannot claim a false success and
+                    // the refusal writes nothing — the open screen retries.
                     let anterior: Awaited<
                       ReturnType<typeof materializador.marcarRemocao>
                     >;

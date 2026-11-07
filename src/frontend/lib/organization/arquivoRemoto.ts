@@ -181,50 +181,6 @@ export function criarRedeArquivoRemoto(
   };
 }
 
-/**
- * Resolves the identity of a removal whose journal slot has NO persisted
- * `deviceId` (#142 16ª rodada). It reads the SAME member source the addition
- * adapter uses and returns `{baseUrl, deviceId}` only when a member with that
- * device id really exists. `undefined` means "cannot resolve now" (read
- * failure, timeout, absent member) and the removal must refuse before Core.
- */
-export type ArquivoRemotoResolverIdentidade = (
-  projectId: string,
-  identidade: IdentidadeArquivoRemoto,
-) => Promise<IdentidadeArquivoRemoto | undefined>;
-
-/**
- * Production identity resolver. It answers exactly one question: does the
- * server named by the removal's `deviceId` exist in the project's member list?
- * If it does, the journal can persist that identity into the slot and trust
- * the removal; if the read fails or the member is absent, the caller refuses
- * instead of guessing (an alias/canonical pair makes the URL useless here).
- */
-export function criarResolvedorIdentidadeArquivoRemoto(
-  getProject: (projectId: string) => Promise<ArquivoRemotoProjeto>,
-): ArquivoRemotoResolverIdentidade {
-  return async (projectId, identidade) => {
-    const deviceId = identidade.deviceId?.trim();
-    if (!deviceId) return undefined;
-    try {
-      const projeto = await getProject(projectId);
-      const membros = await lerMembros(projeto);
-      const membro = membros.find(
-        item => isActiveArchiveServerMember(item) && item.deviceId === deviceId,
-      );
-      if (!membro) return undefined;
-      const baseUrl = normalizarIdentidade(
-        {baseUrl: identidade.baseUrl},
-        membro.selfHostedServerDetails?.baseUrl,
-      )?.baseUrl;
-      return {baseUrl, deviceId};
-    } catch {
-      // A failed read is not evidence of absence: refuse instead of guessing.
-      return undefined;
-    }
-  };
-}
-
 /** One real send (or its late response) settling, after the deadline raced it. */
 export type EnvioArquivoRemotoConcluido = {
   organizacaoId: string;
@@ -453,18 +409,11 @@ export function createArquivoRemotoExecutor({
   timeoutMs = PRAZO_ARQUIVO_REMOTO_MS,
   onEnvioConcluido,
   consultarArquivo,
-  resolverIdentidade,
 }: {
   repository: ArquivoRemotoRepository;
   rede: ArquivoRemotoRede;
   now?: () => number;
   timeoutMs?: number;
-  /**
-   * Member read used ONLY when a removal names a `deviceId` the journal slot
-   * does not have yet (#142 16ª rodada). Absent means "cannot resolve": such a
-   * removal is refused before any Core effect rather than guessed.
-   */
-  resolverIdentidade?: ArquivoRemotoResolverIdentidade;
   /**
    * Core read used ONLY to reconcile a durable `removendo` slot: absent means
    * the removal landed (`pendente`), present means it did not (`concluido`).
@@ -515,38 +464,15 @@ export function createArquivoRemotoExecutor({
   }
 
   /**
-   * Resolves an UNKNOWN slot identity right before a removal (#142 16ª rodada).
-   * `undefined` means "cannot be resolved now": a live addition still owns the
-   * delayed member read (its promise is in `envios` and may be the very call
-   * that is stuck), no resolver is wired, the read fails, or it does not answer
-   * within the deadline. The caller must then REFUSE before Core — an unknown
-   * identity is indeterminate for every slot state, never "different server".
+   * Whether a real addition is still in flight for this organization (#142 17ª
+   * rodada). The send owns the delayed member read and may persist the
+   * `deviceId`/`concluido` AFTER the caller decides. A removal must refuse
+   * before Core instead of racing that write: a live send can otherwise
+   * reactivate the server that was just removed.
    */
-  async function resolverIdentidadeAgora(
-    organizacaoId: string,
-    projectId: string,
-    identidade: IdentidadeArquivoRemoto,
-  ): Promise<IdentidadeArquivoRemoto | undefined> {
-    // The live addition already owns the identity resolution. Waiting here
-    // would duplicate (and possibly hang on) the same member read; the
-    // executor persists the deviceId as soon as that read settles.
+  function envioEmAndamento(organizacaoId: string): boolean {
     const voo = mapaDeVoos().get(organizacaoId);
-    if (voo && voo.envios.size > 0) return undefined;
-    if (!resolverIdentidade) return undefined;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const prazo = new Promise<undefined>(resolve => {
-      timer = setTimeout(() => resolve(undefined), timeoutMs);
-    });
-    try {
-      return await Promise.race([
-        Promise.resolve().then(() => resolverIdentidade(projectId, identidade)),
-        prazo,
-      ]);
-    } catch {
-      return undefined;
-    } finally {
-      if (timer !== undefined) clearTimeout(timer);
-    }
+    return voo !== undefined && voo.envios.size > 0;
   }
 
   /**
@@ -1204,6 +1130,14 @@ export function createArquivoRemotoExecutor({
         item => item.id === alvoInicial.organizacaoId,
       );
       if (!organizacaoInicial?.arquivoRemoto) return undefined;
+      // #142 review P2 (17ª rodada): a REAL addition still in flight owns the
+      // delayed member read and may persist `deviceId`/`concluido` after this
+      // decision. A removal must refuse instead of racing it — a live send can
+      // otherwise reactivate the server that was just removed. The refusal
+      // writes nothing, so it is not terminal: retry after the send settles.
+      if (envioEmAndamento(alvoInicial.organizacaoId)) {
+        throw new Error('archive-apply-in-flight');
+      }
       // #142 review P2 (13ª rodada): a TERMINAL checkpoint whose write was
       // lost may hold the only durable identity of this server (the `deviceId`
       // learned at addition). Deciding the removal against the stale persisted
@@ -1217,56 +1151,25 @@ export function createArquivoRemotoExecutor({
       // Re-read after the flush: the identity comparison MUST use the state
       // that is now actually persisted.
       const documento = repository.read();
-      let alvo = localizarSlotDoProjeto(documento, projectId);
+      const alvo = localizarSlotDoProjeto(documento, projectId);
       if (!alvo) return undefined;
-      let organizacao = documento.organizacoes.find(
-        item => item.id === alvo!.organizacaoId,
+      const organizacao = documento.organizacoes.find(
+        item => item.id === alvo.organizacaoId,
       );
       if (!organizacao?.arquivoRemoto) return undefined;
       const removida = normalizarIdentidade(
         identidade,
         organizacao.arquivoRemoto.url,
       );
-      // #142 review P2 (16ª rodada): an UNKNOWN identity (a slot without a
-      // persisted `deviceId`) is INDETERMINATE for EVERY slot state, not only
-      // `aplicando`. A timed-out addition, a late failed member read and a
-      // `concluido` without `deviceId` cannot be told apart from the server
-      // this removal names: the alias/canonical pair makes the URL useless.
-      // Removing in that window lets Core drop the server while the delayed
-      // read later persists a false `concluido`, and the next readd sends
-      // nothing. Resolve the identity NOW against the same member source the
-      // adapter uses; if that is impossible, refuse BEFORE any Core effect.
-      // The refusal writes nothing, so it is not terminal: once the identity
-      // exists (executor, boot or this resolution) a new attempt works.
+      // #142 review P2 (17ª rodada): an UNKNOWN slot identity (no persisted
+      // `deviceId`) cannot be proven to be the server this removal names — the
+      // alias/canonical pair makes the URL useless. Refuse BEFORE Core and
+      // write nothing; the executor persists the id when the addition settles,
+      // so a later attempt succeeds.
       const slotAlvo = organizacao.arquivoRemoto.slots[alvo.slot];
-      if (!slotAlvo.deviceId && removida?.deviceId) {
-        const resolvida = await resolverIdentidadeAgora(
-          alvo.organizacaoId,
-          projectId,
-          removida,
-        );
-        if (!resolvida) throw new Error('archive-identity-pending');
-        // Persist the resolved identity BEFORE the removal intent so a
-        // concurrent/restarted pass sees the same server this removal names.
-        gravarSlotDireto(alvo.organizacaoId, alvo.slot, {
-          ...slotAlvo,
-          ...(resolvida.baseUrl ? {baseUrl: resolvida.baseUrl} : {}),
-          deviceId: resolvida.deviceId,
-        });
-        const documentoResolvido = repository.read();
-        const alvoResolvido = localizarSlotDoProjeto(
-          documentoResolvido,
-          projectId,
-        );
-        if (!alvoResolvido) return undefined;
-        const organizacaoResolvida = documentoResolvido.organizacoes.find(
-          item => item.id === alvoResolvido.organizacaoId,
-        );
-        if (!organizacaoResolvida?.arquivoRemoto) return undefined;
-        alvo = alvoResolvido;
-        organizacao = organizacaoResolvida;
+      if (!slotAlvo.deviceId?.trim() && removida?.deviceId) {
+        throw new Error('archive-identity-pending');
       }
-      if (!organizacao?.arquivoRemoto) return undefined;
       // A slot WITH a `deviceId` is compared by id: equal proceeds, a distinct
       // server is a no-op (preserving A→B→remove A). A removal WITHOUT a
       // `deviceId` keeps the URL comparison exactly as before.
