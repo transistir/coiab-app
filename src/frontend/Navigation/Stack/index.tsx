@@ -191,6 +191,16 @@ export function GenerationTransitionGate({
   enabled: boolean;
 }) {
   const previousGeneration = React.useRef(generation);
+  // #147 P2: the deferred reset below must survive a re-render, but never run
+  // after unmount. `true` in the body keeps a StrictMode double-invoked mount
+  // from leaving the ref stuck at `false`.
+  const montado = React.useRef(true);
+  React.useEffect(() => {
+    montado.current = true;
+    return () => {
+      montado.current = false;
+    };
+  }, []);
   React.useEffect(() => {
     if (!enabled) return;
     const prevGeneration = previousGeneration.current;
@@ -206,15 +216,17 @@ export function GenerationTransitionGate({
         // (onboarding -> app). Resetting synchronously in that same commit
         // hands the action to the outgoing router, which drops it
         // ("RESET was not handled"). One tick lets Home/Map register.
-        const timer = setTimeout(
-          () =>
-            navigation.reset({
-              index: 0,
-              routes: [{name: 'Home', params: {screen: 'Map'}}],
-            }),
-          0,
-        );
-        return () => clearTimeout(timer);
+        // The generation was already consumed above, so the timer must NOT
+        // be cancelled when this effect re-runs (`state`/`navigation`
+        // change): with the generation consumed, cancelling would lose the
+        // transition for good. Unmount is guarded by `montado`.
+        setTimeout(() => {
+          if (!montado.current) return;
+          navigation.reset({
+            index: 0,
+            routes: [{name: 'Home', params: {screen: 'Map'}}],
+          });
+        }, 0);
       }
       return;
     }
