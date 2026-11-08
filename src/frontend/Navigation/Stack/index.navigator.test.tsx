@@ -323,6 +323,9 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
   // REAL hook, so a global `fetch` mock must answer 200 with an archive name
   // for the button to enable. Saved/restored around each test.
   let fetchOriginal: typeof global.fetch;
+  // #149: handle on the installed mock so a test can prove Core actually went
+  // through it (instead of the real network) for the archive writes.
+  let fetchMock: jest.Mock;
 
   afterEach(() => {
     // The document is durable by design too: a seeded pending confirmation
@@ -341,7 +344,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     // creation/confirmation/Home — never the remote archive's state — so an
     // immediate 503 on the PUT is safe and keeps them off the real network.
     // Other hosts (e.g. the local fastify server) still use the real fetch.
-    global.fetch = jest.fn((input: unknown, init?: unknown) => {
+    fetchMock = jest.fn((input: unknown, init?: unknown) => {
       const url = typeof input === 'string' ? input : String(input);
       if (url.endsWith('/info')) {
         return Promise.resolve({
@@ -359,7 +362,8 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
         input,
         init,
       );
-    }) as unknown as typeof global.fetch;
+    });
+    global.fetch = fetchMock as unknown as typeof global.fetch;
     // The teardown of a FAILED test cannot be awaited by the next one: an
     // engine operation left mid-flight by a failure is killed when Core's
     // IPC stops, and its rejection path writes the recovered journal
@@ -861,6 +865,14 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     });
     // CA4: exatamente dois projetos, sem um terceiro.
     expect(await freshSetup.manager.listProjects()).toHaveLength(2);
+    // #149: o Core fez o PUT de cada projeto pelo mock, e não pela rede real —
+    // sem isso o request penduraria o drain do setUpIPC no CI lento.
+    const putsArquivo = fetchMock.mock.calls.filter(([input, init]) => {
+      const url = String(input);
+      const metodo = (init as {method?: string} | undefined)?.method;
+      return url.includes('exemplo.org/projects') && metodo === 'PUT';
+    });
+    expect(putsArquivo).toHaveLength(2);
   }, 20000);
 
   test('reinício antes do toque reapresenta a confirmação e mantém ativa nula (CA10)', async () => {
