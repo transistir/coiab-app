@@ -46,10 +46,12 @@ Never write to `digidem/*`.
   counting. One cycle went from "all resolved" to three fresh P1s on the new
   head. Fix or rebut with evidence (`file:line`, test, SHA), then resolve.
 - **A green rerun of the same SHA does not prove a flake.** An intermittent
-  regression also passes. Compare against what CI actually tested: the
-  `pull_request` workflow checks out `refs/pull/N/merge` — the head merged into
-  the base branch as it stood at that run — so reproduce on that merge commit
-  and on its base side (`Merge <head> into <base>` in the checkout log). A local
+  regression also passes. Compare against what CI actually tested: `ci.yml`
+  checks out `refs/pull/N/merge` — the head merged into the base branch as it
+  stood when the triggering event fired (a rerun reuses that merge) — so
+  reproduce on that merge commit and on its base side (`Merge <head> into
+  <base>` in the checkout log), fetching the SHAs from the log rather than a
+  fresh `refs/pull/N/merge`, which GitHub recomputes when the base moves. A local
   run of the head alone, or of the merge base, covers neither when the base
   moved, because the failure can come from the PR, from new base commits, or
   from their interaction. Two flake suspects seen in one cycle: the IPC drain
