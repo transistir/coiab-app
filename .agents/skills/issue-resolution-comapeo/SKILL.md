@@ -42,8 +42,12 @@ Never write to `digidem/*`.
 - **Recount review threads after every push, once the automated review of the
   new head has finished.** Automated reviewers re-review each new head; a
   clean thread list earlier in the PR says nothing about the current one.
-  Confirm the reviewer has posted its review for the exact head SHA before
-  counting. One cycle went from "all resolved" to three fresh P1s on the new
+  Confirm the reviewer has posted its review for the exact head SHA — wait one
+  bounded window (a CI run is enough) — before counting. If the bot publishes
+  nothing for that SHA (paused, rate-limited, `Review skipped`), record that in
+  the PR, keep reviewing and resolving the threads that do exist, and rely on
+  the independent review; an absent automated review is not evidence of a clean
+  head. One cycle went from "all resolved" to three fresh P1s on the new
   head. Fix or rebut with evidence (`file:line`, test, SHA), then resolve.
 - **A green rerun of the same SHA does not prove a flake.** An intermittent
   regression also passes. Compare against what CI actually tested: `ci.yml`
@@ -163,20 +167,26 @@ required names, conclusions and SHA, not just the absence of failures.
 - **Never undo a mutation test with `git checkout -- <file>`.** That restores
   the HEAD version and silently discards uncommitted delegated work — in the
   #136 round it wiped an entire rewritten component and produced five
-  unexplained test failures. Copy the file to a path outside the worktree
-  (`cp x.tsx /root/backup-x.tsx`), mutate, run, then copy back, and check
-  `git diff --stat` afterwards.
+  unexplained test failures. Copy the file to a unique path outside the
+  worktree (`cp x.tsx "${TMPDIR:-$HOME/dev}/backup-x.$$.tsx"`), mutate, run,
+  then copy back from that same path and check `git diff --stat` afterwards.
+  The `$$` stops concurrent worktrees from overwriting each other's backup; if
+  the session dies before the copy-back, restore from that path before any
+  other run or commit.
 - **`@testing-library/react-native` v14 `render` is async.** Always
   `await render(...)`. Un-awaited renders make Suspense/pending assertions
   flaky: the suite passes in isolation and fails when run with siblings.
-- **`check:message-catalog` only requires a clean `messages/`.** It runs
-  `git status --porcelain -- messages/`, so any staged, unstaged or untracked
-  change under `messages/` fails even when the generator output is correct —
-  commit or revert it first. Changes elsewhere in the tree do not affect it.
+- **`check:message-catalog` regenerates the catalog.** It runs the generator
+  and compares the committed `messages/` byte for byte, so it fails when
+  generation fails and when the generated output differs; an uncommitted change
+  under `messages/` also fails it. Run `npm run extract-messages`, review and
+  commit the expected catalog change, then rerun the check. Changes elsewhere
+  in the tree do not affect it.
 - **`/tmp` is a ~1.9 GB tmpfs on this box.** APKs (85-190 MB each), jest
   caches and onnxruntime temp dirs fill it and cause `No space left on device`
-  mid-run. Keep artifacts and harness logs under `/root/dev/`; `df -h /tmp`
-  reports the tmpfs, not the root disk.
+  mid-run. Keep artifacts, harness logs and mutation backups under a writable
+  directory with room — `/root/dev/` here, `$HOME/dev` elsewhere, never inside
+  the worktree; `df -h /tmp` reports the tmpfs, not the root disk.
 - **`gh api graphql` intermittently answers with HTML** (`502 Bad Gateway`,
   then `invalid character '<'`). Transient: sleep 5-20s and retry; it is not an
   auth or permission failure.
