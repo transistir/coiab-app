@@ -333,15 +333,26 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
 
   beforeEach(() => {
     fetchOriginal = global.fetch;
-    // Only intercept the archive `/info` probe the live-validation hook makes;
-    // everything else (including Core's own networking) falls through to the
-    // real fetch so project creation is unaffected.
+    // Answer the archive host entirely from the mock: the `/info` probe the
+    // live-validation hook makes returns 200, and every other archive request
+    // fails fast. #149: Core's `addServerPeer` does `PUT /projects` with no
+    // timeout of its own; with CI egress blocked that request hangs, the RPCs
+    // stay in flight, and setUpIPC's 4 s drain fails. These tests assert
+    // creation/confirmation/Home — never the remote archive's state — so an
+    // immediate 503 on the PUT is safe and keeps them off the real network.
+    // Other hosts (e.g. the local fastify server) still use the real fetch.
     global.fetch = jest.fn((input: unknown, init?: unknown) => {
       const url = typeof input === 'string' ? input : String(input);
       if (url.endsWith('/info')) {
         return Promise.resolve({
           status: 200,
           json: async () => ({data: {name: 'Arquivo Remoto'}}),
+        } as Response);
+      }
+      if (url.includes('exemplo.org')) {
+        return Promise.resolve({
+          status: 503,
+          json: async () => ({error: 'unavailable'}),
         } as Response);
       }
       return (fetchOriginal as (i: unknown, n?: unknown) => Promise<Response>)(
