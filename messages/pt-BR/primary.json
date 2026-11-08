@@ -864,6 +864,9 @@
   "$1screens.OrganizationSetup.retryActivationButton": {
     "message": "Tentar novamente"
   },
+  "$1screens.OrganizationSetup.retryArchiveBlocked": {
+    "message": "Conclua a preparação antes de tentar o arquivo novamente."
+  },
   "$1screens.OrganizationSetup.retryArchiveButton": {
     "message": "Tentar novamente"
   },

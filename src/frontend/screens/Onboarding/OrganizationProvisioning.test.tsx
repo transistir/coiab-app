@@ -622,6 +622,57 @@ describe('OrganizationProvisioning', () => {
       expect(retomarArquivo).not.toHaveBeenCalledWith('org-0');
     });
 
+    test('retry do arquivo fica desabilitado até a preparação concluir', async () => {
+      // Areas not both verified yet: `retomarArquivo` would refuse with
+      // `em-andamento`, so the surface must not offer an actionable button.
+      seedDocument([
+        organizacao({
+          estado: 'falha_recuperavel',
+          materializacao: {
+            monitoramento: etapa({
+              etapa: 'verificado',
+              projectId: 'proj-m-1',
+              template: {versao: '1', hash: 'm'},
+            }),
+            alertas: etapa({etapa: 'criado', projectId: 'proj-a-1'}),
+          },
+          arquivoRemoto: arquivoRemoto('falha_recuperavel'),
+        }),
+      ]);
+
+      await renderScreen();
+
+      expect(
+        screen.getByTestId('ORG.provisioning-retry-archive-btn'),
+      ).toBeDisabled();
+      expect(
+        screen.getByTestId('ORG.provisioning-retry-archive-blocked'),
+      ).toBeOnTheScreen();
+      expect(
+        screen.getByText('Finish the preparation before retrying the archive.'),
+      ).toBeOnTheScreen();
+    });
+
+    test('retry do arquivo fica habilitado com a preparação concluída', async () => {
+      seedDocument([
+        organizacao({
+          estado: 'pronta',
+          confirmacaoPendente: true,
+          materializacao: PAR_PRONTA,
+          arquivoRemoto: arquivoRemoto('falha_recuperavel'),
+        }),
+      ]);
+
+      await renderScreen();
+
+      expect(
+        screen.getByTestId('ORG.provisioning-retry-archive-btn'),
+      ).toBeEnabled();
+      expect(
+        screen.queryByTestId('ORG.provisioning-retry-archive-blocked'),
+      ).not.toBeOnTheScreen();
+    });
+
     test('pt-BR catalog carries the archive row, statuses and retry copy', () => {
       // Read the REAL source catalog compiled into the app (`messages/pt-BR`
       // → `translations/pt.json`), not a test-local message map.
@@ -650,6 +701,9 @@ describe('OrganizationProvisioning', () => {
       expect(
         catalogo['$1screens.OrganizationSetup.retryArchiveButton']?.message,
       ).toBe('Tentar novamente');
+      expect(
+        catalogo['$1screens.OrganizationSetup.retryArchiveBlocked']?.message,
+      ).toBe('Conclua a preparação antes de tentar o arquivo novamente.');
     });
   });
 

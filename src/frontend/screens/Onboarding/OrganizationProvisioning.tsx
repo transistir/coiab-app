@@ -90,6 +90,10 @@ const m = defineMessages({
     id: '$1screens.OrganizationSetup.archiveFailed',
     defaultMessage: 'Not added',
   },
+  retryArchiveBlocked: {
+    id: '$1screens.OrganizationSetup.retryArchiveBlocked',
+    defaultMessage: 'Finish the preparation before retrying the archive.',
+  },
   retryArchiveButton: {
     id: '$1screens.OrganizationSetup.retryArchiveButton',
     defaultMessage: 'Try again',
@@ -299,6 +303,13 @@ function DocumentDrivenProvisioning({
   // (the process died mid-preparation) — the resume is offered instead of a
   // spinner that would never end.
   const interrompida = organizacao.estado === 'preparando' && !preparacaoEmVoo;
+  // #147: the archive retry only runs once both areas are verified — the
+  // materializer's `retomarArquivo` refuses with `em-andamento` before that.
+  // Mirror its exact condition here so the surface never offers a button the
+  // handle would refuse.
+  const preparacaoConcluida =
+    organizacao.materializacao.monitoramento.etapa === 'verificado' &&
+    organizacao.materializacao.alertas.etapa === 'verificado';
   const [ativando, setAtivando] = React.useState(false);
   // Synchronous guard: the disabled prop alone lets a double tap queue a
   // second activate before the rerender publishes it.
@@ -433,15 +444,26 @@ function DocumentDrivenProvisioning({
       <AreaStepRows organizacao={organizacao} />
       <ArchiveStepRow organizacao={organizacao} />
       {organizacao.arquivoRemoto?.estado === 'falha_recuperavel' && (
-        <PrimaryButton
-          testID="ORG.provisioning-retry-archive-btn"
-          fullSize
-          text={t(m.retryArchiveButton)}
-          disabled={retentandoArquivo || !materializador}
-          onPress={() => {
-            void tentarArquivoNovamente();
-          }}
-        />
+        <>
+          {!preparacaoConcluida && (
+            <BodyText
+              style={styles.bodyText}
+              testID="ORG.provisioning-retry-archive-blocked">
+              {t(m.retryArchiveBlocked)}
+            </BodyText>
+          )}
+          <PrimaryButton
+            testID="ORG.provisioning-retry-archive-btn"
+            fullSize
+            text={t(m.retryArchiveButton)}
+            disabled={
+              retentandoArquivo || !materializador || !preparacaoConcluida
+            }
+            onPress={() => {
+              void tentarArquivoNovamente();
+            }}
+          />
+        </>
       )}
       {(organizacao.estado === 'falha_recuperavel' || interrompida) && (
         <PrimaryButton

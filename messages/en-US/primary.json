@@ -796,6 +796,9 @@
     "message": "Try again",
     "description": "Reactivates the settled organization after a failed open (SPEC B §4.4:120, “Tentar novamente”)"
   },
+  "$1screens.OrganizationSetup.retryArchiveBlocked": {
+    "message": "Finish the preparation before retrying the archive."
+  },
   "$1screens.OrganizationSetup.retryArchiveButton": {
     "message": "Try again",
     "description": "Retries applying the remote archive to this territory only"
