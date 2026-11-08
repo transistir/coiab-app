@@ -191,31 +191,6 @@ export function GenerationTransitionGate({
   enabled: boolean;
 }) {
   const previousGeneration = React.useRef(generation);
-  // #147 P2: the deferred reset below must survive a re-render, but never run
-  // after unmount. `true` in the body keeps a StrictMode double-invoked mount
-  // from leaving the ref stuck at `false`.
-  const montado = React.useRef(true);
-  // #147 P2 (review independente): the timer must also abandon the pending
-  // Home reset when the activation changes before the tick — a `recovery` or
-  // `unavailable` publication (or the gate being disabled) supersedes the
-  // `ready` that scheduled it. These refs are updated by an effect without a
-  // dependency array: it commits before the `setTimeout(0)` reset fires, so the
-  // callback still reads the CURRENT values in the re-render that must cancel
-  // the timer.
-  const statusAtual = React.useRef(status);
-  const generationAtual = React.useRef(generation);
-  const enabledAtual = React.useRef(enabled);
-  React.useEffect(() => {
-    montado.current = true;
-    return () => {
-      montado.current = false;
-    };
-  }, []);
-  React.useEffect(() => {
-    statusAtual.current = status;
-    generationAtual.current = generation;
-    enabledAtual.current = enabled;
-  });
   React.useEffect(() => {
     if (!enabled) return;
     const prevGeneration = previousGeneration.current;
@@ -226,33 +201,11 @@ export function GenerationTransitionGate({
       if (
         generation !== prevGeneration &&
         state.routes[state.index]?.name !== 'Home'
-      ) {
-        // #147: the ready commit also swaps the registered screen set
-        // (onboarding -> app). Resetting synchronously in that same commit
-        // hands the action to the outgoing router, which drops it
-        // ("RESET was not handled"). One tick lets Home/Map register.
-        // The generation was already consumed above, so the timer must NOT
-        // be cancelled when this effect re-runs (`state`/`navigation`
-        // change): with the generation consumed, cancelling would lose the
-        // transition for good. Unmount is guarded by `montado`; any later
-        // activation change is guarded by the current-value refs, so a
-        // `recovery`/`unavailable` commit that ran its own reset cannot be
-        // overwritten by this stale Home reset.
-        const generationAgendada = generation;
-        setTimeout(() => {
-          if (
-            !montado.current ||
-            !enabledAtual.current ||
-            statusAtual.current !== 'ready' ||
-            generationAtual.current !== generationAgendada
-          )
-            return;
-          navigation.reset({
-            index: 0,
-            routes: [{name: 'Home', params: {screen: 'Map'}}],
-          });
-        }, 0);
-      }
+      )
+        navigation.reset({
+          index: 0,
+          routes: [{name: 'Home', params: {screen: 'Map'}}],
+        });
       return;
     }
     // The organization context is not openable (`recovery` | `unavailable`):
