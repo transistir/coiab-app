@@ -96,6 +96,54 @@ describe('GenerationTransitionGate (#147)', () => {
     });
   });
 
+  test('recovery antes do tick impede o reset adiado para Home', async () => {
+    const navigation = {reset: jest.fn()};
+    // A rota atual não é Home (o reset adiado está armado), mas é uma rota de
+    // projeto: o branch de recovery precisa resetar para a superfície de
+    // provisionamento.
+    const estadoInicial = buildState('Projects');
+    const estadoRecovery = buildState('Projects', 'state-2');
+
+    const {rerender} = await render(
+      renderGate({state: estadoInicial, navigation, generation: 0}),
+    );
+
+    // `ready` com nova geração: agenda o reset para Home no próximo tick.
+    await rerender(
+      renderGate({state: estadoInicial, navigation, generation: 1}),
+    );
+    expect(navigation.reset).not.toHaveBeenCalled();
+
+    // Antes do tick o status vira `recovery`: o branch síncrono reseta para
+    // OrganizationProvisioning. O timer obsoleto do `ready` não pode reabrir
+    // Home depois dessa decisão.
+    await rerender(
+      renderGate({
+        state: estadoRecovery,
+        navigation,
+        generation: 1,
+        status: 'recovery',
+      }),
+    );
+
+    expect(navigation.reset).toHaveBeenCalledTimes(1);
+    expect(navigation.reset).toHaveBeenCalledWith({
+      index: 0,
+      routes: [{name: 'OrganizationProvisioning'}],
+    });
+
+    await act(() => {
+      jest.runOnlyPendingTimers();
+    });
+
+    expect(navigation.reset).toHaveBeenCalledTimes(1);
+    expect(navigation.reset).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        routes: [{name: 'Home', params: {screen: 'Map'}}],
+      }),
+    );
+  });
+
   test('unmount antes do tick não chama reset', async () => {
     const navigation = {reset: jest.fn()};
     const estado = buildState('OrganizationProvisioning');
