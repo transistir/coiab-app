@@ -3,6 +3,7 @@ import * as path from 'node:path';
 
 import meta from './OrgLayer.stories';
 import {withPtBrLocale} from '../../../.rnstorybook/decorators/withPtBrLocale';
+import {withRealNavigator} from '../../../.rnstorybook/decorators/withRealNavigator';
 
 const CATALOG = path.join(__dirname, '../../../messages/en-US/primary.json');
 
@@ -17,5 +18,8 @@ test('en-US descreve as áreas como "Monitoring and Alerts"', () => {
 });
 
 test('as stories do org-layer fixam o locale em pt-BR', () => {
-  expect(meta.decorators).toContain(withPtBrLocale);
+  // `withRealNavigator` nunca renderiza `<Story/>` (monta o navigator real),
+  // então ele tem que ser o decorator interno para o IntlProvider do
+  // `withPtBrLocale` envolvê-lo.
+  expect(meta.decorators).toEqual([withRealNavigator, withPtBrLocale]);
 });

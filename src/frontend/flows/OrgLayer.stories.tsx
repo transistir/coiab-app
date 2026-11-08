@@ -45,7 +45,7 @@ const NoStoryComponent = () => null;
 const meta = {
   title: 'Flows/OrgLayer',
   component: NoStoryComponent,
-  decorators: [withPtBrLocale, withRealNavigator],
+  decorators: [withRealNavigator, withPtBrLocale],
 } satisfies Meta<typeof NoStoryComponent>;
 
 export default meta;

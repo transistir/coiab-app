@@ -46,7 +46,7 @@ const m = defineMessages({
   },
   createIntroBody: {
     id: '$1screens.OrganizationSetup.createIntroBody',
-    // SPEC B :54 — verbatim.
+    // en-US de SPEC B :54 (o verbatim é o pt-BR).
     defaultMessage:
       'Your Territory will have Monitoring and Alerts, with categories ready to use. You can create it without internet.',
   },
