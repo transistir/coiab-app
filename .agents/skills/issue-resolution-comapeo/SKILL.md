@@ -39,12 +39,17 @@ Never write to `digidem/*`.
 
 ## PR-cycle lessons
 
-- **Recount review threads after every push.** Automated reviewers re-review
-  each new head; a clean thread list earlier in the PR says nothing about the
-  current one. One cycle went from "all resolved" to three fresh P1s on the
-  new head. Fix or rebut with evidence (`file:line`, test, SHA), then resolve.
+- **Recount review threads after every push, once the automated review of the
+  new head has finished.** Automated reviewers re-review each new head; a
+  clean thread list earlier in the PR says nothing about the current one.
+  Confirm the reviewer has posted its review for the exact head SHA before
+  counting. One cycle went from "all resolved" to three fresh P1s on the new
+  head. Fix or rebut with evidence (`file:line`, test, SHA), then resolve.
 - **Rerun the same SHA before calling a regression.** Local passing plus a
-  green rerun of the identical commit separates flake from breakage. Two
+  green rerun of the identical commit does not prove a flake, because an
+  intermittent regression can also pass. Before classifying a failure, check
+  it against a known-good baseline, such as the PR merge base, because a
+  regression can come from any commit in the PR. Two
   flake families seen in one cycle: the IPC drain timing out in a slow
   navigator suite, and unrelated screen suites failing only in CI. File the
   flake with the observed message and a hypothesis, never as "flake" alone.
@@ -59,7 +64,6 @@ Never write to `digidem/*`.
   sandboxes are read-only and often cannot bind a port (`listen EPERM`), so
   navigator suites must run on the host; a filtered pipeline can print a clean
   line while the command failed.
-
 
 ## Historical cloud-app lessons
 
@@ -152,38 +156,38 @@ required names, conclusions and SHA, not just the absence of failures.
 ## Harness and environment pitfalls
 
 - **Never undo a mutation test with `git checkout -- <file>`.** That restores
-the HEAD version and silently discards uncommitted delegated work — in the
-#136 round it wiped an entire rewritten component and produced five
-unexplained test failures. Copy the file to a path outside the worktree
-(`cp x.tsx /root/backup-x.tsx`), mutate, run, then copy back, and check
-`git diff --stat` afterwards.
+  the HEAD version and silently discards uncommitted delegated work — in the
+  #136 round it wiped an entire rewritten component and produced five
+  unexplained test failures. Copy the file to a path outside the worktree
+  (`cp x.tsx /root/backup-x.tsx`), mutate, run, then copy back, and check
+  `git diff --stat` afterwards.
 - **`@testing-library/react-native` v14 `render` is async.** Always
-`await render(...)`. Un-awaited renders make Suspense/pending assertions
-flaky: the suite passes in isolation and fails when run with siblings.
+  `await render(...)`. Un-awaited renders make Suspense/pending assertions
+  flaky: the suite passes in isolation and fails when run with siblings.
 - **`check:message-catalog` only requires a clean `messages/`.** It runs
-`git status --porcelain -- messages/`, so any staged, unstaged or untracked
-change under `messages/` fails even when the generator output is correct —
-commit or revert it first. Changes elsewhere in the tree do not affect it.
+  `git status --porcelain -- messages/`, so any staged, unstaged or untracked
+  change under `messages/` fails even when the generator output is correct —
+  commit or revert it first. Changes elsewhere in the tree do not affect it.
 - **`/tmp` is a ~1.9 GB tmpfs on this box.** APKs (85-190 MB each), jest
-caches and onnxruntime temp dirs fill it and cause `No space left on device`
-mid-run. Keep artifacts and harness logs under `/root/dev/`; `df -h /tmp`
-reports the tmpfs, not the root disk.
+  caches and onnxruntime temp dirs fill it and cause `No space left on device`
+  mid-run. Keep artifacts and harness logs under `/root/dev/`; `df -h /tmp`
+  reports the tmpfs, not the root disk.
 - **`gh api graphql` intermittently answers with HTML** (`502 Bad Gateway`,
-then `invalid character '<'`). Transient: sleep 5-20s and retry; it is not an
-auth or permission failure.
+  then `invalid character '<'`). Transient: sleep 5-20s and retry; it is not an
+  auth or permission failure.
 - **Resolve bot threads, do not just reply.** After fixing, call
-`addPullRequestReviewThreadReply` and then `resolveReviewThread`, and verify
-`unresolved == 0` via GraphQL. A reply alone leaves the PR blocked.
+  `addPullRequestReviewThreadReply` and then `resolveReviewThread`, and verify
+  `unresolved == 0` via GraphQL. A reply alone leaves the PR blocked.
 - **`develop` protection requires only `all` + `frontend`**, with no mandatory
-reviewer. `mergeStateStatus: CLEAN` with an empty `reviewDecision` is ready,
-not awaiting approval.
+  reviewer. `mergeStateStatus: CLEAN` with an empty `reviewDecision` is ready,
+  not awaiting approval.
 - **Verify post-merge CI on the merge commit itself.** A green PR proves the
-PR head; only the post-merge run proves the merge result. Doc-only PRs still
-run `all` and `frontend`.
+  PR head; only the post-merge run proves the merge result. Doc-only PRs still
+  run `all` and `frontend`.
 - **Verify every documented behavior claim against source.** In the #138 doc
-PR, four claims copied from an implementation summary were false: editing
-still normalizes tags, and the observer section depends on the author
-resolving, not on tags. Read the component before writing what it does.
+  PR, four claims copied from an implementation summary were false: editing
+  still normalizes tags, and the observer section depends on the author
+  resolving, not on tags. Read the component before writing what it does.
 
 ## Pitfalls
 
