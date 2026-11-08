@@ -870,6 +870,9 @@
   "$1screens.OrganizationSetup.retryArchiveButton": {
     "message": "Tentar novamente"
   },
+  "$1screens.OrganizationSetup.retryArchiveInProgress": {
+    "message": "Aguarde o envio atual terminar e tente novamente."
+  },
   "$1screens.OrganizationSetup.retryPreparationButton": {
     "message": "Tentar novamente"
   },

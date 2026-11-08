@@ -99,6 +99,10 @@ const m = defineMessages({
     defaultMessage: 'Try again',
     description: 'Retries applying the remote archive to this territory only',
   },
+  retryArchiveInProgress: {
+    id: '$1screens.OrganizationSetup.retryArchiveInProgress',
+    defaultMessage: 'Wait for the current upload to finish, then try again.',
+  },
   failureTitle: {
     id: '$1screens.OrganizationSetup.failureTitle',
     defaultMessage: 'Could not finish creating the territory.',
@@ -316,6 +320,16 @@ function DocumentDrivenProvisioning({
   const ativandoRef = React.useRef(false);
   const [retentandoArquivo, setRetentandoArquivo] = React.useState(false);
   const retentandoArquivoRef = React.useRef(false);
+  // #147 review: `retomarArquivo` answers `em-andamento` when a send is
+  // already in flight — the button is enabled (the preparation is done) but
+  // the tap must not fail silently. The notice is anchored to the archive
+  // state seen at tap time: it is shown only while the state is unchanged, so
+  // it clears by derivation whenever the document's archive step moves (the
+  // send concluded or failed) and can never stay stuck.
+  const [avisoArquivo, setAvisoArquivo] = React.useState<string | null>(null);
+  const estadoArquivoAtual = organizacao.arquivoRemoto?.estado;
+  const avisoArquivoEmAndamento =
+    avisoArquivo !== null && avisoArquivo === estadoArquivoAtual;
 
   // SPEC A §4.4:149 (CA15): a blocked boot with work in progress maps to the
   // single canonical pending-work string. Reopening the work's persisted
@@ -357,7 +371,10 @@ function DocumentDrivenProvisioning({
     retentandoArquivoRef.current = true;
     setRetentandoArquivo(true);
     try {
-      await materializador.retomarArquivo(organizacao.id);
+      const resultado = await materializador.retomarArquivo(organizacao.id);
+      setAvisoArquivo(
+        resultado.estado === 'em-andamento' ? (estadoArquivoAtual ?? '') : null,
+      );
     } finally {
       retentandoArquivoRef.current = false;
       setRetentandoArquivo(false);
@@ -463,6 +480,13 @@ function DocumentDrivenProvisioning({
               void tentarArquivoNovamente();
             }}
           />
+          {avisoArquivoEmAndamento && (
+            <BodyText
+              style={styles.bodyText}
+              testID="ORG.provisioning-retry-archive-in-progress">
+              {t(m.retryArchiveInProgress)}
+            </BodyText>
+          )}
         </>
       )}
       {(organizacao.estado === 'falha_recuperavel' || interrompida) && (

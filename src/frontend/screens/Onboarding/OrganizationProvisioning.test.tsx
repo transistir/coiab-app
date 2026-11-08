@@ -673,6 +673,65 @@ describe('OrganizationProvisioning', () => {
       ).not.toBeOnTheScreen();
     });
 
+    test('retry do arquivo que encontra envio em andamento mostra o aviso', async () => {
+      // The preparation is complete, so the button is enabled; the engine's
+      // own answer (`em-andamento`) is what the surface must explain.
+      retomarArquivo.mockResolvedValueOnce({estado: 'em-andamento', slots: {}});
+      seedDocument([
+        organizacao({
+          estado: 'pronta',
+          confirmacaoPendente: true,
+          materializacao: PAR_PRONTA,
+          arquivoRemoto: arquivoRemoto('falha_recuperavel'),
+        }),
+      ]);
+
+      await renderScreen();
+
+      await act(async () => {
+        await userEvent
+          .setup()
+          .press(screen.getByTestId('ORG.provisioning-retry-archive-btn'));
+      });
+
+      await waitFor(() => {
+        expect(
+          screen.getByTestId('ORG.provisioning-retry-archive-in-progress'),
+        ).toBeOnTheScreen();
+      });
+      expect(
+        screen.getByText(
+          'Wait for the current upload to finish, then try again.',
+        ),
+      ).toBeOnTheScreen();
+    });
+
+    test('retry do arquivo concluído não mostra o aviso de envio em andamento', async () => {
+      // Default mock answers `concluido`: nothing is in flight, so the
+      // notice must stay absent.
+      seedDocument([
+        organizacao({
+          estado: 'pronta',
+          confirmacaoPendente: true,
+          materializacao: PAR_PRONTA,
+          arquivoRemoto: arquivoRemoto('falha_recuperavel'),
+        }),
+      ]);
+
+      await renderScreen();
+
+      await act(async () => {
+        await userEvent
+          .setup()
+          .press(screen.getByTestId('ORG.provisioning-retry-archive-btn'));
+      });
+
+      expect(retomarArquivo).toHaveBeenCalledWith('org-1');
+      expect(
+        screen.queryByTestId('ORG.provisioning-retry-archive-in-progress'),
+      ).not.toBeOnTheScreen();
+    });
+
     test('pt-BR catalog carries the archive row, statuses and retry copy', () => {
       // Read the REAL source catalog compiled into the app (`messages/pt-BR`
       // → `translations/pt.json`), not a test-local message map.
