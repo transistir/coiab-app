@@ -37,6 +37,43 @@ Never write to `digidem/*`.
    `workflow_dispatch`; do not claim it can be force-started. Verify required
    `all` and `frontend` checks and post-merge CI separately.
 
+## PR-cycle lessons
+
+- **Recount review threads after every push, once the automated review of the
+  new head has finished.** Automated reviewers re-review each new head; a
+  clean thread list earlier in the PR says nothing about the current one.
+  Confirm the reviewer has posted its review for the exact head SHA — wait one
+  bounded window (a CI run is enough) — before counting. If the bot publishes
+  nothing for that SHA (paused, rate-limited, `Review skipped`), record that in
+  the PR, keep reviewing and resolving the threads that do exist, and rely on
+  the independent review; an absent automated review is not evidence of a clean
+  head. One cycle went from "all resolved" to three fresh P1s on the new
+  head. Fix or rebut with evidence (`file:line`, test, SHA), then resolve.
+- **A green rerun of the same SHA does not prove a flake.** An intermittent
+  regression also passes. Compare against what CI actually tested: `ci.yml`
+  checks out `refs/pull/N/merge` — the head merged into the base branch as it
+  stood when the triggering event fired (a rerun reuses that merge) — so
+  reproduce on that merge commit and on its base side (`Merge <head> into
+  <base>` in the checkout log), fetching the SHAs from the log rather than a
+  fresh `refs/pull/N/merge`, which GitHub recomputes when the base moves. A local
+  run of the head alone, or of the merge base, covers neither when the base
+  moved, because the failure can come from the PR, from new base commits, or
+  from their interaction. Two flake suspects seen in one cycle: the IPC drain
+  timing out in a slow navigator suite, and unrelated screen suites failing
+  only in CI. File the suspicion with the observed message and a hypothesis,
+  never as "flake" alone.
+- **A disabled primary button must name what is missing.** When `canCreate`
+  ANDs several conditions, render the unmet one next to the button, in a
+  fixed priority order, and test each state. A green validation check with a
+  grey button reads as a bug to the user even when the gate is correct.
+- **A single-option catalog must not ask for a choice.** Pre-select when the
+  list has exactly one entry and keep `null` for 2+; a forced tap on the only
+  option adds friction and hides why the action stays disabled.
+- **Never hide exit codes behind `| head`, `| grep` or `| tail`.** Reviewer
+  sandboxes are read-only and often cannot bind a port (`listen EPERM`), so
+  navigator suites must run on the host; a filtered pipeline can print a clean
+  line while the command failed.
+
 ## Historical cloud-app lessons
 
 The following findings came from `digidem/comapeo-cloud-app`; identifiers are
@@ -128,38 +165,44 @@ required names, conclusions and SHA, not just the absence of failures.
 ## Harness and environment pitfalls
 
 - **Never undo a mutation test with `git checkout -- <file>`.** That restores
-the HEAD version and silently discards uncommitted delegated work — in the
-#136 round it wiped an entire rewritten component and produced five
-unexplained test failures. Copy the file to a path outside the worktree
-(`cp x.tsx /root/backup-x.tsx`), mutate, run, then copy back, and check
-`git diff --stat` afterwards.
+  the HEAD version and silently discards uncommitted delegated work — in the
+  #136 round it wiped an entire rewritten component and produced five
+  unexplained test failures. Copy the file to a unique path outside the
+  worktree (`cp x.tsx "${TMPDIR:-$HOME/dev}/backup-x.$$.tsx"`), mutate, run,
+  then copy back from that same path and check `git diff --stat` afterwards.
+  The `$$` stops concurrent worktrees from overwriting each other's backup; if
+  the session dies before the copy-back, restore from that path before any
+  other run or commit.
 - **`@testing-library/react-native` v14 `render` is async.** Always
-`await render(...)`. Un-awaited renders make Suspense/pending assertions
-flaky: the suite passes in isolation and fails when run with siblings.
-- **`check:message-catalog` only requires a clean `messages/`.** It runs
-`git status --porcelain -- messages/`, so any staged, unstaged or untracked
-change under `messages/` fails even when the generator output is correct —
-commit or revert it first. Changes elsewhere in the tree do not affect it.
+  `await render(...)`. Un-awaited renders make Suspense/pending assertions
+  flaky: the suite passes in isolation and fails when run with siblings.
+- **`check:message-catalog` regenerates the catalog.** It runs the generator
+  and compares the committed `messages/` byte for byte, so it fails when
+  generation fails and when the generated output differs; an uncommitted change
+  under `messages/` also fails it. Run `npm run extract-messages`, review and
+  commit the expected catalog change, then rerun the check. Changes elsewhere
+  in the tree do not affect it.
 - **`/tmp` is a ~1.9 GB tmpfs on this box.** APKs (85-190 MB each), jest
-caches and onnxruntime temp dirs fill it and cause `No space left on device`
-mid-run. Keep artifacts and harness logs under `/root/dev/`; `df -h /tmp`
-reports the tmpfs, not the root disk.
+  caches and onnxruntime temp dirs fill it and cause `No space left on device`
+  mid-run. Keep artifacts, harness logs and mutation backups under a writable
+  directory with room — `/root/dev/` here, `$HOME/dev` elsewhere, never inside
+  the worktree; `df -h /tmp` reports the tmpfs, not the root disk.
 - **`gh api graphql` intermittently answers with HTML** (`502 Bad Gateway`,
-then `invalid character '<'`). Transient: sleep 5-20s and retry; it is not an
-auth or permission failure.
+  then `invalid character '<'`). Transient: sleep 5-20s and retry; it is not an
+  auth or permission failure.
 - **Resolve bot threads, do not just reply.** After fixing, call
-`addPullRequestReviewThreadReply` and then `resolveReviewThread`, and verify
-`unresolved == 0` via GraphQL. A reply alone leaves the PR blocked.
+  `addPullRequestReviewThreadReply` and then `resolveReviewThread`, and verify
+  `unresolved == 0` via GraphQL. A reply alone leaves the PR blocked.
 - **`develop` protection requires only `all` + `frontend`**, with no mandatory
-reviewer. `mergeStateStatus: CLEAN` with an empty `reviewDecision` is ready,
-not awaiting approval.
+  reviewer. `mergeStateStatus: CLEAN` with an empty `reviewDecision` is ready,
+  not awaiting approval.
 - **Verify post-merge CI on the merge commit itself.** A green PR proves the
-PR head; only the post-merge run proves the merge result. Doc-only PRs still
-run `all` and `frontend`.
+  PR head; only the post-merge run proves the merge result. Doc-only PRs still
+  run `all` and `frontend`.
 - **Verify every documented behavior claim against source.** In the #138 doc
-PR, four claims copied from an implementation summary were false: editing
-still normalizes tags, and the observer section depends on the author
-resolving, not on tags. Read the component before writing what it does.
+  PR, four claims copied from an implementation summary were false: editing
+  still normalizes tags, and the observer section depends on the author
+  resolving, not on tags. Read the component before writing what it does.
 
 ## Pitfalls
 
