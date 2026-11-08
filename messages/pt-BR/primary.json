@@ -864,8 +864,14 @@
   "$1screens.OrganizationSetup.retryActivationButton": {
     "message": "Tentar novamente"
   },
+  "$1screens.OrganizationSetup.retryArchiveBlocked": {
+    "message": "Conclua a preparação antes de tentar o arquivo novamente."
+  },
   "$1screens.OrganizationSetup.retryArchiveButton": {
     "message": "Tentar novamente"
+  },
+  "$1screens.OrganizationSetup.retryArchiveInProgress": {
+    "message": "Aguarde o envio atual terminar e tente novamente."
   },
   "$1screens.OrganizationSetup.retryPreparationButton": {
     "message": "Tentar novamente"

@@ -11,6 +11,7 @@ import {
   type OrganizacaoLocal,
   type TemplateRef,
 } from './documento';
+import {estadoAgregado} from './arquivoRemoto';
 
 /**
  * The durable COIAB organization layer (SPEC A §4.2): one versioned product
@@ -172,6 +173,16 @@ export function derivarProjectIdAtivo(
 }
 
 /**
+ * #147: `pronta` is written only after the final conferência (`materializar.ts`
+ * writes `verificado` for both areas BEFORE awaiting it); both areas
+ * `verificado` can be true while the conference is still running or has
+ * failed. This single predicate is the durable proof the preparation finished.
+ */
+export function estaPronta(organizacao: OrganizacaoLocal): boolean {
+  return organizacao.estado === 'pronta';
+}
+
+/**
  * The startup gate's document-first read (SPEC B §3.3 items 2-3): the
  * persisted document decides what the device may open BEFORE the
  * reconstructed core state is consulted. Any organization still being
@@ -300,6 +311,18 @@ export function parseEstadoOrganizacoes(
     if (org.estado === 'pronta' && org.areaEmExecucao !== null) return null;
   }
   if ([...ids].some(id => projects.has(id))) return null;
+  // The persisted aggregate is NOT the source of truth (#147 item 2): a
+  // document written before the aggregate existed, or by a buggy writer, may
+  // carry `concluido` while a slot sits in `falha_recuperavel`. Hydrating that
+  // as-is announces "Ready" and skips the slot's retry, so recompute the
+  // aggregate from the slots with the executor's single precedence rule
+  // (`estadoAgregado`) and keep the slots untouched.
+  for (const org of state.organizacoes) {
+    const arquivo = org.arquivoRemoto;
+    if (!arquivo) continue;
+    const estado = estadoAgregado(arquivo.slots);
+    if (arquivo.estado !== estado) org.arquivoRemoto = {...arquivo, estado};
+  }
   // Stale selection is preserved for explicit recovery, never reassigned.
   return state;
 }

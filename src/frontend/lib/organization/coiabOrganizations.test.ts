@@ -514,9 +514,12 @@ describe('arquivo remoto no documento (#142)', () => {
       arquivoRemoto: {
         url: 'https://arquivo.example/',
         estado: 'removido',
+        // Fixture coherent with `estadoAgregado`: `removido` é terminal só
+        // quando TODOS os slots foram removidos; um `concluido` irmão tornaria
+        // o agregado `concluido` (#147 item 2).
         slots: {
           m: {estado: 'removido'},
-          a: {estado: 'concluido', tentativaId: 'tentativa-a'},
+          a: {estado: 'removido', tentativaId: 'tentativa-a'},
         },
       },
     });
@@ -566,5 +569,39 @@ describe('arquivo remoto no documento (#142)', () => {
     const parsed = parseEstadoOrganizacoes(documento);
 
     expect(parsed?.organizacoes[0]).toEqual(org);
+  });
+});
+
+describe('recalculo do agregado do arquivo remoto (#147 item 2)', () => {
+  test('hidratação corrige agregado divergente a partir dos slots', () => {
+    const org = criarOrganizacaoPronta({
+      arquivoRemoto: {
+        url: 'https://arquivo.example/',
+        estado: 'concluido',
+        slots: {
+          m: {estado: 'concluido'},
+          a: {estado: 'falha_recuperavel', erro: 'arquivo-indisponivel'},
+        },
+      },
+    });
+    const documento: EstadoOrganizacoes = {
+      versao: 1,
+      organizacoes: [org],
+      ativa: null,
+    };
+
+    const parsed = parseEstadoOrganizacoes(
+      JSON.parse(JSON.stringify(documento)),
+    );
+
+    // O agregado persistido dizia "concluido"; um slot em falha deve manter o
+    // retry visível após o restart.
+    expect(parsed?.organizacoes[0]?.arquivoRemoto?.estado).toBe(
+      'falha_recuperavel',
+    );
+    expect(parsed?.organizacoes[0]?.arquivoRemoto?.slots).toEqual({
+      m: {estado: 'concluido'},
+      a: {estado: 'falha_recuperavel', erro: 'arquivo-indisponivel'},
+    });
   });
 });

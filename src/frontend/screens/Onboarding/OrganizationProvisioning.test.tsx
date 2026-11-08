@@ -594,7 +594,10 @@ describe('OrganizationProvisioning', () => {
       ).not.toBeOnTheScreen();
     });
 
-    test('retry do arquivo usa o id da organização em preparo, não o índice 0', async () => {
+    test('retry do arquivo usa o id da organização em confirmação, não o índice 0', async () => {
+      // `organizacaoEmPreparo` also selects a ready org with a pending
+      // confirmation; the retry acts on that organization's id, never on
+      // `organizacoes[0]`.
       seedDocument([
         organizacao({
           id: 'org-0',
@@ -605,7 +608,8 @@ describe('OrganizationProvisioning', () => {
         }),
         organizacao({
           id: 'org-1',
-          estado: 'preparando',
+          estado: 'pronta',
+          confirmacaoPendente: true,
           materializacao: PAR_PRONTA,
           arquivoRemoto: arquivoRemoto('falha_recuperavel'),
         }),
@@ -620,6 +624,142 @@ describe('OrganizationProvisioning', () => {
       });
       expect(retomarArquivo).toHaveBeenCalledWith('org-1');
       expect(retomarArquivo).not.toHaveBeenCalledWith('org-0');
+    });
+
+    test('retry do arquivo fica desabilitado até a preparação concluir', async () => {
+      // Areas not both verified yet: `retomarArquivo` would refuse with
+      // `em-andamento`, so the surface must not offer an actionable button.
+      seedDocument([
+        organizacao({
+          estado: 'falha_recuperavel',
+          materializacao: {
+            monitoramento: etapa({
+              etapa: 'verificado',
+              projectId: 'proj-m-1',
+              template: {versao: '1', hash: 'm'},
+            }),
+            alertas: etapa({etapa: 'criado', projectId: 'proj-a-1'}),
+          },
+          arquivoRemoto: arquivoRemoto('falha_recuperavel'),
+        }),
+      ]);
+
+      await renderScreen();
+
+      expect(
+        screen.getByTestId('ORG.provisioning-retry-archive-btn'),
+      ).toBeDisabled();
+      expect(
+        screen.getByTestId('ORG.provisioning-retry-archive-blocked'),
+      ).toBeOnTheScreen();
+      expect(
+        screen.getByText('Finish the preparation before retrying the archive.'),
+      ).toBeOnTheScreen();
+    });
+
+    test('retry do arquivo continua bloqueado quando as áreas estão verificadas mas a conferência falhou', async () => {
+      // #147 P2: `verificado` is written for both areas BEFORE the final
+      // conferência. A conference failure leaves them verified while the
+      // organization is `falha_recuperavel` — only `pronta` proves it passed.
+      seedDocument([
+        organizacao({
+          estado: 'falha_recuperavel',
+          materializacao: PAR_PRONTA,
+          arquivoRemoto: arquivoRemoto('falha_recuperavel'),
+        }),
+      ]);
+
+      await renderScreen();
+
+      expect(
+        screen.getByTestId('ORG.provisioning-retry-archive-btn'),
+      ).toBeDisabled();
+      expect(
+        screen.getByTestId('ORG.provisioning-retry-archive-blocked'),
+      ).toBeOnTheScreen();
+      expect(
+        screen.getByText('Finish the preparation before retrying the archive.'),
+      ).toBeOnTheScreen();
+      expect(retomarArquivo).not.toHaveBeenCalled();
+    });
+
+    test('retry do arquivo fica habilitado com a preparação concluída', async () => {
+      seedDocument([
+        organizacao({
+          estado: 'pronta',
+          confirmacaoPendente: true,
+          materializacao: PAR_PRONTA,
+          arquivoRemoto: arquivoRemoto('falha_recuperavel'),
+        }),
+      ]);
+
+      await renderScreen();
+
+      expect(
+        screen.getByTestId('ORG.provisioning-retry-archive-btn'),
+      ).toBeEnabled();
+      expect(
+        screen.queryByTestId('ORG.provisioning-retry-archive-blocked'),
+      ).not.toBeOnTheScreen();
+    });
+
+    test('retry do arquivo que encontra envio em andamento mostra o aviso', async () => {
+      // The preparation is complete, so the button is enabled; the engine's
+      // own answer (`em-andamento`) is what the surface must explain.
+      retomarArquivo.mockResolvedValueOnce({estado: 'em-andamento', slots: {}});
+      seedDocument([
+        organizacao({
+          estado: 'pronta',
+          confirmacaoPendente: true,
+          materializacao: PAR_PRONTA,
+          arquivoRemoto: arquivoRemoto('falha_recuperavel'),
+        }),
+      ]);
+
+      await renderScreen();
+
+      await act(async () => {
+        await userEvent
+          .setup()
+          .press(screen.getByTestId('ORG.provisioning-retry-archive-btn'));
+      });
+
+      await waitFor(() => {
+        expect(
+          screen.getByTestId('ORG.provisioning-retry-archive-in-progress'),
+        ).toBeOnTheScreen();
+      });
+      expect(
+        screen.getByText(
+          'Wait for the current upload to finish, then try again.',
+        ),
+      ).toBeOnTheScreen();
+    });
+
+    test('retry do arquivo concluído não mostra o aviso de envio em andamento', async () => {
+      // Default mock answers `concluido`: nothing is in flight, so the
+      // notice must stay absent.
+      seedDocument([
+        organizacao({
+          estado: 'pronta',
+          confirmacaoPendente: true,
+          materializacao: PAR_PRONTA,
+          arquivoRemoto: arquivoRemoto('falha_recuperavel'),
+        }),
+      ]);
+
+      await renderScreen();
+
+      await act(async () => {
+        await userEvent
+          .setup()
+          .press(screen.getByTestId('ORG.provisioning-retry-archive-btn'));
+      });
+
+      expect(retomarArquivo).toHaveBeenCalledWith('org-1');
+      expect(
+        screen.queryByTestId('ORG.provisioning-retry-archive-in-progress'),
+      ).not.toBeOnTheScreen();
     });
 
     test('pt-BR catalog carries the archive row, statuses and retry copy', () => {
@@ -650,6 +790,9 @@ describe('OrganizationProvisioning', () => {
       expect(
         catalogo['$1screens.OrganizationSetup.retryArchiveButton']?.message,
       ).toBe('Tentar novamente');
+      expect(
+        catalogo['$1screens.OrganizationSetup.retryArchiveBlocked']?.message,
+      ).toBe('Conclua a preparação antes de tentar o arquivo novamente.');
     });
   });
 

@@ -342,6 +342,7 @@ type ChamadaArquivo = {projectId: string; url: string};
 function espiarArquivoRemoto(
   manager: MapeoManager,
   responder: (chamada: ChamadaArquivo) => Promise<void>,
+  aoResolverProjeto?: (projeto: object, projectId: string) => void,
 ) {
   const chamadas: ChamadaArquivo[] = [];
   const jaEspiados = new WeakSet<object>();
@@ -359,6 +360,7 @@ function espiarArquivoRemoto(
         await responder(chamada);
       };
     }
+    aoResolverProjeto?.(projeto, id);
     return projeto;
   });
   return {chamadas, spy};
@@ -830,4 +832,129 @@ describe('arquivo remoto no journal da organização (#142, navigator real)', ()
       arquivoRemotoTestApi.configurarTimeoutDoArquivoRemoto(undefined);
     }
   }, 90_000);
+
+  test('checkpoint do arquivo durante a validação de papéis não invalida a ativação', async () => {
+    // The organization is ready with its confirmation still pending, and its
+    // archive step was interrupted mid-flight (`aplicando` on `m`). The boot
+    // resumes the archive automatically; the two native sends stay suspended
+    // until the test releases them.
+    semear({
+      versao: 1,
+      organizacoes: [
+        {
+          id: orgSetup.orgId,
+          nome: orgSetup.orgName,
+          estado: 'pronta',
+          confirmacaoPendente: true,
+          materializacao: {
+            monitoramento: areaVerificada(orgSetup.projectId, 'monitoramento'),
+            alertas: areaVerificada(orgSetup.alertasProjectId, 'alertas'),
+          },
+          areaEmExecucao: null,
+          ultimoErro: null,
+          arquivoRemoto: {
+            url: URL_B,
+            estado: 'aplicando',
+            slots: {
+              m: {
+                estado: 'aplicando',
+                tentativaId: 'tentativa-m',
+                iniciadaEm: 1,
+              },
+              a: {estado: 'pendente'},
+            },
+          },
+        },
+      ],
+      ativa: null,
+    });
+
+    const rede = redeSuspensa();
+    // The role read of the FIRST validation is held by the test; the archive
+    // checkpoint must land while that validation is still in flight.
+    let reterPapel = false;
+    let papelChamado = false;
+    let liberarPapel!: () => void;
+    const papelLiberado = new Promise<void>(resolve => {
+      liberarPapel = resolve;
+    });
+    const arquivo = espiarArquivoRemoto(
+      orgSetup.manager,
+      rede.responder,
+      (projeto, projectId) => {
+        if (projectId !== orgSetup.projectId) return;
+        const alvo = projeto as {
+          $getOwnRole: () => Promise<{roleId: string}>;
+          __papelRetido?: boolean;
+        };
+        if (alvo.__papelRetido) return;
+        alvo.__papelRetido = true;
+        const original = alvo.$getOwnRole.bind(alvo);
+        alvo.$getOwnRole = async () => {
+          if (!reterPapel) return original();
+          papelChamado = true;
+          await papelLiberado;
+          return original();
+        };
+      },
+    );
+    const desmontar = await orgSetup.renderNavigation();
+
+    try {
+      // The confirmation-pending document opens on the provisioning surface.
+      const abrir = await screen.findByTestId(
+        'ORG.provisioning-open-organization-btn',
+        {},
+        {timeout: 15_000},
+      );
+      // The boot's archive pass reached the network and both sends are live.
+      await waitFor(() => expect(rede.pendentes).toBe(2), {
+        timeout: 30_000,
+      });
+
+      reterPapel = true;
+      await fireEvent.press(abrir);
+      await waitFor(() => expect(papelChamado).toBe(true));
+
+      // The archive completes DURING the role validation: its checkpoint
+      // replaces the document (only the journal changes).
+      rede.liberar();
+      await waitFor(
+        () => {
+          const organizacao = documentoPersistido().organizacoes[0];
+          expect(organizacao?.arquivoRemoto?.slots.m).toMatchObject({
+            estado: 'concluido',
+          });
+        },
+        {timeout: 30_000},
+      );
+
+      // Validation settles on the document captured at activation entry. The
+      // journal-only change must not be read as a document change.
+      liberarPapel();
+
+      // A ativação precisa concluir apesar do checkpoint. A navegação para
+      // Home fica coberta pelos e2e do startup gate; aqui o que importa é não
+      // cair na superfície de recovery.
+      await waitFor(
+        () =>
+          expect(documentoPersistido().ativa).toEqual({
+            organizacaoId: orgSetup.orgId,
+            area: 'monitoramento',
+          }),
+        {timeout: 15_000},
+      );
+      expect(
+        screen.queryByTestId('ORG.provisioning-retry-activation-btn'),
+      ).toBeNull();
+    } finally {
+      liberarPapel();
+      rede.liberar();
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 0));
+      });
+      await desmontar();
+      arquivo.spy.mockRestore();
+    }
+  }, 120_000);
 });

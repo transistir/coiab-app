@@ -19,6 +19,7 @@ import {
 } from '../lib/organization/arquivoRemoto';
 import {consultarArquivoRemotoAtivo} from '../lib/organization/archiveServer';
 import {clienteDeCriacao} from '../lib/organization/clienteDeCriacao';
+import {estaPronta} from '../lib/organization/coiabOrganizations';
 import type {EstadoSlotArquivoRemoto} from '../lib/organization/documento';
 import type {IdentidadeArquivoRemoto} from '../lib/organization/identidadeArquivo';
 import {
@@ -198,6 +199,36 @@ export function OrganizationMaterializerProvider({
     ): Promise<ResultadoArquivoRemoto> =>
       executorArquivoRemoto.executar(organizacaoId, {modo});
     /**
+     * #147 item 1: the archive is the LAST step of the journal (§5.4 passo 6).
+     * It may only run once the organization is `pronta` — the only durable
+     * proof the final conferência passed. Both areas `verificado` is NOT
+     * enough: `materializar.ts` writes `verificado` before awaiting the
+     * conference, so a failed conference leaves both areas verified with the
+     * organization in `falha_recuperavel`. The retry is refused while the
+     * preparation is still running OR after it failed, without touching the
+     * journal or Core. The document is re-read here (never an old snapshot) so
+     * a preparation that finished in the meantime is honored.
+     */
+    const retomarArquivo = (
+      organizacaoId: string,
+    ): Promise<ResultadoArquivoRemoto> => {
+      const organizacao = repository
+        .read()
+        .organizacoes.find(item => item.id === organizacaoId);
+      if (!organizacao) {
+        return Promise.resolve({estado: 'organizacao-ausente', slots: {}});
+      }
+      if (!estaPronta(organizacao)) {
+        return Promise.resolve({
+          estado: 'em-andamento',
+          slots: organizacao.arquivoRemoto
+            ? {...organizacao.arquivoRemoto.slots}
+            : {},
+        });
+      }
+      return executarArquivo(organizacaoId, 'retry');
+    };
+    /**
      * #142 fase C1: the manual screen's request is journalized before it runs.
      * The journal URL is the single source of truth for the executor, and the
      * shared repository-keyed lock makes a concurrent automatic pass join or
@@ -338,7 +369,7 @@ export function OrganizationMaterializerProvider({
           ),
         ),
       retomar: organizacaoId => acompanhar(() => retomar(organizacaoId)),
-      retomarArquivo: organizacaoId => executarArquivo(organizacaoId, 'retry'),
+      retomarArquivo: organizacaoId => retomarArquivo(organizacaoId),
       solicitarArquivo: (organizacaoId, url) =>
         solicitarArquivo(organizacaoId, url),
       marcarRemocao: (projectId, identidade) =>

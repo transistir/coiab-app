@@ -1,3 +1,4 @@
+import isEqual from 'lodash.isequal';
 import {createStore} from 'zustand';
 import type {CoiabOrganizationsStore} from '../../contexts/CoiabOrganizationsStoreContext';
 import {
@@ -9,8 +10,27 @@ import {
   AREAS,
   parseEstadoOrganizacoes,
   type Area,
+  type EstadoOrganizacoes,
   type OrganizacaoLocal,
 } from './coiabOrganizations';
+
+// #147 item 3: a remote-archive checkpoint can rewrite ONLY `arquivoRemoto`
+// while a role validation is in flight. That journal block is not read by the
+// activation that follows (it publishes from the captured document's `ativa`
+// and materialization), so a change confined to it must not abort the attempt
+// as `document-changed`. Project both documents without the block and compare
+// them structurally; any change to `ativa`, areas, roles, organization state,
+// list membership or confirmation still invalidates.
+function semArquivoRemoto(estado: EstadoOrganizacoes): EstadoOrganizacoes {
+  return {
+    ...estado,
+    organizacoes: estado.organizacoes.map(org => {
+      const {arquivoRemoto, ...resto} = org;
+      void arquivoRemoto;
+      return resto;
+    }),
+  };
+}
 
 export type ActivationStatus =
   | 'loading'
@@ -253,7 +273,12 @@ export function createOrganizationActivation({
         await cancelPresentation(originIds);
       }
       if (workBlocks()) throw new Error('pending-work');
-      if (store.instance.getState() !== document)
+      if (
+        !isEqual(
+          semArquivoRemoto(store.instance.getState()),
+          semArquivoRemoto(document),
+        )
+      )
         throw new Error('document-changed');
       // SPEC A §4.2 regra 9 / FIX-A: the acknowledgment records the area
       // Monitoramento in the SAME single write as confirmacaoPendente:false —
