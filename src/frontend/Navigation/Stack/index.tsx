@@ -201,11 +201,21 @@ export function GenerationTransitionGate({
       if (
         generation !== prevGeneration &&
         state.routes[state.index]?.name !== 'Home'
-      )
-        navigation.reset({
-          index: 0,
-          routes: [{name: 'Home', params: {screen: 'Map'}}],
-        });
+      ) {
+        // #147: the ready commit also swaps the registered screen set
+        // (onboarding -> app). Resetting synchronously in that same commit
+        // hands the action to the outgoing router, which drops it
+        // ("RESET was not handled"). One tick lets Home/Map register.
+        const timer = setTimeout(
+          () =>
+            navigation.reset({
+              index: 0,
+              routes: [{name: 'Home', params: {screen: 'Map'}}],
+            }),
+          0,
+        );
+        return () => clearTimeout(timer);
+      }
       return;
     }
     // The organization context is not openable (`recovery` | `unavailable`):
