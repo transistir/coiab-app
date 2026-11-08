@@ -14,6 +14,7 @@ import {useActiveProjectId} from '../../contexts/ActiveProjectIdStoreContext';
 import {
   AREAS,
   derivarProjectIdAtivo,
+  estaPronta,
   type EstadoOrganizacoes,
   type EtapaArea,
   organizacaoEmPreparo,
@@ -307,13 +308,13 @@ function DocumentDrivenProvisioning({
   // (the process died mid-preparation) — the resume is offered instead of a
   // spinner that would never end.
   const interrompida = organizacao.estado === 'preparando' && !preparacaoEmVoo;
-  // #147: the archive retry only runs once both areas are verified — the
+  // #147: the archive retry only runs once preparation is `pronta` — the
   // materializer's `retomarArquivo` refuses with `em-andamento` before that.
-  // Mirror its exact condition here so the surface never offers a button the
-  // handle would refuse.
-  const preparacaoConcluida =
-    organizacao.materializacao.monitoramento.etapa === 'verificado' &&
-    organizacao.materializacao.alertas.etapa === 'verificado';
+  // Both areas `verificado` is NOT enough: the final conferência runs after
+  // they are written, so a failed conference leaves them verified while the
+  // organization is `falha_recuperavel`. Mirror the handle's exact predicate
+  // so the surface never offers a button it would refuse.
+  const preparacaoConcluida = estaPronta(organizacao);
   const [ativando, setAtivando] = React.useState(false);
   // Synchronous guard: the disabled prop alone lets a double tap queue a
   // second activate before the rerender publishes it.

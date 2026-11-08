@@ -19,6 +19,7 @@ import {
 } from '../lib/organization/arquivoRemoto';
 import {consultarArquivoRemotoAtivo} from '../lib/organization/archiveServer';
 import {clienteDeCriacao} from '../lib/organization/clienteDeCriacao';
+import {estaPronta} from '../lib/organization/coiabOrganizations';
 import type {EstadoSlotArquivoRemoto} from '../lib/organization/documento';
 import type {IdentidadeArquivoRemoto} from '../lib/organization/identidadeArquivo';
 import {
@@ -215,10 +216,7 @@ export function OrganizationMaterializerProvider({
       if (!organizacao) {
         return Promise.resolve({estado: 'organizacao-ausente', slots: {}});
       }
-      const preparacaoConcluida =
-        organizacao.materializacao.monitoramento.etapa === 'verificado' &&
-        organizacao.materializacao.alertas.etapa === 'verificado';
-      if (!preparacaoConcluida) {
+      if (!estaPronta(organizacao)) {
         return Promise.resolve({
           estado: 'em-andamento',
           slots: organizacao.arquivoRemoto

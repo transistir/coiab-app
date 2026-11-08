@@ -173,6 +173,16 @@ export function derivarProjectIdAtivo(
 }
 
 /**
+ * #147: `pronta` is written only after the final conferência (`materializar.ts`
+ * writes `verificado` for both areas BEFORE awaiting it); both areas
+ * `verificado` can be true while the conference is still running or has
+ * failed. This single predicate is the durable proof the preparation finished.
+ */
+export function estaPronta(organizacao: OrganizacaoLocal): boolean {
+  return organizacao.estado === 'pronta';
+}
+
+/**
  * The startup gate's document-first read (SPEC B §3.3 items 2-3): the
  * persisted document decides what the device may open BEFORE the
  * reconstructed core state is consulted. Any organization still being

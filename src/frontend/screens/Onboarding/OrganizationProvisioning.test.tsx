@@ -594,7 +594,10 @@ describe('OrganizationProvisioning', () => {
       ).not.toBeOnTheScreen();
     });
 
-    test('retry do arquivo usa o id da organização em preparo, não o índice 0', async () => {
+    test('retry do arquivo usa o id da organização em confirmação, não o índice 0', async () => {
+      // `organizacaoEmPreparo` also selects a ready org with a pending
+      // confirmation; the retry acts on that organization's id, never on
+      // `organizacoes[0]`.
       seedDocument([
         organizacao({
           id: 'org-0',
@@ -605,7 +608,8 @@ describe('OrganizationProvisioning', () => {
         }),
         organizacao({
           id: 'org-1',
-          estado: 'preparando',
+          estado: 'pronta',
+          confirmacaoPendente: true,
           materializacao: PAR_PRONTA,
           arquivoRemoto: arquivoRemoto('falha_recuperavel'),
         }),
@@ -651,6 +655,32 @@ describe('OrganizationProvisioning', () => {
       expect(
         screen.getByText('Finish the preparation before retrying the archive.'),
       ).toBeOnTheScreen();
+    });
+
+    test('retry do arquivo continua bloqueado quando as áreas estão verificadas mas a conferência falhou', async () => {
+      // #147 P2: `verificado` is written for both areas BEFORE the final
+      // conferência. A conference failure leaves them verified while the
+      // organization is `falha_recuperavel` — only `pronta` proves it passed.
+      seedDocument([
+        organizacao({
+          estado: 'falha_recuperavel',
+          materializacao: PAR_PRONTA,
+          arquivoRemoto: arquivoRemoto('falha_recuperavel'),
+        }),
+      ]);
+
+      await renderScreen();
+
+      expect(
+        screen.getByTestId('ORG.provisioning-retry-archive-btn'),
+      ).toBeDisabled();
+      expect(
+        screen.getByTestId('ORG.provisioning-retry-archive-blocked'),
+      ).toBeOnTheScreen();
+      expect(
+        screen.getByText('Finish the preparation before retrying the archive.'),
+      ).toBeOnTheScreen();
+      expect(retomarArquivo).not.toHaveBeenCalled();
     });
 
     test('retry do arquivo fica habilitado com a preparação concluída', async () => {
