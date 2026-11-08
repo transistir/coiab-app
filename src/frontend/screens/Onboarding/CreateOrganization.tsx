@@ -48,7 +48,7 @@ const m = defineMessages({
     id: '$1screens.OrganizationSetup.createIntroBody',
     // SPEC B :54 — verbatim.
     defaultMessage:
-      'Your Territory will have Monitoramento and Alertas, with categories ready to use. You can create it without internet.',
+      'Your Territory will have Monitoring and Alerts, with categories ready to use. You can create it without internet.',
   },
   continueButton: {
     id: '$1screens.OrganizationSetup.continueButton',
