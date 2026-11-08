@@ -589,6 +589,75 @@ describe('OrganizationMaterializerContext', () => {
     expect(monitoramento.$member.addServerPeer).toHaveBeenCalledTimes(1);
   });
 
+  // #147 item 1: the archive is the LAST step of the journal (§5.4 passo 6).
+  // A retry must never attach the file and write `concluido` while the local
+  // preparation is still running — the final conferência has not happened yet.
+  test('#147: retry do arquivo não roda antes da preparação local terminar', async () => {
+    const store = createCoiabOrganizationsStore();
+    store.instance.setState(
+      {
+        versao: 1,
+        organizacoes: [
+          {
+            ...readyOrganization(ORG_ID),
+            estado: 'preparando',
+            confirmacaoPendente: false,
+            materializacao: {
+              monitoramento: {
+                etapa: 'importando',
+                projectId: `${ORG_ID}-m`,
+                template: {versao: '1', hash: 'monitoramento'},
+                idsAntesDaCriacao: null,
+              },
+              alertas: {
+                etapa: 'criado',
+                projectId: `${ORG_ID}-a`,
+                template: {versao: '1', hash: 'alertas'},
+                idsAntesDaCriacao: null,
+              },
+            },
+            arquivoRemoto: {
+              url: 'https://arquivo.example/',
+              estado: 'falha_recuperavel',
+              slots: {
+                m: {estado: 'falha_recuperavel', tentativaId: 'tentativa-m'},
+                a: {estado: 'pendente'},
+              },
+            },
+          },
+        ],
+        ativa: {organizacaoId: ORG_ID, area: 'monitoramento'},
+      },
+      true,
+    );
+    const {hook} = await renderMaterializador(store);
+
+    const monitoramento = (await clientApi.getProject(
+      `${ORG_ID}-m`,
+    )) as ReturnType<typeof fakeCreationProject>;
+    const alertas = (await clientApi.getProject(`${ORG_ID}-a`)) as ReturnType<
+      typeof fakeCreationProject
+    >;
+
+    let resultado: ResultadoArquivoRemoto | undefined;
+    await act(async () => {
+      resultado = await hook.result.current!.retomarArquivo(ORG_ID);
+    });
+
+    // The preparation is the live operation: the archive retry must not send.
+    expect(monitoramento.$member.addServerPeer).not.toHaveBeenCalled();
+    expect(alertas.$member.addServerPeer).not.toHaveBeenCalled();
+
+    const arquivo = store.instance.getState().organizacoes[0]!.arquivoRemoto!;
+    expect(arquivo.estado).toBe('falha_recuperavel');
+    expect(arquivo.slots.m).toMatchObject({
+      estado: 'falha_recuperavel',
+      tentativaId: 'tentativa-m',
+    });
+
+    expect(resultado).toMatchObject({estado: 'em-andamento'});
+  });
+
   test('#142 P2: duas aberturas consecutivas não reenviam o arquivo após replay esgotado', async () => {
     // Real persistence proof: the first opening writes the failed checkpoints
     // to the test storage, and the second opening is a NEW store rehydrated
