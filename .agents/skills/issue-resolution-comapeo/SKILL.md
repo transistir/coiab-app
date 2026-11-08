@@ -45,14 +45,17 @@ Never write to `digidem/*`.
   Confirm the reviewer has posted its review for the exact head SHA before
   counting. One cycle went from "all resolved" to three fresh P1s on the new
   head. Fix or rebut with evidence (`file:line`, test, SHA), then resolve.
-- **Rerun the same SHA before calling a regression.** Local passing plus a
-  green rerun of the identical commit does not prove a flake, because an
-  intermittent regression can also pass. Before classifying a failure, check
-  it against a known-good baseline, such as the PR merge base, because a
-  regression can come from any commit in the PR. Two
-  flake families seen in one cycle: the IPC drain timing out in a slow
-  navigator suite, and unrelated screen suites failing only in CI. File the
-  flake with the observed message and a hypothesis, never as "flake" alone.
+- **A green rerun of the same SHA does not prove a flake.** An intermittent
+  regression also passes. Compare against what CI actually tested: the
+  `pull_request` workflow checks out `refs/pull/N/merge` — the head merged into
+  the base branch as it stood at that run — so reproduce on that merge commit
+  and on its base side (`Merge <head> into <base>` in the checkout log). A local
+  run of the head alone, or of the merge base, covers neither when the base
+  moved, because the failure can come from the PR, from new base commits, or
+  from their interaction. Two flake suspects seen in one cycle: the IPC drain
+  timing out in a slow navigator suite, and unrelated screen suites failing
+  only in CI. File the suspicion with the observed message and a hypothesis,
+  never as "flake" alone.
 - **A disabled primary button must name what is missing.** When `canCreate`
   ANDs several conditions, render the unmet one next to the button, in a
   fixed priority order, and test each state. A green validation check with a
