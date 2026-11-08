@@ -303,7 +303,7 @@ function proximaTentativa(now: () => number): string {
   return `${now().toString(36)}-${sequenciaTentativa.toString(36)}`;
 }
 
-function estadoAgregado(
+export function estadoAgregado(
   slots: Record<Slot, EstadoSlotArquivoRemoto>,
 ): EstadoArquivoRemoto {
   const estados = SLOTS.map(slot => slots[slot].estado);
