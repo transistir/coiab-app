@@ -176,30 +176,31 @@ required names, conclusions and SHA, not just the absence of failures.
 - **`@testing-library/react-native` v14 `render` is async.** Always
   `await render(...)`. Un-awaited renders make Suspense/pending assertions
   flaky: the suite passes in isolation and fails when run with siblings.
-- **`check:message-catalog` regenerates the catalog.** It runs the generator
+- **`check:message-catalog` regenerates the catalogs.** It runs the generator
   and compares the committed `messages/` byte for byte, so it fails when
-  generation fails and when the generated output differs; an uncommitted change
-  under `messages/` also fails it. Run `npm run extract-messages`, review and
-  commit the expected catalog change, then rerun the check. Changes elsewhere
-  in the tree do not affect it.
-- **`messages/en-US/primary.json` is generated — never edit it by hand.** The
-  English message is the `defaultMessage` in the component's `defineMessages`;
-  fix the component, then run `npm run extract-messages`. Editing the JSON
-  directly fails `check:message-catalog` on the next regeneration. The `pt-BR`
-  catalog is hand-maintained and is not regenerated.
+  generation fails, when the generated output differs, or when an uncommitted
+  change sits under `messages/`. `messages/en-US/*.json` is generated — never
+  edit it by hand. The English text is the `defaultMessage` in the component's
+  `defineMessages`, so fix the component, run `npm run extract-messages`,
+  review and commit the expected change, then rerun the check. `pt-BR` is
+  hand-maintained and is not regenerated. Changes elsewhere in the tree do
+  not affect it.
 - **Storybook decorators compose with the FIRST entry innermost.** A decorator
   that never renders `<Story/>` — `withRealNavigator` is one; it mounts
   `NavigationContainer` and returns no `<Story/>` — swallows every decorator
-  after it. To wrap the navigator (locale, providers), the wrapper goes LAST:
-  `decorators: [withRealNavigator, withPtBrLocale]`. Losing the locale here
-  does not fail any test that only checks the decorator list; the symptom is a
-  capture frame that mixes pt-BR and en-US because the emulator's locale wins.
-  Assert the exact order with `toEqual([...])`, not `toContain`.
-- **BrowserStack e2e does not run on normal PRs.** `e2e-appium-browserstack.yml`
-  triggers only on PRs to `release/**` and on the cron, so changing user-facing
-  English copy can leave `tests/e2e/specs/**` asserting the old string with a
-  green PR. Grep `tests/e2e` for the old text whenever a `defaultMessage`
-  changes.
+  listed **before** it, plus story-level ones; entries after it wrap it and
+  still render. To wrap the navigator (locale, providers), the wrapper goes
+  LAST: `decorators: [withRealNavigator, withPtBrLocale]`. A membership check
+  (`toContain`) passes with the wrong order, so assert the exact list with
+  `toEqual([...])`; the symptom of getting it wrong is a capture frame that
+  mixes pt-BR and en-US because the emulator's locale wins.
+- **BrowserStack e2e does not run on the normal PR CI.** The workflow triggers
+  on PRs to `release/**`, on the weekly cron, and on `workflow_dispatch` (with
+  a `branch` input — the way to run it on a PR branch before merge; the
+  capture skill points at the same dispatch). So changing user-facing English
+  copy can leave `tests/e2e/specs/**` asserting the old string with a green
+  PR: grep `tests/e2e` for the old text whenever a `defaultMessage` changes,
+  or dispatch the workflow.
 - **`/tmp` is a ~1.9 GB tmpfs on this box.** APKs (85-190 MB each), jest
   caches and onnxruntime temp dirs fill it and cause `No space left on device`
   mid-run. Keep artifacts, harness logs and mutation backups under a writable
