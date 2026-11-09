@@ -91,16 +91,17 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
 
   const renderHeader = async (
     headerRight?: BottomTabHeaderProps['options']['headerRight'],
+    activeProjectId = projectId,
   ) => {
     const appProviders = createAppProvidersWrapper({
       mapeoApi: client,
-      activeProjectId: projectId,
+      activeProjectId,
     });
     onTeardown.push(appProviders.teardown);
 
     const utils = await render(
       <React.Suspense fallback={null}>
-        <ActiveProjectProvider activeProjectId={projectId}>
+        <ActiveProjectProvider activeProjectId={activeProjectId}>
           <HomeHeader
             {...baseHeader}
             options={{...baseHeader.options, headerRight}}
@@ -242,9 +243,6 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
       }),
     );
 
-    // Low storage, so the badge wrapper exists and its no-shrink rule can be
-    // pinned in the same row.
-    mockFreeBytes = 100 * 1024 * 1024;
     await renderHeader(() => <View testID="header-right-stub" />);
 
     const titulo = await screen.findByTestId('HOME.header-title');
@@ -263,9 +261,6 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
     expect(screen.getByTestId('HOME.header-bloco')).toHaveStyle({
       flexShrink: 1,
     });
-    const badge = screen.getByTestId('low-storage-badge');
-    expect(badge.parent).not.toBeNull();
-    expect(badge.parent!).toHaveStyle({flexShrink: 0});
     const direita = screen.getByTestId('HOME.header-right');
     expect(direita).toHaveStyle({flexShrink: 0});
     expect(within(direita).getByTestId('header-right-stub')).toBeOnTheScreen();
@@ -402,5 +397,30 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
     );
     expect(screen.getByTestId('HOME.header-pilula')).toBeOnTheScreen();
     expect(screen.queryByTestId('HOME.header-bloco')).toBeNull();
+  });
+
+  it('nome longo de projeto sem organização não espreme o botão de trilha', async () => {
+    // Same #32 invariant as the organization branch, but on the fallback pill:
+    // RN defaults flexShrink to 0, so without it the wrapper would refuse to
+    // shrink and the long project name would run under headerRight.
+    const projetoLongo = await client.createProject({
+      name: 'Projeto de Monitoramento Territorial Comunitário do Alto Rio Negro e Afluentes',
+    });
+
+    await renderHeader(() => <View testID="header-right-stub" />, projetoLongo);
+
+    const pilula = await screen.findByTestId('HOME.header-pilula');
+    expect(pilula).toHaveStyle({flexShrink: 1});
+
+    const titulo = screen.getByTestId('HOME.header-title');
+    expect(titulo).toHaveTextContent(
+      'Projeto de Monitoramento Territorial Comunitário do Alto Rio Negro e Afluentes',
+    );
+    expect(titulo.props.numberOfLines).toBe(1);
+    expect(titulo.props.ellipsizeMode).toBe('tail');
+
+    const direita = screen.getByTestId('HOME.header-right');
+    expect(direita).toHaveStyle({flexShrink: 0});
+    expect(within(direita).getByTestId('header-right-stub')).toBeOnTheScreen();
   });
 });

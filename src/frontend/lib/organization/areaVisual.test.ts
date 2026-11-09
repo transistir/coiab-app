@@ -50,23 +50,17 @@ describe('areaVisual', () => {
 
   it('T2: todo par texto/fundo tem contraste >= 4.5:1', () => {
     const pares = [
-      ...Object.entries(VISUAL_AREA).map(([area, visual]) => ({
-        nome: area,
+      ...Object.values(VISUAL_AREA).map(visual => ({
         fundo: visual.fundo,
         texto: visual.texto,
       })),
       {
-        nome: 'territorio',
         fundo: VISUAL_TERRITORIO.fundo,
         texto: VISUAL_TERRITORIO.texto,
       },
     ];
 
-    for (const {nome, fundo, texto} of pares) {
-      expect({nome, razao: razaoDeContraste(fundo, texto)}).toEqual({
-        nome,
-        razao: expect.any(Number),
-      });
+    for (const {fundo, texto} of pares) {
       expect(razaoDeContraste(fundo, texto)).toBeGreaterThanOrEqual(4.5);
     }
   });

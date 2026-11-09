@@ -106,7 +106,7 @@ export function HomeHeader({
               styles.titleBox,
               {backgroundColor: projectDetails.projectColor},
             ]}>
-            <View testID="HOME.header-pilula">
+            <View testID="HOME.header-pilula" style={styles.pilula}>
               <HeaderText
                 testID="HOME.header-title"
                 variant="header4"
@@ -172,7 +172,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -2,
     right: -2,
-    flexShrink: 0,
   },
   // A pílula encolhe (flexShrink 1 + reticências) e o headerRight nunca (flexShrink 0): o botão mantém a largura com qualquer título.
   headerRight: {
@@ -180,6 +179,9 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   text: {
+    flexShrink: 1,
+  },
+  pilula: {
     flexShrink: 1,
   },
 });
