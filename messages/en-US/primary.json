@@ -736,7 +736,7 @@
     "message": "Continue"
   },
   "$1screens.OrganizationSetup.createIntroBody": {
-    "message": "Your Territory will have Monitoramento and Alertas, with categories ready to use. You can create it without internet."
+    "message": "Your Territory will have Monitoring and Alerts, with categories ready to use. You can create it without internet."
   },
   "$1screens.OrganizationSetup.createOrganization": {
     "message": "Create Territory"

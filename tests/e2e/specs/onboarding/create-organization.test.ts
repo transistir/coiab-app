@@ -17,7 +17,7 @@ describe('Onboarding - Create Organization Journey', () => {
     await expect(title).toBeDisplayed();
 
     const introBody = await $(
-      byTextMatches('Monitoramento and Alertas, with categories ready to use'),
+      byTextMatches('Monitoring and Alerts, with categories ready to use'),
     );
     await expect(introBody).toBeDisplayed();
 
