@@ -132,7 +132,7 @@ The GitHub-Actions paths that do produce an installable APK, and what each needs
 |---|---|---|---|
 | `build-rc.yml` | opening a PR whose base matches `release/**`, or `/build-rc` on such a PR via `build-bot.yml` | EAS **cloud** build, `release-candidate` profile → `.apk`, link commented on the PR | `EXPO_TOKEN`, `RELEASE_BOT_APP_ID` (var), `RELEASE_BOT_PRIVATE_KEY` (secret) |
 | `build-release.yml` | merging a PR into `release/**` | production build + GitHub Release | same |
-| `e2e-appium-browserstack.yml` | PR **only when the base is `release/**`**, weekly cron, or `workflow_dispatch` with a `branch` input | `test`-profile APK uploaded **to BrowserStack**, not as an artifact | BrowserStack credentials |
+| `e2e-appium-browserstack.yml` | PR **only when the base is `release/**`**, the scheduled cron (Sun–Wed, on `develop`), or `workflow_dispatch` with a `branch` input | `test`-profile APK uploaded **to BrowserStack**, not as an artifact | BrowserStack credentials |
 
 `build-rc.yml` has no `workflow_dispatch`, and it uploads no GitHub artifact —
 it comments the EAS build page on the PR. Get the download URL with
