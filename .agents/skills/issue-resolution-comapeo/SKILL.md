@@ -176,12 +176,33 @@ required names, conclusions and SHA, not just the absence of failures.
 - **`@testing-library/react-native` v14 `render` is async.** Always
   `await render(...)`. Un-awaited renders make Suspense/pending assertions
   flaky: the suite passes in isolation and fails when run with siblings.
-- **`check:message-catalog` regenerates the catalog.** It runs the generator
+- **`check:message-catalog` regenerates the catalogs.** It runs the generator
   and compares the committed `messages/` byte for byte, so it fails when
-  generation fails and when the generated output differs; an uncommitted change
-  under `messages/` also fails it. Run `npm run extract-messages`, review and
-  commit the expected catalog change, then rerun the check. Changes elsewhere
-  in the tree do not affect it.
+  generation fails, when the generated output differs, or when an uncommitted
+  change sits under `messages/`. `messages/en-US/*.json` is generated — never
+  edit it by hand. The English text is the `defaultMessage` in the component's
+  `defineMessages`, so fix the component, run `npm run extract-messages`,
+  review and commit the expected change, then rerun the check. `pt-BR` is
+  hand-maintained and is not regenerated. Uncommitted files outside
+  `messages/` don't fail it by themselves.
+- **Storybook decorators compose with the FIRST entry innermost.** A decorator
+  that never renders `<Story/>` — `withRealNavigator` is one; it mounts
+  `NavigationContainer` and returns no `<Story/>` — swallows every decorator
+  listed **before** it, plus story-level ones; entries after it wrap it and
+  still render. To wrap the navigator (locale, providers), the wrapper goes
+  LAST: `decorators: [withRealNavigator, withPtBrLocale]`. A membership check
+  (`toContain`) passes with the wrong order, so assert the exact list with
+  `toEqual([...])`; the symptom of getting it wrong is a capture frame that
+  mixes pt-BR and en-US because the emulator's locale wins.
+- **BrowserStack e2e does not run on the normal PR CI.** The workflow triggers
+  on PRs to `release/**`, on the scheduled cron (Sun–Wed, on `develop`), and on
+  `workflow_dispatch` with a `branch` input. So changing user-facing English
+  copy can leave `tests/e2e/specs/**` asserting the old string with a green
+  PR: grep `tests/e2e` for the old text whenever a `defaultMessage` changes —
+  that check is mandatory. Dispatching the workflow on the PR branch is only a
+  fallback, and it needs the BrowserStack and Expo secrets; `rebrand-comapeo`
+  records that this fork has not run e2e successfully, so do not treat the
+  dispatch as a substitute for the grep.
 - **`/tmp` is a ~1.9 GB tmpfs on this box.** APKs (85-190 MB each), jest
   caches and onnxruntime temp dirs fill it and cause `No space left on device`
   mid-run. Keep artifacts, harness logs and mutation backups under a writable
