@@ -182,6 +182,24 @@ required names, conclusions and SHA, not just the absence of failures.
   under `messages/` also fails it. Run `npm run extract-messages`, review and
   commit the expected catalog change, then rerun the check. Changes elsewhere
   in the tree do not affect it.
+- **`messages/en-US/primary.json` is generated — never edit it by hand.** The
+  English message is the `defaultMessage` in the component's `defineMessages`;
+  fix the component, then run `npm run extract-messages`. Editing the JSON
+  directly fails `check:message-catalog` on the next regeneration. The `pt-BR`
+  catalog is hand-maintained and is not regenerated.
+- **Storybook decorators compose with the FIRST entry innermost.** A decorator
+  that never renders `<Story/>` — `withRealNavigator` is one; it mounts
+  `NavigationContainer` and returns no `<Story/>` — swallows every decorator
+  after it. To wrap the navigator (locale, providers), the wrapper goes LAST:
+  `decorators: [withRealNavigator, withPtBrLocale]`. Losing the locale here
+  does not fail any test that only checks the decorator list; the symptom is a
+  capture frame that mixes pt-BR and en-US because the emulator's locale wins.
+  Assert the exact order with `toEqual([...])`, not `toContain`.
+- **BrowserStack e2e does not run on normal PRs.** `e2e-appium-browserstack.yml`
+  triggers only on PRs to `release/**` and on the cron, so changing user-facing
+  English copy can leave `tests/e2e/specs/**` asserting the old string with a
+  green PR. Grep `tests/e2e` for the old text whenever a `defaultMessage`
+  changes.
 - **`/tmp` is a ~1.9 GB tmpfs on this box.** APKs (85-190 MB each), jest
   caches and onnxruntime temp dirs fill it and cause `No space left on device`
   mid-run. Keep artifacts, harness logs and mutation backups under a writable
