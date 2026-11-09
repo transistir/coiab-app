@@ -2,6 +2,7 @@ import {useActiveProject} from '../contexts/ActiveProjectContext';
 import {useCoiabOrganizationsState} from '../contexts/CoiabOrganizationsStoreContext';
 import {
   derivarProjectIdAtivo,
+  type Area,
   type OrganizacaoLocal,
 } from '../lib/organization/coiabOrganizations';
 
@@ -16,15 +17,25 @@ import {
  * derivation diverge and the project name stands. `ativa` is born only in the
  * single write of the "Abrir organização" tap (regra 9), so without a
  * selection nothing names an organization.
+ *
+ * Returns the organization together with the selected area (the one `ativa`
+ * was born with), so the header can paint the area band without re-deriving
+ * it — the name is never inferred from the project nor from `projectColor`.
  */
-export function useOrganizacaoAtiva(): OrganizacaoLocal | undefined {
+export function useOrganizacaoAtiva():
+  {organizacao: OrganizacaoLocal; area: Area} | undefined {
   const {projectId} = useActiveProject();
   const estado = useCoiabOrganizationsState();
 
   const derivado = derivarProjectIdAtivo(estado);
-  return derivado !== null && derivado === projectId
-    ? estado.organizacoes.find(
-        organizacao => organizacao.id === estado.ativa?.organizacaoId,
-      )
-    : undefined;
+  if (derivado === null || derivado !== projectId || !estado.ativa) {
+    return undefined;
+  }
+
+  const organizacao = estado.organizacoes.find(
+    candidata => candidata.id === estado.ativa?.organizacaoId,
+  );
+  if (!organizacao) return undefined;
+
+  return {organizacao, area: estado.ativa.area};
 }

@@ -271,6 +271,36 @@ export const FLOW_STATES = {
     earlyAccess: true,
     draftObservation: 'none',
   },
+  /** One ready organization opened on Alertas rather than Monitoramento. */
+  homeWithOrganizationAlertas: {
+    auth: 'authenticated',
+    deviceName: 'Test Device',
+    project: 'none',
+    organizations: {
+      list: [ORGANIZATION_A],
+      activeId: ORGANIZATION_A.id,
+      activeArea: 'alertas',
+    },
+    earlyAccess: false,
+    draftObservation: 'none',
+  },
+  /** One ready organization whose name is too long for the header row. */
+  homeWithLongTerritoryName: {
+    auth: 'authenticated',
+    deviceName: 'Test Device',
+    project: 'none',
+    organizations: {
+      list: [
+        {
+          id: 'dddddddddddddddd',
+          name: 'Test Territory With A Very Long Official Name',
+        },
+      ],
+      activeId: 'dddddddddddddddd',
+    },
+    earlyAccess: false,
+    draftObservation: 'none',
+  },
 } satisfies Record<string, FlowStateSpec>;
 
 // 5 digits, not the reserved obscure code — see PasscodeInputSchema in
@@ -675,7 +705,10 @@ export function useFlowState(spec?: FlowStateSpec): ResolvedFlowState | null {
             }
             const activated = await activateOrganization(
               persistedOrganizationSeed.activeId,
-              {area: 'monitoramento'},
+              {
+                area:
+                  persistedOrganizationSeed.activeArea ?? 'monitoramento',
+              },
             );
             if (cancelled) return;
             if (!activated) {

@@ -134,6 +134,8 @@ export type UnopenableFault = 'missing-project' | 'orphan-selection';
 export type SeedOrganizations = {
   list: ReadonlyArray<SeedOrganization>;
   activeId: string;
+  /** Area of the active organization to open; Monitoramento when unset. */
+  activeArea?: Area;
   /**
    * Persist the seed so the root engine cannot open its selection (recovery
    * surface).
@@ -225,7 +227,10 @@ export function buildOrganizationDocument(
         ultimoErro: null,
       };
     }),
-    ativa: {organizacaoId: organizations.activeId, area: 'monitoramento'},
+    ativa: {
+      organizacaoId: organizations.activeId,
+      area: organizations.activeArea ?? 'monitoramento',
+    },
   };
 
   if (derivarProjectIdAtivo(document) === null) {

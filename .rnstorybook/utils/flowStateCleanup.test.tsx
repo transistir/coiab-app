@@ -516,10 +516,11 @@ describe('flow-state cleanup between stories', () => {
         ),
       ).not.toContain(MISSING_PROJECT_ID);
 
-      // A healthy row after the recovery rows reopens the engine with a
-      // fresh activation.
+      // Rows 58 and 59 of the manifest: both seed a healthy organization and
+      // reopen the engine out of recovery, the first on Alertas and the
+      // second on a long-named territory.
       await view.rerender(
-        <FlowStateProbe spec={FLOW_STATES.oneOrganizationEarlyAccess} />,
+        <FlowStateProbe spec={FLOW_STATES.homeWithOrganizationAlertas} />,
       );
       await waitFor(
         () => {
@@ -529,9 +530,57 @@ describe('flow-state cleanup between stories', () => {
         },
         {timeout: 30_000},
       );
+      const alertas = currentProbe();
+      expect(alertas.status).toBe('ready');
+      expect(alertas.generation).toBeGreaterThan(orphan.generation);
+      expect(alertas.projectId).toBe(alertas.ready!.projectId);
+      expect(alertas.document.ativa).toEqual({
+        organizacaoId: ORGANIZATION_A_ID,
+        area: 'alertas',
+      });
+      expect(alertas.projectId).toBe(
+        alertasProjectId(alertas.document, ORGANIZATION_A_ID),
+      );
+
+      await view.rerender(
+        <FlowStateProbe spec={FLOW_STATES.homeWithLongTerritoryName} />,
+      );
+      await waitFor(
+        () => {
+          const current = currentProbe();
+          expect(current.ready).not.toBeNull();
+          expect(current.ready!.key).not.toBe(alertas.ready!.key);
+        },
+        {timeout: 30_000},
+      );
+      const longTerritory = currentProbe();
+      expect(longTerritory.document.organizacoes.map(({id}) => id)).toEqual([
+        'dddddddddddddddd',
+      ]);
+      expect(longTerritory.document.organizacoes[0]?.nome).toHaveLength(45);
+      expect(longTerritory.document.ativa).toEqual({
+        organizacaoId: 'dddddddddddddddd',
+        area: 'monitoramento',
+      });
+      expect(longTerritory.projectId).toBe(longTerritory.ready!.projectId);
+      expect(longTerritory.projectId).not.toBe(alertas.projectId);
+
+      // A healthy row after the recovery rows reopens the engine with a
+      // fresh activation.
+      await view.rerender(
+        <FlowStateProbe spec={FLOW_STATES.oneOrganizationEarlyAccess} />,
+      );
+      await waitFor(
+        () => {
+          const current = currentProbe();
+          expect(current.ready).not.toBeNull();
+          expect(current.ready!.key).not.toBe(longTerritory.ready!.key);
+        },
+        {timeout: 30_000},
+      );
       const reopened = currentProbe();
       expect(reopened.status).toBe('ready');
-      expect(reopened.generation).toBeGreaterThan(orphan.generation);
+      expect(reopened.generation).toBeGreaterThan(longTerritory.generation);
       expect(reopened.projectId).toBe(reopened.ready!.projectId);
       expect(reopened.document.ativa).toEqual({
         organizacaoId: ORGANIZATION_A_ID,

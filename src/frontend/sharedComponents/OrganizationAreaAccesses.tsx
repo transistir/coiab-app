@@ -7,25 +7,16 @@ import {
   derivarProjectIdAtivo,
   type Area,
 } from '../lib/organization/coiabOrganizations';
-import {COIAB_ORANGE, COIAB_RED, WHITE} from '../lib/styles';
+import {VISUAL_AREA} from '../lib/organization/areaVisual';
+import {WHITE} from '../lib/styles';
 import {BodyText} from './Text/BodyText';
 import {useTrocarArea} from '../hooks/useTrocarArea';
-import type {MessageDescriptor} from 'react-intl';
 
 // The card titles use the Página Entroncamento strings (Figma Kutary App
 // V2, `2668:4539`); "Alertas" reuses the canonical §4.4 glossary family
-// the provisioning screen already ships.
+// the provisioning screen already ships. The two card titles now live in
+// `lib/organization/areaVisual` (single source of colour + label per area).
 const m = defineMessages({
-  cardMonitoramento: {
-    id: '$1sharedComponents.OrganizationAreaAccesses.cardMonitoramento',
-    defaultMessage: 'Monitoramento Territorial',
-    description: 'Título do card Monitoramento (Figma 2668:4539)',
-  },
-  cardAlertas: {
-    id: '$1sharedComponents.OrganizationAreaAccesses.cardAlertas',
-    defaultMessage: 'Alertas',
-    description: 'Título do card Alertas (Figma 2668:4539)',
-  },
   maisDetalhes: {
     id: '$1sharedComponents.OrganizationAreaAccesses.maisDetalhes',
     defaultMessage: 'Mais detalhes',
@@ -42,20 +33,14 @@ const m = defineMessages({
 const CARDS: ReadonlyArray<{
   area: Area;
   testID: string;
-  rotulo: MessageDescriptor;
-  fundo: string;
 }> = [
   {
     area: 'monitoramento',
     testID: 'MENU.area-monitoramento',
-    rotulo: m.cardMonitoramento,
-    fundo: COIAB_ORANGE,
   },
   {
     area: 'alertas',
     testID: 'MENU.area-alertas',
-    rotulo: m.cardAlertas,
-    fundo: COIAB_RED,
   },
 ];
 
@@ -94,8 +79,9 @@ export function OrganizationAreaAccesses(): React.JSX.Element | null {
 
   return (
     <View style={styles.container}>
-      {CARDS.map(({area, testID, rotulo, fundo}) => {
+      {CARDS.map(({area, testID}) => {
         const corrente = area === areaAtual;
+        const {fundo, rotulo} = VISUAL_AREA[area];
         return (
           <TouchableOpacity
             key={area}

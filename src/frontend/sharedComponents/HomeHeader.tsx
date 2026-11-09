@@ -2,9 +2,11 @@ import React from 'react';
 import {View, StyleSheet} from 'react-native';
 import {BottomTabHeaderProps} from '@react-navigation/bottom-tabs';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import {useIntl} from 'react-intl';
 
 import {HeaderText} from './Text/HeaderText';
 import {BLUE_GREY} from '../lib/styles';
+import {VISUAL_AREA, VISUAL_TERRITORIO} from '../lib/organization/areaVisual';
 import {useProjectRoleAndDetails} from '../hooks/useProjectRoleAndDetails';
 import {useActiveProject} from '../contexts/ActiveProjectContext';
 import {useOrganizacaoAtiva} from '../hooks/useOrganizacaoAtiva';
@@ -22,6 +24,7 @@ export function HomeHeader({
   showBottomBorder,
   options,
 }: HomeHeaderProps) {
+  const {formatMessage} = useIntl();
   const {projectId} = useActiveProject();
   const projectDetails = useProjectRoleAndDetails(projectId);
   // A organização ativa só nomeia o header quando o app a está operando
@@ -45,26 +48,81 @@ export function HomeHeader({
         },
       ]}>
       <View style={styles.headerRow}>
-        <View
-          testID="HOME.header-title-box"
-          style={[
-            styles.titleBox,
-            {backgroundColor: projectDetails.projectColor},
-          ]}>
-          <HeaderText
-            testID="HOME.header-title"
-            variant="header4"
-            style={styles.text}
-            numberOfLines={1}
-            ellipsizeMode="tail">
-            {organizacaoAtiva?.nome ?? projectDetails.projectHeader}
-          </HeaderText>
-          {isLow && (
-            <View style={{position: 'absolute', top: -2, right: -2}}>
-              <ExclamationBadge testID="low-storage-badge" />
+        {organizacaoAtiva ? (
+          <View testID="HOME.header-title-box" style={styles.titleBoxBloco}>
+            <View
+              testID="HOME.header-bloco"
+              accessible
+              accessibilityLabel={`${organizacaoAtiva.organizacao.nome}, ${formatMessage(
+                VISUAL_AREA[organizacaoAtiva.area].rotulo,
+              )}`}
+              style={styles.bloco}>
+              <View
+                testID="HOME.header-faixa-territorio"
+                style={[
+                  styles.faixa,
+                  {backgroundColor: VISUAL_TERRITORIO.fundo},
+                ]}>
+                <HeaderText
+                  testID="HOME.header-title"
+                  variant="header6"
+                  style={{flexShrink: 1, color: VISUAL_TERRITORIO.texto}}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                  maxFontSizeMultiplier={1.3}>
+                  {organizacaoAtiva.organizacao.nome}
+                </HeaderText>
+              </View>
+              <View
+                testID="HOME.header-faixa-area"
+                style={[
+                  styles.faixa,
+                  {backgroundColor: VISUAL_AREA[organizacaoAtiva.area].fundo},
+                ]}>
+                <HeaderText
+                  testID="HOME.header-area"
+                  variant="header6"
+                  style={{
+                    flexShrink: 1,
+                    color: VISUAL_AREA[organizacaoAtiva.area].texto,
+                  }}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                  maxFontSizeMultiplier={1.3}>
+                  {formatMessage(VISUAL_AREA[organizacaoAtiva.area].rotulo)}
+                </HeaderText>
+              </View>
             </View>
-          )}
-        </View>
+            {isLow && (
+              <View style={styles.badge}>
+                <ExclamationBadge testID="low-storage-badge" />
+              </View>
+            )}
+          </View>
+        ) : (
+          <View
+            testID="HOME.header-title-box"
+            style={[
+              styles.titleBox,
+              {backgroundColor: projectDetails.projectColor},
+            ]}>
+            <View testID="HOME.header-pilula">
+              <HeaderText
+                testID="HOME.header-title"
+                variant="header4"
+                style={styles.text}
+                numberOfLines={1}
+                ellipsizeMode="tail">
+                {projectDetails.projectHeader}
+              </HeaderText>
+            </View>
+            {isLow && (
+              <View style={styles.badge}>
+                <ExclamationBadge testID="low-storage-badge" />
+              </View>
+            )}
+          </View>
+        )}
         {headerRight ? (
           <View testID="HOME.header-right" style={styles.headerRight}>
             {headerRight}
@@ -95,6 +153,26 @@ const styles = StyleSheet.create({
     paddingLeft: 10,
     paddingRight: 10,
     flexShrink: 1,
+  },
+  titleBoxBloco: {
+    flexShrink: 1,
+  },
+  bloco: {
+    borderRadius: 6,
+    overflow: 'hidden',
+    borderWidth: 0.5,
+    borderColor: BLUE_GREY,
+    flexShrink: 1,
+  },
+  faixa: {
+    paddingVertical: 2,
+    paddingHorizontal: 8,
+  },
+  badge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    flexShrink: 0,
   },
   // A pílula encolhe (flexShrink 1 + reticências) e o headerRight nunca (flexShrink 0): o botão mantém a largura com qualquer título.
   headerRight: {

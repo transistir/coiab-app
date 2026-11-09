@@ -252,3 +252,25 @@ export const OrganizationUnavailableOrphanedSelection: Story = {
     },
   },
 };
+
+/** Home with a ready Organization opened on its Alertas area. */
+export const HomeWithOrganizationAlertas: Story = {
+  name: '13 Home With Organization (Alertas)',
+  parameters: {
+    flow: {
+      state: FLOW_STATES.homeWithOrganizationAlertas,
+      initialState: homeState,
+    },
+  },
+};
+
+/** Home whose active territory has an unusually long official name. */
+export const HomeWithLongTerritoryName: Story = {
+  name: '14 Home With Long Territory Name',
+  parameters: {
+    flow: {
+      state: FLOW_STATES.homeWithLongTerritoryName,
+      initialState: homeState,
+    },
+  },
+};

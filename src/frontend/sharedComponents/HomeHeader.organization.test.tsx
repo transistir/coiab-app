@@ -11,20 +11,31 @@ import {executarEmOrdem} from '../../../tests/integration/helpers/setupIntegrati
 import {ActiveProjectProvider} from '../contexts/ActiveProjectContext';
 import {COIAB_ORGANIZATIONS_STORAGE_KEY} from '../contexts/CoiabOrganizationsStoreContext';
 import {MMKVStoreInitializer} from '../hooks/persistedState/createPersistedState';
-import {parseEstadoOrganizacoes} from '../lib/organization/coiabOrganizations';
+import {
+  derivarProjectIdAtivo,
+  parseEstadoOrganizacoes,
+} from '../lib/organization/coiabOrganizations';
 import {
   organizationDocument,
   readyOrganization,
 } from '../lib/organization/fixtures';
+import {
+  CHARCOAL,
+  COIAB_ORANGE,
+  COIAB_RED,
+  DARK_GREY,
+  WHITE,
+} from '../lib/styles';
 import {sleep} from '../lib/sleep';
 
 import {HomeHeader} from './HomeHeader';
 
+let mockFreeBytes = 32 * 1024 * 1024 * 1024;
 jest.mock('../hooks/useStorageReadingQuery', () => ({
   __esModule: true,
   useStorageReadingQuery: () => ({
     data: {
-      freeBytes: 32 * 1024 * 1024 * 1024,
+      freeBytes: mockFreeBytes,
       totalBytes: 64 * 1024 * 1024 * 1024,
     },
   }),
@@ -51,6 +62,7 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
   let projectId: string;
 
   beforeEach(async () => {
+    mockFreeBytes = 32 * 1024 * 1024 * 1024;
     onTeardown = [];
     coreTeardown = [];
 
@@ -136,6 +148,72 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
     expect(await screen.findByTestId('HOME.header-title')).toHaveTextContent(
       'Organização B',
     );
+
+    // T4: a faixa inferior acompanha a área escolhida; a de território não.
+    const area = screen.getByTestId('HOME.header-area');
+    expect(area).toHaveTextContent('Alertas');
+    expect(area).toHaveStyle({color: WHITE});
+    expect(screen.getByTestId('HOME.header-faixa-area')).toHaveStyle({
+      backgroundColor: COIAB_RED,
+    });
+    expect(screen.getByTestId('HOME.header-faixa-territorio')).toHaveStyle({
+      backgroundColor: DARK_GREY,
+    });
+  });
+
+  it('território e Monitoramento Territorial em faixas empilhadas', async () => {
+    const documento = organizationDocument();
+    const organizacaoA = documento.organizacoes[0];
+    if (!organizacaoA) throw new Error('fixture: organization A missing');
+    organizacaoA.materializacao.monitoramento.projectId = projectId;
+
+    MMKVStoreInitializer.setItem(
+      COIAB_ORGANIZATIONS_STORAGE_KEY,
+      JSON.stringify({
+        state: {
+          ...documento,
+          ativa: {organizacaoId: 'A', area: 'monitoramento'},
+        },
+        version: 1,
+      }),
+    );
+
+    await renderHeader();
+
+    const titulo = await screen.findByTestId('HOME.header-title');
+    expect(titulo).toHaveTextContent('Organização A');
+    expect(titulo).toHaveStyle({color: WHITE});
+    expect(screen.getByTestId('HOME.header-faixa-territorio')).toHaveStyle({
+      backgroundColor: DARK_GREY,
+    });
+
+    const area = screen.getByTestId('HOME.header-area');
+    expect(area).toHaveTextContent('Monitoramento Territorial');
+    expect(area).toHaveStyle({color: CHARCOAL});
+    expect(screen.getByTestId('HOME.header-faixa-area')).toHaveStyle({
+      backgroundColor: COIAB_ORANGE,
+    });
+  });
+
+  it('bloco é um nó a11y com rótulo composto', async () => {
+    const documento = organizationDocument();
+    const organizacaoB = documento.organizacoes[1];
+    if (!organizacaoB) throw new Error('fixture: organization B missing');
+    organizacaoB.materializacao.alertas.projectId = projectId;
+
+    MMKVStoreInitializer.setItem(
+      COIAB_ORGANIZATIONS_STORAGE_KEY,
+      JSON.stringify({
+        state: {...documento, ativa: {organizacaoId: 'B', area: 'alertas'}},
+        version: 1,
+      }),
+    );
+
+    await renderHeader();
+
+    const bloco = await screen.findByLabelText('Organização B, Alertas');
+    expect(bloco.props.testID).toBe('HOME.header-bloco');
+    expect(bloco.props.accessible).toBe(true);
   });
 
   it('nome longo da organização não espreme o botão de trilha (#32)', async () => {
@@ -164,17 +242,30 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
       }),
     );
 
+    // Low storage, so the badge wrapper exists and its no-shrink rule can be
+    // pinned in the same row.
+    mockFreeBytes = 100 * 1024 * 1024;
     await renderHeader(() => <View testID="header-right-stub" />);
 
     const titulo = await screen.findByTestId('HOME.header-title');
     expect(titulo).toHaveTextContent(nomeLongo);
     expect(titulo.props.numberOfLines).toBe(1);
+    expect(titulo.props.maxFontSizeMultiplier).toBe(1.3);
     expect(screen.getByTestId('HOME.header-title-box')).not.toHaveStyle({
       maxWidth: expect.anything(),
     });
     expect(screen.getByTestId('HOME.header-title-box')).toHaveStyle({
       flexShrink: 1,
     });
+    const area = screen.getByTestId('HOME.header-area');
+    expect(area.props.numberOfLines).toBe(1);
+    expect(area.props.ellipsizeMode).toBe('tail');
+    expect(screen.getByTestId('HOME.header-bloco')).toHaveStyle({
+      flexShrink: 1,
+    });
+    const badge = screen.getByTestId('low-storage-badge');
+    expect(badge.parent).not.toBeNull();
+    expect(badge.parent!).toHaveStyle({flexShrink: 0});
     const direita = screen.getByTestId('HOME.header-right');
     expect(direita).toHaveStyle({flexShrink: 0});
     expect(within(direita).getByTestId('header-right-stub')).toBeOnTheScreen();
@@ -209,6 +300,10 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
     expect(titulo).toHaveTextContent(nomeLongo);
     expect(titulo.props.numberOfLines).toBe(1);
     expect(screen.getByTestId('HOME.header-title-box')).not.toHaveStyle({
+      maxWidth: expect.anything(),
+    });
+    expect(screen.getByTestId('HOME.header-area').props.numberOfLines).toBe(1);
+    expect(screen.getByTestId('HOME.header-bloco')).not.toHaveStyle({
       maxWidth: expect.anything(),
     });
     expect(screen.queryByTestId('HOME.header-right')).toBeNull();
@@ -255,24 +350,36 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
     expect(await screen.findByTestId('HOME.header-title')).toHaveTextContent(
       'Projeto Monitorado',
     );
+    expect(screen.queryByTestId('HOME.header-area')).toBeNull();
   });
 
   it('não nomeia a organização cuja confirmação está pendente', async () => {
     // Parser-valid (org 'pronta' + confirmacaoPendente) but not acknowledged:
     // `derivarProjectIdAtivo` refuses it (SPEC A §4.2 regra 9 — `ativa` is
     // born only in the single write of the "Abrir organização" tap, and a
-    // pending confirmation is not an operated organization). Asserting the
-    // document parses keeps a failed hydration from making this pass without
-    // exercising the gate (an unreadable document leaves no organization).
+    // pending confirmation is not an operated organization). The monitoramento
+    // slot points at the OPEN projectId, so the derived id would match but for
+    // the flag; the positive control below proves the document differs only by
+    // `confirmacaoPendente`. Asserting the document parses keeps a failed
+    // hydration from making this pass without exercising the gate (an
+    // unreadable document leaves no organization).
+    const a = readyOrganization('A');
+    a.materializacao.monitoramento.projectId = projectId;
     const documento = {
       ...organizationDocument(),
-      organizacoes: [
-        {...readyOrganization('A'), confirmacaoPendente: true},
-        readyOrganization('B'),
-      ],
+      organizacoes: [{...a, confirmacaoPendente: true}, readyOrganization('B')],
       ativa: {organizacaoId: 'A', area: 'monitoramento'} as const,
     };
     expect(parseEstadoOrganizacoes(documento)).not.toBeNull();
+    expect(
+      derivarProjectIdAtivo({
+        ...documento,
+        organizacoes: [
+          {...a, confirmacaoPendente: false},
+          readyOrganization('B'),
+        ],
+      }),
+    ).toBe(projectId);
 
     MMKVStoreInitializer.setItem(
       COIAB_ORGANIZATIONS_STORAGE_KEY,
@@ -284,6 +391,7 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
     expect(await screen.findByTestId('HOME.header-title')).toHaveTextContent(
       'Projeto Monitorado',
     );
+    expect(screen.queryByTestId('HOME.header-area')).toBeNull();
   });
 
   it('sem organização ativa mantém o nome do projeto', async () => {
@@ -292,5 +400,7 @@ describe('HomeHeader identidade exibida (navigator + AppProviders)', () => {
     expect(await screen.findByTestId('HOME.header-title')).toHaveTextContent(
       'Projeto Monitorado',
     );
+    expect(screen.getByTestId('HOME.header-pilula')).toBeOnTheScreen();
+    expect(screen.queryByTestId('HOME.header-bloco')).toBeNull();
   });
 });

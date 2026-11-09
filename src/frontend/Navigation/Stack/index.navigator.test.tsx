@@ -176,6 +176,7 @@ jest.mock('../../lib/organization/pacotesInstalados', () => {
 
 import {MMKVStoreInitializer} from '../../hooks/persistedState/createPersistedState';
 import {COIAB_ORGANIZATIONS_STORAGE_KEY} from '../../contexts/CoiabOrganizationsStoreContext';
+import {COIAB_ORANGE, COIAB_RED, DARK_GREY} from '../../lib/styles';
 import {
   derivarProjectIdAtivo,
   type EstadoOrganizacoes,
@@ -855,6 +856,14 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     expect(
       await screen.findByTestId('HOME.header-title', {}, {timeout: 15_000}),
     ).toHaveTextContent('Kaxuyana-Tunayana');
+    // Header da Home (SPEC B §3.3/T4): território e área em faixas
+    // empilhadas; Monitoramento pinta a faixa de área com COIAB_ORANGE.
+    expect(
+      await screen.findByTestId('HOME.header-area', {}, {timeout: 15_000}),
+    ).toHaveTextContent('Monitoramento Territorial');
+    expect(screen.getByTestId('HOME.header-faixa-area')).toHaveStyle({
+      backgroundColor: COIAB_ORANGE,
+    });
     // A escrita única do toque gravou reconhecimento e seleção juntos.
     const raw = documentoPersistido();
     const organizacaoCriada = raw.organizacoes[0];
@@ -873,7 +882,43 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       return url.includes('exemplo.org/projects') && metodo === 'PUT';
     });
     expect(putsArquivo).toHaveLength(2);
-  }, 20000);
+
+    // Troca de área pelo caminho real (#124): o id do slot de
+    // Monitoramento — guardado antes da troca — é a referência para provar
+    // que o projeto ativo mudou.
+    const monitoramentoId =
+      organizacaoCriada!.materializacao.monitoramento.projectId;
+    expect(monitoramentoId).toBeTruthy();
+    await fireEvent.press(await screen.findByTestId('tabBarButtonMenu'));
+    await fireEvent.press(
+      await screen.findByTestId('MENU.area-alertas', {}, {timeout: 15_000}),
+    );
+    // useTrocarArea reseta a pilha para o mapa; espera o destino montar.
+    expect(
+      await screen.findByTestId('MAIN.map-screen', {}, {timeout: 15_000}),
+    ).toBeOnTheScreen();
+    // O header reflete a área nova sem perder território nem título.
+    expect(
+      await screen.findByTestId('HOME.header-area', {}, {timeout: 15_000}),
+    ).toHaveTextContent('Alertas');
+    expect(screen.getByTestId('HOME.header-faixa-area')).toHaveStyle({
+      backgroundColor: COIAB_RED,
+    });
+    expect(screen.getByTestId('HOME.header-faixa-territorio')).toHaveStyle({
+      backgroundColor: DARK_GREY,
+    });
+    expect(screen.getByTestId('HOME.header-title')).toHaveTextContent(
+      'Kaxuyana-Tunayana',
+    );
+    const aposTroca = documentoPersistido();
+    expect(aposTroca.ativa?.area).toBe('alertas');
+    // O projeto ativo derivado do documento é o do slot de Alertas — não o
+    // de Monitoramento guardado antes da troca.
+    expect(derivarProjectIdAtivo(aposTroca)).not.toBe(monitoramentoId);
+    expect(derivarProjectIdAtivo(aposTroca)).toBe(
+      organizacaoCriada!.materializacao.alertas.projectId,
+    );
+  }, 40000);
 
   test('reinício antes do toque reapresenta a confirmação e mantém ativa nula (CA10)', async () => {
     const desmontar = await freshSetup.renderNavigationAsync();
