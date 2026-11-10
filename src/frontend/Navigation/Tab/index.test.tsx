@@ -126,7 +126,7 @@ import {
   setUpIPC,
 } from '../../../../tests/integration/helpers/core';
 import {createAppProvidersWrapper} from '../../../../tests/integration/helpers/react';
-import {executarEmOrdem} from '../../../../tests/integration/helpers/setupIntegrationTest';
+import {executarEmOrdem} from '../../../../tests/integration/helpers/orderedTeardown';
 import {ActiveProjectProvider} from '../../contexts/ActiveProjectContext';
 import {sleep} from '../../lib/sleep';
 import {COIAB_ORANGE, DARK_GREY, NEW_DARK_GREY, WHITE} from '../../lib/styles';

@@ -1,3 +1,8 @@
+// Guarda de acoplamento: o módulo extraído não pode voltar a puxar o navigator.
+jest.mock('./navigation', () => {
+  throw new Error('orderedTeardown não deve carregar ./navigation');
+});
+
 /**
  * Contracts for the integration harness teardown (issue #97). `executarEmOrdem`
  * is the executor behind the harness's `afterEach`: every step runs, in order
@@ -6,7 +11,7 @@
  * failures still fail the test instead of being swallowed.
  */
 import {sleep} from '../../../src/frontend/lib/sleep';
-import {executarEmOrdem} from './setupIntegrationTest';
+import {executarEmOrdem} from './orderedTeardown';
 
 describe('executarEmOrdem', () => {
   test('executarEmOrdem runs every step and surfaces the errors', async () => {

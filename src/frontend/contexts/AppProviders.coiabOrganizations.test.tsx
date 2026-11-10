@@ -6,7 +6,7 @@ import type {ComapeoCoreClientApi} from '@comapeo/ipc';
 
 import {createManager, setUpIPC} from '../../../tests/integration/helpers/core';
 import {createAppProvidersWrapper} from '../../../tests/integration/helpers/react';
-import {executarEmOrdem} from '../../../tests/integration/helpers/setupIntegrationTest';
+import {executarEmOrdem} from '../../../tests/integration/helpers/orderedTeardown';
 import {MMKVStoreInitializer} from '../hooks/persistedState/createPersistedState';
 import {sleep} from '../lib/sleep';
 import {organizationDocument} from '../lib/organization/fixtures';

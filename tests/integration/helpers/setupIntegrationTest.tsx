@@ -3,6 +3,7 @@ import type {MapeoManager} from '@comapeo/core';
 import type {ComapeoCoreClientApi} from '@comapeo/ipc';
 import {createManager, setUpIPC, useRealFetch} from './core';
 import {createAppProvidersWrapper, type UserProfileSeed} from './react';
+import {executarEmOrdem} from './orderedTeardown';
 import type {ActiveProjectIdStore} from '../../../src/frontend/contexts/ActiveProjectIdStoreContext';
 import {MockedAppNavigator} from './navigation';
 import {sleep} from '../../../src/frontend/lib/sleep';
@@ -23,32 +24,6 @@ const ORG_NAME = 'Test Org';
 // ficam acima dos 72s, e o aviso a partir de 20s acusa se a espera voltar.
 const ORCAMENTO_ENCERRAMENTO_MS = 90_000;
 const LIMIAR_LOG_ENCERRAMENTO_MS = 20_000;
-
-/**
- * Runs the teardown steps in order, one at a time, and keeps going after a
- * failure: a failed unmount must not leave the IPC channel, the discovery
- * server or fastify open. The failures still fail the test — a single one is
- * rethrown as is, two or more as an `AggregateError`, in step order.
- */
-export async function executarEmOrdem(
-  passos: ReadonlyArray<() => unknown>,
-): Promise<void> {
-  const erros: Array<unknown> = [];
-  for (const passo of passos) {
-    try {
-      await passo();
-    } catch (erro) {
-      erros.push(erro);
-    }
-  }
-  if (erros.length === 1) throw erros[0];
-  if (erros.length > 1) {
-    throw new AggregateError(
-      erros,
-      `integration teardown: ${erros.length} steps failed`,
-    );
-  }
-}
 
 async function encerrarComRelatorio(ciclo: {encerrar(): Promise<void>}) {
   const inicio = Date.now();
