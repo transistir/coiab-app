@@ -18,7 +18,7 @@ Execution failed for task ':app:mergeDexRelease'.
 To prevent these errors, we increase the JVM memory allocation using:
 
 ```
-org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=512m
+org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m
 ```
 
 This ensures that builds run reliably in CI environments like GitHub Actions, where memory constraints can lead to failures.

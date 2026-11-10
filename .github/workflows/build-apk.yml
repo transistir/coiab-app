@@ -82,16 +82,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # The EAS prebuild generates android/gradle.properties with
-      # -XX:MaxMetaspaceSize=512m, and the Gradle daemon died in a metaspace
-      # OOM loop with that cap (run 33746516366). GRADLE_USER_HOME properties
-      # take precedence over the project-root file, so raise the cap here
-      # instead of tracking a generated file.
-      - name: Give the Gradle daemon metaspace headroom
-        run: |
-          mkdir -p "$HOME/.gradle"
-          printf 'org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m\n' >> "$HOME/.gradle/gradle.properties"
-
       - name: Build APK
         env:
           SENTRY_DISABLE_AUTO_UPLOAD: 'true'
