@@ -190,8 +190,9 @@ required names, conclusions and SHA, not just the absence of failures.
   flaky: the suite passes in isolation and fails when run with siblings.
 - **`findBy*` defaults to a 1 s timeout — too short after a real navigator
   mount.** Suites that boot `setupIntegrationTest` + the real navigator fail
-  intermittently in CI with `Unable to find an element with testID:
-  tabBarButton<X>` ~1 s after the assertion starts and pass on rerun. Sibling
+  intermittently in CI with `Unable to find an element` for a
+  `tabBarButton<X>` testID, about 1 s after the assertion starts, and pass on
+  rerun. Sibling
   tests already pass `{timeout: 15_000}` (`ObservationFields/index.test.tsx`);
   match that instead of raising global `asyncUtilTimeout`. A timeout raise does
   not weaken the assertion — the test still fails if the element never renders.
