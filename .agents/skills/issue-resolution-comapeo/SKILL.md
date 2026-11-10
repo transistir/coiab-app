@@ -212,11 +212,11 @@ required names, conclusions and SHA, not just the absence of failures.
   `git stash -u` in such a worktree stashes those symlinks too — baseline
   runs then fail for the wrong reason.
 - **`/tmp` is a small tmpfs here (~1.9 GB) and Jest's transform cache grows to
-  >1 GB.** A 10-run loop ends in `ENOSPC: no space left on device` from
-  `jest-transform-cache`, which surfaces as "Test suite failed to run" with 0
-  tests — not as a test failure. `rm -rf /tmp/jest_*` or pass
-  `--cacheDirectory` on real disk before long repro loops; check `df -h /tmp`
-  when a suite that passed minutes ago stops even transforming.
+  > 1 GB.** A 10-run loop ends in `ENOSPC: no space left on device` from
+  > `jest-transform-cache`, which surfaces as "Test suite failed to run" with 0
+  > tests — not as a test failure. `rm -rf /tmp/jest_*` or pass
+  > `--cacheDirectory` on real disk before long repro loops; check `df -h /tmp`
+  > when a suite that passed minutes ago stops even transforming.
 - **`check:message-catalog` regenerates the catalogs.** It runs the generator
   and compares the committed `messages/` byte for byte, so it fails when
   generation fails, when the generated output differs, or when an uncommitted
