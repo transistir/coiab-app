@@ -501,9 +501,18 @@ describe('OrganizationMaterializerContext', () => {
   });
 
   test('useOrganizationMaterializer fora do provider é null', async () => {
+    // The client lives at test scope, not inside the wrapper function: the
+    // wrapper is invoked on every render, and a client created there would be
+    // throwaway and leave its default 5-minute GC timers behind.
+    const inlineQueryClient = new QueryClient({
+      defaultOptions: {
+        queries: {gcTime: Infinity},
+        mutations: {gcTime: Infinity},
+      },
+    });
     const hook = await renderHook(() => useOrganizationMaterializer(), {
       wrapper: ({children}: {children: ReactNode}) => (
-        <QueryClientProvider client={new QueryClient()}>
+        <QueryClientProvider client={inlineQueryClient}>
           {children}
         </QueryClientProvider>
       ),
