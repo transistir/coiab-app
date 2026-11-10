@@ -617,7 +617,8 @@ export const OrganizationProvisioning = ({
   // confirmation is pending or the document cannot be parsed.
   const derivado = derivarProjectIdAtivo(estado);
   const activeProjectId = useActiveProjectId();
-  // SPEC B §3.2:68 — the slow-preparation notice is a presentation concern:
+  // SPEC B §3.2:68 (emendado na #79) — the slow-preparation notice is a
+  // presentation concern:
   // 30 s ON SCREEN in preparando, reset when the document leaves preparando.
   // It never authorizes a retry — a presentation timeout does not cancel a
   // native operation.
