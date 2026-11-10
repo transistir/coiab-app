@@ -318,7 +318,7 @@ beforeEach(() => {
     retomarArquivo,
     solicitarArquivo: jest.fn(),
   });
-  // Early access OFF by default (production's default): since f12641db
+  // Early access OFF by default (production's default): since #121
   // neither the drawer nor this surface gates its organization exits, so
   // every exit asserted below proves the flag is irrelevant. S2 turns it ON
   // to show the same result either way.

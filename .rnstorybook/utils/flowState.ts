@@ -223,7 +223,7 @@ export const FLOW_STATES = {
    * names a project the backend never had. OrganizationProvisioning shows
    * the recovery surface with A's name. Early access off — production's
    * default — yet the creation exit is still offered: neither drawer nor
-   * recovery gates it since f12641db.
+   * recovery gates it since #121.
    */
   oneOrganizationUnavailable: {
     auth: 'authenticated',

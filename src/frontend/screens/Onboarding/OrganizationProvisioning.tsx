@@ -527,7 +527,7 @@ function DocumentDrivenProvisioning({
       {/* 89 fase 2 (D1/D2): the navigable exits use the same predicates as
       DrawerMenu and live ONLY in this branch — an organization in
       preparation, failure or confirmation owns the surface alone (S5a).
-      Early access gates neither since f12641db; parity is the decision. */}
+      Early access gates neither since #121; parity is the decision. */}
       {indisponivel && trocarOrganizacao && (
         <SecondaryButton
           testID="ORG.provisioning-switch-organization-btn"
@@ -738,7 +738,7 @@ export const OrganizationProvisioning = ({
   const voltarParaAtiva = operandoOutra
     ? () => navigation.popTo('Home', {screen: 'Map'})
     : undefined;
-  // 89 fase 2 (D1/D2) / f12641db: the recovery exits mirror the drawer's
+  // 89 fase 2 (D1/D2) / #121: the recovery exits mirror the drawer's
   // own predicates (DrawerMenu.tsx) with no early-access gate: the selector
   // needs 2+ organizations and a resolvable active selection, creation only
   // the latter. `undefined` renders nothing — no disabled control.
