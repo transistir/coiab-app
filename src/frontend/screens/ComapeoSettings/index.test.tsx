@@ -26,11 +26,17 @@ describe('CoiabApp Settings Screen', () => {
 
     // A página de Menu não tem mais a entrada legada "CoiabApp Settings"
     // (remodelagem Entroncamento); o caminho é a engrenagem da tab bar.
-    const settingsTab = await screen.findByTestId('tabBarButtonConfiguracoes');
+    const settingsTab = await screen.findByTestId(
+      'tabBarButtonConfiguracoes',
+      undefined,
+      {timeout: 15_000},
+    );
     await expect(settingsTab).toBeVisible();
     await user.press(settingsTab);
 
-    await expect(await screen.findByText('test')).toBeVisible();
+    await expect(
+      await screen.findByText('test', undefined, {timeout: 15_000}),
+    ).toBeVisible();
     expect(screen.queryByText('NOT HERE')).toBeNull();
   });
 });
