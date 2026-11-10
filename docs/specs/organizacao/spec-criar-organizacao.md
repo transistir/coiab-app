@@ -65,7 +65,7 @@ Antes de confirmar, voltar é permitido. Durante uma chamada de criação/import
 
 Em cada abertura com operação incompleta, mostrar a preparação. A retomada automática (uma única tentativa de reconciliação/conclusão) é autorizada **apenas** quando `estado: 'preparando'` — processo recém-iniciado não tem operação em voo, e a chamada pode ter encerrado sem gravar o resultado. Quando `estado: 'falha_recuperavel'` (falha já persistida), NÃO executar nova tentativa: aguardar **Tentar novamente**, sem loop de retentativas. Uma chamada ainda em andamento não pode ser duplicada por toque, remount ou retorno do segundo plano.
 
-Após 30 segundos sem conclusão de uma chamada, mostrar “A preparação está demorando. Se não continuar, feche e abra o aplicativo.” O tempo não autoriza disparar outra chamada: timeout de apresentação não cancela uma operação nativa. Se o resultado permanecer desconhecido, retomar apenas depois de a chamada encerrar ou de reiniciar o processo que executa o Core, seguido de reconciliação.
+Após 30 segundos em tela com o documento em `preparando`, mostrar “A preparação está demorando. Se não continuar, feche e abra o aplicativo.” O contador reinicia ao sair de `preparando` ou ao desmontar a tela; ele mede tempo de apresentação, não a duração da chamada nativa. O tempo não autoriza disparar outra chamada: timeout de apresentação não cancela uma operação nativa. Se o resultado permanecer desconhecido, retomar apenas depois de a chamada encerrar ou de reiniciar o processo que executa o Core, seguido de reconciliação.
 
 ### 3.3 Critério de navegação
 
