@@ -214,7 +214,7 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
                         <IntlProvider
                           locale={locale}
                           messages={locale === 'pt-BR' ? PT_BR_MESSAGES : {}}
-                          onError={() => null}>
+                          onError={locale === 'pt-BR' ? () => null : undefined}>
                           <DrawerMenu />
                         </IntlProvider>
                       </OrganizationActivationProvider>

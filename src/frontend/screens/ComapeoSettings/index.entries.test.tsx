@@ -260,4 +260,24 @@ describe('AppSettings — migração dos acessos removidos do Menu (Entroncament
       screen.queryByTestId('settingsSwitchTerritoryButton'),
     ).not.toBeOnTheScreen();
   });
+
+  test('solo + participant: cabeçalho Territory ausente quando a seção fica vazia (#157)', async () => {
+    mockRole('solo');
+    mockCoordinationRole('participant');
+    mockOrganizations(1);
+    await render(
+      <IntlProvider locale="en" messages={{}}>
+        <AppSettings
+          navigation={mockNavigation as never}
+          route={mockRoute as never}
+        />
+      </IntlProvider>,
+    );
+
+    // Âncora positiva: a tela montou e outras seções continuam renderizando.
+    expect(screen.getByText('Device Name')).toBeOnTheScreen();
+    expect(screen.getByTestId('device-name-list-item')).toBeOnTheScreen();
+    // Sem nenhuma linha na seção, o cabeçalho não deve aparecer.
+    expect(screen.queryByText('Territory')).not.toBeOnTheScreen();
+  });
 });

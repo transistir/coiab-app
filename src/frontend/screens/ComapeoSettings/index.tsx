@@ -186,9 +186,17 @@ export const AppSettings: NativeNavigationComponent<'AppSettings'> = ({
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <BodyText variant="tinyMeta" style={styles.sectionHeader}>
-        {formatMessage(m.organization)}
-      </BodyText>
+      {/* A seção "Territory" só tem linhas quando ao menos uma das
+          condições abaixo é verdadeira. Sem esta guarda, solo + participant
+          com menos de duas organizações renderiza o cabeçalho sem nenhuma
+          linha abaixo (a antiga linha "Mapa de fundo" era incondicional). */}
+      {(role !== 'solo' ||
+        coordinationRole !== 'participant' ||
+        estadoOrganizacoes.organizacoes.length >= 2) && (
+        <BodyText variant="tinyMeta" style={styles.sectionHeader}>
+          {formatMessage(m.organization)}
+        </BodyText>
+      )}
       {role !== 'solo' && (
         <SettingsRow
           testID="settingsYourTeamButton"
