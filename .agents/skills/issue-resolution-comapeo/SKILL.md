@@ -167,7 +167,7 @@ required names, conclusions and SHA, not just the absence of failures.
   `--forceExit`; cancel exactly that interval in a Jest
   `testEnvironment`/`globalTeardown` and keep a cheap import fixture so the
   coupling to the dependency's internal filename is tested.
-- **A flake that never reproduces locally does not clear the suspect: read the
+- **A flake that never reproduces locally does not clear the suspect:** read the
   failure path in the dependency source (`rpc-reflector` `handleClose` rejects
   all in-flight calls with `ChannelClosedError` at close; `@comapeo/ipc`
   documents in-flight rejections as by-design). If teardown closes the channel
@@ -208,15 +208,16 @@ required names, conclusions and SHA, not just the absence of failures.
 - **Linked worktrees need the ignored runtime inputs.** `node_modules`,
   `translations/` and `.env` are not in git; a fresh worktree fails every Jest
   suite with `Cannot find module './translations/index' from jest.setup.js`.
-  Symlink all three from the main clone before running anything, and remember
-  `git stash -u` in such a worktree stashes those symlinks too — baseline
-  runs then fail for the wrong reason.
-- **`/tmp` is a small tmpfs here (~1.9 GB) and Jest's transform cache grows to
-  > 1 GB.** A 10-run loop ends in `ENOSPC: no space left on device` from
-  > `jest-transform-cache`, which surfaces as "Test suite failed to run" with 0
-  > tests — not as a test failure. `rm -rf /tmp/jest_*` or pass
-  > `--cacheDirectory` on real disk before long repro loops; check `df -h /tmp`
-  > when a suite that passed minutes ago stops even transforming.
+  Point all three at the main clone before running anything (symlink
+  `node_modules` and `.env`; `translations/` may also be generated with
+  `npm run build:translations`), and remember `git stash -u` in such a worktree
+  stashes those symlinks too — baseline runs then fail for the wrong reason.
+- **`/tmp` is a small tmpfs here (~1.9 GB) and Jest's transform cache grows
+  past 1 GB.** A 10-run loop ends in `ENOSPC: no space left on device` from
+  `jest-transform-cache`, which surfaces as "Test suite failed to run" with 0
+  tests — not as a test failure. `rm -rf /tmp/jest_*` or pass `--cacheDirectory`
+  on real disk before long repro loops; check `df -h /tmp` when a suite that
+  passed minutes ago stops even transforming.
 - **`check:message-catalog` regenerates the catalogs.** It runs the generator
   and compares the committed `messages/` byte for byte, so it fails when
   generation fails, when the generated output differs, or when an uncommitted
