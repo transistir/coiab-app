@@ -60,6 +60,8 @@ const NODE_MODULE_PATTERNS_TO_TRANSFORM = [
 /** @type {import('jest').Config} */
 const config = {
   preset: 'jest-expo',
+  testEnvironment: '<rootDir>/scripts/jest/environment.cjs',
+  globalTeardown: '<rootDir>/scripts/jest/globalTeardown.cjs',
   // `mjs` por último: não muda a resolução dos imports existentes; apenas
   // permite que o haste-map enxergue os testes Node-only de scripts `.mjs`.
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node', 'mjs'],
