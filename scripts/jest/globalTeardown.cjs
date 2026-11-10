@@ -21,9 +21,7 @@ const hook = createHook({
     // even without Sentry.init(). It exposes no public cleanup for that map.
     if (sentryMapSource.test(stack)) timers.set(id, resource);
   },
-  destroy(id) {
-    timers.delete(id);
-  },
+  // No `destroy`: it would make Node track every promise for GC callbacks.
 });
 
 function cleanupSentryTimers() {
