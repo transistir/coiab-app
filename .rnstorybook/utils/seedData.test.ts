@@ -274,6 +274,20 @@ describe('buildOrganizationDocument', () => {
     ).toThrow(/not a valid COIAB document/);
   });
 
+  it('T11: respects activeArea for the active selection', () => {
+    const withAlertas = buildOrganizationDocument(
+      {...seed, activeArea: 'alertas' as const},
+      projectIds,
+    );
+    expect(withAlertas.ativa?.area).toBe('alertas');
+    expect(derivarProjectIdAtivo(withAlertas)).toBe('project-b-a');
+
+    // Unset keeps the production default.
+    expect(buildOrganizationDocument(seed, projectIds).ativa?.area).toBe(
+      'monitoramento',
+    );
+  });
+
   describe('with one organization still being prepared', () => {
     const preparingSeed = {
       list: [organizationA, {...organizationB, preparing: 'alertas' as const}],

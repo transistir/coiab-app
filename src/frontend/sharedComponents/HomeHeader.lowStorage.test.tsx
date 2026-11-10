@@ -5,7 +5,7 @@ import {
   RouteProp,
 } from '@react-navigation/native';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
-import {render, screen} from '@testing-library/react-native';
+import {render, screen, within} from '@testing-library/react-native';
 import type {BottomTabHeaderProps} from '@react-navigation/bottom-tabs';
 import type {MapeoManager} from '@comapeo/core';
 import type {ComapeoCoreClientApi} from '@comapeo/ipc';
@@ -14,6 +14,9 @@ import {createManager, setUpIPC} from '../../../tests/integration/helpers/core';
 import {createAppProvidersWrapper} from '../../../tests/integration/helpers/react';
 import {executarEmOrdem} from '../../../tests/integration/helpers/setupIntegrationTest';
 import {ActiveProjectProvider} from '../contexts/ActiveProjectContext';
+import {COIAB_ORGANIZATIONS_STORAGE_KEY} from '../contexts/CoiabOrganizationsStoreContext';
+import {MMKVStoreInitializer} from '../hooks/persistedState/createPersistedState';
+import {organizationDocument} from '../lib/organization/fixtures';
 
 import {HomeHeader} from './HomeHeader';
 
@@ -90,7 +93,11 @@ describe('HomeHeader low storage badge (navigator + AppProviders)', () => {
     // Tree and providers first: their teardown clears the QueryClient, so
     // in-flight queries are cancelled before `ipc.stop` drains the RPCs and
     // closes the channel.
-    await executarEmOrdem([...onTeardown, ...coreTeardown]);
+    await executarEmOrdem([
+      ...onTeardown,
+      ...coreTeardown,
+      () => MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY),
+    ]);
   }, 15_000);
 
   const renderHeader = async ({
@@ -145,5 +152,33 @@ describe('HomeHeader low storage badge (navigator + AppProviders)', () => {
     await screen.findByTestId('HOME.header-title');
 
     expect(screen.queryByTestId('low-storage-badge')).toBeNull();
+  });
+
+  it('keeps the badge outside the block accessibility node when an organization is active', async () => {
+    mockFreeBytes = 100 * 1024 * 1024;
+
+    const documento = organizationDocument();
+    const organizacaoA = documento.organizacoes[0];
+    if (!organizacaoA) throw new Error('fixture: organization A missing');
+    organizacaoA.materializacao.monitoramento.projectId = projectId;
+
+    MMKVStoreInitializer.setItem(
+      COIAB_ORGANIZATIONS_STORAGE_KEY,
+      JSON.stringify({
+        state: {
+          ...documento,
+          ativa: {organizacaoId: 'A', area: 'monitoramento'},
+        },
+        version: 1,
+      }),
+    );
+
+    await renderHeader();
+
+    const bloco = await screen.findByTestId('HOME.header-bloco');
+    // The block is a single accessibility node; a badge nested inside it would
+    // be swallowed by its composed label, so the warning must stay out.
+    expect(within(bloco).queryByTestId('low-storage-badge')).toBeNull();
+    expect(screen.getByTestId('low-storage-badge')).toBeTruthy();
   });
 });
