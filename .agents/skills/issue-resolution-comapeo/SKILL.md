@@ -155,7 +155,19 @@ required names, conclusions and SHA, not just the absence of failures.
   which trades a timeout flake for an unhandled rejection. Measure before
   choosing — two ~70s teardowns are proof the delay is real; six fast runs are
   not.
-- A flake that never reproduces locally does not clear the suspect: read the
+- **`process._getActiveHandles()` does not list JS timers.** A `setInterval`
+  that runs no I/O is invisible there, so "only stdio pipes" is not proof the
+  process is clean. Find it with `async_hooks` (`init` on `Timeout`, capture
+  `new Error().stack` only when `_repeat` is true) or
+  `process.getActiveResourcesInfo()`, then verify 10/10 runs exit without the
+  warning. Real case (#105): `@sentry/react-native` 8.15.1 starts a 5 s
+  `AsyncExpiringMap` cleanup interval at **import**, before `Sentry.init()`;
+  short suites finish first and the timer keeps Node alive — intermittent
+  because a cold import outlives the first tick. Do not `unref` or
+  `--forceExit`; cancel exactly that interval in a Jest
+  `testEnvironment`/`globalTeardown` and keep a cheap import fixture so the
+  coupling to the dependency's internal filename is tested.
+- **A flake that never reproduces locally does not clear the suspect:** read the
   failure path in the dependency source (`rpc-reflector` `handleClose` rejects
   all in-flight calls with `ChannelClosedError` at close; `@comapeo/ipc`
   documents in-flight rejections as by-design). If teardown closes the channel
@@ -176,6 +188,36 @@ required names, conclusions and SHA, not just the absence of failures.
 - **`@testing-library/react-native` v14 `render` is async.** Always
   `await render(...)`. Un-awaited renders make Suspense/pending assertions
   flaky: the suite passes in isolation and fails when run with siblings.
+- **`findBy*` defaults to a 1 s timeout — too short after a real navigator
+  mount.** Suites that boot `setupIntegrationTest` + the real navigator fail
+  intermittently in CI with `Unable to find an element` for a
+  `tabBarButton<X>` testID, about 1 s after the assertion starts, and pass on
+  rerun. Sibling
+  tests already pass `{timeout: 15_000}` (`ObservationFields/index.test.tsx`);
+  match that instead of raising global `asyncUtilTimeout`. A timeout raise does
+  not weaken the assertion — the test still fails if the element never renders.
+- **CI reruns overwrite a failed attempt's conclusion and its logs.** After
+  `gh run rerun --failed`, `gh run view <run> --log-failed` comes back empty and
+  the job list shows success. The original output stays downloadable per
+  attempt: `gh api repos/<owner>/<repo>/actions/runs/<run>/attempts/<n>/logs`
+  (attempts are 1-based) — unzip it and grep the assertion. Capture that before
+  rerunning if the failure text matters for a bug report.
+- **Rerunning a flaky job is a diagnosis, not a fix.** Two occurrences of the
+  same assertion on `develop` (different SHAs) mean a real race, not
+  infrastructure noise — file the issue with the attempt-log evidence.
+- **Linked worktrees need the ignored runtime inputs.** `node_modules`,
+  `translations/` and `.env` are not in git; a fresh worktree fails every Jest
+  suite with `Cannot find module './translations/index' from jest.setup.js`.
+  Point all three at the main clone before running anything (symlink
+  `node_modules` and `.env`; `translations/` may also be generated with
+  `npm run build:translations`), and remember `git stash -u` in such a worktree
+  stashes those symlinks too — baseline runs then fail for the wrong reason.
+- **`/tmp` is a small tmpfs here (~1.9 GB) and Jest's transform cache grows
+  past 1 GB.** A 10-run loop ends in `ENOSPC: no space left on device` from
+  `jest-transform-cache`, which surfaces as "Test suite failed to run" with 0
+  tests — not as a test failure. `rm -rf /tmp/jest_*` or pass `--cacheDirectory`
+  on real disk before long repro loops; check `df -h /tmp` when a suite that
+  passed minutes ago stops even transforming.
 - **`check:message-catalog` regenerates the catalogs.** It runs the generator
   and compares the committed `messages/` byte for byte, so it fails when
   generation fails, when the generated output differs, or when an uncommitted
