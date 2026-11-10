@@ -72,7 +72,6 @@ declare -a story_ids=()
 declare -a ready_targets=()
 declare -a settle_delays=()
 declare -a labels=()
-declare -A seen_story_ids=()
 
 line_number=0
 while IFS= read -r line || [[ -n $line ]]; do
@@ -103,7 +102,14 @@ while IFS= read -r line || [[ -n $line ]]; do
   if [[ -z $story_id ]]; then
     fail "manifest line $line_number has an empty story id"
   fi
-  if [[ -v "seen_story_ids[$story_id]" ]]; then
+  repeated=0
+  for existing_story_id in ${story_ids[@]+"${story_ids[@]}"}; do
+    if [[ $existing_story_id == "$story_id" ]]; then
+      repeated=1
+      break
+    fi
+  done
+  if (( repeated )); then
     fail "manifest line $line_number repeats story id: $story_id"
   fi
   if [[ ! $ready_target =~ ^(route:[A-Za-z][A-Za-z0-9]*|testID:[A-Za-z0-9][A-Za-z0-9._:-]*)$ ]]; then
@@ -113,7 +119,6 @@ while IFS= read -r line || [[ -n $line ]]; do
     fail "manifest line $line_number has an invalid settle delay: $settle_delay"
   fi
 
-  seen_story_ids["$story_id"]=1
   flows+=("$flow")
   story_ids+=("$story_id")
   ready_targets+=("$ready_target")
@@ -131,7 +136,7 @@ if (( ${#story_ids[@]} == 0 )); then
   fail "manifest has no stories: $manifest_path"
 fi
 
-node - "$repo_root/.rnstorybook" "${story_ids[@]}" <<'NODE'
+node - "$repo_root/.rnstorybook" ${story_ids[@]+"${story_ids[@]}"} <<'NODE'
 const {buildIndex} = require('@storybook/react-native/node');
 
 const configPath = process.argv[2];
