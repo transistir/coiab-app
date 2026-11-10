@@ -128,7 +128,12 @@ async function setup(
   draftStore.instance.setState(() => ({
     unsavedAttachments: [unsavedPhoto, unsavedAudio],
   }));
-  const queryClient = new QueryClient();
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {gcTime: Infinity},
+      mutations: {gcTime: Infinity},
+    },
+  });
   await render(
     <QueryClientProvider client={queryClient}>
       <DraftObservationProvider draftObservationStore={draftStore}>

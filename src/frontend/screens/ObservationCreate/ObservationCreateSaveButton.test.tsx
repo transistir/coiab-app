@@ -122,7 +122,12 @@ async function setup(
     position: {coords: {latitude: 1, longitude: 2}},
   });
   const trackStore = createTrackStore();
-  const queryClient = new QueryClient();
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {gcTime: Infinity},
+      mutations: {gcTime: Infinity},
+    },
+  });
   await render(
     <QueryClientProvider client={queryClient}>
       <TrackStoreProvider value={trackStore}>
