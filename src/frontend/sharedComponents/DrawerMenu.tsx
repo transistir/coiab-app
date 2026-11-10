@@ -52,6 +52,16 @@ const m = defineMessages({
     defaultMessage: 'Adicionar pessoas',
     description: 'Subtitle of the invite menu entry',
   },
+  mapaDeFundo: {
+    id: '$1Navigation.Menu.mapaDeFundo',
+    defaultMessage: 'Mapa de fundo',
+    description: 'Menu list entry that opens the background maps screen',
+  },
+  mapaDeFundoSubtitle: {
+    id: '$1Navigation.Menu.mapaDeFundoSubtitle',
+    defaultMessage: 'Mapas offline do território',
+    description: 'Subtitle of the background maps menu entry',
+  },
   exchange: {
     id: '$1Navigation.Menu.exchange',
     defaultMessage: 'Exchange',
@@ -114,14 +124,14 @@ function MenuListItem({
  * "Olá, Parente" + nome do projeto corrente, os DOIS cards clicáveis de
  * área (Monitoramento Territorial e Alertas — Cadeias Produtivas e Censo
  * Demográfico ficam para fases seguintes, decisão do dono do produto) e a
- * lista: Convidar (somente coordinator). A criação e a troca de território
- * migraram para Configurações (AppSettings): a criação é visível apenas
- * para coordenador e a troca somente com duas ou mais organizações. Early access não
- * condiciona mais essas entradas. As 5 entradas legadas do CoMapeo
- * (Team, Coordinator Tools, Gather Observations, Background Map,
- * AppSettings) migraram: Background Maps/Project Settings/Your Team agora
- * vivem em AppSettings (ComapeoSettings). O botão Exchange permanece no
- * rodapé.
+ * lista: "Mapa de fundo" (todos os papéis, imediatamente acima de
+ * "Convidar") e Convidar (somente coordinator). A criação e a troca de
+ * território migraram para Configurações (AppSettings): a criação é visível
+ * apenas para coordenador e a troca somente com duas ou mais organizações.
+ * Early access não condiciona mais essas entradas. As 5 entradas legadas do
+ * CoMapeo (Team, Coordinator Tools, Gather Observations, Background Map,
+ * AppSettings) migraram: Project Settings/Your Team agora vivem em
+ * AppSettings (ComapeoSettings). O botão Exchange permanece no rodapé.
  */
 export function DrawerMenu() {
   const {formatMessage} = useIntl();
@@ -196,9 +206,17 @@ export function DrawerMenu() {
           </BodyText>
         </View>
         {!semOrganizacaoOperavel && <OrganizationAreaAccesses />}
-        <View style={styles.listContainer}>
-          {/* A troca de território migrou para Configurações (AppSettings),
-              logo abaixo de "Criar território" na seção Territory. */}
+        <View style={styles.listContainer} testID="MENU.lista">
+          {/* "Mapa de fundo" é visível para coordinator, participant e solo,
+              e fica imediatamente acima de "Convidar" na lista. */}
+          <MenuListItem
+            testID="MENU.mapa-de-fundo"
+            onPress={() => navigation.navigate('BackgroundMaps')}
+            titulo={m.mapaDeFundo}
+            subtitulo={m.mapaDeFundoSubtitle}
+            icone="layers"
+            accessibilityLabel={formatMessage(m.mapaDeFundo)}
+          />
           {/* O acesso à equipe fica COORD-only nesta página; participants
               seguem usando Your Team em AppSettings. */}
           {role === 'coordinator' && (

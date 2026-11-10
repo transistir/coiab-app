@@ -126,11 +126,6 @@ const m = defineMessages({
     defaultMessage: 'Territory',
     description: 'Section header for the migrated menu entries',
   },
-  backgroundMaps: {
-    id: '$1Screens.Settings.AppSettings.backgroundMaps',
-    defaultMessage: 'Background Map',
-    description: 'Migrated menu entry: background maps',
-  },
   projectSettings: {
     id: '$1Screens.Settings.AppSettings.projectSettings',
     defaultMessage: 'Project Settings',
@@ -183,8 +178,7 @@ export const AppSettings: NativeNavigationComponent<'AppSettings'> = ({
   const hasPasscode = passcode !== null;
   const qaDeviceName = useQADeviceName();
   // Acessos removidos da Página Entroncamento migram para cá: participantes
-  // não perdem a equipe ("Convidar" no menu é coord-only) e Background
-  // Maps segue sem restrição de papel.
+  // não perdem a equipe ("Convidar" no menu é coord-only).
   const {projectId} = useActiveProject();
   const {role} = useProjectRoleAndDetails(projectId);
   const {coordinationRole} = useUserProfileState();
@@ -271,15 +265,6 @@ export const AppSettings: NativeNavigationComponent<'AppSettings'> = ({
           }
         />
       )}
-      <SettingsRow
-        testID="settingsBackgroundMapsButton"
-        onPress={() => navigation.navigate('BackgroundMaps')}
-        label={formatMessage(m.backgroundMaps)}
-        Icon={<MaterialIcon name="layers" size={24} color={NEW_DARK_GREY} />}
-        EndContent={
-          <MaterialIcon name="chevron-right" size={20} color={NEW_DARK_GREY} />
-        }
-      />
 
       <BodyText variant="tinyMeta" style={styles.sectionHeader}>
         {formatMessage(m.deviceName)}
