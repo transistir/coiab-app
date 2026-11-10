@@ -30,6 +30,14 @@
     "message": "Olá, Parente",
     "description": "Página Entroncamento greeting (Figma Kutary App V2, 2668:4539)"
   },
+  "$1Navigation.Menu.mapaDeFundo": {
+    "message": "Mapa de fundo",
+    "description": "Menu list entry that opens the background maps screen"
+  },
+  "$1Navigation.Menu.mapaDeFundoSubtitle": {
+    "message": "Mapas offline do território",
+    "description": "Subtitle of the background maps menu entry"
+  },
   "$1Navigation.Menu.switchOrganization": {
     "message": "Switch territory",
     "description": "Drawer menu entry that opens the organization selector"
@@ -131,10 +139,6 @@
   },
   "$1Screens.Settings.AppSettings.aboutEkanadyby": {
     "message": "About CoiabApp"
-  },
-  "$1Screens.Settings.AppSettings.backgroundMaps": {
-    "message": "Background Map",
-    "description": "Migrated menu entry: background maps"
   },
   "$1Screens.Settings.AppSettings.coordinateDd": {
     "message": "Decimal Degrees"

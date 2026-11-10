@@ -100,7 +100,32 @@ describe('AppSettings — migração dos acessos removidos do Menu (Entroncament
     navigate.mockClear();
   });
 
-  test('participant: ProjectSettings e Criar território ausentes; YourTeam e BackgroundMaps presentes', async () => {
+  test.each(['coordinator', 'participant', 'solo'] as const)(
+    '%s: Mapa de fundo saiu de Configurações (#157)',
+    async role => {
+      mockRole(role);
+      mockCoordinationRole(
+        role === 'participant' ? 'participant' : 'coordinator',
+      );
+      await render(
+        <IntlProvider locale="en" messages={{}}>
+          <AppSettings
+            navigation={mockNavigation as never}
+            route={mockRoute as never}
+          />
+        </IntlProvider>,
+      );
+
+      // Âncora positiva: a tela montou e a lista de Configurações renderizou.
+      expect(screen.getByTestId('device-name-list-item')).toBeOnTheScreen();
+      expect(
+        screen.queryByTestId('settingsBackgroundMapsButton'),
+      ).not.toBeOnTheScreen();
+      expect(screen.queryByText('Background Map')).not.toBeOnTheScreen();
+    },
+  );
+
+  test('participant: ProjectSettings e Criar território ausentes; YourTeam presente', async () => {
     mockRole('participant');
     mockCoordinationRole('participant');
     await render(
@@ -119,9 +144,6 @@ describe('AppSettings — migração dos acessos removidos do Menu (Entroncament
       screen.queryByTestId('settingsCreateOrganizationButton'),
     ).not.toBeOnTheScreen();
     expect(screen.getByTestId('settingsYourTeamButton')).toBeOnTheScreen();
-    expect(
-      screen.getByTestId('settingsBackgroundMapsButton'),
-    ).toBeOnTheScreen();
   });
 
   // #131: perfis v2–v5 hidratam `coordinationRole: null` ("não respondido").
@@ -159,7 +181,7 @@ describe('AppSettings — migração dos acessos removidos do Menu (Entroncament
     ).toBeOnTheScreen();
   });
 
-  test('solo: YourTeam ausente (sem equipe); BackgroundMaps sem restrição', async () => {
+  test('solo: YourTeam ausente (sem equipe)', async () => {
     mockRole('solo');
     mockCoordinationRole('coordinator');
     await render(
@@ -174,9 +196,6 @@ describe('AppSettings — migração dos acessos removidos do Menu (Entroncament
     expect(
       screen.queryByTestId('settingsYourTeamButton'),
     ).not.toBeOnTheScreen();
-    expect(
-      screen.getByTestId('settingsBackgroundMapsButton'),
-    ).toBeOnTheScreen();
   });
 
   test('coordinator: entradas novas presentes e navegam para as rotas certas', async () => {
@@ -190,9 +209,6 @@ describe('AppSettings — migração dos acessos removidos do Menu (Entroncament
     );
 
     expect(
-      screen.getByTestId('settingsBackgroundMapsButton'),
-    ).toBeOnTheScreen();
-    expect(
       screen.getByTestId('settingsProjectSettingsButton'),
     ).toBeOnTheScreen();
     expect(
@@ -201,8 +217,6 @@ describe('AppSettings — migração dos acessos removidos do Menu (Entroncament
     expect(screen.getByTestId('settingsYourTeamButton')).toBeOnTheScreen();
 
     // Navegação simulada: cada entrada despacha a rota certa.
-    await fireEvent.press(screen.getByTestId('settingsBackgroundMapsButton'));
-    expect(navigate).toHaveBeenCalledWith('BackgroundMaps');
     await fireEvent.press(screen.getByTestId('settingsProjectSettingsButton'));
     expect(navigate).toHaveBeenCalledWith('ProjectSettings');
     await fireEvent.press(
@@ -245,5 +259,25 @@ describe('AppSettings — migração dos acessos removidos do Menu (Entroncament
     expect(
       screen.queryByTestId('settingsSwitchTerritoryButton'),
     ).not.toBeOnTheScreen();
+  });
+
+  test('solo + participant: cabeçalho Territory ausente quando a seção fica vazia (#157)', async () => {
+    mockRole('solo');
+    mockCoordinationRole('participant');
+    mockOrganizations(1);
+    await render(
+      <IntlProvider locale="en" messages={{}}>
+        <AppSettings
+          navigation={mockNavigation as never}
+          route={mockRoute as never}
+        />
+      </IntlProvider>,
+    );
+
+    // Âncora positiva: a tela montou e outras seções continuam renderizando.
+    expect(screen.getByText('Device Name')).toBeOnTheScreen();
+    expect(screen.getByTestId('device-name-list-item')).toBeOnTheScreen();
+    // Sem nenhuma linha na seção, o cabeçalho não deve aparecer.
+    expect(screen.queryByText('Territory')).not.toBeOnTheScreen();
   });
 });

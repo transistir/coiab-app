@@ -1,4 +1,6 @@
 import * as React from 'react';
+import fs from 'fs';
+import path from 'path';
 import {StyleSheet} from 'react-native';
 import {fireEvent, render, screen} from '@testing-library/react-native';
 import {IntlProvider} from 'react-intl';
@@ -114,6 +116,19 @@ jest.mock('@sentry/react-native', () => ({
 const useClientApiMock = useClientApi as unknown as jest.Mock;
 const useProjectRoleAndDetailsMock = useProjectRoleAndDetails as jest.Mock;
 
+// Catálogo REAL de pt-BR: a chave nova não existe lá, então o react-intl cai
+// no `defaultMessage` — é o que garante o singular "Mapa de fundo".
+const PT_BR_MESSAGES = Object.fromEntries(
+  Object.entries(
+    JSON.parse(
+      fs.readFileSync(
+        path.resolve(__dirname, '../../../messages/pt-BR/primary.json'),
+        'utf8',
+      ),
+    ) as Record<string, {message: string}>,
+  ).map(([id, mensagem]) => [id, mensagem.message]),
+);
+
 describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
   let clientApi: {
     getProject: jest.Mock;
@@ -179,10 +194,12 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     store,
     earlyAccessStore,
     profileStore,
+    locale = 'en',
   }: {
     store: CoiabOrganizationsStore;
     earlyAccessStore: EarlyAccessStore;
     profileStore: UserProfileStore;
+    locale?: 'en' | 'pt-BR';
   }) {
     return (
       <QueryClientProvider client={queryClient}>
@@ -194,7 +211,10 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
                   <UserProfileStoreProvider store={profileStore}>
                     <OrganizationMaterializerProvider>
                       <OrganizationActivationProvider>
-                        <IntlProvider locale="en" messages={{}}>
+                        <IntlProvider
+                          locale={locale}
+                          messages={locale === 'pt-BR' ? PT_BR_MESSAGES : {}}
+                          onError={locale === 'pt-BR' ? () => null : undefined}>
                           <DrawerMenu />
                         </IntlProvider>
                       </OrganizationActivationProvider>
@@ -216,11 +236,13 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
       organizacoes,
       ativa,
       coordinationRole = null,
+      locale = 'en',
     }: {
       earlyAccess?: boolean;
       organizacoes?: OrganizacaoLocal[];
       ativa?: {organizacaoId: string; area: 'monitoramento' | 'alertas'};
       coordinationRole?: CoordinationRole;
+      locale?: 'en' | 'pt-BR';
     } = {},
   ) {
     const earlyAccessStore = createEarlyAccessStore({persist: false});
@@ -243,6 +265,7 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
         store={store}
         earlyAccessStore={earlyAccessStore}
         profileStore={profileStore}
+        locale={locale}
       />,
     );
     return {store, profileStore};
@@ -508,7 +531,9 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     );
 
     await screen.findByTestId('MENU.area-monitoramento');
-    // As 5 entradas legadas do CoMapeo saíram da página de Menu.
+    // As 5 entradas legadas do CoMapeo saíram da página de Menu. "Mapa de
+    // fundo" (#157) voltou como entrada própria em português — o texto
+    // inglês "Background Map" continua ausente.
     for (const texto of [
       'Team',
       'Coordinator Tools',
@@ -560,6 +585,48 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     ).not.toBeOnTheScreen();
   });
 
+  test.each([
+    ['coordinator', true],
+    ['participant', true],
+    ['solo', false],
+  ] as const)(
+    'Mapa de fundo presente p/ %s e abre BackgroundMaps (#157)',
+    async (role, operando) => {
+      useProjectRoleAndDetailsMock.mockReturnValue({
+        role,
+        projectHeader: 'Monitoramento',
+        projectName: 'Monitoramento',
+        projectColor: '#232323',
+        projectDescription: undefined,
+      });
+      await renderDrawer(operando, {earlyAccess: true});
+
+      const entrada = await screen.findByTestId('MENU.mapa-de-fundo');
+      expect(entrada).toBeOnTheScreen();
+      expect(screen.getByText('Mapa de fundo')).toBeOnTheScreen();
+      expect(screen.getByText('Mapas offline do território')).toBeOnTheScreen();
+
+      await fireEvent.press(entrada);
+
+      expect(mockNavigation.navigate).toHaveBeenCalledTimes(1);
+      expect(mockNavigation.navigate).toHaveBeenCalledWith('BackgroundMaps');
+    },
+  );
+
+  test('Mapa de fundo fica imediatamente acima de Convidar (coordinator, #157)', async () => {
+    await renderDrawer(true, {earlyAccess: true});
+
+    await screen.findByTestId('MENU.convidar');
+
+    // Compara TODOS os filhos diretos do container — não um array filtrado —
+    // para provar que não há nenhuma entrada entre os dois.
+    const lista = screen.getByTestId('MENU.lista');
+    const filhos = lista.children.map(filho =>
+      typeof filho === 'string' ? filho : filho.props.testID,
+    );
+    expect(filhos).toEqual(['MENU.mapa-de-fundo', 'MENU.convidar']);
+  });
+
   test('entradas de organização em branco sobre o fundo escuro (remodelagem)', async () => {
     // A página inteira vive agora no fundo DARK_GREY: os títulos das
     // entradas precisam ser WHITE (o DARK_GREY legado sumiria no fundo
@@ -573,10 +640,41 @@ describe('DrawerMenu com as áreas da organização (SPEC A §6.1/D12)', () => {
     });
     await renderDrawer(true, {earlyAccess: true});
 
-    for (const texto of ['Convidar']) {
+    for (const texto of ['Mapa de fundo', 'Convidar']) {
       expect(screen.getByText(texto).props.style).toEqual(
-        expect.arrayContaining([expect.objectContaining({color: WHITE})]),
+        expect.arrayContaining([
+          expect.objectContaining({
+            color: WHITE,
+            fontSize: 16,
+            fontWeight: '600',
+          }),
+        ]),
       );
     }
+
+    // O quadrado do ícone segue a geometria do Figma (40×40, raio 8, ORANGE).
+    const entrada = screen.getByTestId('MENU.mapa-de-fundo');
+    const quadradoDoIcone = entrada.children
+      .map(filho =>
+        typeof filho === 'string'
+          ? null
+          : StyleSheet.flatten(filho.props.style),
+      )
+      .find(estilo => estilo?.backgroundColor === ORANGE);
+    expect(quadradoDoIcone).toEqual(
+      expect.objectContaining({
+        width: 40,
+        height: 40,
+        borderRadius: 8,
+        backgroundColor: ORANGE,
+      }),
+    );
+  });
+
+  test('pt-BR renderiza o defaultMessage singular "Mapa de fundo" (#157)', async () => {
+    await renderDrawer(true, {earlyAccess: true, locale: 'pt-BR'});
+
+    expect(await screen.findByText('Mapa de fundo')).toBeOnTheScreen();
+    expect(screen.queryByText('Mapas de fundo')).not.toBeOnTheScreen();
   });
 });
