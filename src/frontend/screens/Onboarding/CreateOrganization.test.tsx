@@ -79,6 +79,8 @@ const PT_MESSAGES = {
     'Já existe uma criação de território em andamento.',
   '$1screens.Onboarding.CreateOrganization.missingTerritory':
     'Selecione o território acima para continuar',
+  '$1screens.Onboarding.CreateOrganization.missingArchiveUrl':
+    'Informe o endereço do arquivo remoto para continuar',
   '$1screens.Onboarding.CreateOrganization.waitingValidation':
     'Aguardando verificação do arquivo remoto',
 };
@@ -551,11 +553,16 @@ describe('CreateOrganization', () => {
     ).not.toBeOnTheScreen();
   });
 
-  test('campo vazio com um único território: botão habilitado (#142)', async () => {
+  test('campo vazio com um único território: botão desabilitado e dica do arquivo obrigatório (#171)', async () => {
     await renderScreen();
     await irParaEtapaNome();
 
-    expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
+    // #171: the remote archive is mandatory, so the auto-selected territory
+    // alone is not enough — the blank field disables create and says why.
+    expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+    expect(
+      screen.getByTestId('ORG.create-missing-archive-url'),
+    ).toHaveTextContent('Informe o endereço do arquivo remoto para continuar');
     expect(
       screen.queryByTestId('ORG.create-missing-territory'),
     ).not.toBeOnTheScreen();
@@ -589,13 +596,17 @@ describe('CreateOrganization', () => {
     ).not.toBeOnTheScreen();
   });
 
-  test('the single catalog territory starts selected; the archive URL is optional (#142)', async () => {
+  test('the single catalog territory starts selected; the archive URL is required (#171)', async () => {
     await renderScreen();
     await irParaEtapaNome();
 
-    // #142: the one-option catalog is auto-selected, so the button is enabled
-    // even before touching the option and with the URL field blank.
-    expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
+    // #171 (product decision 2026-11-10): the one-option catalog is
+    // auto-selected, but the remote archive is mandatory even offline, so a
+    // blank field disables create and the hint explains why.
+    expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+    expect(
+      screen.getByTestId('ORG.create-missing-archive-url'),
+    ).toHaveTextContent('Informe o endereço do arquivo remoto para continuar');
 
     // A typed malformed URL DOES gate creation and explains why.
     await preencherUrl('not a url');
@@ -612,9 +623,11 @@ describe('CreateOrganization', () => {
     ).toBeOnTheScreen();
   });
 
-  test('campo vazio: botão habilita, nenhum fetch, sem feedback; URL inválida desabilita (#142 regressão)', async () => {
-    // The field is optional: an empty field must not schedule any request at
-    // all, and no spinner/check/error may appear for a field nobody filled.
+  test('campo vazio: botão desabilita, nenhum fetch, sem feedback; URL inválida desabilita (#171 regressão)', async () => {
+    // #171: the field is required, so an empty field leaves the button
+    // disabled with the missing-archive hint — but it still must not schedule
+    // any request, and no spinner/check/error may appear for a field nobody
+    // filled.
     jest.useFakeTimers();
     const fetchOriginal = global.fetch;
     try {
@@ -628,7 +641,12 @@ describe('CreateOrganization', () => {
       await irParaEtapaNome();
       await selecionarTerritorio();
 
-      expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
+      expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+      expect(
+        screen.getByTestId('ORG.create-missing-archive-url'),
+      ).toHaveTextContent(
+        'Informe o endereço do arquivo remoto para continuar',
+      );
 
       // Well past the hook's debounce: an empty URL never reaches the wire.
       await act(async () => {
@@ -664,6 +682,36 @@ describe('CreateOrganization', () => {
       jest.useRealTimers();
       global.fetch = fetchOriginal;
     }
+  });
+
+  test('sem rede (indisponivel): botão desabilitado e mensagem de conectividade, nunca URL inválida (#171)', async () => {
+    // #171: with no network the URL can never be confirmed, so creation stays
+    // blocked. The existing connectivity feedback owns the explanation; the
+    // unreachable state must never be shown as a malformed URL.
+    mockValidarImpl = () => ({
+      estado: 'indisponivel',
+      tentarNovamente: jest.fn(),
+    });
+    await renderScreen();
+    await irParaEtapaNome();
+    await selecionarTerritorio();
+    await preencherUrl('https://exemplo.org/');
+
+    expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+    expect(
+      screen.getByTestId('ORG.create-archive-url-unreachable'),
+    ).toHaveTextContent(
+      'Não foi possível falar com o arquivo remoto. Verifique a conexão e tente novamente.',
+    );
+    expect(
+      screen.queryByTestId('ORG.create-archive-url-invalid'),
+    ).not.toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('ORG.create-archive-url-valid'),
+    ).not.toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('ORG.create-missing-archive-url'),
+    ).not.toBeOnTheScreen();
   });
 
   test('the create button is enabled with a selected territory and a valid HTTPS URL', async () => {
