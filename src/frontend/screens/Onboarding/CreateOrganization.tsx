@@ -365,8 +365,12 @@ export const CreateOrganization = ({
   // hook keeps `valido` (returning online re-enables), but creation itself
   // must be refused while the device is known to be offline. `null` (unknown)
   // is not treated as offline — only an explicit `false` blocks.
-  const {isConnected} = useNetInfo();
-  const semConectividade = isConnected === false;
+  // Rodada 2 (co-revisor): `isConnected: true` with `isInternetReachable:
+  // false` is a Wi-Fi association with no route to the internet; the first
+  // fix missed it. Both fields only block on an explicit `false`.
+  const {isConnected, isInternetReachable} = useNetInfo();
+  const semConectividade =
+    isConnected === false || isInternetReachable === false;
   const canCreate =
     !!selectedTerritory &&
     !tooLong &&
