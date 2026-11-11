@@ -657,6 +657,9 @@
   "$1screens.Onboarding.CreateOrganization.creationInProgress": {
     "message": "A criação de um território já está em andamento."
   },
+  "$1screens.Onboarding.CreateOrganization.missingArchiveUrl": {
+    "message": "Informe o endereço do arquivo remoto para continuar"
+  },
   "$1screens.Onboarding.CreateOrganization.missingTerritory": {
     "message": "Selecione o território acima para continuar"
   },

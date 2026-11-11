@@ -624,6 +624,9 @@
   "$1screens.Onboarding.CreateOrganization.creationInProgress": {
     "message": "A Territory creation is already in progress."
   },
+  "$1screens.Onboarding.CreateOrganization.missingArchiveUrl": {
+    "message": "Enter the remote archive URL to continue"
+  },
   "$1screens.Onboarding.CreateOrganization.missingTerritory": {
     "message": "Select the territory above to continue"
   },

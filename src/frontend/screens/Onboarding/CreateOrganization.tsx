@@ -12,6 +12,7 @@ import {
 import {defineMessages, useIntl} from 'react-intl';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import MaterialIcons from '@react-native-vector-icons/material-icons';
+import {useNetInfo} from '@react-native-community/netinfo';
 
 import {HeaderText} from '../../sharedComponents/Text/HeaderText';
 import {BodyText} from '../../sharedComponents/Text/BodyText';
@@ -139,6 +140,12 @@ const m = defineMessages({
     id: '$1screens.Onboarding.CreateOrganization.missingTerritory',
     defaultMessage: 'Select the territory above to continue',
   },
+  // #171: the remote archive is mandatory since the 2026-11-10 product
+  // decision, so a blank field needs its own visible reason too.
+  missingArchiveUrl: {
+    id: '$1screens.Onboarding.CreateOrganization.missingArchiveUrl',
+    defaultMessage: 'Enter the remote archive URL to continue',
+  },
   waitingValidation: {
     id: '$1screens.Onboarding.CreateOrganization.waitingValidation',
     defaultMessage: 'Waiting for remote archive validation',
@@ -180,8 +187,9 @@ export const CreateOrganization = ({
   // SPEC B §3.1/D13: the journey is ONE screen with two local stages —
   // the intro (B :54) and the name form (B :55) — never routes.
   const [etapa, setEtapa] = React.useState<'introducao' | 'nome'>('introducao');
-  // #129: the name is picked from the predefined territory catalog — never
-  // typed — and the remote archive URL is required to create.
+  // #129/#171: the name is picked from the predefined territory catalog —
+  // never typed — and the remote archive URL is required to create, even
+  // offline (the URL must be live-validated before the button unlocks).
   // #142: a single-option catalog starts SELECTED (lazy initializer, so a
   // re-render can never overwrite the user's own choice). With 2+ options
   // the selection still starts empty and must be made on the screen.
@@ -333,11 +341,12 @@ export const CreateOrganization = ({
   );
   const trimmedName = selectedTerritory?.name.trim() ?? '';
   const tooLong = trimmedName.length > 0 && isNameTooLong(trimmedName);
-  // #142: the archive URL is now validated LIVE against the server, not just
+  // #142/#171: the archive URL is validated LIVE against the server, not just
   // for format. The hook debounces the typing, calls `/info`, and reports an
-  // explicit positive (`valido`) state — the only state that unlocks create
-  // WHEN A URL WAS TYPED. The field is optional: an empty field means "no
-  // remote archive", so it neither calls the server nor gates creation.
+  // explicit positive (`valido`) state — the only state that unlocks create.
+  // The remote archive is MANDATORY (product decision 2026-11-10, #129/#171),
+  // even offline: a blank field neither calls the server nor unlocks creation,
+  // and a typed URL only counts after the live validation succeeds.
   const validacaoArquivo = useValidarArquivoRemoto(archiveUrl);
   const arquivoVazio = archiveUrl.trim().length === 0;
   const archiveUrlInvalid =
@@ -352,22 +361,52 @@ export const CreateOrganization = ({
     validacaoArquivo.estado === 'valido'
       ? (validacaoArquivo.urlNormalizada ?? null)
       : null;
+  // #172: a successful validation is a snapshot, not a live guarantee. The
+  // hook keeps `valido` (returning online re-enables), but creation itself
+  // must be refused while the device is known to be offline. `null` (unknown)
+  // is not treated as offline — only an explicit `false` blocks.
+  // Rodada 2 (co-revisor): `isConnected: true` with `isInternetReachable:
+  // false` is a Wi-Fi association with no route to the internet; the first
+  // fix missed it. Both fields only block on an explicit `false`.
+  const {isConnected, isInternetReachable} = useNetInfo();
+  const semConectividade =
+    isConnected === false || isInternetReachable === false;
   const canCreate =
     !!selectedTerritory &&
     !tooLong &&
-    (arquivoVazio || validacaoArquivo.estado === 'valido');
+    normalizedArchiveUrl !== null &&
+    !semConectividade;
 
-  // #142: one hint explains a disabled create button, in priority order.
+  // #142/#171: one hint explains a disabled create button, in priority order.
   // The territory hint is what the release build was missing: the catalog has
   // a single entry, the selector does not advertise itself, and the button
-  // stayed grey with no reason on screen.
+  // stayed grey with no reason on screen. #171 adds the blank-archive hint:
+  // once the territory and name are settled, the required archive field is the
+  // remaining reason the button is still disabled.
+  // #172: connectivity outranks the per-field hints — a blank field offline is
+  // not "enter the URL", it is "there is no network to check it". When the
+  // hook already reports `indisponivel`, its own block above shows the same
+  // message (with a retry) and this hint would duplicate the testID.
   const creationHint = !selectedTerritory
     ? {testID: 'ORG.create-missing-territory', text: t(m.missingTerritory)}
-    : validacaoArquivo.estado === 'verificando'
-      ? {testID: 'ORG.create-waiting-validation', text: t(m.waitingValidation)}
-      : tooLong
-        ? {testID: 'ORG.create-name-too-long', text: t(m.tooLong)}
-        : null;
+    : semConectividade && !archiveUrlUnreachable
+      ? {
+          testID: 'ORG.create-archive-url-unreachable',
+          text: t(m.archiveUrlUnreachable),
+        }
+      : validacaoArquivo.estado === 'verificando'
+        ? {
+            testID: 'ORG.create-waiting-validation',
+            text: t(m.waitingValidation),
+          }
+        : tooLong
+          ? {testID: 'ORG.create-name-too-long', text: t(m.tooLong)}
+          : arquivoVazio
+            ? {
+                testID: 'ORG.create-missing-archive-url',
+                text: t(m.missingArchiveUrl),
+              }
+            : null;
 
   // SPEC B :54/:55: Back from the name stage returns to the intro and
   // creates nothing; from the intro, Back pops to the choice (Success).
@@ -417,14 +456,15 @@ export const CreateOrganization = ({
     if (iniciandoRef.current || deveTrocar) {
       return;
     }
-    if (
-      !selectedTerritory ||
-      tooLong ||
-      (!arquivoVazio && !normalizedArchiveUrl)
-    ) {
+    if (!selectedTerritory || tooLong || !normalizedArchiveUrl) {
       // The button is disabled in these states; the guard keeps a stale
-      // press from calling the core anyway. An empty archive field is a
-      // valid "no remote archive" choice, so it does not block.
+      // press from calling the core anyway. #171: the remote archive is
+      // mandatory, so an empty or not-yet-validated URL always blocks.
+      return;
+    }
+    if (semConectividade) {
+      // #172: a press queued before the connectivity loss re-rendered must
+      // not start a creation the device cannot complete online.
       return;
     }
     if (!materializador) {
@@ -441,12 +481,7 @@ export const CreateOrganization = ({
     setBloqueado(false);
     setIniciando(true);
     materializador
-      .iniciar(
-        trimmedName,
-        normalizedArchiveUrl
-          ? {arquivoRemotoUrl: normalizedArchiveUrl}
-          : undefined,
-      )
+      .iniciar(trimmedName, {arquivoRemotoUrl: normalizedArchiveUrl})
       .then(() => {
         // BLOCKER 2: a resolved start means the operation is alive and the
         // provisioning surface owns it (it renders `preparando`/

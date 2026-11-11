@@ -16,6 +16,7 @@ import {
   waitFor,
 } from '@testing-library/react-native';
 import {IntlProvider} from 'react-intl';
+import {useNetInfo} from '@react-native-community/netinfo';
 
 import {CreateOrganization} from './CreateOrganization';
 import {OrganizationProvisioning} from './OrganizationProvisioning';
@@ -79,6 +80,8 @@ const PT_MESSAGES = {
     'Já existe uma criação de território em andamento.',
   '$1screens.Onboarding.CreateOrganization.missingTerritory':
     'Selecione o território acima para continuar',
+  '$1screens.Onboarding.CreateOrganization.missingArchiveUrl':
+    'Informe o endereço do arquivo remoto para continuar',
   '$1screens.Onboarding.CreateOrganization.waitingValidation':
     'Aguardando verificação do arquivo remoto',
 };
@@ -551,11 +554,16 @@ describe('CreateOrganization', () => {
     ).not.toBeOnTheScreen();
   });
 
-  test('campo vazio com um único território: botão habilitado (#142)', async () => {
+  test('campo vazio com um único território: botão desabilitado e dica do arquivo obrigatório (#171)', async () => {
     await renderScreen();
     await irParaEtapaNome();
 
-    expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
+    // #171: the remote archive is mandatory, so the auto-selected territory
+    // alone is not enough — the blank field disables create and says why.
+    expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+    expect(
+      screen.getByTestId('ORG.create-missing-archive-url'),
+    ).toHaveTextContent('Informe o endereço do arquivo remoto para continuar');
     expect(
       screen.queryByTestId('ORG.create-missing-territory'),
     ).not.toBeOnTheScreen();
@@ -589,13 +597,17 @@ describe('CreateOrganization', () => {
     ).not.toBeOnTheScreen();
   });
 
-  test('the single catalog territory starts selected; the archive URL is optional (#142)', async () => {
+  test('the single catalog territory starts selected; the archive URL is required (#171)', async () => {
     await renderScreen();
     await irParaEtapaNome();
 
-    // #142: the one-option catalog is auto-selected, so the button is enabled
-    // even before touching the option and with the URL field blank.
-    expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
+    // #171 (product decision 2026-11-10): the one-option catalog is
+    // auto-selected, but the remote archive is mandatory even offline, so a
+    // blank field disables create and the hint explains why.
+    expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+    expect(
+      screen.getByTestId('ORG.create-missing-archive-url'),
+    ).toHaveTextContent('Informe o endereço do arquivo remoto para continuar');
 
     // A typed malformed URL DOES gate creation and explains why.
     await preencherUrl('not a url');
@@ -612,9 +624,11 @@ describe('CreateOrganization', () => {
     ).toBeOnTheScreen();
   });
 
-  test('campo vazio: botão habilita, nenhum fetch, sem feedback; URL inválida desabilita (#142 regressão)', async () => {
-    // The field is optional: an empty field must not schedule any request at
-    // all, and no spinner/check/error may appear for a field nobody filled.
+  test('campo vazio: botão desabilita, nenhum fetch, sem feedback; URL inválida desabilita (#171 regressão)', async () => {
+    // #171: the field is required, so an empty field leaves the button
+    // disabled with the missing-archive hint — but it still must not schedule
+    // any request, and no spinner/check/error may appear for a field nobody
+    // filled.
     jest.useFakeTimers();
     const fetchOriginal = global.fetch;
     try {
@@ -628,7 +642,12 @@ describe('CreateOrganization', () => {
       await irParaEtapaNome();
       await selecionarTerritorio();
 
-      expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
+      expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+      expect(
+        screen.getByTestId('ORG.create-missing-archive-url'),
+      ).toHaveTextContent(
+        'Informe o endereço do arquivo remoto para continuar',
+      );
 
       // Well past the hook's debounce: an empty URL never reaches the wire.
       await act(async () => {
@@ -664,6 +683,36 @@ describe('CreateOrganization', () => {
       jest.useRealTimers();
       global.fetch = fetchOriginal;
     }
+  });
+
+  test('sem rede (indisponivel): botão desabilitado e mensagem de conectividade, nunca URL inválida (#171)', async () => {
+    // #171: with no network the URL can never be confirmed, so creation stays
+    // blocked. The existing connectivity feedback owns the explanation; the
+    // unreachable state must never be shown as a malformed URL.
+    mockValidarImpl = () => ({
+      estado: 'indisponivel',
+      tentarNovamente: jest.fn(),
+    });
+    await renderScreen();
+    await irParaEtapaNome();
+    await selecionarTerritorio();
+    await preencherUrl('https://exemplo.org/');
+
+    expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+    expect(
+      screen.getByTestId('ORG.create-archive-url-unreachable'),
+    ).toHaveTextContent(
+      'Não foi possível falar com o arquivo remoto. Verifique a conexão e tente novamente.',
+    );
+    expect(
+      screen.queryByTestId('ORG.create-archive-url-invalid'),
+    ).not.toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('ORG.create-archive-url-valid'),
+    ).not.toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('ORG.create-missing-archive-url'),
+    ).not.toBeOnTheScreen();
   });
 
   test('the create button is enabled with a selected territory and a valid HTTPS URL', async () => {
@@ -899,6 +948,184 @@ describe('CreateOrganization', () => {
       jest.clearAllTimers();
       jest.useRealTimers();
       global.fetch = fetchOriginal;
+    }
+  });
+
+  test('perda de conectividade após validação: botão desabilita, dica de conexão e press não inicia (CodeRabbit #172)', async () => {
+    // #172: a `/info` 200 validates the archive at one instant; the device can
+    // lose connectivity right after. The hook keeps `valido` (the result is
+    // not invalidated), but creation must be refused while offline.
+    jest.useFakeTimers();
+    const fetchOriginal = global.fetch;
+    const netInfoMock = useNetInfo as jest.Mock;
+    try {
+      mockValidarImpl = jest.requireActual(
+        '../../hooks/server/useValidarArquivoRemoto',
+      ).useValidarArquivoRemoto;
+      const fetchMock = jest.fn().mockResolvedValue({
+        status: 200,
+        json: async () => ({data: {name: 'Arquivo do Servidor'}}),
+      });
+      (global as unknown as {fetch: jest.Mock}).fetch = fetchMock;
+
+      // A second territory gives the screen a natural re-render that does NOT
+      // touch the validated URL, so the connectivity hook is read again with
+      // its new value.
+      adicionarSegundoTerritorio();
+
+      await renderScreen();
+      await irParaEtapaNome();
+      await selecionarTerritorio();
+      await preencherUrl('https://exemplo.org/');
+
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(
+        screen.getByTestId('ORG.create-archive-url-valid'),
+      ).toBeOnTheScreen();
+      expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
+
+      // Connectivity drops AFTER the successful validation.
+      netInfoMock.mockReturnValue({
+        type: 'none',
+        isConnected: false,
+        isInternetReachable: false,
+        details: null,
+      });
+      await fireEvent.press(screen.getByTestId('ORG.create-name-option-5000'));
+
+      expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+      expect(
+        screen.getByTestId('ORG.create-archive-url-unreachable'),
+      ).toHaveTextContent(
+        'Não foi possível falar com o arquivo remoto. Verifique a conexão e tente novamente.',
+      );
+      expect(
+        screen.queryByTestId('ORG.create-missing-archive-url'),
+      ).not.toBeOnTheScreen();
+
+      // A stale press must not start the creation either.
+      await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+      expect(iniciar).not.toHaveBeenCalled();
+    } finally {
+      netInfoMock.mockReturnValue({
+        type: 'cellular',
+        isConnected: true,
+        isInternetReachable: true,
+        details: {isConnectionExpensive: true, cellularGeneration: '3g'},
+      });
+      jest.clearAllTimers();
+      jest.useRealTimers();
+      global.fetch = fetchOriginal;
+    }
+  });
+
+  test('Wi-Fi conectado sem internet: botão desabilita, dica de conexão e iniciar não é chamado (co-revisor #172 rodada 2)', async () => {
+    // A Wi-Fi association says nothing about a route to the internet:
+    // `isConnected: true` + `isInternetReachable: false` is the "connected to
+    // the router, no internet" case. The first #172 fix only looked at
+    // `isConnected`, so this stayed enabled.
+    const netInfoMock = useNetInfo as jest.Mock;
+    try {
+      // A second territory gives the screen a natural re-render that does NOT
+      // touch the validated URL, so the connectivity hook is read again.
+      adicionarSegundoTerritorio();
+
+      await renderScreen();
+      await irParaEtapaNome();
+      await selecionarTerritorio();
+      await preencherUrl('https://exemplo.org/');
+
+      expect(
+        screen.getByTestId('ORG.create-archive-url-valid'),
+      ).toBeOnTheScreen();
+      expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
+
+      netInfoMock.mockReturnValue({
+        type: 'wifi',
+        isConnected: true,
+        isInternetReachable: false,
+        details: null,
+      });
+      await fireEvent.press(screen.getByTestId('ORG.create-name-option-5000'));
+
+      expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+      expect(
+        screen.getByTestId('ORG.create-archive-url-unreachable'),
+      ).toHaveTextContent(
+        'Não foi possível falar com o arquivo remoto. Verifique a conexão e tente novamente.',
+      );
+      expect(
+        screen.queryByTestId('ORG.create-missing-archive-url'),
+      ).not.toBeOnTheScreen();
+      expect(iniciar).not.toHaveBeenCalled();
+    } finally {
+      netInfoMock.mockReturnValue({
+        type: 'cellular',
+        isConnected: true,
+        isInternetReachable: true,
+        details: {isConnectionExpensive: true, cellularGeneration: '3g'},
+      });
+    }
+  });
+
+  test('guarda do handler: press capturado no render habilitado não inicia após perda de internet (P3 co-revisor #172 rodada 2)', async () => {
+    // The prior #172 test pressed a button that was already disabled, and the
+    // RNTL refuses to dispatch on a disabled element — so the guard inside
+    // `handleCreatePress` was never exercised. This invokes the handler
+    // directly, bypassing the disabled attribute.
+    const netInfoMock = useNetInfo as jest.Mock;
+    try {
+      adicionarSegundoTerritorio();
+
+      await renderScreen();
+      await irParaEtapaNome();
+      await selecionarTerritorio();
+      await preencherUrl('https://exemplo.org/');
+
+      expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
+
+      netInfoMock.mockReturnValue({
+        type: 'wifi',
+        isConnected: true,
+        isInternetReachable: false,
+        details: null,
+      });
+      await fireEvent.press(screen.getByTestId('ORG.create-name-option-5000'));
+      await waitFor(() => {
+        expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+      });
+
+      // TouchableOpacity does not forward `onPress` to the host View; the real
+      // handler lives in the Pressability config, which RN exposes for tests
+      // via `testOnly_pressabilityConfig`. Read the node AFTER the disabled
+      // re-render: `PrimaryButton` swaps `BaseButton` for `DisabledButton`, so
+      // the pre-disable node is unmounted and its `onPress` closure still says
+      // "online" — invoking it would not prove this guard.
+      const btn = screen.getByTestId('ORG.create-btn');
+      const pressability =
+        btn.props.onStartShouldSetResponder?.testOnly_pressabilityConfig?.();
+      const press = btn.props.onPress ?? pressability?.onPress;
+      expect(typeof press).toBe('function');
+
+      await act(async () => {
+        press();
+      });
+
+      expect(iniciar).not.toHaveBeenCalled();
+    } finally {
+      netInfoMock.mockReturnValue({
+        type: 'cellular',
+        isConnected: true,
+        isInternetReachable: true,
+        details: {isConnectionExpensive: true, cellularGeneration: '3g'},
+      });
     }
   });
 

@@ -283,10 +283,19 @@ function documentoComSegunda(
 describe('segunda organização (navigator real)', () => {
   const orgSetup = setupIntegrationTest();
 
+  // #171: the remote archive is required, so the create flow below must type a
+  // valid URL and wait for the live `/info` validation. The integration test
+  // drives the REAL hook, so a `fetch` mock answers the probe with 200 and
+  // fails every other archive request (Core's `PUT /projects` has no timeout
+  // of its own, so a real network attempt can hang the drain). Other hosts
+  // (e.g. the local fastify server) still use the real fetch.
+  let fetchOriginal: typeof global.fetch;
+
   afterEach(() => {
     MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
     // A trilha semeada por um teste bloquearia o boot dos seguintes (#88).
     MMKVStoreInitializer.removeItem('MapeoTrack');
+    global.fetch = fetchOriginal;
   });
 
   beforeEach(() => {
@@ -295,6 +304,26 @@ describe('segunda organização (navigator real)', () => {
     // index.navigator.test.tsx).
     MMKVStoreInitializer.removeItem(COIAB_ORGANIZATIONS_STORAGE_KEY);
     MMKVStoreInitializer.removeItem('MapeoTrack');
+    fetchOriginal = global.fetch;
+    global.fetch = jest.fn((input: unknown, init?: unknown) => {
+      const url = typeof input === 'string' ? input : String(input);
+      if (url.endsWith('/info')) {
+        return Promise.resolve({
+          status: 200,
+          json: async () => ({data: {name: 'Arquivo Remoto'}}),
+        } as Response);
+      }
+      if (url.includes('exemplo.org')) {
+        return Promise.resolve({
+          status: 503,
+          json: async () => ({error: 'unavailable'}),
+        } as Response);
+      }
+      return (fetchOriginal as (i: unknown, n?: unknown) => Promise<Response>)(
+        input,
+        init,
+      );
+    }) as unknown as typeof global.fetch;
   });
 
   const SEGUNDA_ID = 'fedcba9876543210';
@@ -344,8 +373,16 @@ describe('segunda organização (navigator real)', () => {
     );
     await fireEvent.press(screen.getByTestId('ORG.create-intro-continue-btn'));
     await fireEvent.press(screen.getByTestId('ORG.create-name-option-4999'));
-    // #142: the remote archive is optional and this suite is not about it —
-    // leave the field empty so creation needs no `/info` validation.
+    await fireEvent.changeText(
+      screen.getByTestId('ORG.create-archive-url-inp'),
+      'https://exemplo.org/',
+    );
+    // #171: the remote archive is required (even offline) — the field must be
+    // filled and live-validated before create.
+    await waitFor(
+      () => expect(screen.getByTestId('ORG.create-btn')).toBeEnabled(),
+      {timeout: 15_000},
+    );
     await fireEvent.press(screen.getByTestId('ORG.create-btn'));
 
     // The document took over the journey: the provisioning surface owns
