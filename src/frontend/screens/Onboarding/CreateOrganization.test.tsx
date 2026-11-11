@@ -1109,8 +1109,8 @@ describe('CreateOrganization', () => {
       // the pre-disable node is unmounted and its `onPress` closure still says
       // "online" — invoking it would not prove this guard.
       const btn = screen.getByTestId('ORG.create-btn');
-      const pressability = btn.props.onStartShouldSetResponder
-        ?.testOnly_pressabilityConfig?.();
+      const pressability =
+        btn.props.onStartShouldSetResponder?.testOnly_pressabilityConfig?.();
       const press = btn.props.onPress ?? pressability?.onPress;
       expect(typeof press).toBe('function');
 

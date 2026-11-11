@@ -395,15 +395,18 @@ export const CreateOrganization = ({
           text: t(m.archiveUrlUnreachable),
         }
       : validacaoArquivo.estado === 'verificando'
-      ? {testID: 'ORG.create-waiting-validation', text: t(m.waitingValidation)}
-      : tooLong
-        ? {testID: 'ORG.create-name-too-long', text: t(m.tooLong)}
-        : arquivoVazio
-          ? {
-              testID: 'ORG.create-missing-archive-url',
-              text: t(m.missingArchiveUrl),
-            }
-          : null;
+        ? {
+            testID: 'ORG.create-waiting-validation',
+            text: t(m.waitingValidation),
+          }
+        : tooLong
+          ? {testID: 'ORG.create-name-too-long', text: t(m.tooLong)}
+          : arquivoVazio
+            ? {
+                testID: 'ORG.create-missing-archive-url',
+                text: t(m.missingArchiveUrl),
+              }
+            : null;
 
   // SPEC B :54/:55: Back from the name stage returns to the intro and
   // creates nothing; from the intro, Back pops to the choice (Success).
