@@ -12,6 +12,7 @@ import {
 import {defineMessages, useIntl} from 'react-intl';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import MaterialIcons from '@react-native-vector-icons/material-icons';
+import {useNetInfo} from '@react-native-community/netinfo';
 
 import {HeaderText} from '../../sharedComponents/Text/HeaderText';
 import {BodyText} from '../../sharedComponents/Text/BodyText';
@@ -360,8 +361,17 @@ export const CreateOrganization = ({
     validacaoArquivo.estado === 'valido'
       ? (validacaoArquivo.urlNormalizada ?? null)
       : null;
+  // #172: a successful validation is a snapshot, not a live guarantee. The
+  // hook keeps `valido` (returning online re-enables), but creation itself
+  // must be refused while the device is known to be offline. `null` (unknown)
+  // is not treated as offline — only an explicit `false` blocks.
+  const {isConnected} = useNetInfo();
+  const semConectividade = isConnected === false;
   const canCreate =
-    !!selectedTerritory && !tooLong && normalizedArchiveUrl !== null;
+    !!selectedTerritory &&
+    !tooLong &&
+    normalizedArchiveUrl !== null &&
+    !semConectividade;
 
   // #142/#171: one hint explains a disabled create button, in priority order.
   // The territory hint is what the release build was missing: the catalog has
@@ -369,9 +379,18 @@ export const CreateOrganization = ({
   // stayed grey with no reason on screen. #171 adds the blank-archive hint:
   // once the territory and name are settled, the required archive field is the
   // remaining reason the button is still disabled.
+  // #172: connectivity outranks the per-field hints — a blank field offline is
+  // not "enter the URL", it is "there is no network to check it". When the
+  // hook already reports `indisponivel`, its own block above shows the same
+  // message (with a retry) and this hint would duplicate the testID.
   const creationHint = !selectedTerritory
     ? {testID: 'ORG.create-missing-territory', text: t(m.missingTerritory)}
-    : validacaoArquivo.estado === 'verificando'
+    : semConectividade && !archiveUrlUnreachable
+      ? {
+          testID: 'ORG.create-archive-url-unreachable',
+          text: t(m.archiveUrlUnreachable),
+        }
+      : validacaoArquivo.estado === 'verificando'
       ? {testID: 'ORG.create-waiting-validation', text: t(m.waitingValidation)}
       : tooLong
         ? {testID: 'ORG.create-name-too-long', text: t(m.tooLong)}
@@ -434,6 +453,11 @@ export const CreateOrganization = ({
       // The button is disabled in these states; the guard keeps a stale
       // press from calling the core anyway. #171: the remote archive is
       // mandatory, so an empty or not-yet-validated URL always blocks.
+      return;
+    }
+    if (semConectividade) {
+      // #172: a press queued before the connectivity loss re-rendered must
+      // not start a creation the device cannot complete online.
       return;
     }
     if (!materializador) {

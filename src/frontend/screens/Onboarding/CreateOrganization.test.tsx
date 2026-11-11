@@ -16,6 +16,7 @@ import {
   waitFor,
 } from '@testing-library/react-native';
 import {IntlProvider} from 'react-intl';
+import {useNetInfo} from '@react-native-community/netinfo';
 
 import {CreateOrganization} from './CreateOrganization';
 import {OrganizationProvisioning} from './OrganizationProvisioning';
@@ -944,6 +945,81 @@ describe('CreateOrganization', () => {
       ).not.toBeOnTheScreen();
       expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
     } finally {
+      jest.clearAllTimers();
+      jest.useRealTimers();
+      global.fetch = fetchOriginal;
+    }
+  });
+
+  test('perda de conectividade após validação: botão desabilita, dica de conexão e press não inicia (CodeRabbit #172)', async () => {
+    // #172: a `/info` 200 validates the archive at one instant; the device can
+    // lose connectivity right after. The hook keeps `valido` (the result is
+    // not invalidated), but creation must be refused while offline.
+    jest.useFakeTimers();
+    const fetchOriginal = global.fetch;
+    const netInfoMock = useNetInfo as jest.Mock;
+    try {
+      mockValidarImpl = jest.requireActual(
+        '../../hooks/server/useValidarArquivoRemoto',
+      ).useValidarArquivoRemoto;
+      const fetchMock = jest.fn().mockResolvedValue({
+        status: 200,
+        json: async () => ({data: {name: 'Arquivo do Servidor'}}),
+      });
+      (global as unknown as {fetch: jest.Mock}).fetch = fetchMock;
+
+      // A second territory gives the screen a natural re-render that does NOT
+      // touch the validated URL, so the connectivity hook is read again with
+      // its new value.
+      adicionarSegundoTerritorio();
+
+      await renderScreen();
+      await irParaEtapaNome();
+      await selecionarTerritorio();
+      await preencherUrl('https://exemplo.org/');
+
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(
+        screen.getByTestId('ORG.create-archive-url-valid'),
+      ).toBeOnTheScreen();
+      expect(screen.getByTestId('ORG.create-btn')).toBeEnabled();
+
+      // Connectivity drops AFTER the successful validation.
+      netInfoMock.mockReturnValue({
+        type: 'none',
+        isConnected: false,
+        isInternetReachable: false,
+        details: null,
+      });
+      await fireEvent.press(screen.getByTestId('ORG.create-name-option-5000'));
+
+      expect(screen.getByTestId('ORG.create-btn')).toBeDisabled();
+      expect(
+        screen.getByTestId('ORG.create-archive-url-unreachable'),
+      ).toHaveTextContent(
+        'Não foi possível falar com o arquivo remoto. Verifique a conexão e tente novamente.',
+      );
+      expect(
+        screen.queryByTestId('ORG.create-missing-archive-url'),
+      ).not.toBeOnTheScreen();
+
+      // A stale press must not start the creation either.
+      await fireEvent.press(screen.getByTestId('ORG.create-btn'));
+      expect(iniciar).not.toHaveBeenCalled();
+    } finally {
+      netInfoMock.mockReturnValue({
+        type: 'cellular',
+        isConnected: true,
+        isInternetReachable: true,
+        details: {isConnectionExpensive: true, cellularGeneration: '3g'},
+      });
       jest.clearAllTimers();
       jest.useRealTimers();
       global.fetch = fetchOriginal;
