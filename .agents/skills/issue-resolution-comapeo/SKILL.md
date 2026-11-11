@@ -145,9 +145,9 @@ sleeping once and trusting stale results. The historical cloud-app tally was
 required names, conclusions and SHA, not just the absence of failures.
 
 - **`eslint` clean does not make CI green.** The `all` job also runs
-  `lint:prettier` and fails before the tests on one unformatted file. Run
-  `npx prettier --check <touched files>` before pushing; #172 spent a full CI
-  round on this after a clean local lint.
+  `npm run lint:prettier`, which covers `src/**/*.{js,ts,jsx,tsx}` and fails
+  before the tests on one unformatted file. Run it before pushing; #172 spent a
+  full CI round on this after a clean local lint.
 
 ## Flake repro loops
 
