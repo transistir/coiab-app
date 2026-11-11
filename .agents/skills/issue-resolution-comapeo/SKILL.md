@@ -71,10 +71,13 @@ Never write to `digidem/*`.
   option adds friction and hides why the action stays disabled.
 - **A press on a disabled button never reaches the handler.** `fireEvent.press`
   on a `disabled` element is a no-op in RNTL, so a test built that way proves
-  the prop and leaves the in-handler guard uncovered. Capture the node while it
-  is still enabled, change the blocking condition (connectivity, permission),
-  await the re-render, then invoke the captured `props.onPress()` and assert the
-  side effect did not run. Two independent reviewers caught this gap on #172.
+  the prop and leaves the in-handler guard uncovered. Change the blocking
+  condition (connectivity, permission), await the re-render, then read and
+  invoke the current node's handler. For `PrimaryButton`, use `props.onPress` or
+  the pressability-config handler as in `CreateOrganization.test.tsx`; holding
+  the node captured before the re-render keeps a stale closure with the old
+  condition. Assert that the side effect did not run. Two independent reviewers
+  caught this gap on #172.
 - **Link connectivity is not internet connectivity.** `useNetInfo().isConnected`
   stays true on a Wi-Fi association with no route out. Gate on
   `isConnected === false || isInternetReachable === false`, and keep
