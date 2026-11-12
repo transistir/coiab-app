@@ -69,6 +69,25 @@ Never write to `digidem/*`.
 - **A single-option catalog must not ask for a choice.** Pre-select when the
   list has exactly one entry and keep `null` for 2+; a forced tap on the only
   option adds friction and hides why the action stays disabled.
+- **A press on a disabled button never reaches the handler.** `fireEvent.press`
+  on a `disabled` element is a no-op in RNTL, so a test built that way proves
+  the prop and leaves the in-handler guard uncovered. Change the blocking
+  condition (connectivity, permission), await the re-render, then read and
+  invoke the current node's handler. For `PrimaryButton`, use `props.onPress` or
+  the pressability-config handler as in `CreateOrganization.test.tsx`; holding
+  the node captured before the re-render keeps a stale closure with the old
+  condition. Assert that the side effect did not run. Two independent reviewers
+  caught this gap on #172.
+- **Link connectivity is not internet connectivity.** `useNetInfo().isConnected`
+  stays true on a Wi-Fi association with no route out. Gate on
+  `isConnected === false || isInternetReachable === false`, and keep
+  `null`/unknown non-blocking: blocking on an unresolved probe invents an
+  outage. The same PR needed this twice — the first guard checked link state
+  only.
+- **An approval is bound to the SHA, not to the change.** A prettier-only
+  commit still invalidates both verdicts; re-run a focused review of the delta
+  and say explicitly that no semantic token moved. Minutes versus merging a
+  head nobody reviewed.
 - **Never hide exit codes behind `| head`, `| grep` or `| tail`.** Reviewer
   sandboxes are read-only and often cannot bind a port (`listen EPERM`), so
   navigator suites must run on the host; a filtered pipeline can print a clean
@@ -127,6 +146,11 @@ PR APIs can lag a push by 1-3 minutes; poll the actual head SHA rather than
 sleeping once and trusting stale results. The historical cloud-app tally was
 15 passed, 6 skipped, 0 failed; do not use that fixed count for COIAB. Check
 required names, conclusions and SHA, not just the absence of failures.
+
+- **`eslint` clean does not make CI green.** The `all` job also runs
+  `npm run lint:prettier`, which covers `src/**/*.{js,ts,jsx,tsx}` and fails
+  before the tests on one unformatted file. Run it before pushing; #172 spent a
+  full CI round on this after a clean local lint.
 
 ## Flake repro loops
 
