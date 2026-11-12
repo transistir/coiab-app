@@ -2,7 +2,6 @@ import {expect} from '@wdio/globals';
 import {describe, it} from 'mocha';
 import {byResourceId, byTextMatches, byText} from '../../utils/selectors';
 import {output} from '../../utils/naming';
-import {completeEthnicProfileIfNeeded} from './helper/complete-ethnic-profile';
 
 describe('Onboarding - Device Naming Test', () => {
   it('should navigate to Device Naming screen after tapping "Next"', async () => {
@@ -36,26 +35,14 @@ describe('Onboarding - Device Naming Test', () => {
     // tap lands. Safe no-op when no keyboard is shown (e.g. Android).
     await driver.hideKeyboard().catch(() => {});
     await addNameButton.click();
-
-    // The restart lands on EthnicGroupSelection while the profile is
-    // incomplete; the Success fork only appears after ethnicity + village.
-    await completeEthnicProfileIfNeeded();
-
     const deviceReadyMessage = await $(
       byTextMatches(`${output.names.device} is ready`),
     );
     await expect(deviceReadyMessage).toBeDisplayed();
 
-    // #129: the Success fork asks the coordinator question — the two answers
-    // lead to creation and to the invitation intro respectively.
-    const coordinatorButton = await $(
-      byResourceId('ONBOARDING.role-coordinator-btn'),
+    const startMappingButton = await $(
+      byResourceId('ONBOARDING.navigate-to-map-btn'),
     );
-    await expect(coordinatorButton).toBeDisplayed();
-
-    const participantButton = await $(
-      byResourceId('ONBOARDING.role-participant-btn'),
-    );
-    await expect(participantButton).toBeDisplayed();
+    await expect(startMappingButton).toBeDisplayed();
   });
 });

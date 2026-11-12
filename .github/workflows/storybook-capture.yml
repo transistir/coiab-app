@@ -137,13 +137,15 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      # Always a cold boot on a fresh AVD, by design. AVD cache/snapshot steps
-      # were removed on 2026-09-09: the snapshot save hung the runner until
-      # the job timeout (run 34400273000) and earlier runs failed to load the
-      # cached snapshot; a cold boot measures ~45 s. "Failed to load
-      # snapshot", "adb daemon on port 5037", "stop: Not implemented" and
-      # netsim lines in this step's log are cold-boot/teardown noise; the real
-      # signal is the "capture failed at position N" line.
+      # Always a cold boot on a fresh AVD, by design. AVD cache/snapshot
+      # steps were intentionally removed: the snapshot save hung the runner
+      # until the job timeout (run 34400273000, 2026-09-09) and earlier runs
+      # failed to load the cached snapshot ("Failed to load snapshot
+      # 'default_boot'", 2026-09-05). A cold emulator boot measures ~43-45 s,
+      # so caching bought nothing. "Failed to load snapshot", "adb daemon on
+      # port 5037", "stop: Not implemented" and netsim lines in this step's
+      # log are cold-boot/teardown noise; the real signal is the "capture
+      # failed at position N" line.
       - name: Capture Storybook flow screenshots
         uses: reactivecircus/android-emulator-runner@v2
         with:

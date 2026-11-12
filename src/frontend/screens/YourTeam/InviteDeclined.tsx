@@ -1,13 +1,14 @@
 import * as React from 'react';
-import {BackHandler, StyleSheet, View} from 'react-native';
+import {StyleSheet, View} from 'react-native';
 import ErrorIcon from '../../images/Error.svg';
 import {defineMessages, useIntl} from 'react-intl';
-import {Text} from '../../sharedComponents/Text';
+import {BodyText} from '../../sharedComponents/Text/BodyText';
+import {BLACK} from '../../lib/styles';
 import {DeviceNameWithIcon} from '../../sharedComponents/DeviceNameWithIcon';
 import {NativeRootNavigationProps} from '../../sharedTypes/navigation';
-import {useFocusEffect} from '@react-navigation/native';
 import {resetToYourTeam} from '../../lib/resetToYourTeam';
 import {PrimaryButton} from '../../sharedComponents/Buttons';
+import {usePreventBackNavigation} from '../../hooks/usePreventBackNavigation';
 
 const m = defineMessages({
   inviteDeclined: {
@@ -18,11 +19,6 @@ const m = defineMessages({
     id: 'screens.Settings.YourTeam.inviteDeclinedDes',
     defaultMessage:
       'This device has declined your invitation. They have not joined the project.',
-  },
-  inviteDeclinedOrganizationDes: {
-    id: '$1screens.Settings.YourTeam.inviteDeclinedOrganizationDes',
-    defaultMessage:
-      'This device has declined your invitation. They have not joined the Territory.',
   },
   close: {
     id: '$1screens.Settings.YourTeam.close',
@@ -35,33 +31,23 @@ export const InviteDeclined = ({
   route,
 }: NativeRootNavigationProps<'InviteDeclined'>) => {
   const {formatMessage} = useIntl();
-  const {name, deviceType, deviceId, isOrganization} = route.params;
+  const {name, deviceType, deviceId} = route.params;
 
-  useFocusEffect(
-    React.useCallback(() => {
-      const subscription = BackHandler.addEventListener(
-        'hardwareBackPress',
-        () => true,
-      );
-
-      return () => subscription.remove();
-    }, []),
-  );
+  usePreventBackNavigation();
 
   return (
     <View style={styles.container}>
       <View style={{alignItems: 'center'}}>
         <ErrorIcon />
-        <Text style={{marginTop: 20, fontSize: 20, fontWeight: 'bold'}}>
+        <BodyText
+          variant="large"
+          weight={700}
+          style={{marginTop: 20, color: BLACK}}>
           {formatMessage(m.inviteDeclined)}
-        </Text>
-        <Text style={{marginTop: 10, textAlign: 'center'}}>
-          {formatMessage(
-            isOrganization
-              ? m.inviteDeclinedOrganizationDes
-              : m.inviteDeclinedDes,
-          )}
-        </Text>
+        </BodyText>
+        <BodyText style={{marginTop: 10, textAlign: 'center', color: BLACK}}>
+          {formatMessage(m.inviteDeclinedDes)}
+        </BodyText>
         <DeviceNameWithIcon
           name={name}
           deviceType={deviceType}

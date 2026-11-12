@@ -6,7 +6,7 @@
     "message": "Parar trilha"
   },
   "$1Navigation.Menu.Settings": {
-    "message": "Configurações do CoiabApp"
+    "message": "Configurações do CoMapeo"
   },
   "$1Navigation.Menu.bgMap": {
     "message": "Mapas de fundo"
@@ -48,11 +48,11 @@
     "message": "Olá, Parente",
     "description": "Página Entroncamento greeting (Figma Kutary App V2, 2668:4539)"
   },
-  "$1Navigation.Menu.mappingOnOwn": {
-    "message": "Você é um mapeamento próprio."
-  },
   "$1Navigation.Menu.justYou": {
     "message": "Apenas você"
+  },
+  "$1Navigation.Menu.mappingOnOwn": {
+    "message": "Você é um mapeamento próprio."
   },
   "$1Navigation.Menu.participant": {
     "message": "Participante"
@@ -67,6 +67,9 @@
   "$1Navigation.Menu.switchOrganizationTitle": {
     "message": "Trocar de território",
     "description": "Menu list entry that opens the organization selector"
+  },
+  "$1Navigation.Menu.switchProject": {
+    "message": "Trocar Projeto"
   },
   "$1Navigation.Menu.team": {
     "message": "Equipe"
@@ -157,6 +160,9 @@
   "$1Screens.ProjectSettings.title": {
     "message": "Ferramentas do coordenador"
   },
+  "$1Screens.Settings.AppSettings.aboutCoMapeo": {
+    "message": "Sobre CoMapeo"
+  },
   "$1Screens.Settings.AppSettings.aboutEkanadyby": {
     "message": "Sobre CoiabApp"
   },
@@ -182,7 +188,7 @@
     "description": "Migrated menu entry: project settings (coordinator only)"
   },
   "$1Screens.Settings.AppSettings.title": {
-    "message": "Configurações do CoiabApp"
+    "message": "Configurações do CoMapeo"
   },
   "$1Screens.Settings.AppSettings.yourTeam": {
     "message": "Equipe",
@@ -225,7 +231,7 @@
     "message": "Não está vendo um dispositivo?"
   },
   "$1screen.Settings.ProjectSettings.YourTeam.SelectDevice.sameVersion": {
-    "message": "Certifique-se de que os dois dispositivos possuem a mesma versão do CoiabApp"
+    "message": "Certifique-se de que os dois dispositivos possuem a mesma versão do CoMapeo"
   },
   "$1screen.Settings.ProjectSettings.YourTeam.SelectDevice.sameWifi": {
     "message": "Certifique-se de que ambos os dispositivos estão na mesma rede Wi-Fi"
@@ -237,11 +243,11 @@
     "message": "Selecione uma função"
   },
   "$1screens.AboutSettings.seeUpdates": {
-    "message": "Ver atualizações do CoiabApp"
+    "message": "Ver atualizações do CoMapeo"
   },
   "$1screens.AboutSettings.title": {
-    "message": "Sobre CoiabApp",
-    "description": "Title of 'About CoiabApp' screen"
+    "message": "Sobre CoMapeo",
+    "description": "Title of 'About CoMapeo' screen"
   },
   "$1screens.AppPasscode": {
     "message": "Senha do aplicativo"
@@ -278,7 +284,7 @@
     "message": "Senha não corresponde"
   },
   "$1screens.AppPasscode.NewPasscode.InputPasscodeScreen.subTitleSet": {
-    "message": "Esta senha será necessária para abrir o aplicativo CoiabApp"
+    "message": "Esta senha será necessária para abrir o aplicativo CoMapeo"
   },
   "$1screens.AppPasscode.NewPasscode.SetPasscodeScreen.title": {
     "message": "Definir senha"
@@ -287,7 +293,7 @@
     "message": "O que é Senha do aplicativo?"
   },
   "$1screens.AppPasscode.PasscodeIntro.description": {
-    "message": "Criar uma senha para utilizar o CoiabApp te oferece mais uma camada de segurança, exigindo que você a insira para abrir o aplicativo. Você pode definir sua própria senha de 5 dígitos ativando o recurso abaixo."
+    "message": "Criar uma senha para utilizar o CoMapeo te oferece mais uma camada de segurança, exigindo que você a insira para abrir o aplicativo. Você pode definir sua própria senha de 5 dígitos ativando o recurso abaixo."
   },
   "$1screens.AppPasscode.TurnOffPasscode.changePasscode": {
     "message": "Alterar Senha do aplicativo"
@@ -316,7 +322,7 @@
     "description": "Screen button text for not granting audio permission"
   },
   "$1screens.AudioPermission.title": {
-    "message": "Gravando Áudio com CoiabApp",
+    "message": "Gravando Áudio com CoMapeo",
     "description": "Screen title for audio permission screen"
   },
   "$1screens.AudioPlaybackNew.backToEditing": {
@@ -369,7 +375,7 @@
     "message": "Seus dados permanecem em seus dispositivos — criptografados e totalmente no seu controle."
   },
   "$1screens.DataPrivacy.title": {
-    "message": "O CoiabApp é privado por padrão."
+    "message": "O CoMapeo é privado por padrão."
   },
   "$1screens.DeviceNaming.Success.deviceReady": {
     "message": "{deviceName} está pronto!"
@@ -381,7 +387,7 @@
     "message": "Mapeie por Sua Conta"
   },
   "$1screens.DeviceNaming.description": {
-    "message": "Nomes distintos ajudam os colaboradores a usar o CoiabApp a reconhecê-lo."
+    "message": "Nomes distintos ajudam os colaboradores a usar o CoMapeo a reconhecê-lo."
   },
   "$1screens.DeviceNaming.header": {
     "message": "Nomeie o Seu Dispositivo"
@@ -514,8 +520,8 @@
   "$1screens.Observation.TrackList.track": {
     "message": "Trilha"
   },
-  "$1screens.Observation.ekanadybyAlert": {
-    "message": "Alerta CoiabApp"
+  "$1screens.Observation.comapeoAlert": {
+    "message": "Alerta CoMapeo"
   },
   "$1screens.Observation.defaultProjectName": {
     "message": "Meu Projeto"
@@ -525,6 +531,9 @@
   },
   "$1screens.Observation.description": {
     "message": "Descrição:"
+  },
+  "$1screens.Observation.ekanadybyAlert": {
+    "message": "Alerta CoiabApp"
   },
   "$1screens.Observation.fallbackCategoryName": {
     "message": "Observação",
@@ -553,7 +562,7 @@
     "description": "Title of dialog to share an observation with media"
   },
   "$1screens.Observation.shareMessageFooter": {
-    "message": "Enviado pelo CoiabApp"
+    "message": "Enviado pelo CoMapeo"
   },
   "$1screens.Observation.shareTextTitle": {
     "message": "Compartilhando texto",
@@ -610,6 +619,14 @@
   "$1screens.ObservationMetadataVerified.navTitle": {
     "message": "Metadados da Observação"
   },
+  "$1screens.ObservationsList.ObservationsEmptyView.backButton": {
+    "message": "Ir para mapa",
+    "description": "Back button on observation list screen when no observations are yet recorded"
+  },
+  "$1screens.ObservationsList.ObservationsEmptyView.noObservationsTitle": {
+    "message": "Adicionar observações",
+    "description": "Title of observation list view when the user has not yet recorded observations"
+  },
   "$1screens.ObservationsList.emptyAlertas": {
     "message": "Ainda não há registros em Alertas",
     "description": "Title of the empty observation list in the Alerts area of an organization"
@@ -621,14 +638,6 @@
   "$1screens.ObservationsList.goToMap": {
     "message": "Ir para o mapa",
     "description": "Action that opens the map of the current work area from the empty observation list"
-  },
-  "$1screens.ObservationsList.ObservationsEmptyView.backButton": {
-    "message": "Ir para mapa",
-    "description": "Back button on observation list screen when no observations are yet recorded"
-  },
-  "$1screens.ObservationsList.ObservationsEmptyView.noObservationsTitle": {
-    "message": "Adicionar observações",
-    "description": "Title of observation list view when the user has not yet recorded observations"
   },
   "$1screens.Onboarding.CreateOrganization.archiveUrlChecking": {
     "message": "Verificando arquivo remoto…"
@@ -813,14 +822,14 @@
   "$1screens.OrganizationSetup.createdTitle": {
     "message": "Território criado"
   },
+  "$1screens.OrganizationSetup.emptyName": {
+    "message": "Informe o nome do território."
+  },
   "$1screens.OrganizationSetup.failureBody": {
     "message": "O que já foi preparado está salvo. Tente novamente para concluir."
   },
   "$1screens.OrganizationSetup.failureTitle": {
     "message": "Não foi possível concluir a criação."
-  },
-  "$1screens.OrganizationSetup.emptyName": {
-    "message": "Informe o nome do território."
   },
   "$1screens.OrganizationSetup.loadingOrganization": {
     "message": "Carregando território…"
@@ -843,14 +852,14 @@
   "$1screens.OrganizationSetup.noOrganizationGuidance": {
     "message": "Crie um território ou aguarde um convite para participar de um existente."
   },
-  "$1screens.OrganizationSetup.pacoteNaoAprovado": {
-    "message": "Não foi possível preparar os arquivos necessários neste aparelho. Nada foi criado."
-  },
   "$1screens.OrganizationSetup.openOrganizationButton": {
     "message": "Abrir território"
   },
   "$1screens.OrganizationSetup.openingOrganization": {
     "message": "Abrindo território…"
+  },
+  "$1screens.OrganizationSetup.pacoteNaoAprovado": {
+    "message": "Não foi possível preparar os arquivos necessários neste aparelho. Nada foi criado."
   },
   "$1screens.OrganizationSetup.pendingWork": {
     "message": "Conclua ou descarte o registro antes de trocar de território"

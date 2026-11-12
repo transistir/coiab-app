@@ -1,216 +1,77 @@
 import {render} from '@testing-library/react-native';
 import type {MapeoManager} from '@comapeo/core';
 import type {ComapeoCoreClientApi} from '@comapeo/ipc';
-import {createManager, setUpIPC, useRealFetch} from './core';
-import {createAppProvidersWrapper, type UserProfileSeed} from './react';
-import {executarEmOrdem} from './orderedTeardown';
-import type {ActiveProjectIdStore} from '../../../src/frontend/contexts/ActiveProjectIdStoreContext';
-import {MockedAppNavigator} from './navigation';
+import {createManager, setUpIPC} from './core';
+import {createAppProvidersWrapper} from './react';
 import {sleep} from '../../../src/frontend/lib/sleep';
-import {markerFor} from '../../../src/frontend/lib/organization/marker';
-import {MMKVStoreInitializer} from '../../../src/frontend/hooks/persistedState/createPersistedState';
-import {COIAB_ORGANIZATIONS_STORAGE_KEY} from '../../../src/frontend/contexts/CoiabOrganizationsStoreContext';
-import type {EstadoOrganizacoes} from '../../../src/frontend/lib/organization/coiabOrganizations';
 import React from 'react';
-
-// The P3 onboarding gate (SPEC 10.1) requires an Organization before Home, so
-// the shared helper seeds the two internal projects of a fixed test org. The
-// default active project is the Monitoramento (slot m) project.
-const ORG_ID = '0123456789abcdef';
-const ORG_NAME = 'Test Org';
-
-// O `keepAliveTimeout` do fastify é de 72s: uma conexão que fica para trás
-// pode segurar o fechamento por todo esse tempo. 30s matava o hook; os 90s
-// ficam acima dos 72s, e o aviso a partir de 20s acusa se a espera voltar.
-const ORCAMENTO_ENCERRAMENTO_MS = 90_000;
-const LIMIAR_LOG_ENCERRAMENTO_MS = 20_000;
-
-async function encerrarComRelatorio(ciclo: {encerrar(): Promise<void>}) {
-  const inicio = Date.now();
-  try {
-    await ciclo.encerrar();
-  } finally {
-    const duracao = Date.now() - inicio;
-    if (duracao >= LIMIAR_LOG_ENCERRAMENTO_MS) {
-      console.warn(`[integration] ciclo.encerrar() levou ${duracao}ms`);
-    }
-  }
-}
-
-/** A mounted navigator: its tree and the providers wrapping it. */
-type RenderMontado = {
-  // Absent until `render` resolves.
-  unmount?: () => Promise<void>;
-  providersTeardown: () => void;
-};
-
-/**
- * The per-cycle teardown shared by both setups. Its order is fixed rather
- * than derived from registration order:
- *
- * 1. mounted navigators, newest first — `unmount`, then the providers'
- *    teardown, which clears the QueryClient so nothing refetches;
- * 2. the real `fetch` swap, before the drain: work still settling after the
- *    unmount (e.g. the icon check's `fetch(url).ok`, which never reads the
- *    body) must not open undici sockets to fastify — a response left
- *    unconsumed keeps the close waiting out fastify's `keepAliveTimeout`
- *    (72s);
- * 3. `ipc.stop()`, which drains the RPCs still in flight;
- * 4. the local peer discovery server (a no-op when it never started);
- * 5. fastify — after the drain, since drained RPCs may need its HTTP routes.
- *
- * The core steps are filled in by `beforeEach` as each resource comes up, so
- * a `beforeEach` that fails midway still tears down what it created.
- */
-function criarEncerramentoDoCiclo() {
-  let renders: Array<RenderMontado> = [];
-  let core: {
-    restaurarFetch?: () => void;
-    pararIpc?: () => Promise<void>;
-    pararDescoberta?: () => Promise<void>;
-    pararFastify?: () => Promise<void>;
-  } = {};
-  let encerramento: Promise<void> | null = null;
-
-  const passosDoRender = (montado: RenderMontado) => [
-    () => montado.unmount?.(),
-    () => montado.providersTeardown(),
-  ];
-
-  return {
-    /** Starts a new cycle; call it first thing in `beforeEach`. */
-    reiniciar() {
-      renders = [];
-      core = {};
-      encerramento = null;
-    },
-    get core() {
-      return core;
-    },
-    /**
-     * Registers a navigator and returns its manual teardown, which runs its
-     * steps once and takes it off the stack, so `encerrar` does not repeat
-     * them.
-     */
-    registrarRender(montado: RenderMontado): () => Promise<void> {
-      renders.push(montado);
-      let desmontagem: Promise<void> | null = null;
-      return () => {
-        renders = renders.filter(outro => outro !== montado);
-        return (desmontagem ??= executarEmOrdem(passosDoRender(montado)));
-      };
-    },
-    /** The cycle's `afterEach`; memoized until the next `reiniciar`. */
-    encerrar() {
-      // Captured now: if this teardown outlives its test, the next cycle's
-      // `reiniciar()` must not point these steps at the new core.
-      const c = core;
-      return (encerramento ??= executarEmOrdem([
-        ...[...renders].reverse().flatMap(passosDoRender),
-        () => c.restaurarFetch?.(),
-        () => c.pararIpc?.(),
-        () => c.pararDescoberta?.(),
-        () => c.pararFastify?.(),
-      ]));
-    },
-  };
-}
+import {AppNavigator} from '../../../src/frontend/AppNavigator';
 
 export function setupIntegrationTest() {
   let manager: MapeoManager;
   let client: ComapeoCoreClientApi;
-  const ciclo = criarEncerramentoDoCiclo();
+  let onTeardown: Array<() => unknown> = [];
   let projectId: string;
-  let alertasProjectId: string;
 
   beforeEach(async () => {
-    ciclo.reiniciar();
-    const {core} = ciclo;
+    onTeardown = [];
 
-    // jest-expo replaces `fetch` with a non-working stub; the icon
-    // verification resolves the real HTTP route (`$icons.getIconUrl` +
-    // `fetch().ok`), so the suite needs undici's real fetch.
-    core.restaurarFetch = useRealFetch();
     const managerSetup = await createManager({
       name: 'test',
       deviceType: 'mobile',
     });
     ({manager} = managerSetup);
     const {fastifyController} = managerSetup;
-    core.pararDescoberta = () =>
-      managerSetup.manager.stopLocalPeerDiscoveryServer({force: true});
 
     const ipcSetup = setUpIPC({manager});
     ({client} = ipcSetup);
-    core.pararIpc = ipcSetup.stop;
+    const {stop} = ipcSetup;
+    onTeardown.push(stop);
 
     await fastifyController.start();
-    core.pararFastify = () => fastifyController.stop();
-    projectId = await client.createProject({
-      name: 'Monitoramento',
-      projectDescription: markerFor(ORG_ID, 'm', ORG_NAME),
-    });
-    alertasProjectId = await client.createProject({
-      name: 'Alertas',
-      projectDescription: markerFor(ORG_ID, 'a', ORG_NAME),
-    });
+    onTeardown.push(() => fastifyController.stop());
+    projectId = await client.createProject({name: undefined});
   });
 
-  afterEach(() => encerrarComRelatorio(ciclo), ORCAMENTO_ENCERRAMENTO_MS);
+  afterEach(async () => {
+    for (const fn of onTeardown) await fn();
+  });
 
   const renderNavigation = async ({
     isOnline = true,
     activeProjectId = projectId,
-    userProfile,
-    mapeoApi,
-  }: Readonly<{
-    isOnline?: boolean;
-    activeProjectId?: string;
-    userProfile?: UserProfileSeed;
-    /**
-     * Alternative IPC client over the SAME manager. A process restart in
-     * production starts with empty module-level registries (the materializer
-     * keys its live-operation locks on the client object); a test that kills
-     * and reopens the app must therefore mount the new tree with a fresh
-     * client instead of reusing the one the dead operation still holds.
-     */
-    mapeoApi?: ComapeoCoreClientApi;
-  }> = {}) => {
+  }: Readonly<{isOnline?: boolean; activeProjectId?: string}> = {}) => {
     const appProviders = createAppProvidersWrapper({
-      mapeoApi: mapeoApi ?? client,
+      mapeoApi: client,
       isOnline,
       activeProjectId,
-      userProfile,
     });
-    // Registered before `render`: if mounting throws, the providers are
-    // still torn down.
-    const montado: RenderMontado = {providersTeardown: appProviders.teardown};
-    const desmontar = ciclo.registrarRender(montado);
+    onTeardown.push(appProviders.teardown);
 
-    const {unmount} = await render(<MockedAppNavigator />, {
-      wrapper: appProviders.wrapper,
-    });
-    montado.unmount = async () => {
+    const {unmount} = await render(
+      <AppNavigator navigationIntegration={undefined} />,
+      {
+        wrapper: appProviders.wrapper,
+      },
+    );
+    const actualTeardown = async () => {
       await unmount();
       await sleep(0);
     };
 
-    return desmontar;
+    onTeardown.unshift(actualTeardown);
+
+    return () => {
+      const result = actualTeardown();
+      onTeardown = onTeardown.filter(fn => fn !== actualTeardown);
+      return result;
+    };
   };
 
   return {
     renderNavigation,
     get projectId() {
       return projectId;
-    },
-    get alertasProjectId() {
-      return alertasProjectId;
-    },
-    get orgId() {
-      return ORG_ID;
-    },
-    get orgName() {
-      return ORG_NAME;
     },
     get client() {
       return client;
@@ -224,62 +85,57 @@ export function setupIntegrationTest() {
 export function setupIntegrationTestWithoutProject() {
   let manager: MapeoManager;
   let client: ComapeoCoreClientApi;
-  const ciclo = criarEncerramentoDoCiclo();
-  let activeProjectIdStore: ActiveProjectIdStore;
+  let onTeardown: Array<() => unknown> = [];
 
   beforeEach(async () => {
-    ciclo.reiniciar();
-    const {core} = ciclo;
+    onTeardown = [];
 
-    // Same reason as in `setupIntegrationTest`: real fetch for the icon
-    // verification HTTP route.
-    core.restaurarFetch = useRealFetch();
     const managerSetup = await createManager({
       name: 'test',
       deviceType: 'mobile',
     });
     ({manager} = managerSetup);
     const {fastifyController} = managerSetup;
-    core.pararDescoberta = () =>
-      managerSetup.manager.stopLocalPeerDiscoveryServer({force: true});
 
     const ipcSetup = setUpIPC({manager});
     ({client} = ipcSetup);
-    core.pararIpc = ipcSetup.stop;
+    const {stop} = ipcSetup;
+    onTeardown.push(stop);
 
     await fastifyController.start();
-    core.pararFastify = () => fastifyController.stop();
+    onTeardown.push(() => fastifyController.stop());
   });
 
-  afterEach(() => encerrarComRelatorio(ciclo), ORCAMENTO_ENCERRAMENTO_MS);
+  afterEach(async () => {
+    for (const fn of onTeardown) await fn();
+  });
 
   const renderNavigationAsync = async ({
     isOnline = true,
-    activeProjectId,
-    userProfile,
-  }: Readonly<{
-    isOnline?: boolean;
-    activeProjectId?: string;
-    userProfile?: UserProfileSeed;
-  }> = {}) => {
+  }: Readonly<{isOnline?: boolean}> = {}) => {
     const appProviders = createAppProvidersWrapper({
       mapeoApi: client,
       isOnline,
-      activeProjectId,
-      userProfile,
     });
-    activeProjectIdStore = appProviders.activeProjectIdStore;
-    // Registered before `render`: if mounting throws, the providers are
-    // still torn down.
-    const montado: RenderMontado = {providersTeardown: appProviders.teardown};
-    const desmontar = ciclo.registrarRender(montado);
+    onTeardown.push(appProviders.teardown);
 
-    const {unmount} = await render(<MockedAppNavigator />, {
-      wrapper: appProviders.wrapper,
-    });
-    montado.unmount = unmount;
+    const {unmount} = await render(
+      <AppNavigator navigationIntegration={undefined} />,
+      {
+        wrapper: appProviders.wrapper,
+      },
+    );
+    const actualTeardown = async () => {
+      await unmount();
+    };
 
-    return desmontar;
+    onTeardown.unshift(actualTeardown);
+
+    return async () => {
+      const result = await actualTeardown();
+      onTeardown = onTeardown.filter(fn => fn !== actualTeardown);
+      return result;
+    };
   };
 
   return {
@@ -290,67 +146,5 @@ export function setupIntegrationTestWithoutProject() {
     get manager() {
       return manager;
     },
-    get orgId() {
-      return ORG_ID;
-    },
-    get orgName() {
-      return ORG_NAME;
-    },
-    get activeProjectId() {
-      return activeProjectIdStore?.instance.getState().projectId;
-    },
   };
-}
-
-/**
- * Seeds the RAW persisted COIAB document (SPEC A §4.2) for a fully open
- * organization: both areas verified, the confirmation acknowledged and
- * Monitoramento selected. The ids must be the REAL core project ids of the
- * test's CURRENT manager, so the engine's cold-start restoration validates
- * against the same rows — call it after the setup's beforeEach boot and
- * before rendering the navigator.
- *
- * Shared by the suites that mount the real navigator and expect Home:
- * under the organization-first startup (SPEC 10.1) the persisted document,
- * not the core's project list, decides the initial route — without this
- * seed such a device lands on the Success fork ("test is ready!").
- */
-export function semearDocumentoPronta(
-  monitoramentoId: string,
-  alertasId: string,
-  organizacaoId: string,
-  nome: string,
-): void {
-  const documento: EstadoOrganizacoes = {
-    versao: 1,
-    organizacoes: [
-      {
-        id: organizacaoId,
-        nome,
-        estado: 'pronta',
-        confirmacaoPendente: false,
-        materializacao: {
-          monitoramento: {
-            etapa: 'verificado',
-            projectId: monitoramentoId,
-            template: {versao: '1', hash: 'monitoramento'},
-            idsAntesDaCriacao: null,
-          },
-          alertas: {
-            etapa: 'verificado',
-            projectId: alertasId,
-            template: {versao: '1', hash: 'alertas'},
-            idsAntesDaCriacao: null,
-          },
-        },
-        areaEmExecucao: null,
-        ultimoErro: null,
-      },
-    ],
-    ativa: {organizacaoId, area: 'monitoramento'},
-  };
-  MMKVStoreInitializer.setItem(
-    COIAB_ORGANIZATIONS_STORAGE_KEY,
-    JSON.stringify({state: documento, version: 1}),
-  );
 }

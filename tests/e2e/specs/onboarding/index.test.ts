@@ -5,6 +5,5 @@ describe('onboarding', function () {
   require('./data-privacy.test');
   require('./privacy-policy.test');
   require('./device-naming.test');
-  require('./join-organization-intro.test');
-  require('./create-organization.test');
+  require('./success.test');
 });

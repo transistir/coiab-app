@@ -3,6 +3,10 @@
     "message": "Seguir Editando",
     "description": "Button on dialog to keep editing (cancelling close action)"
   },
+  "AppContainer.EditHeader.discardObservationButton": {
+    "message": "Descartar",
+    "description": "Title of dialog that shows when cancelling observation edits"
+  },
   "AppContainer.EditHeader.discardObservationDescription": {
     "message": "Tu observación no se guardará. Esto no se puede deshacer."
   },
@@ -142,6 +146,15 @@
   "Screens.ProjectSettings.viewDetails": {
     "message": "Ver detalles"
   },
+  "Screens.Settings.AppSettings.createTestData": {
+    "message": "Crear datos de prueba"
+  },
+  "Screens.Settings.AppSettings.qaDeviceName": {
+    "message": "Nombre del dispositivo QA"
+  },
+  "Screens.Settings.AppSettings.testData": {
+    "message": "Datos de prueba"
+  },
   "Settings.ProjectSettings.RemoteArchive.RemoveRemoteArchive.cancel": {
     "message": "Cancelar",
     "description": "Text for cancel action button."
@@ -210,6 +223,84 @@
   "constants.red": {
     "message": "Rojo"
   },
+  "lib.intl.calendarDay.friday": {
+    "message": "Viernes"
+  },
+  "lib.intl.calendarDay.monday": {
+    "message": "Lunes"
+  },
+  "lib.intl.calendarDay.saturday": {
+    "message": "Sábado"
+  },
+  "lib.intl.calendarDay.sunday": {
+    "message": "Domingo"
+  },
+  "lib.intl.calendarDay.thursday": {
+    "message": "Jueves"
+  },
+  "lib.intl.calendarDay.tuesday": {
+    "message": "Martes"
+  },
+  "lib.intl.calendarDay.wednesday": {
+    "message": "Miércoles"
+  },
+  "lib.intl.calendarDayShort.friday": {
+    "message": "Vie"
+  },
+  "lib.intl.calendarDayShort.monday": {
+    "message": "Lun"
+  },
+  "lib.intl.calendarDayShort.saturday": {
+    "message": "Sáb"
+  },
+  "lib.intl.calendarDayShort.sunday": {
+    "message": "Dom"
+  },
+  "lib.intl.calendarDayShort.thursday": {
+    "message": "Jue"
+  },
+  "lib.intl.calendarDayShort.tuesday": {
+    "message": "Mar"
+  },
+  "lib.intl.calendarDayShort.wednesday": {
+    "message": "Mié"
+  },
+  "lib.intl.calendarMonth.april": {
+    "message": "Abril"
+  },
+  "lib.intl.calendarMonth.august": {
+    "message": "Agosto"
+  },
+  "lib.intl.calendarMonth.december": {
+    "message": "Diciembre"
+  },
+  "lib.intl.calendarMonth.february": {
+    "message": "Febrero"
+  },
+  "lib.intl.calendarMonth.january": {
+    "message": "Enero"
+  },
+  "lib.intl.calendarMonth.july": {
+    "message": "Julio"
+  },
+  "lib.intl.calendarMonth.june": {
+    "message": "Junio"
+  },
+  "lib.intl.calendarMonth.march": {
+    "message": "Marzo"
+  },
+  "lib.intl.calendarMonth.may": {
+    "message": "Mayo"
+  },
+  "lib.intl.calendarMonth.november": {
+    "message": "Noviembre"
+  },
+  "lib.intl.calendarMonth.october": {
+    "message": "Octubre"
+  },
+  "lib.intl.calendarMonth.september": {
+    "message": "Septiembre"
+  },
   "projectInfoCard.coordinator": {
     "message": "Eres Coordinador de este proyecto."
   },
@@ -218,6 +309,18 @@
   },
   "projectInfoCard.participant": {
     "message": "Eres participante en este proyecto."
+  },
+  "screen.BackgroundMaps.SelectDevice.notSeeingDevice": {
+    "message": "¿No ves un dispositivo?"
+  },
+  "screen.BackgroundMaps.SelectDevice.sameVersion": {
+    "message": "Comprueba de que ambos dispositivos estén en la misma red de Wifi"
+  },
+  "screen.BackgroundMaps.SelectDevice.sameWifi": {
+    "message": "Verifica de que ambos dispositivos estén en la misma red de Wifi"
+  },
+  "screen.BackgroundMaps.SelectDevice.titleMapShare": {
+    "message": "Selecciona un dispositivo"
   },
   "screen.EditProjectDetails.descriptionPlaceholder": {
     "message": "Breve descripción del proyecto, menos de 60 caracteres."
@@ -233,6 +336,18 @@
   },
   "screen.Settings.ProjectSettings.YourTeam.SelectInviteeRole.selectingDevice": {
     "message": "Estás seleccionando un rol para este dispositivo:"
+  },
+  "screens.AboutSettings.CoMapeoBuild": {
+    "message": "Número de compilación de CoMapeo",
+    "description": "Label for CoMapeo build number"
+  },
+  "screens.AboutSettings.CoMapeoType": {
+    "message": "Variante de CoMapeo",
+    "description": "Label for CoMapeo type/variant (e.g. QA for testing vs normal version of app)"
+  },
+  "screens.AboutSettings.CoMapeoVersion": {
+    "message": "Versión de CoMapeo",
+    "description": "Label for CoMapeo version"
   },
   "screens.AboutSettings.CoiabAppBuild": {
     "message": "Número de compilación de CoiabApp",
@@ -255,14 +370,14 @@
     "description": "Label for Android version"
   },
   "screens.AboutSettings.comapeoWebsiteLabel": {
-    "message": "Sitio web de CoiabApp"
+    "message": "Sitio web de CoMapeo"
   },
   "screens.AboutSettings.earlyAccessBanner": {
     "message": "Estas en modo de acceso anticipado."
   },
   "screens.AboutSettings.emojiSource": {
     "message": "Fuente de Emojis",
-    "description": "Label for the source of emojis used in CoiabApp"
+    "description": "Label for the source of emojis used in CoMapeo"
   },
   "screens.AboutSettings.phoneModel": {
     "message": "Modelo del teléfono",
@@ -313,10 +428,10 @@
     "message": "Los identificadores son codificados al azar y cambiados cada mes."
   },
   "screens.AppUsagePrompt.introText": {
-    "message": "Comparte cómo usas CoiabApp - cualquier dato compartido no puede usarse para rastrearte."
+    "message": "Comparte cómo usas CoMapeo - cualquier dato compartido no puede usarse para rastrearte."
   },
   "screens.AppUsagePrompt.neverStores": {
-    "message": "CoiabApp nunca almacena direcciones IP."
+    "message": "CoMapeo nunca almacena direcciones IP."
   },
   "screens.AppUsagePrompt.notNow": {
     "message": "No, no ahora"
@@ -331,7 +446,7 @@
     "message": "Listo"
   },
   "screens.AppUsageSharingSuccess.nowSharing": {
-    "message": "Ahora estás compartiendo cómo se utiliza CoiabApp con Awana Digital."
+    "message": "Ahora estás compartiendo cómo se utiliza CoMapeo con Awana Digital."
   },
   "screens.AppUsageSharingSuccess.removeAnytime": {
     "message": "Cambia esto en cualquier momento en las opciones de Datos y Privacidad en el Menú."
@@ -347,7 +462,7 @@
     "description": "Screen button text for navigating the user to settings when audio permission is denied"
   },
   "screens.AudioPermission.description": {
-    "message": "Para grabar audio mientras usas la aplicación y en segundo plano, CoiabApp necesita acceder a tu micrófono. Por favor, habilita los permisos de micrófono en los ajustes de tu aplicación.",
+    "message": "Para grabar audio mientras usas la aplicación y en segundo plano, CoMapeo necesita acceder a tu micrófono. Por favor, habilita los permisos de micrófono en los ajustes de tu aplicación.",
     "description": "Screen description for audio permission screen"
   },
   "screens.AudioRecording.lessThan1": {
@@ -355,6 +470,9 @@
   },
   "screens.AudioRecording.lessThan5": {
     "message": "Quedan menos de 5 minutos"
+  },
+  "screens.CameraScreen.cameraPermissionDescription": {
+    "message": "Cámara requerida para usar."
   },
   "screens.CollaboratorInfo.addedOn": {
     "message": "Añadido el {date}"
@@ -390,7 +508,7 @@
     "message": "Los números de identificación son codificados al azar y cambiados cada mes."
   },
   "screens.DataAndPrivacy.appUsageText": {
-    "message": "Comparte cómo usas CoiabApp con Awana Digital—ninguna información que compartas puede ser usada para rastrearte."
+    "message": "Comparte cómo usas CoMapeo con Awana Digital—ninguna información que compartas puede ser usada para rastrearte."
   },
   "screens.DataAndPrivacy.appUsageTitle": {
     "message": "Uso de la aplicación"
@@ -402,7 +520,7 @@
     "message": "Información de diagnóstico"
   },
   "screens.DataAndPrivacy.ipAddress": {
-    "message": "CoiabApp nunca almacena direcciones IP."
+    "message": "CoMapeo nunca almacena direcciones IP."
   },
   "screens.DataAndPrivacy.learnMore": {
     "message": "Aprende más"
@@ -417,7 +535,22 @@
     "message": "Puedes optar por no compartir información de diagnóstico en cualquier momento."
   },
   "screens.DataAndPrivacy.respectsPrivacy": {
-    "message": "CoiabApp respeta tu privacidad y autonomía"
+    "message": "CoMapeo respeta tu privacidad y autonomía"
+  },
+  "screens.DeviceNaming.Success.addAudio": {
+    "message": "Añade grabaciones de audio."
+  },
+  "screens.DeviceNaming.Success.coordinateOrMap": {
+    "message": "Coordínate con el equipo para comenzar o mapea por tu cuenta."
+  },
+  "screens.DeviceNaming.Success.snapPhotos": {
+    "message": "Toma fotos sobre la marcha."
+  },
+  "screens.DeviceNaming.Success.tracks": {
+    "message": "Documenta senderos caminados."
+  },
+  "screens.EarlyAccess.feedbackPrefix": {
+    "message": "¿Tienes comentarios? Compártelo en"
   },
   "screens.EarlyAccess.infoBox": {
     "message": "Los datos de acceso anticipado no serán visibles para los colaboradores que no hayan optado por participar."
@@ -429,7 +562,7 @@
     "message": "Modo de acceso anticipado"
   },
   "screens.EarlyAccess.updates": {
-    "message": "Ver actualizaciones de CoiabApp"
+    "message": "Ver actualizaciones de CoMapeo"
   },
   "screens.EarlyAccess.useEarlyAccess": {
     "message": "Usa características de acceso anticipado"
@@ -451,6 +584,9 @@
   },
   "screens.EnterPassword.wrongPass": {
     "message": "Contraseña incorrecta, inténtelo de nuevo"
+  },
+  "screens.Exchange.WifiCard.noWifi": {
+    "message": "No hay red de Wifi"
   },
   "screens.ExchangeSettingsBottomSheet.everythingDesc": {
     "message": "Las fotos de tamaño completo y  el audio, usan más almacenamiento."
@@ -687,11 +823,17 @@
   "screens.MapScreen.GPSBackgroundPermissionDisabled.collectsLocation": {
     "message": "¿Usar la ubicación? Rastrea la ubicación incluso cuando está cerrado. Los datos permanecen solo en el dispositivo."
   },
+  "screens.MapScreen.TrackBottomSheet.locationRequired": {
+    "message": "Ubicación necesaria para usar."
+  },
+  "screens.MapScreen.locationPermissionDescription": {
+    "message": "Ubicación necesaria para usar."
+  },
   "screens.ObscurePasscode.description": {
-    "message": "La Contraseña Oscura es una funcionalidad de seguridad que te permite abrir CoiabApp en un modo que oculta toda tu información. Al introducir la Constraseña Oscura en la pantalla de inicio, se mostrará una versión vacía de CoiabApp que te permite crear observaciones de demostración que no se guardan en la base de datos de CoiabApp."
+    "message": "La Contraseña Oscura es una funcionalidad de seguridad que te permite abrir CoMapeo en un modo que oculta toda tu información. Al introducir la Constraseña Oscura en la pantalla de inicio, se mostrará una versión vacía de CoMapeo que te permite crear observaciones de demostración que no se guardan en la base de datos de CoMapeo."
   },
   "screens.ObscurePasscode.instructions": {
-    "message": "Introduce el código anterior para ocultar tus datos en CoiabApp"
+    "message": "Introduce el código anterior para ocultar tus datos en CoMapeo"
   },
   "screens.ObscurePasscode.title": {
     "message": "Contraseña oscura"
@@ -774,7 +916,7 @@
     "message": "Precisión de altitud"
   },
   "screens.ObservationMetadataVerified.coMapeoMetadata": {
-    "message": "Metadatos de CoiabApp"
+    "message": "Metadatos de CoMapeo"
   },
   "screens.ObservationMetadataVerified.dataEntered": {
     "message": "Los datos fueron introducidos manualmente."
@@ -798,19 +940,22 @@
     "message": "Ingresado manualmente."
   },
   "screens.ObservationMetadataVerified.sentByComapeo": {
-    "message": "Enviado desde CoiabApp"
+    "message": "Enviado desde CoMapeo"
   },
   "screens.ObservationMetadataVerified.sentFrom": {
-    "message": "Metadatos de CoiabApp enviados desde"
+    "message": "Metadatos de CoMapeo enviados desde"
   },
   "screens.ObservationMetadataVerified.speed": {
     "message": "Velocidad"
+  },
+  "screens.ObservationMetadataVerified.validatedByCoMapeo": {
+    "message": "Enviado y validado por CoMapeo"
   },
   "screens.ObservationMetadataVerified.validatedByCoiabApp": {
     "message": "Enviado y validado por CoiabApp"
   },
   "screens.ObservationsList.ObservationsEmptyView.noObservationsDesc": {
-    "message": "Comienza desde la vista de mapa o cámara para grabar tu primera observación.",
+    "message": "Todas las observaciones y trayectos se mostrarán aquí.",
     "description": "Description of observation list view when the user has not yet recorded observations"
   },
   "screens.ObservationsList.filter.all": {
@@ -864,6 +1009,9 @@
     "message": "Adjuntado {formattedNum} después de la observación",
     "description": "Label for the time when the photo was attached to an observation"
   },
+  "screens.PhotoPreviewModal.validatedByCoMapeo": {
+    "message": "Validado por CoMapeo"
+  },
   "screens.PhotoPreviewModal.validatedByCoiabApp": {
     "message": "Validado por CoiabApp"
   },
@@ -875,7 +1023,7 @@
     "message": "Acerca de Awana Digital"
   },
   "screens.PrivacyPolicy.aboutAwanaContent": {
-    "message": "CoiabApp es desarrollado por Awana Digital, una organización sin fines de lucro 501c3 registrada en los Estados Unidos. Awana Digital trabaja en solidaridad con las comunidades de primera línea para utilizar la tecnología para defender sus derechos y luchar contra el cambio climático."
+    "message": "CoMapeo es desarrollado por Awana Digital, una organización sin fines de lucro 501c3 registrada en los Estados Unidos. Awana Digital trabaja en solidaridad con las comunidades de primera línea para utilizar la tecnología para defender sus derechos y luchar contra el cambio climático."
   },
   "screens.PrivacyPolicy.appErrors": {
     "message": "Error de aplicación"
@@ -887,7 +1035,7 @@
     "message": "Información de la aplicación"
   },
   "screens.PrivacyPolicy.appInfoDescription": {
-    "message": "Versión y configuración regional de (idioma) de CoiabApp"
+    "message": "Versión y configuración regional de (idioma) de CoMapeo"
   },
   "screens.PrivacyPolicy.appUsageTitle": {
     "message": "Uso de la aplicación"
@@ -896,7 +1044,7 @@
     "message": "Tú tienes el control"
   },
   "screens.PrivacyPolicy.controlDescription": {
-    "message": "Tú puedes optar por no enviar cualquier información a Awana Digital. Tú eliges dónde se almacenan tus datos y con quién los compartes. Puedes elegir compartir datos anónimos y resumidos sobre cómo usas CoiabApp con Awana Digital. Siempre seremos transparentes sobre la información que elijas compartir con el propósito de mejorar la aplicación, y esta información nunca incluirá fotos, vídeos, audio, texto o ubicaciones precisas que hayas introducido en CoiabApp."
+    "message": "Tú puedes optar por no enviar cualquier información a Awana Digital. Tú eliges dónde se almacenan tus datos y con quién los compartes. Puedes elegir compartir datos anónimos y resumidos sobre cómo usas CoMapeo con Awana Digital. Siempre seremos transparentes sobre la información que elijas compartir con el propósito de mejorar la aplicación, y esta información nunca incluirá fotos, vídeos, audio, texto o ubicaciones precisas que hayas introducido en CoMapeo."
   },
   "screens.PrivacyPolicy.crashData": {
     "message": "Datos de error"
@@ -905,7 +1053,7 @@
     "message": "Información sobre qué causó que la aplicación se cerrara inesperadamente"
   },
   "screens.PrivacyPolicy.dataCollection": {
-    "message": "Recopilación de datos de CoiabApp"
+    "message": "Recopilación de datos de CoMapeo"
   },
   "screens.PrivacyPolicy.deviceInfo": {
     "message": "Información del dispositivo"
@@ -920,22 +1068,22 @@
     "message": "No hay información personal identificable"
   },
   "screens.PrivacyPolicy.noPIIDescription": {
-    "message": "El uso de CoiabApp no requiere una cuenta de usuario. Awana Digital no recopila tu nombre, dirección de correo electrónico o ningún otro dato personal. Ningún identificador de usuario permanente o identificador de dispositivo es compartido con Awana Digital, y tomamos medidas adicionales para asegurar que ninguna información que compartes pueda ser usada para rastrearte: los identificadores son aleatorios y rotan (cambian) cada mes y no almacenamos direcciones IP."
+    "message": "El uso de CoMapeo no requiere una cuenta de usuario. Awana Digital no recopila tu nombre, dirección de correo electrónico o ningún otro dato personal. Ningún identificador de usuario permanente o identificador de dispositivo es compartido con Awana Digital, y tomamos medidas adicionales para asegurar que ninguna información que compartes pueda ser usada para rastrearte: los identificadores son aleatorios y rotan (cambian) cada mes y no almacenamos direcciones IP."
   },
   "screens.PrivacyPolicy.notCollected": {
     "message": "¿Qué no se recopila?"
   },
   "screens.PrivacyPolicy.notCollectedDescription": {
-    "message": "No recopilamos ningún dato personal ni ningún otro dato que pueda ser utilizado para identificar o rastrear a una persona usuaria o un dispositivo. Los identificadores de dispositivo utilizados para agregar información son aleatorios, anónimos, y cambian cada mes. La información de diagnóstico no incluye datos sobre cómo usas la aplicación, y nunca incluye ninguno de los datos que has recopilado con la aplicación. No recolectamos tu ubicación precisa o aproximada, sólo el país donde usas CoiabApp."
+    "message": "No recopilamos ningún dato personal ni ningún otro dato que pueda ser utilizado para identificar o rastrear a una persona usuaria o un dispositivo. Los identificadores de dispositivo utilizados para agregar información son aleatorios, anónimos, y cambian cada mes. La información de diagnóstico no incluye datos sobre cómo usas la aplicación, y nunca incluye ninguno de los datos que has recopilado con la aplicación. No recolectamos tu ubicación precisa o aproximada, sólo el país donde usas CoMapeo."
   },
   "screens.PrivacyPolicy.openSource": {
     "message": "Código abierto y la versión \"Oficial\""
   },
   "screens.PrivacyPolicy.openSourceContent": {
-    "message": "CoiabApp es una aplicación de código abierto. Esto significa que cualquiera puede ver el código que hace que la aplicación funcione y puede verificar las declaraciones de privacidad en este documento. También significa que cualquiera puede adaptar la aplicación a sus propias necesidades y lanzar una versión alternativa. Este documento se refiere a los datos recogidos por los lanzamientos oficiales de CoiabApp, firmada digitalmente por Awana Digital, disponible en Google Play Store o en el sitio web de Awana Digital. Los lanzamientos no oficiales de CoiabApp obtenidos de otros canales están fuera de nuestro control y pueden compartir información adicional con otras organizaciones."
+    "message": "CoMapeo es una aplicación de código abierto. Esto significa que cualquiera puede ver el código que hace que la aplicación funcione y puede verificar las declaraciones de privacidad en este documento. También significa que cualquiera puede adaptar la aplicación a sus propias necesidades y lanzar una versión alternativa. Este documento se refiere a los datos recogidos por los lanzamientos oficiales de CoMapeo, firmada digitalmente por Awana Digital, disponible en Google Play Store o en el sitio web de Awana Digital. Los lanzamientos no oficiales de CoMapeo obtenidos de otros canales están fuera de nuestro control y pueden compartir información adicional con otras organizaciones."
   },
   "screens.PrivacyPolicy.overview": {
-    "message": "Este documento describe qué información (\"datos\") se envía desde CoiabApp al desarrollador de la aplicación, Awana Digital, y cómo se utiliza esa información."
+    "message": "Este documento describe qué información (\"datos\") se envía desde CoMapeo al desarrollador de la aplicación, Awana Digital, y cómo se utiliza esa información."
   },
   "screens.PrivacyPolicy.performanceData": {
     "message": "Datos de rendimiento"
@@ -944,13 +1092,13 @@
     "message": "Como el tiempo de lanzamiento, consumo de energía, aplicaciones congeladas y capacidad de respuesta"
   },
   "screens.PrivacyPolicy.privacyPolicyTitle": {
-    "message": "Privacidad de datos de CoiabApp"
+    "message": "Privacidad de datos de CoMapeo"
   },
   "screens.PrivacyPolicy.privateByDefault": {
     "message": "Privado por defecto"
   },
   "screens.PrivacyPolicy.privateByDefaultDescription": {
-    "message": "La información (datos) que tu recopilas y creas con CoiabApp (ubicaciones, fotos, vídeo, audio, texto) sólo se almacena en tu dispositivo por defecto y no se almacena ni se envía a ningún otro lugar. Cuando compartes información con personas colaboradoras uniéndote a un proyecto con ellas, se envía cifrado, directamente a sus dispositivos. Esto significa que los datos no se envían a través de Awana Digital, ni a nadie más, en su camino hacia tu colaborador. Awana Digital nunca ve ni tiene acceso a ninguno de los datos que recopilas con CoiabApp a menos que nos los envíes explícitamente."
+    "message": "La información (datos) que tu recopilas y creas con CoMapeo (ubicaciones, fotos, vídeo, audio, texto) sólo se almacena en tu dispositivo por defecto y no se almacena ni se envía a ningún otro lugar. Cuando compartes información con personas colaboradoras uniéndote a un proyecto con ellas, se envía cifrado, directamente a sus dispositivos. Esto significa que los datos no se envían a través de Awana Digital, ni a nadie más, en su camino hacia tu colaborador. Awana Digital nunca ve ni tiene acceso a ninguno de los datos que recopilas con CoMapeo a menos que nos los envíes explícitamente."
   },
   "screens.PrivacyPolicy.thirdParty": {
     "message": "Acceso de terceros a los datos"
@@ -968,13 +1116,13 @@
     "message": "¿Qué se recopila?"
   },
   "screens.PrivacyPolicy.whatIsCollectedDescription": {
-    "message": "De forma predeterminada, la información de diagnóstico anonimizada sobre tu dispositivo, los bloqueos de aplicaciones, los errores y el rendimiento se comparten con Awana Digital. Puedes optar por no compartir esta información en cualquier momento. Esta información de diagnóstico es completamente anónima y nunca contiene ninguno de tus datos (los datos que has recopilado con CoiabApp)."
+    "message": "De forma predeterminada, la información de diagnóstico anonimizada sobre tu dispositivo, los bloqueos de aplicaciones, los errores y el rendimiento se comparten con Awana Digital. Puedes optar por no compartir esta información en cualquier momento. Esta información de diagnóstico es completamente anónima y nunca contiene ninguno de tus datos (los datos que has recopilado con CoMapeo)."
   },
   "screens.PrivacyPolicy.whyCollected": {
     "message": "¿Por qué se recolectan estos datos?"
   },
   "screens.PrivacyPolicy.whyCollectedDescription": {
-    "message": "Los datos de errores de la aplicación junto con información del dispositivo y de la aplicación brindan a Awana Digital la información que necesita para corregir errores en la aplicación. Los datos de rendimiento nos ayudan a mejorar la capacidad de respuesta de la aplicación e identificar errores. Las cuentas de usuarios, incluyendo el total de usuarios, usuarios por país y usuarios por proyecto, ayudan a justificar la inversión continua en el desarrollo de CoiabApp."
+    "message": "Los datos de errores de la aplicación junto con información del dispositivo y de la aplicación brindan a Awana Digital la información que necesita para corregir errores en la aplicación. Los datos de rendimiento nos ayudan a mejorar la capacidad de respuesta de la aplicación e identificar errores. Las cuentas de usuarios, incluyendo el total de usuarios, usuarios por país y usuarios por proyecto, ayudan a justificar la inversión continua en el desarrollo de CoMapeo."
   },
   "screens.ProjectStatistics.navTitle": {
     "message": "Estadísticas del Proyecto"
@@ -1053,6 +1201,12 @@
   "screens.Settings.CreateOrJoinProject.requestInvites": {
     "message": "Solicitar invitaciones para unirse a proyectos existentes."
   },
+  "screens.Settings.MapManagement.BackgroundMapUpdated.done": {
+    "message": "Listo"
+  },
+  "screens.Settings.MapManagement.BackgroundMapUpdated.mapUpdated": {
+    "message": "Mapa de fondo actualizado."
+  },
   "screens.Settings.MapManagement.BackgroundMaps.acceptedFileTypes": {
     "message": "Los tipos de archivo aceptados son .smp"
   },
@@ -1083,6 +1237,93 @@
   "screens.Settings.MapManagement.BackgroundMaps.removeMapFile": {
     "message": "Eliminar archivo de mapa"
   },
+  "screens.Settings.MapManagement.MapReceived.accept": {
+    "message": "Aceptar"
+  },
+  "screens.Settings.MapManagement.MapReceived.decline": {
+    "message": "Rechazar"
+  },
+  "screens.Settings.MapManagement.MapReceived.distanceAway": {
+    "message": "{distance} Lejos"
+  },
+  "screens.Settings.MapManagement.MapReceived.locationNotCovered": {
+    "message": "¡La ubicación actual no está disponible!"
+  },
+  "screens.Settings.MapManagement.MapReceived.mbNeeded": {
+    "message": "Se necesitan {size}MB"
+  },
+  "screens.Settings.MapManagement.MapReceived.megabytes": {
+    "message": "{size}MB"
+  },
+  "screens.Settings.MapManagement.MapReceived.notEnoughSpace": {
+    "message": "¡No hay suficiente espacio libre!"
+  },
+  "screens.Settings.MapManagement.MapReceived.sharingDevice": {
+    "message": "{deviceName} quiere compartir..."
+  },
+  "screens.Settings.MapManagement.MapShareCanceled.close": {
+    "message": "Cerrar"
+  },
+  "screens.Settings.MapManagement.MapShareCanceled.message": {
+    "message": "El Colaborador canceló el uso compartido antes de completarlo."
+  },
+  "screens.Settings.MapManagement.MapShareCanceled.title": {
+    "message": "Compartir cancelado"
+  },
+  "screens.Settings.MapManagement.ReceivingBackgroundMap.downloadErrorDescription": {
+    "message": "Se interrumpió el intercambio de mapas. Asegúrate de que ambos dispositivos estén conectados a la misma red y vuelve a intentarlo."
+  },
+  "screens.Settings.MapManagement.ReceivingBackgroundMap.downloadErrorTitle": {
+    "message": "Se perdió la conexión"
+  },
+  "screens.Settings.MapManagement.ReceivingBackgroundMap.downloadFailedTitle": {
+    "message": "Descarga de mapa fallida"
+  },
+  "screens.Settings.MapManagement.ReplaceBackgroundMap.cancel": {
+    "message": "Cancelar"
+  },
+  "screens.Settings.MapManagement.ReplaceBackgroundMap.replaceMapDescription": {
+    "message": "Este dispositivo tiene un mapa de fondo que se reemplazará si continúa."
+  },
+  "screens.Settings.MapManagement.ReplaceBackgroundMap.replaceMapTitle": {
+    "message": "¿Reemplazar el mapa de fondo actual?"
+  },
+  "screens.Settings.MapManagement.ReplaceBackgroundMap.yesReplace": {
+    "message": "Sí, reemplazar"
+  },
+  "screens.Settings.MapManagement.SendingBackgroundMap.cancel": {
+    "message": "Cancelar"
+  },
+  "screens.Settings.MapManagement.SendingBackgroundMap.close": {
+    "message": "Cerrar"
+  },
+  "screens.Settings.MapManagement.SendingBackgroundMap.deviceNoSpace": {
+    "message": "El dispositivo no tiene espacio suficiente."
+  },
+  "screens.Settings.MapManagement.SendingBackgroundMap.done": {
+    "message": "Listo"
+  },
+  "screens.Settings.MapManagement.SendingBackgroundMap.mapDeclined": {
+    "message": "Mapa rechazado."
+  },
+  "screens.Settings.MapManagement.SendingBackgroundMap.mapSent": {
+    "message": "¡Mapa enviado!"
+  },
+  "screens.Settings.MapManagement.SendingBackgroundMap.sending": {
+    "message": "Enviando..."
+  },
+  "screens.Settings.MapManagement.SendingBackgroundMap.timerMessage": {
+    "message": "Mapa enviado hace {time}"
+  },
+  "screens.Settings.MapManagement.SendingBackgroundMap.waitingMessage": {
+    "message": "Esperando a que el dispositivo acepte el mapa"
+  },
+  "screens.Settings.MapManagement.UpdatingBackgroundMap.cancel": {
+    "message": "Cancelar"
+  },
+  "screens.Settings.MapManagement.UpdatingBackgroundMap.updating": {
+    "message": "Actualizando..."
+  },
   "screens.Settings.NameDefaultProjectIntro.description": {
     "message": "Invita dispositivos a un nuevo proyecto con todas tus observaciones."
   },
@@ -1094,6 +1335,9 @@
   },
   "screens.Settings.NameDefaultProjectIntro.title": {
     "message": "Invitar dispositivos"
+  },
+  "screens.Settings.YourTeam.close": {
+    "message": "Cerrar"
   },
   "screens.Settings.YourTeam.deviceHasJoined": {
     "message": "Este dispositivo ha unido a {projectName}"
@@ -1108,7 +1352,7 @@
     "message": "Política de privacidad"
   },
   "screens.ShareProjectStats.description": {
-    "message": "Esto nos ayudará a recopilar datos sobre cómo se está utilizando CoiabApp y qué características adicionales se necesitan."
+    "message": "Esto nos ayudará a recopilar datos sobre cómo se está utilizando CoMapeo y qué características adicionales se necesitan."
   },
   "screens.ShareProjectStats.fullyEncrypted": {
     "message": "Tu proyecto permanecerá cifrado por completo"
@@ -1213,6 +1457,12 @@
   "sharedComponents.ErrorBottomSheet.advanced": {
     "message": "Avanzado"
   },
+  "sharedComponents.PermissionButtons.allow": {
+    "message": "Permitir"
+  },
+  "sharedComponents.PermissionButtons.openSettings": {
+    "message": "Abrir Ajustes"
+  },
   "sharedComponents.RoleWithIcon.coordinator": {
     "message": "Coordinador"
   },
@@ -1223,7 +1473,7 @@
     "message": "Regresar"
   },
   "soloProject.inviteCollaborators.introText": {
-    "message": "Comparte observaciones con otros usando CoiabApp."
+    "message": "Comparte observaciones con otros usando CoMapeo."
   },
   "soloProject.inviteCollaborators.inviteOnly": {
     "message": "Solo los dispositivos invitados a este proyecto pueden contribuir."

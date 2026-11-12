@@ -8,6 +8,7 @@ import {
   MISSING_PROJECT_ID,
   ORPHANED_ORGANIZATION_ID,
   unopenableDocument,
+  useSeedObservations,
 } from './seedData';
 import {
   classificarDocumento,
@@ -18,6 +19,14 @@ import {
 } from '../../src/frontend/lib/organization/coiabOrganizations';
 import type {Preset} from '@comapeo/schema';
 import type {BBox} from 'geojson';
+import {act, renderHook} from '@testing-library/react-native';
+import {useClientApi} from '@comapeo/core-react';
+
+jest.mock('@comapeo/core-react', () => ({
+  useClientApi: jest.fn(),
+}));
+
+const useClientApiMock = useClientApi as jest.Mock;
 
 /**
  * Only the fields `selectPointPreset` reads are meaningful here; the rest of
@@ -567,5 +576,41 @@ describe('unopenableDocument', () => {
     expect(() => unopenableDocument(nameless, 'orphan-selection')).toThrow(
       /orphan-selection seed must stay/,
     );
+  });
+});
+
+describe('useSeedObservations', () => {
+  it('computes each existing observation seed rank only once', async () => {
+    const coordinateReads = new Map<string, number>();
+    const existingObservations = Array.from({length: 8}, (_, index) => {
+      const docId = `observation-${8 - index}`;
+      return {
+        docId,
+        get lat() {
+          coordinateReads.set(docId, (coordinateReads.get(docId) ?? 0) + 1);
+          return null;
+        },
+        lon: null,
+      };
+    });
+    useClientApiMock.mockReturnValue({
+      getProject: jest.fn().mockResolvedValue({
+        observation: {
+          getMany: jest.fn().mockResolvedValue(existingObservations),
+        },
+        preset: {getMany: jest.fn().mockResolvedValue([])},
+      }),
+    });
+
+    const {result} = await renderHook(() => useSeedObservations(8));
+    let ids: string[] = [];
+    await act(async () => {
+      ids = await result.current.ensure('project-id');
+    });
+
+    expect(ids).toEqual(
+      Array.from({length: 8}, (_, index) => `observation-${index + 1}`),
+    );
+    expect([...coordinateReads.values()]).toEqual(Array(8).fill(1));
   });
 });

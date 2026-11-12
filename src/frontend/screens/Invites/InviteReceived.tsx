@@ -7,6 +7,8 @@ import {
   useAcceptInvite,
   useRejectInvite,
   useSingleInvite,
+  useCreateProject,
+  useManyProjects,
 } from '@comapeo/core-react';
 import {HeaderText} from '../../sharedComponents/Text/HeaderText';
 import {BodyText} from '../../sharedComponents/Text/BodyText';
@@ -64,7 +66,11 @@ export const InviteReceived = ({
 
   const acceptInvite = useAcceptInvite();
   const rejectInvite = useRejectInvite();
+  const createProject = useCreateProject();
   const {isTracking} = useTracking();
+  const {data: allProjects} = useManyProjects();
+
+  const hasDefaultProject = allProjects.some(proj => !proj.name);
 
   const projectColor = invite.projectColor;
   const statsShared = invite.sendStats;
@@ -73,7 +79,7 @@ export const InviteReceived = ({
 
   function accept() {
     if (isTracking) {
-      navigation.navigate('TrackRecordingActive');
+      navigation.replace('TrackRecordingActive');
       return;
     }
 
@@ -81,11 +87,20 @@ export const InviteReceived = ({
       {inviteId: inviteId},
       {
         onSuccess: projectId => {
-          const isInOnboarding = navigation.getState().routes.find(
-            // SPEC E6: the onboarding fork is organization-first — the
-            // waiting screen is JoinOrganizationIntro.
-            route => route.name === 'JoinOrganizationIntro',
-          );
+          // In versions before v6, the user did not have to have a default project
+          // Now we would like the user to always have a default project
+          // This guarantees that
+          if (!hasDefaultProject) {
+            createProject.mutate(undefined, {
+              onError: err => {
+                Sentry.captureException(err);
+              },
+            });
+          }
+
+          const isInOnboarding = navigation
+            .getState()
+            .routes.find(route => route.name === 'Success');
 
           // If the user is on the onboarding screen, simply show the invites accepted modal
           if (isInOnboarding) {
@@ -97,17 +112,11 @@ export const InviteReceived = ({
           }
 
           // otherwise reset the navigation so that the stale project is no longer showing.
-          // Full-state reset with fresh keys (see OrganizationInviteReceived):
-          // a partial `{index, routes}` is overwritten by the removed Home
-          // route's nested-navigator cleanup.
-          const sufixo = Date.now().toString(36);
           navigation.reset({
-            ...navigation.getState(),
             index: 1,
             routes: [
-              {key: `Home-${sufixo}`, name: 'Home'},
+              {name: 'Home'},
               {
-                key: `InviteSuccessfullyAccepted-${sufixo}`,
                 name: 'InviteSuccessfullyAccepted',
                 params: {projectName: invite.projectName, projectId},
               },
@@ -140,7 +149,7 @@ export const InviteReceived = ({
   return (
     <BottomSheetWrapper>
       <View style={styles.container}>
-        <BodyText variant="tinyMeta" style={styles.invitedLabel}>
+        <BodyText weight={500} variant="tinyMeta" style={styles.invitedLabel}>
           {formatMessage(m.invitedToJoin)}
         </BodyText>
 
@@ -202,7 +211,6 @@ const styles = StyleSheet.create({
   },
   invitedLabel: {
     textTransform: 'uppercase',
-    fontWeight: '500',
     alignSelf: 'stretch',
     color: BLACK,
   },

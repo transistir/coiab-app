@@ -6,12 +6,8 @@ import {
 import {useNavigationFromRoot} from '../../hooks/useNavigationWithTypes';
 import {STORAGE_QUERY_KEY} from '../../hooks/useStorageReadingQuery';
 import SaveCheck from '../../images/CheckMark.svg';
-import {IconButton} from '../../sharedComponents/IconButton';
 import {useActiveProject} from '../../contexts/ActiveProjectContext';
 import * as Sentry from '@sentry/react-native';
-
-import {View} from 'react-native';
-import {LoadingIndicator} from '../../sharedComponents/LoadingIndicator';
 import {useQueryClient} from '@tanstack/react-query';
 import {
   useDraftObservationActions,
@@ -23,7 +19,7 @@ import {
   isUnsavedPhotoAttachment,
 } from '../../lib/attachmentTypeChecks';
 import {toError} from '../../utils/errors';
-import {normalizeObserverTags} from '../../lib/observerProfile';
+import {HeaderRightContainerButton} from '../../sharedComponents/HeaderRightContainer';
 
 export const ObservationEditSaveButton = () => {
   const value = useDraftObservationState(store => store.value);
@@ -31,7 +27,7 @@ export const ObservationEditSaveButton = () => {
   const attachments = useDraftObservationState(
     store => store.unsavedAttachments,
   );
-  const {clearDraft, assertOrigin} = useDraftObservationActions();
+  const {clearDraft} = useDraftObservationActions();
   const navigation = useNavigationFromRoot();
   const {projectId} = useActiveProject();
   const preset = value?.presetRef;
@@ -69,15 +65,6 @@ export const ObservationEditSaveButton = () => {
     let newAttachments: Attachment[] = [];
 
     try {
-      // SPEC A CA09 / FIX-F: validate the draft's origin against the ACTIVE
-      // operational projectId BEFORE writing anything to core — the edit flow
-      // reuses the same origin-stamped draft store as create, so a diverged
-      // origin (draft started in project A, active project now B) must throw
-      // 'work-origin-mismatch' here, before any photo/audio attachment is
-      // written into the wrong project's media store. Mirrors
-      // ObservationCreateSaveButton and SaveTrackButton. A legacy draft with
-      // no stamped origin is not diverged and stays saveable.
-      assertOrigin(projectId);
       if (attachments) {
         const photoAttachments = attachments.filter(att =>
           isUnsavedPhotoAttachment(att),
@@ -114,7 +101,6 @@ export const ObservationEditSaveButton = () => {
         versionId: versionId,
         value: {
           ...value,
-          tags: normalizeObserverTags(value.tags),
           attachments: [...value.attachments, ...newAttachments],
           presetRef: preset
             ? {docId: preset.docId, versionId: preset.versionId}
@@ -138,13 +124,12 @@ export const ObservationEditSaveButton = () => {
     navigation.goBack();
   }
 
-  return isLoading ? (
-    <View style={{marginRight: 10}}>
-      <LoadingIndicator size="large" />
-    </View>
-  ) : (
-    <IconButton onPress={handlePressSave} testID="OBS.edit-save-btn">
+  return (
+    <HeaderRightContainerButton
+      loading={isLoading}
+      onPress={handlePressSave}
+      testID="OBS.edit-save-btn">
       <SaveCheck />
-    </IconButton>
+    </HeaderRightContainerButton>
   );
 };
