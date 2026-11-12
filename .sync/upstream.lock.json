@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "upstream": {
+    "repository": "digidem/comapeo-mobile",
+    "release_tag": "v14.0",
+    "release_sha": "cb7b53c3792be793218a62385b7b0676895a29b3",
+    "release_line": "release/v14.x",
+    "release_line_tip_at_selection": "20fdde7a",
+    "selection": "tag pinned deliberately; release line had moved past the tag"
+  },
+  "parent_trunk": {
+    "repository": "transistir/comapeo-mobile-1",
+    "base_sha": "0ba3657f3dba29eb46b504c1fb727a23d82964a7",
+    "merge_sha": "a3fb0367a8f20ee0350f256d3651d4cf40d6277a",
+    "patch_fix_sha": "9bbc3c1a87dde4257af2a19a39c0516a13184f91",
+    "candidate_sha": "8d2abc1b8dbfd4cb59e3e22be354b959a13f6cf6",
+    "candidate_state": "authorized: all and frontend passed at this SHA",
+    "branch": "sync/upstream-v14.0",
+    "pull_request": "https://github.com/transistir/comapeo-mobile-1/pull/81",
+    "merge_method": "merge",
+    "ci": {
+      "all": "success",
+      "frontend": "success",
+      "lockfile_version": "success",
+      "greptile": "success",
+      "runs": [
+        "https://github.com/transistir/comapeo-mobile-1/actions/runs/43271110510",
+        "https://github.com/transistir/comapeo-mobile-1/actions/runs/43271110494"
+      ]
+    }
+  },
+  "downstream": {
+    "repository": "transistir/coiab-app",
+    "base_branch": "develop",
+    "base_sha_at_baseline": "d84add08",
+    "measured_conflicts": {
+      "files": 55,
+      "hunks": 79,
+      "content": 47,
+      "delete_modify": 7,
+      "modify_delete": 2
+    }
+  },
+  "ancestry_assertions": {
+    "merge_commit_parents": [
+      "0ba3657f3dba29eb46b504c1fb727a23d82964a7",
+      "cb7b53c3792be793218a62385b7b0676895a29b3"
+    ],
+    "verified": true
+  },
+  "notes": [
+    "candidate_state moves to 'authorized' only after all and frontend pass at candidate_sha",
+    "downstream merge must use the full candidate SHA, never a branch or PR ref"
+  ]
+}
