@@ -58,6 +58,7 @@
     "@react-native-vector-icons/material-icons": "13.1.3",
     "@react-native-vector-icons/octicons": "21.1.3",
     "@react-navigation/bottom-tabs": "7.18.18",
+    "@react-navigation/elements": "2.9.40",
     "@react-navigation/native": "7.3.18",
     "@sentry/react-native": "8.15.1",
     "@tanstack/react-query": "5.102.8",
