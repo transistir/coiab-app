@@ -16,7 +16,7 @@ import MaterialIcon from '@react-native-vector-icons/material-icons';
 import AntDesign from '@react-native-vector-icons/ant-design';
 import TracksIcon from '../../images/Tracks.svg';
 import {usePreventRemove} from '@react-navigation/native';
-import {useActiveProjectIdActions} from '../../contexts/ActiveProjectIdStoreContext';
+import {useProjetarProjectIdAtivo} from '../../contexts/ActiveProjectIdStoreContext';
 import {LoadingIndicator} from '../../sharedComponents/LoadingIndicator';
 const m = defineMessages({
   deviceReady: {
@@ -51,7 +51,7 @@ export const Success = ({
   const {data: deviceInfo} = useOwnDeviceInfo();
   const deviceName = deviceInfo.name || '';
   const {mutate: createProject, status} = useCreateProject();
-  const {setActiveProjectId} = useActiveProjectIdActions();
+  const projetarProjectIdAtivo = useProjetarProjectIdAtivo();
 
   // Prevent navigating away during loading, but allow programmatic navigation
   usePreventRemove(status === 'pending', () => {});
@@ -62,7 +62,7 @@ export const Success = ({
         navigation.navigate('ErrorBottomSheet', {error: err});
       },
       onSuccess: projectId => {
-        setActiveProjectId(projectId);
+        projetarProjectIdAtivo(projectId);
       },
     });
   }

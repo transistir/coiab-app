@@ -149,7 +149,7 @@ function Navegador({
 }
 
 const nomesDasRotas = () =>
-  navigationRef.getRootState().routes.map(route => route.name);
+  navigationRef.getRootState()!.routes.map(route => route.name);
 
 describe('ProjectRemovalListener (Fase 11b)', () => {
   beforeEach(() => {

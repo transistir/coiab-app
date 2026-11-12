@@ -1226,7 +1226,7 @@ describe('OrganizationProvisioning', () => {
       // over is exactly the stack that stays — no Home reset fires while
       // the explanation is up.
       expect(
-        navigationRef.getRootState().routes.map(item => item.name),
+        navigationRef.getRootState()!.routes.map(item => item.name),
       ).toEqual(['OrganizationProvisioning', 'RemovedFromProjectBottomSheet']);
     }, 30_000);
 
@@ -1911,7 +1911,7 @@ describe('OrganizationProvisioning', () => {
       );
       await screen.findByText('SHEET-REACHED');
       expect(
-        navigationRef.getRootState().routes.map(item => item.name),
+        navigationRef.getRootState()!.routes.map(item => item.name),
       ).toEqual(['OrganizationProvisioning', 'RemovedFromProjectBottomSheet']);
 
       await act(async () => {
@@ -1920,7 +1920,7 @@ describe('OrganizationProvisioning', () => {
 
       expect(await screen.findByText('HOME-REACHED')).toBeOnTheScreen();
       expect(
-        navigationRef.getRootState().routes.map(item => item.name),
+        navigationRef.getRootState()!.routes.map(item => item.name),
       ).toEqual(['Home']);
     });
   });

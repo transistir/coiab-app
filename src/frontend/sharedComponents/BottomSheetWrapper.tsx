@@ -4,6 +4,7 @@ import Animated, {SlideInDown, SlideOutDown} from 'react-native-reanimated';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {WHITE} from '../lib/styles';
 import {useNavigation} from '@react-navigation/native';
+import {usePreventAndroidBackButton} from '../hooks/usePreventAndroidBackButton';
 
 /**
  *

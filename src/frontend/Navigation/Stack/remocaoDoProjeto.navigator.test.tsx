@@ -118,7 +118,7 @@ import {
 } from '../../../../tests/integration/helpers/setupIntegrationTest';
 
 const nomesDasRotas = () =>
-  mockNavigation.getRootState().routes.map(route => route.name);
+  mockNavigation.getRootState()!.routes.map(route => route.name);
 
 /**
  * Review fronteira P2-3 at navigator level: the removal explanation must

@@ -186,7 +186,9 @@ export const ObservationScreen: NativeNavigationComponent<'Observation'> = ({
             />
           </>
         )}
-        <ObserverSection createdBy={observation.createdBy} />
+        {observation.createdBy && (
+          <ObserverSection createdBy={observation.createdBy} />
+        )}
         <View style={styles.divider} />
         <ButtonFields observationId={observationId} fields={fields} />
       </>

@@ -13,7 +13,7 @@ import {
   useProjectSettings,
 } from '@comapeo/core-react';
 import {useActiveProject} from '../contexts/ActiveProjectContext';
-import {useActiveProjectIdActions} from '../contexts/ActiveProjectIdStoreContext';
+import {useProjetarProjectIdAtivo} from '../contexts/ActiveProjectIdStoreContext';
 import {LoadingIndicator} from '../sharedComponents/LoadingIndicator';
 import {ColorCard} from '../sharedComponents/ColorCard';
 import {DEFAULT_PROJECT_COLOR} from '../constants';
@@ -47,7 +47,7 @@ export const RemovedFromProjectBottomSheet = ({
   } = useProjectSettings({projectId});
   const {data: projects} = useManyProjects();
   const defaultProject = projects.find(proj => !proj.name);
-  const {setActiveProjectId} = useActiveProjectIdActions();
+  const projetarProjectIdAtivo = useProjetarProjectIdAtivo();
   const createProject = useCreateProject();
   const leaveProject = useLeaveProject();
 
@@ -89,7 +89,7 @@ export const RemovedFromProjectBottomSheet = ({
                           onError: err => {
                             const firstProject = projects[0];
                             if (firstProject) {
-                              setActiveProjectId(firstProject.projectId);
+                              projetarProjectIdAtivo(firstProject.projectId);
                               navigation.popToTop();
                               return;
                             }
@@ -101,13 +101,13 @@ export const RemovedFromProjectBottomSheet = ({
                             });
                           },
                           onSuccess: newDefaultProjectId => {
-                            setActiveProjectId(newDefaultProjectId);
+                            projetarProjectIdAtivo(newDefaultProjectId);
                             navigation.popToTop();
                           },
                         });
                         return;
                       }
-                      setActiveProjectId(defaultProject.projectId);
+                      projetarProjectIdAtivo(defaultProject.projectId);
                       navigation.popToTop();
                     },
                   },

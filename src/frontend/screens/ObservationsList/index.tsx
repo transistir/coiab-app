@@ -72,7 +72,11 @@ export const ObservationsList: React.FC<
   }, [observations, tracks, filterMode, deviceInfo?.deviceId]);
 
   if ((!observations.length && !tracks.length) || authState === 'obscured') {
-    return <ObservationEmptyView />;
+    return (
+      <ObservationEmptyView
+        onPressBack={() => navigation.popTo('Home', {screen: 'Map'})}
+      />
+    );
   }
 
   return (
