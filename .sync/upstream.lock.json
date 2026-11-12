@@ -14,10 +14,20 @@
     "merge_sha": "a3fb0367a8f20ee0350f256d3651d4cf40d6277a",
     "patch_fix_sha": "9bbc3c1a87dde4257af2a19a39c0516a13184f91",
     "candidate_sha": "8d2abc1b8dbfd4cb59e3e22be354b959a13f6cf6",
-    "candidate_state": "awaiting exact-commit CI",
+    "candidate_state": "authorized: all and frontend passed at this SHA",
     "branch": "sync/upstream-v14.0",
     "pull_request": "https://github.com/transistir/comapeo-mobile-1/pull/81",
-    "merge_method": "merge"
+    "merge_method": "merge",
+    "ci": {
+      "all": "success",
+      "frontend": "success",
+      "lockfile_version": "success",
+      "greptile": "success",
+      "runs": [
+        "https://github.com/transistir/comapeo-mobile-1/actions/runs/43271110510",
+        "https://github.com/transistir/comapeo-mobile-1/actions/runs/43271110494"
+      ]
+    }
   },
   "downstream": {
     "repository": "transistir/coiab-app",
