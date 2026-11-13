@@ -50,26 +50,9 @@ jobs:
         run: EXPO_PUBLIC_STORYBOOK_ENABLED=true npm run storybook-generate
       - name: Check types
         run: npm run lint:types
-      # A flag da CLI substitui o testPathIgnorePatterns do jest.config.js, então
-      # o tests/e2e/ precisa ser repetido aqui.
       - name: Run unit tests
-        run: npm run test:jest -- --testPathIgnorePatterns '<rootDir>/tests/e2e/' '/Navigation/Tab/(index|index\.menu)\.test\.tsx$'
+        run: npm run test:jest -- --forceExit
         env:
-          NODE_OPTIONS: --max-old-space-size=3072
-          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
-          COMAPEO_METRICS_URL: ${{ vars.COMAPEO_METRICS_URL }}
-          COMAPEO_METRICS_API_KEY: ${{ secrets.COMAPEO_METRICS_API_KEY }}
-
-      # As duas suítes que montam o navegador inteiro são o pico de memória do
-      # job; sozinhas e em banda não competem com os outros workers.
-      - name: Run full-navigator suites
-        run: npm run test:jest -- --runInBand --testPathPattern '/Navigation/Tab/(index|index\.menu)\.test\.tsx$'
-        env:
-          # Medição: o worker estourou o teto de 3GB ao carregar/montar o
-          # navegador (heap out of memory). Se passar com 6GB, mantemos o passo
-          # isolado e abrimos um follow-up para reduzir o custo do mount; se
-          # ainda estourar, o harness tem um vazamento real.
-          NODE_OPTIONS: --max-old-space-size=6144
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
           COMAPEO_METRICS_URL: ${{ vars.COMAPEO_METRICS_URL }}
           COMAPEO_METRICS_API_KEY: ${{ secrets.COMAPEO_METRICS_API_KEY }}
