@@ -51,7 +51,7 @@ jobs:
       - name: Check types
         run: npm run lint:types
       - name: Run unit tests
-        run: npm run test:jest -- --forceExit
+        run: npm run test:jest -- --runInBand --logHeapUsage --testPathPattern '/__probe__/'
         env:
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
           COMAPEO_METRICS_URL: ${{ vars.COMAPEO_METRICS_URL }}
