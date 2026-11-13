@@ -27,8 +27,7 @@ import TracksIcon from '../../images/Tracks.svg';
 import {useTracking} from '../../hooks/useTracking';
 import {useTrackTimer} from '../../hooks/useTrackTimer';
 import {BodyText} from '../../sharedComponents/Text/BodyText';
-import {useObservations} from '../../hooks/server/observations';
-import {useTracks} from '../../hooks/server/track';
+import {useHasCachedDocs} from '../../hooks/server/useHasCachedDocs';
 import {useAuthContext} from '../../contexts/AuthContext';
 import {OrganizationRepairBanner} from '../../sharedComponents/OrganizationRepairBanner';
 import {MENU_TRANSITION_SPEC, menuSceneInterpolator} from './menuTransition';
@@ -75,13 +74,9 @@ const TAB_SCREEN_OPTIONS: BottomTabNavigationOptions = {
   header: headerTransparente,
 };
 
-// The buttons read suspense queries; their own boundary keeps a pending query
-// from suspending the whole HomeHeader (title, safe-area padding) with it.
-const renderObservationsHeaderRight = () => (
-  <React.Suspense fallback={null}>
-    <DownloadObservationsHeaderRight />
-  </React.Suspense>
-);
+// Neither header-right button suspends (see `useShowDownloadIcon`), so no
+// Suspense boundary is needed around them.
+const renderObservationsHeaderRight = () => <DownloadObservationsHeaderRight />;
 
 const renderMapHeaderRight = () => <MapTrackHeaderRight />;
 
@@ -137,11 +132,7 @@ export const HomeTabs = ({navigation}: NativeRootNavigationProps<'Home'>) => {
             surface — it duplicated the organisation name already shown in
             the greeting. Only Map keeps the transparent navigator header
             (map under the status bar); content tabs use `headerSolido`. */}
-        <Tab.Screen
-          name="Menu"
-          component={MenuScreen}
-          options={MENU_OPTIONS}
-        />
+        <Tab.Screen name="Menu" component={MenuScreen} options={MENU_OPTIONS} />
         <Tab.Screen
           name="ObservationsList"
           component={ObservationsList}
@@ -217,14 +208,17 @@ export function TrackMapButton({onPress}: {onPress: () => void}) {
   );
 }
 
+// Never suspends: the header reads only what the ObservationsList screen's own
+// `useObservations`/`useTracks` already put in the query cache. A suspending
+// `useManyDocs` here, mounted through the navigator header, re-rendered the
+// screen without end (OOM in the HomeTabs suite). Nothing cached yet = hidden,
+// the same as the empty case.
 function useShowDownloadIcon() {
-  const {data: observations} = useObservations();
-  const {data: tracks} = useTracks();
+  const hasObservations = useHasCachedDocs('observation');
+  const hasTracks = useHasCachedDocs('track');
   const {authState} = useAuthContext();
 
-  return (
-    (observations.length > 0 || tracks.length > 0) && authState !== 'obscured'
-  );
+  return (hasObservations || hasTracks) && authState !== 'obscured';
 }
 
 function DownloadObservationsButton({onPress}: {onPress: () => void}) {
