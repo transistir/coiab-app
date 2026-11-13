@@ -79,9 +79,9 @@ describe('HomeTabs — menu, download e câmera (#32)', () => {
     await waitFor(() =>
       expect(h.navigation.getCurrentRoute()?.name).toBe('Camera'),
     );
-    expect((h.navigation.getRootState().routes ?? []).map(r => r.name)).toEqual(
-      ['Home'],
-    );
+    expect(
+      (h.navigation.getRootState()?.routes ?? []).map(r => r.name),
+    ).toEqual(['Home']);
     expect(await screen.findByTestId('MAIN.camera-scrn')).toBeTruthy();
     expect(screen.queryByTestId('MENU.conteudo')).toBeNull();
   });
