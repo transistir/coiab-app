@@ -13,11 +13,6 @@ import {useObservations} from '../../hooks/server/observations';
 import {useTracks} from '../../hooks/server/track';
 import {useAuthContext} from '../../contexts/AuthContext';
 import {ObservationFilterToggle} from './ObservationFilterToggle';
-import {useActiveProject} from '../../contexts/ActiveProjectContext';
-
-// TEMPORARY instrumentation (tab-suite OOM): revert once the CI log is read.
-let loggedScreenProject = false;
-let screenRenderCount = 0;
 
 const m = defineMessages({
   observationListTitle: {
@@ -36,19 +31,6 @@ export const ObservationsList: React.FC<
 > & {
   navTitle: MessageDescriptor;
 } = ({navigation}) => {
-  const {projectId: instrumentedProjectId} = useActiveProject();
-  screenRenderCount += 1;
-  const inNode =
-    typeof process !== 'undefined' && typeof process.memoryUsage === 'function';
-  if (inNode && !loggedScreenProject) {
-    loggedScreenProject = true;
-    process.stderr.write(
-      `[hdr] screen projectId ${String(instrumentedProjectId)}\n`,
-    );
-  }
-  if (inNode && (screenRenderCount <= 10 || screenRenderCount % 200 === 0)) {
-    process.stderr.write(`[hdr] screen render ${screenRenderCount}\n`);
-  }
   const {data: observations} = useObservations();
   const {data: tracks} = useTracks();
   const {authState} = useAuthContext();
