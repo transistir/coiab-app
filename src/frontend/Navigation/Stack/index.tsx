@@ -29,7 +29,6 @@ import {
   type CoordinationRole,
 } from '../../contexts/UserProfileStoreContext';
 import {AuthScreen} from '../../screens/AuthScreen';
-import {Success} from '../../screens/Onboarding/Success';
 import {EthnicGroupSelection} from '../../screens/Onboarding/EthnicGroupSelection';
 import {VillageEntry} from '../../screens/Onboarding/VillageEntry';
 import {CreateOrganization} from '../../screens/Onboarding/CreateOrganization';
@@ -441,7 +440,6 @@ export const RootStackNavigator = () => {
               component={VillageEntry}
               options={{headerShown: false}}
             />
-            <RootStack.Screen name="Success" component={Success} />
             <RootStack.Screen
               name="CreateOrganization"
               component={CreateOrganization}
