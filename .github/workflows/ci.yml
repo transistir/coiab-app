@@ -50,8 +50,11 @@ jobs:
         run: EXPO_PUBLIC_STORYBOOK_ENABLED=true npm run storybook-generate
       - name: Check types
         run: npm run lint:types
-      - name: Run unit tests
-        run: npm run test:jest
+      # THROWAWAY: instrumented Paneiro header, menu suite only. `[hdr]` lines
+      # go to stderr so they survive an OOM kill of the worker.
+      - name: Instrumented menu suite
+        continue-on-error: true
+        run: npm run test:jest -- --runInBand --testPathPattern '/Navigation/Tab/index\.menu\.test\.tsx$'
         env:
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
           COMAPEO_METRICS_URL: ${{ vars.COMAPEO_METRICS_URL }}

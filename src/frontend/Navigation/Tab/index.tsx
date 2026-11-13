@@ -30,6 +30,7 @@ import {BodyText} from '../../sharedComponents/Text/BodyText';
 import {useObservations} from '../../hooks/server/observations';
 import {useTracks} from '../../hooks/server/track';
 import {useAuthContext} from '../../contexts/AuthContext';
+import {useActiveProject} from '../../contexts/ActiveProjectContext';
 import {OrganizationRepairBanner} from '../../sharedComponents/OrganizationRepairBanner';
 import {MENU_TRANSITION_SPEC, menuSceneInterpolator} from './menuTransition';
 
@@ -137,11 +138,7 @@ export const HomeTabs = ({navigation}: NativeRootNavigationProps<'Home'>) => {
             surface — it duplicated the organisation name already shown in
             the greeting. Only Map keeps the transparent navigator header
             (map under the status bar); content tabs use `headerSolido`. */}
-        <Tab.Screen
-          name="Menu"
-          component={MenuScreen}
-          options={MENU_OPTIONS}
-        />
+        <Tab.Screen name="Menu" component={MenuScreen} options={MENU_OPTIONS} />
         <Tab.Screen
           name="ObservationsList"
           component={ObservationsList}
@@ -217,10 +214,54 @@ export function TrackMapButton({onPress}: {onPress: () => void}) {
   );
 }
 
+// TEMPORARY instrumentation (tab-suite OOM): revert once the CI log is read.
+// Writes straight to stderr: jest buffers console.* per file and loses the
+// buffer when the worker is killed by an OOM.
+let renderCount = 0;
+let firstRenderAt = 0;
+let lastObs: unknown;
+let lastTrk: unknown;
+let loggedHeaderProject = false;
+const inNode =
+  typeof process !== 'undefined' && typeof process.memoryUsage === 'function';
+function hdrLog(...parts: unknown[]) {
+  if (!inNode) return;
+  process.stderr.write(parts.map(p => String(p)).join(' ') + '\n');
+}
+
 function useShowDownloadIcon() {
+  const {projectId} = useActiveProject();
   const {data: observations} = useObservations();
   const {data: tracks} = useTracks();
   const {authState} = useAuthContext();
+
+  renderCount += 1;
+  if (renderCount === 1) firstRenderAt = Date.now();
+  if (!loggedHeaderProject) {
+    loggedHeaderProject = true;
+    hdrLog('[hdr] header projectId', projectId);
+  }
+  if (renderCount <= 40 || renderCount % 200 === 0) {
+    hdrLog(
+      '[hdr]',
+      renderCount,
+      `+${Date.now() - firstRenderAt}ms`,
+      'heapMB',
+      inNode ? Math.round(process.memoryUsage().heapUsed / 1048576) : -1,
+      'obs',
+      observations.length,
+      'trk',
+      tracks.length,
+      'auth',
+      authState,
+      'obsId',
+      observations === lastObs ? 'same' : 'new',
+      'trkId',
+      tracks === lastTrk ? 'same' : 'new',
+    );
+  }
+  lastObs = observations;
+  lastTrk = tracks;
 
   return (
     (observations.length > 0 || tracks.length > 0) && authState !== 'obscured'
