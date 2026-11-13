@@ -77,6 +77,7 @@ export const SaveTrackButton: FC = () => {
   return (
     <HeaderRightContainerButton
       loading={status === 'pending'}
+      accessibilityLabel="Save track."
       onPress={handleSaveClick}>
       <SaveCheck />
     </HeaderRightContainerButton>

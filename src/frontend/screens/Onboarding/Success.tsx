@@ -3,135 +3,125 @@ import {StyleSheet, View} from 'react-native';
 import Ionicons from '@react-native-vector-icons/ionicons';
 
 import DeviceIcon from '../../images/Device.svg';
+import ProjectParticipantIcon from '../../images/ProjectParticipant.svg';
+import ProjectCoordinatorIcon from '../../images/ProjectCoordinator.svg';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {defineMessages, useIntl} from 'react-intl';
 import {OnboardingParamsList} from '../../sharedTypes/navigation';
 import {HeaderText} from '../../sharedComponents/Text/HeaderText';
 import {BodyText} from '../../sharedComponents/Text/BodyText';
-import {PrimaryButton} from '../../sharedComponents/Buttons';
-import {WHITE, DARK_GREEN, NEW_DARK_GREY} from '../../lib/styles';
-import {useCreateProject, useOwnDeviceInfo} from '@comapeo/core-react';
-import {ScreenContentWithDock} from '../../sharedComponents/ScreenContentWithDock';
-import MaterialIcon from '@react-native-vector-icons/material-icons';
-import AntDesign from '@react-native-vector-icons/ant-design';
-import TracksIcon from '../../images/Tracks.svg';
-import {usePreventRemove} from '@react-navigation/native';
-import {useProjetarProjectIdAtivo} from '../../contexts/ActiveProjectIdStoreContext';
-import {LoadingIndicator} from '../../sharedComponents/LoadingIndicator';
+import {PrimaryButton, SecondaryButton} from '../../sharedComponents/Buttons';
+import {WHITE, DARK_GREEN, COMAPEO_BLUE} from '../../lib/styles';
+import {useOwnDeviceInfo} from '@comapeo/core-react';
+import {useUserProfileActions} from '../../contexts/UserProfileStoreContext';
+
 const m = defineMessages({
   deviceReady: {
     id: '$1screens.DeviceNaming.Success.deviceReady',
     defaultMessage: '{deviceName} is ready!',
   },
-  startMapping: {
-    id: '$1screens.DeviceNaming.Success.startMapping',
-    defaultMessage: 'Start Mapping',
+  // #129: the onboarding fork after the profile steps is the coordinator
+  // question — creating a Territory is no longer offered directly.
+  roleQuestion: {
+    id: '$1screens.OrganizationSetup.roleQuestion',
+    defaultMessage: 'Are you a coordinator?',
   },
-  coordinateOrMap: {
-    id: 'screens.DeviceNaming.Success.coordinateOrMap',
-    defaultMessage: 'Coordinate with team to start or map on your own.',
+  roleCoordinatorButton: {
+    id: '$1screens.OrganizationSetup.roleCoordinatorButton',
+    defaultMessage: 'Yes, I am a coordinator',
   },
-  snapPhotos: {
-    id: 'screens.DeviceNaming.Success.snapPhotos',
-    defaultMessage: 'Snap photos on-the-go.',
-  },
-  addAudio: {
-    id: 'screens.DeviceNaming.Success.addAudio',
-    defaultMessage: 'Add audio recordings.',
-  },
-  tracks: {
-    id: 'screens.DeviceNaming.Success.tracks',
-    defaultMessage: 'Track paths walked.',
+  roleParticipantButton: {
+    id: '$1screens.OrganizationSetup.roleParticipantButton',
+    defaultMessage: 'No, I am a participant',
   },
 });
 export const Success = ({
   navigation,
 }: NativeStackScreenProps<OnboardingParamsList, 'Success'>) => {
-  const {formatMessage} = useIntl();
+  const {formatMessage: t} = useIntl();
   const {data: deviceInfo} = useOwnDeviceInfo();
+  const {setCoordinationRole} = useUserProfileActions();
   const deviceName = deviceInfo.name || '';
-  const {mutate: createProject, status} = useCreateProject();
-  const projetarProjectIdAtivo = useProjetarProjectIdAtivo();
-
-  // Prevent navigating away during loading, but allow programmatic navigation
-  usePreventRemove(status === 'pending', () => {});
-
-  function handleGoToMap() {
-    createProject(undefined, {
-      onError: err => {
-        navigation.navigate('ErrorBottomSheet', {error: err});
-      },
-      onSuccess: projectId => {
-        projetarProjectIdAtivo(projectId);
-      },
-    });
-  }
 
   return (
-    <ScreenContentWithDock
-      contentContainerStyle={{paddingTop: 85, alignItems: 'center', gap: 20}}
-      dockContent={
-        status === 'pending' ? (
-          <LoadingIndicator />
-        ) : (
-          <PrimaryButton
-            testID="ONBOARDING.navigate-to-map-btn"
-            fullSize
-            text={formatMessage(m.startMapping)}
-            iconPosition="left"
-            renderIcon={({size, color}) => (
-              <MaterialIcon name="map" size={size} color={color} />
-            )}
-            onPress={handleGoToMap}
-          />
-        )
-      }>
-      <View style={styles.iconContainer}>
-        <DeviceIcon width={40} height={60} />
-        <View style={styles.checkmarkCircle}>
-          <Ionicons name="checkmark" color={WHITE} size={18} />
+    <View style={styles.container}>
+      <View style={styles.content}>
+        <View style={styles.mainCard}>
+          <View style={styles.titleSection}>
+            <View style={styles.iconContainer}>
+              <DeviceIcon width={40} height={60} />
+              <View style={styles.checkmarkCircle}>
+                <Ionicons name="checkmark" color={WHITE} size={18} />
+              </View>
+            </View>
+            <HeaderText variant="header2" style={styles.headerText}>
+              {t(m.deviceReady, {deviceName})}
+            </HeaderText>
+          </View>
+          <BodyText style={styles.bodyText}>{t(m.roleQuestion)}</BodyText>
         </View>
       </View>
-      <HeaderText
-        style={{textAlign: 'center', paddingHorizontal: 20}}
-        variant="header2">
-        {formatMessage(m.deviceReady, {deviceName})}
-      </HeaderText>
-      <HeaderText
-        style={{textAlign: 'center', paddingHorizontal: 40}}
-        variant="header5">
-        {formatMessage(m.coordinateOrMap)}
-      </HeaderText>
-      <View style={{gap: 12, paddingHorizontal: 20, marginTop: 20}}>
-        <BulletListItem
-          text={formatMessage(m.snapPhotos)}
-          Icon={<MaterialIcon size={26} name="photo-camera" />}
+
+      <View style={styles.actions}>
+        <PrimaryButton
+          testID="ONBOARDING.role-coordinator-btn"
+          fullSize
+          text={t(m.roleCoordinatorButton)}
+          iconPosition="left"
+          renderIcon={({size, color}) => (
+            <ProjectCoordinatorIcon
+              width={size}
+              height={size}
+              color={color}
+              fill={color}
+            />
+          )}
+          onPress={() => {
+            setCoordinationRole('coordinator');
+            navigation.navigate('CreateOrganization');
+          }}
         />
-        <BulletListItem
-          text={formatMessage(m.addAudio)}
-          Icon={<AntDesign size={26} name="audio" />}
-        />
-        <BulletListItem
-          text={formatMessage(m.tracks)}
-          Icon={<TracksIcon height={26} />}
+        <SecondaryButton
+          testID="ONBOARDING.role-participant-btn"
+          fullSize
+          text={t(m.roleParticipantButton)}
+          iconPosition="left"
+          renderIcon={({size}) => (
+            <ProjectParticipantIcon
+              width={size}
+              height={size}
+              color={COMAPEO_BLUE}
+              fill={COMAPEO_BLUE}
+            />
+          )}
+          onPress={() => {
+            setCoordinationRole('participant');
+            navigation.navigate('JoinOrganizationIntro');
+          }}
         />
       </View>
-    </ScreenContentWithDock>
+    </View>
   );
 };
 
-function BulletListItem({text, Icon}: {text: string; Icon: React.ReactNode}) {
-  return (
-    <View style={styles.bulletItem}>
-      {Icon}
-      <BodyText variant="smallMeta" style={styles.bulletText}>
-        {text}
-      </BodyText>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+  },
+  content: {
+    paddingHorizontal: 20,
+  },
+  mainCard: {
+    paddingVertical: 65,
+    paddingHorizontal: 20,
+    gap: 20,
+  },
+  titleSection: {
+    alignItems: 'center',
+    gap: 10,
+  },
   iconContainer: {
     width: 60,
     height: 70,
@@ -148,13 +138,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  bulletItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+  headerText: {
+    marginTop: 10,
+    textAlign: 'center',
   },
-  bulletText: {
-    flexShrink: 1,
-    color: NEW_DARK_GREY,
+  bodyText: {
+    textAlign: 'center',
+    paddingHorizontal: 20,
+  },
+  actions: {
+    alignItems: 'center',
+    paddingVertical: 20,
+    gap: 10,
   },
 });

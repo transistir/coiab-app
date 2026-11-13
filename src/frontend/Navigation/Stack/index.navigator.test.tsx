@@ -63,6 +63,10 @@ jest.mock('@maplibre/maplibre-react-native', () => {
     // Named exports: the real Observation screen renders InsetMapView,
     // which destructures them directly.
     MapView: Stub,
+    // maplibre-react-native 11 renamed MapView/MarkerView to Map/Marker; the
+    // merged InsetMapView imports the new names.
+    Map: Stub,
+    Marker: Stub,
     Camera: Stub,
     MarkerView: Stub,
     UserLocation: Stub,

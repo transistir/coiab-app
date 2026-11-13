@@ -15,6 +15,7 @@ type HeaderRightContainerButtonProps = {
   children: React.ReactNode;
   onPress: ((event: GestureResponderEvent) => void) | (() => void);
   testID?: string;
+  accessibilityLabel?: string;
   loading: boolean;
 };
 
@@ -22,6 +23,7 @@ export const HeaderRightContainerButton = ({
   children,
   onPress,
   testID,
+  accessibilityLabel,
   loading,
 }: HeaderRightContainerButtonProps) => {
   return (
@@ -29,7 +31,10 @@ export const HeaderRightContainerButton = ({
       {loading ? (
         <LoadingIndicator size="large" />
       ) : (
-        <TouchableOpacity style={styles.container} onPress={onPress}>
+        <TouchableOpacity
+          style={styles.container}
+          onPress={onPress}
+          accessibilityLabel={accessibilityLabel}>
           {children}
         </TouchableOpacity>
       )}
