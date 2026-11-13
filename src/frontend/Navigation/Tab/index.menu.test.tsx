@@ -1,5 +1,6 @@
 import {useHomeTabsHarness} from './homeTabsHarness';
 
+import {StackActions} from '@react-navigation/native';
 import {act, screen, userEvent, waitFor} from '@testing-library/react-native';
 
 // Second half of the HomeTabs navigator suite (see index.test.tsx): the
@@ -69,12 +70,19 @@ describe('HomeTabs — menu, download e câmera (#32)', () => {
     expect(await screen.findByTestId('STUB.category-chooser')).toBeTruthy();
 
     // A rota Camera segue registrada e montável dentro das home tabs.
+    // Volta ao Home existente como o app faz (ObservationCreateSaveButton):
+    // `navigate('Home')` com o seletor no topo empilharia um SEGUNDO Home
+    // (react-navigation 7 só reaproveita a rota se ela for a atual).
     act(() => {
-      h.navigation.navigate('Home', {screen: 'Camera'});
+      h.navigation.dispatch(StackActions.popTo('Home', {screen: 'Camera'}));
     });
     await waitFor(() =>
       expect(h.navigation.getCurrentRoute()?.name).toBe('Camera'),
     );
+    expect(h.navigation.getRootState().routes.map(r => r.name)).toEqual([
+      'Home',
+    ]);
     expect(await screen.findByTestId('MAIN.camera-scrn')).toBeTruthy();
+    expect(screen.queryByTestId('MENU.conteudo')).toBeNull();
   });
 });
