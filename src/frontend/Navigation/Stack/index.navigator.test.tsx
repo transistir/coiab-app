@@ -657,7 +657,9 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       mockNavigation.getRootState()!.routes.map(route => route.name),
     ).toEqual(['OrganizationProvisioning']);
     expect(screen.queryByTestId('MAIN.map-screen')).not.toBeOnTheScreen();
-    expect(mockNavigation.getRootState()!.routeNames).toContain('Organizations');
+    expect(mockNavigation.getRootState()!.routeNames).toContain(
+      'Organizations',
+    );
 
     // §7/:157: recovery cannot prune the one route that lets the user pick
     // another organization. Exercise the real StackRouter, not a screen mock.

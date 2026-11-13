@@ -370,7 +370,9 @@ export const RootStackNavigator = () => {
           }
         />
         {!isNotReadyForInvite && (
-          <DeepLinkListener currentRouteName={state.routes[state.index]?.name} />
+          <DeepLinkListener
+            currentRouteName={state.routes[state.index]?.name}
+          />
         )}
         {/* Wrap here so app screens get ActiveProjectProvider without a separate navigator.
             The operational id falls back to the document's own derivation
