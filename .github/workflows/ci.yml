@@ -65,7 +65,11 @@ jobs:
       - name: Run full-navigator suites
         run: npm run test:jest -- --runInBand --testPathPattern '/Navigation/Tab/(index|index\.menu)\.test\.tsx$'
         env:
-          NODE_OPTIONS: --max-old-space-size=3072
+          # Medição: o worker estourou o teto de 3GB ao carregar/montar o
+          # navegador (heap out of memory). Se passar com 6GB, mantemos o passo
+          # isolado e abrimos um follow-up para reduzir o custo do mount; se
+          # ainda estourar, o harness tem um vazamento real.
+          NODE_OPTIONS: --max-old-space-size=6144
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
           COMAPEO_METRICS_URL: ${{ vars.COMAPEO_METRICS_URL }}
           COMAPEO_METRICS_API_KEY: ${{ secrets.COMAPEO_METRICS_API_KEY }}
