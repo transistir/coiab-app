@@ -407,9 +407,6 @@
   "$1screens.DeviceNaming.Success.deviceReady": {
     "message": "{deviceName} is ready!"
   },
-  "$1screens.DeviceNaming.Success.startMapping": {
-    "message": "Start Mapping"
-  },
   "$1screens.DeviceNaming.description": {
     "message": "Distinct names help collaborators using CoiabApp to recognize you."
   },
@@ -833,6 +830,15 @@
   },
   "$1screens.OrganizationSetup.retryPreparationButton": {
     "message": "Try again"
+  },
+  "$1screens.OrganizationSetup.roleCoordinatorButton": {
+    "message": "Yes, I am a coordinator"
+  },
+  "$1screens.OrganizationSetup.roleParticipantButton": {
+    "message": "No, I am a participant"
+  },
+  "$1screens.OrganizationSetup.roleQuestion": {
+    "message": "Are you a coordinator?"
   },
   "$1screens.OrganizationSetup.syncRestartRequired": {
     "message": "Sync needs to be started again.",
