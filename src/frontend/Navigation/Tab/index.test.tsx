@@ -82,6 +82,18 @@ jest.mock('../../hooks/server/presets', () => ({
   usePresetsQuery: () => ({data: []}),
 }));
 
+// The merged MapScreen reads the location permission through a suspense
+// query; stub it like MapScreen.test.tsx does so the tab suite never waits on
+// the native permission module.
+jest.mock('../../hooks/useLocationPermissionTracker', () => ({
+  useLocationPermissionQuery: () => ({
+    data: {granted: true, canAskAgain: true},
+  }),
+  useInvalidateLocationPermission: () => jest.fn(),
+  requestLocationPermission: jest.fn(),
+  useLocationPermissionWithoutPasscode: () => ({mutate: jest.fn()}),
+}));
+
 // `jest.mock` is file-scoped, so both tracking hooks delegate to the real
 // implementation by default: the navigator suite keeps running the real
 // track store, and only the TrackMapButton describe pins their return values.

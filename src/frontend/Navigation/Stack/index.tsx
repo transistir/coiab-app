@@ -235,13 +235,23 @@ export function GenerationTransitionGate({
     if (status === 'ready') {
       // A new generation means a fresh activation: the validated
       // destination is Home/Map, wherever the user happened to be.
-      if (
-        generation !== prevGeneration &&
-        state.routes[state.index]?.name !== 'Home'
-      )
+      const currentName = state.routes[state.index]?.name;
+      if (generation !== prevGeneration && currentName !== 'Home')
+        // Leaving the provisioning surface (creation/invite confirmation →
+        // "Abrir organização") lands on the tabs' own initial route, exactly
+        // like that screen's own handover reset (`navigation.reset` →
+        // `{name: 'Home'}`): under the 5-tab bar (#32) that is Menu/
+        // Entroncamento. The two resets fire in the same commit and the
+        // later one wins, so targeting Map here made the landing tab depend
+        // on effect order. Every other origin (switch, recovery) keeps the
+        // explicit Map destination.
         navigation.reset({
           index: 0,
-          routes: [{name: 'Home', params: {screen: 'Map'}}],
+          routes: [
+            currentName === 'OrganizationProvisioning'
+              ? {name: 'Home'}
+              : {name: 'Home', params: {screen: 'Map'}},
+          ],
         });
       return;
     }
