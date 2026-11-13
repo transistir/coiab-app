@@ -6,19 +6,13 @@ import {NativeRootNavigationProps} from '../sharedTypes/navigation';
 import {HeaderText} from '../sharedComponents/Text/HeaderText';
 import {BLACK} from '../lib/styles';
 import {
-  useCreateProject,
   useLeaveProject,
-  useManyProjects,
   useOwnRoleInProject,
   useProjectSettings,
 } from '@comapeo/core-react';
-import {useActiveProject} from '../contexts/ActiveProjectContext';
-import {useProjetarProjectIdAtivo} from '../contexts/ActiveProjectIdStoreContext';
 import {LoadingIndicator} from '../sharedComponents/LoadingIndicator';
 import {ColorCard} from '../sharedComponents/ColorCard';
 import {DEFAULT_PROJECT_COLOR} from '../constants';
-import {toError} from '../utils/errors';
-
 const m = defineMessages({
   close: {
     id: '$1screens.RemovedFromProjectBottomSheet.close',
@@ -36,19 +30,19 @@ const m = defineMessages({
 
 export const RemovedFromProjectBottomSheet = ({
   navigation,
+  route,
 }: NativeRootNavigationProps<'RemovedFromProjectBottomSheet'>) => {
   const {formatMessage} = useIntl();
-  const {projectId} = useActiveProject();
+  // Review fronteira P2-3: the removed slot comes from the route — it may be
+  // the area that is NOT selected, and the sheet outlives the organization
+  // context the engine's recovery takes away.
+  const {projectId} = route.params;
   const {
     data: {reason},
   } = useOwnRoleInProject({projectId});
   const {
     data: {name, projectColor},
   } = useProjectSettings({projectId});
-  const {data: projects} = useManyProjects();
-  const defaultProject = projects.find(proj => !proj.name);
-  const projetarProjectIdAtivo = useProjetarProjectIdAtivo();
-  const createProject = useCreateProject();
   const leaveProject = useLeaveProject();
 
   return (
@@ -72,43 +66,36 @@ export const RemovedFromProjectBottomSheet = ({
         </ColorCard>
 
         <View style={styles.buttonContainer}>
-          {leaveProject.status === 'pending' ||
-          createProject.status === 'pending' ? (
+          {leaveProject.status === 'pending' ? (
             <LoadingIndicator style={{margin: 20}} />
           ) : (
             <SecondaryButton
               fullSize
               onPress={() => {
+                // Fase 11b: no project switching. Leaving the slot the device
+                // was removed from degrades the organization — the engine's
+                // revalidation (the slot listener's own change → revalidate)
+                // publishes the loss and the navigator's gate owns the
+                // landing on the provisioning surface; this screen never
+                // writes the active id (the surviving slot is never
+                // repointed — A §5.2, mixed-pair defect).
                 leaveProject.mutate(
                   {projectId},
                   {
                     onSuccess: () => {
-                      if (!defaultProject) {
-                        // The user should ALWAYS have a default (solo) project. This was not implemented until after v6. So this creates one if it does not exist
-                        createProject.mutate(undefined, {
-                          onError: err => {
-                            const firstProject = projects[0];
-                            if (firstProject) {
-                              projetarProjectIdAtivo(firstProject.projectId);
-                              navigation.popToTop();
-                              return;
-                            }
-                            navigation.replace('ErrorBottomSheet', {
-                              error: toError(
-                                err,
-                                'Error creating default project',
-                              ),
-                            });
+                      // Full-state reset (see OrganizationInviteReceived):
+                      // a partial `{index, routes}` is overwritten by the
+                      // removed Home route's nested-navigator cleanup.
+                      navigation.reset({
+                        ...navigation.getState(),
+                        index: 0,
+                        routes: [
+                          {
+                            key: `OrganizationProvisioning-${Date.now().toString(36)}`,
+                            name: 'OrganizationProvisioning',
                           },
-                          onSuccess: newDefaultProjectId => {
-                            projetarProjectIdAtivo(newDefaultProjectId);
-                            navigation.popToTop();
-                          },
-                        });
-                        return;
-                      }
-                      projetarProjectIdAtivo(defaultProject.projectId);
-                      navigation.popToTop();
+                        ],
+                      });
                     },
                   },
                 );

@@ -5,14 +5,13 @@ import {render, screen} from '@testing-library/react-native';
 import {IntlProvider} from 'react-intl';
 
 import {ReviewInvitation} from './ReviewInvitation';
-import {ORANGE, WHITE} from '../../../lib/styles';
+import {DARK_GREY, ORANGE, WHITE} from '../../../lib/styles';
 import {DeviceType, MEMBER_ROLE_ID} from '../../../sharedTypes';
 
-// The v14 merge restored upstream's "Send Invite" colours: the legacy Button
-// keeps the ORANGE background and the custom children are WHITE. The COIAB
-// #19 DARK_GREY fix is not part of the merged component, so these assertions
-// follow the component as merged. Restoring #19 is a component change, not a
-// test change.
+// Issue #19 (PR A, correção pós-review). O botão "Send Invite" é o último
+// consumidor do Button legado com children custom por cima do fundo
+// ORANGE — ícone e texto ficam em DARK_GREY (contraste 6.77); WHITE
+// sobre ORANGE daria 2.20, abaixo do piso WCAG para texto pequeno.
 function fundoDe(estilo: unknown): string | undefined {
   if (Array.isArray(estilo)) {
     for (const item of estilo) {
@@ -58,15 +57,16 @@ function renderTela() {
   );
 }
 
-describe('ReviewInvitation (merged v14 — cores do Send Invite)', () => {
-  test('ícone e texto são WHITE sobre o fundo ORANGE do botão', async () => {
+describe('ReviewInvitation (PR A #19 — contraste do Send Invite)', () => {
+  test('ícone e texto nunca WHITE sobre o fundo ORANGE do botão', async () => {
     await renderTela();
 
     const texto = screen.getByText('Send Invite');
     expect(fundoDe(ancestralComFundo(texto)?.props.style)).toBe(ORANGE);
-    expect(StyleSheet.flatten(texto.props.style)).toEqual(
-      expect.objectContaining({color: WHITE}),
-    );
+    // BodyText (upstream) compõe o style em array: achatar antes de checar.
+    const estiloDoTexto = StyleSheet.flatten(texto.props.style);
+    expect(estiloDoTexto).toEqual(expect.objectContaining({color: DARK_GREY}));
+    expect(estiloDoTexto).not.toEqual(expect.objectContaining({color: WHITE}));
 
     // O texto.parent é o flexRow do botão: [ícone, texto]. O v13 do
     // vector-icons funde o color prop no style de cada Text (styleDefaults).
@@ -90,6 +90,7 @@ describe('ReviewInvitation (merged v14 — cores do Send Invite)', () => {
         ?.queryAll(node => coresDoEstilo(node.props.style).length > 0)
         .flatMap(node => coresDoEstilo(node.props.style)) ?? [];
     expect(coresNoFlexRow.length).toBeGreaterThan(0);
-    expect(coresNoFlexRow).toContain(WHITE);
+    expect(coresNoFlexRow).not.toContain(WHITE);
+    expect(coresNoFlexRow).toContain(DARK_GREY);
   });
 });

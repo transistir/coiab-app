@@ -1,5 +1,6 @@
 import {act, renderHook} from '@testing-library/react-native';
 import {type ReactNode} from 'react';
+import {IntlProvider} from 'react-intl';
 
 const mockNavigate = jest.fn();
 jest.mock('@react-navigation/native', () => ({
@@ -33,7 +34,9 @@ import {useTracking} from './useTracking';
 function createWrapper(trackStore: TrackStore) {
   return ({children}: {children: ReactNode}) => {
     return (
-      <TrackStoreProvider value={trackStore}>{children}</TrackStoreProvider>
+      <IntlProvider locale="en" messages={{}}>
+        <TrackStoreProvider value={trackStore}>{children}</TrackStoreProvider>
+      </IntlProvider>
     );
   };
 }

@@ -19,6 +19,7 @@ import {
   isUnsavedPhotoAttachment,
 } from '../../lib/attachmentTypeChecks';
 import {toError} from '../../utils/errors';
+import {normalizeObserverTags} from '../../lib/observerProfile';
 import {HeaderRightContainerButton} from '../../sharedComponents/HeaderRightContainer';
 
 export const ObservationEditSaveButton = () => {
@@ -27,7 +28,7 @@ export const ObservationEditSaveButton = () => {
   const attachments = useDraftObservationState(
     store => store.unsavedAttachments,
   );
-  const {clearDraft} = useDraftObservationActions();
+  const {clearDraft, assertOrigin} = useDraftObservationActions();
   const navigation = useNavigationFromRoot();
   const {projectId} = useActiveProject();
   const preset = value?.presetRef;
@@ -65,6 +66,15 @@ export const ObservationEditSaveButton = () => {
     let newAttachments: Attachment[] = [];
 
     try {
+      // SPEC A CA09 / FIX-F: validate the draft's origin against the ACTIVE
+      // operational projectId BEFORE writing anything to core — the edit flow
+      // reuses the same origin-stamped draft store as create, so a diverged
+      // origin (draft started in project A, active project now B) must throw
+      // 'work-origin-mismatch' here, before any photo/audio attachment is
+      // written into the wrong project's media store. Mirrors
+      // ObservationCreateSaveButton and SaveTrackButton. A legacy draft with
+      // no stamped origin is not diverged and stays saveable.
+      assertOrigin(projectId);
       if (attachments) {
         const photoAttachments = attachments.filter(att =>
           isUnsavedPhotoAttachment(att),
@@ -101,6 +111,7 @@ export const ObservationEditSaveButton = () => {
         versionId: versionId,
         value: {
           ...value,
+          tags: normalizeObserverTags(value.tags),
           attachments: [...value.attachments, ...newAttachments],
           presetRef: preset
             ? {docId: preset.docId, versionId: preset.versionId}
