@@ -183,7 +183,27 @@ jest.mock('react-native-vision-camera', () => {
 
   return {
     Camera,
-    useCameraDevice: jest.fn(() => undefined),
+    // A back camera always exists in the Jest environment: since the v14 merge
+    // CameraView early-returns when there is no device, which skips the
+    // MAIN.camera-scrn container the navigation tests assert on.
+    useCameraDevice: jest.fn(() => ({
+      id: 'back',
+      position: 'back',
+      physicalDevices: ['wide-angle-camera'],
+      neutralZoom: 1,
+      minZoom: 1,
+      maxZoom: 1,
+      isMultiCam: false,
+      supportsRawCapture: false,
+      supportsFlash: false,
+      supportsFocus: false,
+      supportsLowLightBoost: false,
+      supportsManualExposure: false,
+      supportsManualFocus: false,
+      hasTorch: false,
+      formats: [],
+      sensorOrientation: 'landscape-left',
+    })),
   };
 });
 
