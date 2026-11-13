@@ -32,15 +32,6 @@
   "MapManagement.ErrorBottomSheet.goBack": {
     "message": "Go Back"
   },
-  "Modal.GPSDisable.button": {
-    "message": "Enable GPS"
-  },
-  "Modal.GPSDisable.description": {
-    "message": "GPS and location needed to record tracks."
-  },
-  "Modal.GPSDisable.title": {
-    "message": "GPS Disabled"
-  },
   "ProjectSettings.RemoteArchive.AddRemoteArchive.archiveInfo": {
     "message": "When project participants exchange their data, they will also be archived on the internet. Your project data is syncing to the archive over the internet to the secure, encrypted server below. The server owner can view the data."
   },
@@ -116,9 +107,6 @@
   "ProjectSettings.RemoteArchive.WhatsIncludedSheet.tracks": {
     "message": "Tracks"
   },
-  "Screens.ProjectSettings.editInfo": {
-    "message": "Edit Info"
-  },
   "Screens.ProjectSettings.projectStatsOffDesc": {
     "message": "Project statistics are not being shared."
   },
@@ -130,9 +118,6 @@
   },
   "Screens.ProjectSettings.update": {
     "message": "Update"
-  },
-  "Screens.ProjectSettings.updateCategories": {
-    "message": "Update Set"
   },
   "Screens.ProjectSettings.viewDetails": {
     "message": "View Details"
@@ -305,19 +290,13 @@
     "message": "Not seeing a Device?"
   },
   "screen.BackgroundMaps.SelectDevice.sameVersion": {
-    "message": "Make sure both devices are on the same version of CoMapeo"
+    "message": "Make sure both devices are on the same version of CoiabApp"
   },
   "screen.BackgroundMaps.SelectDevice.sameWifi": {
     "message": "Make sure both devices are on the same wifi network"
   },
   "screen.BackgroundMaps.SelectDevice.titleMapShare": {
     "message": "Select Device"
-  },
-  "screen.EditProjectDetails.descriptionPlaceholder": {
-    "message": "Short Description of the Project, less than 60 characters."
-  },
-  "screen.EditProjectDetails.projectColors": {
-    "message": "Project Card Colors"
   },
   "screen.Settings.ProjectSettings.YourTeam.SelectInviteeRole.coordinatorDescription": {
     "message": "As a Coordinator this device can invite and remove users, and manage project details."
@@ -328,18 +307,6 @@
   "screen.Settings.ProjectSettings.YourTeam.SelectInviteeRole.selectingDevice": {
     "message": "You are selecting a role for this device:"
   },
-  "screens.AboutSettings.CoMapeoBuild": {
-    "message": "CoMapeo build",
-    "description": "Label for CoMapeo build number"
-  },
-  "screens.AboutSettings.CoMapeoType": {
-    "message": "CoMapeo variant",
-    "description": "Label for CoMapeo type/variant (e.g. QA for testing vs normal version of app)"
-  },
-  "screens.AboutSettings.CoMapeoVersion": {
-    "message": "CoMapeo version",
-    "description": "Label for CoMapeo version"
-  },
   "screens.AboutSettings.androidBuild": {
     "message": "Android build number",
     "description": "Label for Android build number"
@@ -347,9 +314,6 @@
   "screens.AboutSettings.androidVersion": {
     "message": "Android version",
     "description": "Label for Android version"
-  },
-  "screens.AboutSettings.comapeoWebsiteLabel": {
-    "message": "CoMapeo Website"
   },
   "screens.AboutSettings.earlyAccessBanner": {
     "message": "You are in Early Access Mode."
@@ -371,7 +335,7 @@
   },
   "screens.AboutSettings.emojiSource": {
     "message": "Emojis source",
-    "description": "Label for the source of emojis used in CoMapeo"
+    "description": "Label for the source of emojis used in CoiabApp"
   },
   "screens.AboutSettings.phoneModel": {
     "message": "Phone model",
@@ -422,10 +386,10 @@
     "message": "IDs are scrambled randomly and changed every month."
   },
   "screens.AppUsagePrompt.introText": {
-    "message": "Share how you use CoMapeo—any data shared cannot be used to track you."
+    "message": "Share how you use CoiabApp—any data shared cannot be used to track you."
   },
   "screens.AppUsagePrompt.neverStores": {
-    "message": "CoMapeo never stores IP addresses."
+    "message": "CoiabApp never stores IP addresses."
   },
   "screens.AppUsagePrompt.notNow": {
     "message": "No, not now"
@@ -440,7 +404,7 @@
     "message": "Done"
   },
   "screens.AppUsageSharingSuccess.nowSharing": {
-    "message": "is now sharing how you use CoMapeo with Awana Digital."
+    "message": "is now sharing how you use CoiabApp with Awana Digital."
   },
   "screens.AppUsageSharingSuccess.removeAnytime": {
     "message": "Change this anytime by navigating to Data & Privacy in the Menu."
@@ -456,7 +420,7 @@
     "description": "Screen button text for navigating the user to settings when audio permission is denied"
   },
   "screens.AudioPermission.description": {
-    "message": "To record audio while using the app and in the background CoMapeo needs to access your microphone. Please enable microphone permissions in your app settings.",
+    "message": "To record audio while using the app and in the background CoiabApp needs to access your microphone. Please enable microphone permissions in your app settings.",
     "description": "Screen description for audio permission screen"
   },
   "screens.AudioRecording.lessThan1": {
@@ -473,9 +437,6 @@
   },
   "screens.CollaboratorInfo.coordinator": {
     "message": "Coordinator"
-  },
-  "screens.CollaboratorInfo.leaveProject": {
-    "message": "Leave Project"
   },
   "screens.CollaboratorInfo.participant": {
     "message": "Participant"
@@ -502,7 +463,7 @@
     "message": "ID numbers are scrambled randomly and changed every month."
   },
   "screens.DataAndPrivacy.appUsageText": {
-    "message": "Share how you use CoMapeo with Awana Digital—no information you share can be used to track you."
+    "message": "Share how you use CoiabApp with Awana Digital—no information you share can be used to track you."
   },
   "screens.DataAndPrivacy.appUsageTitle": {
     "message": "App Usage"
@@ -514,7 +475,7 @@
     "message": "Diagnostic Information"
   },
   "screens.DataAndPrivacy.ipAddress": {
-    "message": "CoMapeo never stores IP addresses."
+    "message": "CoiabApp never stores IP addresses."
   },
   "screens.DataAndPrivacy.learnMore": {
     "message": "Learn More"
@@ -529,7 +490,7 @@
     "message": "You can opt-out of sharing diagnostic information at any time."
   },
   "screens.DataAndPrivacy.respectsPrivacy": {
-    "message": "CoMapeo Respects Your Privacy & Autonomy"
+    "message": "CoiabApp Respects Your Privacy & Autonomy"
   },
   "screens.DeviceNaming.Success.addAudio": {
     "message": "Add audio recordings."
@@ -556,7 +517,7 @@
     "message": "Early Access Mode"
   },
   "screens.EarlyAccess.updates": {
-    "message": "See CoMapeo Updates"
+    "message": "See CoiabApp Updates"
   },
   "screens.EarlyAccess.useEarlyAccess": {
     "message": "Use Early Access Features"
@@ -668,12 +629,6 @@
   },
   "screens.InviteSuccess.youHaveJoined": {
     "message": "You have joined {projectName}"
-  },
-  "screens.LeaveProject.leaveProjectDescriptionCoordinator": {
-    "message": "This device will no longer be able to view, contribute to, or adjust the project {projectName}."
-  },
-  "screens.LeaveProject.leaveProjectDescriptionParticipant": {
-    "message": "This device will no longer be able to view or contribute to the project {projectName}."
   },
   "screens.LocationInfoScreen.details": {
     "message": "Details",
@@ -825,10 +780,10 @@
     "description": "Placeholder note on the notifications tab"
   },
   "screens.ObscurePasscode.description": {
-    "message": "Obscure Passcode is a security feature that allows you to open CoMapeo in a decoy mode that hides all of your data. Entering the Obscure Passcode on the intro screen will display an empty version of CoMapeo which allows you to create demonstration observations that are not saved to the CoMapeo database."
+    "message": "Obscure Passcode is a security feature that allows you to open CoiabApp in a decoy mode that hides all of your data. Entering the Obscure Passcode on the intro screen will display an empty version of CoiabApp which allows you to create demonstration observations that are not saved to the CoiabApp database."
   },
   "screens.ObscurePasscode.instructions": {
-    "message": "Enter the code above to hide your data in CoMapeo"
+    "message": "Enter the code above to hide your data in CoiabApp"
   },
   "screens.ObscurePasscode.title": {
     "message": "Obscure Passcode"
@@ -910,9 +865,6 @@
   "screens.ObservationMetadataVerified.altitudeAccuracy": {
     "message": "Altitude Accuracy"
   },
-  "screens.ObservationMetadataVerified.coMapeoMetadata": {
-    "message": "CoMapeo Metadata"
-  },
   "screens.ObservationMetadataVerified.dataEntered": {
     "message": "This data was manually entered."
   },
@@ -937,26 +889,20 @@
   "screens.ObservationMetadataVerified.manuallyEntered": {
     "message": "Manually entered."
   },
-  "screens.ObservationMetadataVerified.sentByComapeo": {
-    "message": "Sent by CoMapeo"
-  },
   "screens.ObservationMetadataVerified.sentByEkanadyby": {
     "message": "Sent by CoiabApp"
   },
   "screens.ObservationMetadataVerified.sentFrom": {
-    "message": "CoMapeo Metadata sent from"
+    "message": "CoiabApp Metadata sent from"
   },
   "screens.ObservationMetadataVerified.speed": {
     "message": "Speed"
-  },
-  "screens.ObservationMetadataVerified.validatedByCoMapeo": {
-    "message": "Sent and Validated by CoMapeo"
   },
   "screens.ObservationMetadataVerified.validatedByEkanadyby": {
     "message": "Sent and Validated by CoiabApp"
   },
   "screens.ObservationsList.ObservationsEmptyView.noObservationsDesc": {
-    "message": "All observations and tracks will be listed here.",
+    "message": "Start from map or camera view to record your first observation.",
     "description": "Description of observation list view when the user has not yet recorded observations"
   },
   "screens.ObservationsList.filter.all": {
@@ -1001,9 +947,6 @@
     "message": "Attached {formattedNum} after observation",
     "description": "Label for the time when the photo was attached to an observation"
   },
-  "screens.PhotoPreviewModal.validatedByCoMapeo": {
-    "message": "Validated by CoMapeo"
-  },
   "screens.PhotoPreviewModal.validatedByEkanadyby": {
     "message": "Validated by CoiabApp"
   },
@@ -1015,7 +958,7 @@
     "message": "About Awana Digital"
   },
   "screens.PrivacyPolicy.aboutAwanaContent": {
-    "message": "CoMapeo is developed by Awana Digital, a 501c3 non-profit organization registered in the United States. Awana Digital works in solidarity with frontline communities to use technology to defend their rights and fight climate change."
+    "message": "CoiabApp is developed by Awana Digital, a 501c3 non-profit organization registered in the United States. Awana Digital works in solidarity with frontline communities to use technology to defend their rights and fight climate change."
   },
   "screens.PrivacyPolicy.appErrors": {
     "message": "App Errors"
@@ -1027,7 +970,7 @@
     "message": "App Info"
   },
   "screens.PrivacyPolicy.appInfoDescription": {
-    "message": "The version and locale (language) of CoMapeo"
+    "message": "The version and locale (language) of CoiabApp"
   },
   "screens.PrivacyPolicy.appUsageTitle": {
     "message": "App Usage"
@@ -1036,7 +979,7 @@
     "message": "You're in control"
   },
   "screens.PrivacyPolicy.controlDescription": {
-    "message": "You can opt out of sending any information to Awana Digital. You choose where your data is stored and who it is shared with. You may choose to share anonymized, summarized data about how you use CoMapeo with Awana Digital. We will always be transparent about what information you choose to share for the purposed of improving the app, and this information will never include photos, videos, audio, text, or precise locations that you have entered into CoMapeo."
+    "message": "You can opt out of sending any information to Awana Digital. You choose where your data is stored and who it is shared with. You may choose to share anonymized, summarized data about how you use CoiabApp with Awana Digital. We will always be transparent about what information you choose to share for the purposed of improving the app, and this information will never include photos, videos, audio, text, or precise locations that you have entered into CoiabApp."
   },
   "screens.PrivacyPolicy.crashData": {
     "message": "Crash Data"
@@ -1045,7 +988,7 @@
     "message": "Information about what caused the app to close unexpectedly"
   },
   "screens.PrivacyPolicy.dataCollection": {
-    "message": "CoMapeo Data Collection"
+    "message": "CoiabApp Data Collection"
   },
   "screens.PrivacyPolicy.deviceInfo": {
     "message": "Device Info"
@@ -1060,22 +1003,22 @@
     "message": "No personally identifiable information"
   },
   "screens.PrivacyPolicy.noPIIDescription": {
-    "message": "Using CoMapeo does not require a user account. Awana Digital does not collect your name, email address or any other personal details. No permanent user identifier or device identifier is ever shared with Awana Digital, and we take extra measures to ensure that no information you share can be used to track you: identifiers are randomized and rotated (changed) every month and we do not store IP addresses."
+    "message": "Using CoiabApp does not require a user account. Awana Digital does not collect your name, email address or any other personal details. No permanent user identifier or device identifier is ever shared with Awana Digital, and we take extra measures to ensure that no information you share can be used to track you: identifiers are randomized and rotated (changed) every month and we do not store IP addresses."
   },
   "screens.PrivacyPolicy.notCollected": {
     "message": "What is not collected?"
   },
   "screens.PrivacyPolicy.notCollectedDescription": {
-    "message": "We do not collect any personal data or anything that can be used to identify or track a user or device. Device identifiers used to aggregate information are random, anonymous, and changed every month. Diagnostic information does not include data about how you use the app, and it never includes any of the data you have collected with the app. We do not collect your precise or coarse location, only the country where you are using CoMapeo."
+    "message": "We do not collect any personal data or anything that can be used to identify or track a user or device. Device identifiers used to aggregate information are random, anonymous, and changed every month. Diagnostic information does not include data about how you use the app, and it never includes any of the data you have collected with the app. We do not collect your precise or coarse location, only the country where you are using CoiabApp."
   },
   "screens.PrivacyPolicy.openSource": {
     "message": "Open Source and the \"Official\" Version"
   },
   "screens.PrivacyPolicy.openSourceContent": {
-    "message": "CoMapeo is an open-source application. This means that anyone can view the code that makes the app work and can verify the privacy declarations in this document. It also means that anyone can adapt the app to their own needs and release an alternative version. This document refers to data collected by the official releases of CoMapeo, digitally signed by Awana Digital, available from the Google Play Store or the Awana Digital website. Unofficial releases of CoMapeo obtained from other channels are outside our control and may share additional information with other organizations."
+    "message": "CoiabApp is an open-source application. This means that anyone can view the code that makes the app work and can verify the privacy declarations in this document. It also means that anyone can adapt the app to their own needs and release an alternative version. This document refers to data collected by the official releases of CoiabApp, digitally signed by Awana Digital, available from the Google Play Store or the Awana Digital website. Unofficial releases of CoiabApp obtained from other channels are outside our control and may share additional information with other organizations."
   },
   "screens.PrivacyPolicy.overview": {
-    "message": "This document describes what information (\"data\") is sent from CoMapeo to the application developer, Awana Digital, and how that information is used."
+    "message": "This document describes what information (\"data\") is sent from CoiabApp to the application developer, Awana Digital, and how that information is used."
   },
   "screens.PrivacyPolicy.performanceData": {
     "message": "Performance Data"
@@ -1084,13 +1027,13 @@
     "message": "Such as launch time, energy usage, app freezes, and responsiveness"
   },
   "screens.PrivacyPolicy.privacyPolicyTitle": {
-    "message": "CoMapeo Data Privacy"
+    "message": "CoiabApp Data Privacy"
   },
   "screens.PrivacyPolicy.privateByDefault": {
     "message": "Private by default"
   },
   "screens.PrivacyPolicy.privateByDefaultDescription": {
-    "message": "The data you collect and create with CoMapeo (locations, photos, video, audio, text) is only stored on your device by default, and is not stored or sent anywhere else. When you share data with collaborators by joining a project with them, it is sent encrypted, directly to your collaborators' device. This means that the data is not sent via Awana Digital, nor anyone else, on its way to your collaborator. Awana Digital never sees nor has access to any of the data you collect with CoMapeo unless you explicitly send it to us."
+    "message": "The data you collect and create with CoiabApp (locations, photos, video, audio, text) is only stored on your device by default, and is not stored or sent anywhere else. When you share data with collaborators by joining a project with them, it is sent encrypted, directly to your collaborators' device. This means that the data is not sent via Awana Digital, nor anyone else, on its way to your collaborator. Awana Digital never sees nor has access to any of the data you collect with CoiabApp unless you explicitly send it to us."
   },
   "screens.PrivacyPolicy.thirdParty": {
     "message": "Third-party access to data"
@@ -1108,13 +1051,13 @@
     "message": "What is collected?"
   },
   "screens.PrivacyPolicy.whatIsCollectedDescription": {
-    "message": "By default, anonymized diagnostic information about your device, app crashes, errors and performance is shared with Awana Digital. You can opt-out of sharing this information at any time. This diagnostic information is completely anonymized and it never contains any of your data (the data you have collected with CoMapeo)."
+    "message": "By default, anonymized diagnostic information about your device, app crashes, errors and performance is shared with Awana Digital. You can opt-out of sharing this information at any time. This diagnostic information is completely anonymized and it never contains any of your data (the data you have collected with CoiabApp)."
   },
   "screens.PrivacyPolicy.whyCollected": {
     "message": "Why is this data collected?"
   },
   "screens.PrivacyPolicy.whyCollectedDescription": {
-    "message": "Crash data and app errors together with the device and app info provide Awana Digital with the information we need to fix errors and bugs in the app. The performance data helps us improve the responsiveness of the app and identify errors. User counts, including total users, users per country, and users per project, help justify ongoing investment in the development of CoMapeo."
+    "message": "Crash data and app errors together with the device and app info provide Awana Digital with the information we need to fix errors and bugs in the app. The performance data helps us improve the responsiveness of the app and identify errors. User counts, including total users, users per country, and users per project, help justify ongoing investment in the development of CoiabApp."
   },
   "screens.ProjectStatistics.navTitle": {
     "message": "Project Statistics"
@@ -1165,33 +1108,6 @@
   },
   "screens.Setting.ProjectSettings.YourTeam.pastCollaboratorsDescription": {
     "message": "Devices no longer contributing to this project."
-  },
-  "screens.Settings.Config.created": {
-    "message": "Created {date} at {time}"
-  },
-  "screens.Settings.Config.name": {
-    "message": "Category Set:"
-  },
-  "screens.Settings.Config.projectName": {
-    "message": "Project Name:"
-  },
-  "screens.Settings.CreateOrJoinProject.ProjectCreated.projectReady": {
-    "message": "{projectName} is now ready for you to invite devices."
-  },
-  "screens.Settings.CreateOrJoinProject.ProjectCreated.sharedLine": {
-    "message": "Project statistics are being shared with Awana Digital"
-  },
-  "screens.Settings.CreateOrJoinProject.existingProjectName": {
-    "message": "Using an existing project name does not make them the same project."
-  },
-  "screens.Settings.CreateOrJoinProject.keepInMind": {
-    "message": "Keep in mind"
-  },
-  "screens.Settings.CreateOrJoinProject.projectUnique": {
-    "message": "Each project is unique and cannot exchange with another project."
-  },
-  "screens.Settings.CreateOrJoinProject.requestInvites": {
-    "message": "Request invites to join existing projects."
   },
   "screens.Settings.MapManagement.BackgroundMapUpdated.done": {
     "message": "Done"
@@ -1316,18 +1232,6 @@
   "screens.Settings.MapManagement.UpdatingBackgroundMap.updating": {
     "message": "Updating..."
   },
-  "screens.Settings.NameDefaultProjectIntro.description": {
-    "message": "Invite devices to a new project with all your observations."
-  },
-  "screens.Settings.NameDefaultProjectIntro.heading": {
-    "message": "Start a new project using my observations."
-  },
-  "screens.Settings.NameDefaultProjectIntro.nextButton": {
-    "message": "Next"
-  },
-  "screens.Settings.NameDefaultProjectIntro.title": {
-    "message": "Invite Devices"
-  },
   "screens.Settings.YourTeam.close": {
     "message": "Close"
   },
@@ -1342,15 +1246,6 @@
   },
   "screens.SettingsPrivacyPolicy.navTitle": {
     "message": "Privacy Policy"
-  },
-  "screens.ShareProjectStats.description": {
-    "message": "This will help us gather data about how CoMapeo is being used and what additional features are needed."
-  },
-  "screens.ShareProjectStats.fullyEncrypted": {
-    "message": "Your project will stay fully encrypted"
-  },
-  "screens.ShareProjectStats.infoAnonymized": {
-    "message": "Shared information will be completely anonymized"
   },
   "screens.Sync.NoWifiDisplay.description": {
     "message": "Check device’s settings and connectivity."
@@ -1460,26 +1355,5 @@
   },
   "sharedComponents.RoleWithIcon.participant": {
     "message": "Participant"
-  },
-  "soloProject.inviteCollaborators.goBack": {
-    "message": "Go Back"
-  },
-  "soloProject.inviteCollaborators.introText": {
-    "message": "Share observations with others using CoMapeo."
-  },
-  "soloProject.inviteCollaborators.inviteOnly": {
-    "message": "Only devices invited to this project can contribute."
-  },
-  "soloProject.inviteCollaborators.manageControl": {
-    "message": "Easily manage project contributors and settings."
-  },
-  "soloProject.inviteCollaborators.nameProject": {
-    "message": "Name My Project"
-  },
-  "soloProject.inviteCollaborators.nameProjectDescription": {
-    "message": "Name your project to start collaborating."
-  },
-  "soloProject.inviteCollaborators.title": {
-    "message": "Invite Collaborators"
   }
 }

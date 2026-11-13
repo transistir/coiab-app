@@ -11,15 +11,6 @@
   "$1Modal.GPSEnable.button.stop": {
     "message": "Stop Tracks"
   },
-  "$1Navigation.Menu.Settings": {
-    "message": "CoMapeo Settings"
-  },
-  "$1Navigation.Menu.bgMap": {
-    "message": "Background Map"
-  },
-  "$1Navigation.Menu.collaborate": {
-    "message": "Collaborate"
-  },
   "$1Navigation.Menu.convidar": {
     "message": "Convidar",
     "description": "Menu list entry that opens the team screen"
@@ -27,12 +18,6 @@
   "$1Navigation.Menu.convidarSubtitle": {
     "message": "Adicionar pessoas",
     "description": "Subtitle of the invite menu entry"
-  },
-  "$1Navigation.Menu.coordinator": {
-    "message": "Coordinator"
-  },
-  "$1Navigation.Menu.coordinatorTools": {
-    "message": "Coordinator Tools"
   },
   "$1Navigation.Menu.criarOrganizacao": {
     "message": "Criar território",
@@ -47,15 +32,9 @@
   "$1Navigation.Menu.exchange": {
     "message": "Exchange"
   },
-  "$1Navigation.Menu.gatherObservations": {
-    "message": "Gather Observations"
-  },
   "$1Navigation.Menu.greeting": {
     "message": "Olá, Parente",
     "description": "Página Entroncamento greeting (Figma Kutary App V2, 2668:4539)"
-  },
-  "$1Navigation.Menu.justYou": {
-    "message": "Just You"
   },
   "$1Navigation.Menu.mapaDeFundo": {
     "message": "Mapa de fundo",
@@ -64,12 +43,6 @@
   "$1Navigation.Menu.mapaDeFundoSubtitle": {
     "message": "Mapas offline do território",
     "description": "Subtitle of the background maps menu entry"
-  },
-  "$1Navigation.Menu.mappingOnOwn": {
-    "message": "You're mapping on your own."
-  },
-  "$1Navigation.Menu.participant": {
-    "message": "Participant"
   },
   "$1Navigation.Menu.switchOrganization": {
     "message": "Switch territory",
@@ -82,12 +55,6 @@
   "$1Navigation.Menu.switchOrganizationTitle": {
     "message": "Trocar de território",
     "description": "Menu list entry that opens the organization selector"
-  },
-  "$1Navigation.Menu.switchProject": {
-    "message": "Switch Project"
-  },
-  "$1Navigation.Menu.team": {
-    "message": "Team"
   },
   "$1ObservationEdit.HeaderLeft.discardCancel": {
     "message": "Continue editing",
@@ -104,23 +71,11 @@
     "message": "Discard changes?",
     "description": "Title of dialog that shows when cancelling observation edits"
   },
-  "$1ProjectSettings.RemoteArchive.AddRemoteArchive.checkingUrl": {
-    "message": "Checking remote archive…"
-  },
   "$1ProjectSettings.RemoteArchive.AddRemoteArchive.looking": {
     "message": "Looking for Remote Archive..."
   },
   "$1ProjectSettings.RemoteArchive.AddRemoteArchive.navTitle": {
     "message": "Add Remote Archive"
-  },
-  "$1ProjectSettings.RemoteArchive.AddRemoteArchive.urlRetry": {
-    "message": "Try again"
-  },
-  "$1ProjectSettings.RemoteArchive.AddRemoteArchive.urlUnreachable": {
-    "message": "Could not reach the remote archive. Check the connection and try again."
-  },
-  "$1ProjectSettings.RemoteArchive.AddRemoteArchive.validUrl": {
-    "message": "Remote archive found"
   },
   "$1ProjectSettings.RemoteArchive.AddRemoteArchive.youAreAdding": {
     "message": "You are adding:"
@@ -161,9 +116,6 @@
   "$1SaveTrack.HeaderLeft.discardTrackDescription": {
     "message": "Your Track will not be saved. This cannot be undone."
   },
-  "$1Screens.ProjectSettings.configTitle": {
-    "message": "Project Categories"
-  },
   "$1Screens.ProjectSettings.projectStatsOff": {
     "message": "Project Statistics | OFF"
   },
@@ -178,9 +130,6 @@
   },
   "$1Screens.ProjectSettings.title": {
     "message": "Coordinator Tools"
-  },
-  "$1Screens.Settings.AppSettings.aboutCoMapeo": {
-    "message": "About CoMapeo"
   },
   "$1Screens.Settings.AppSettings.aboutEkanadyby": {
     "message": "About CoiabApp"
@@ -242,7 +191,7 @@
     "description": "Migrated menu entry: project settings (coordinator only)"
   },
   "$1Screens.Settings.AppSettings.title": {
-    "message": "CoMapeo Settings"
+    "message": "CoiabApp Settings"
   },
   "$1Screens.Settings.AppSettings.turnOff": {
     "message": "Turn Off"
@@ -272,26 +221,11 @@
   "$1TrackBottomSheet.StartStopTrack.trackingRequirement": {
     "message": "Move one meter to see track."
   },
-  "$1allProjects.close": {
-    "message": "Close"
-  },
-  "$1allProjects.newCollab": {
-    "message": "New Collaboration"
-  },
   "$1hooks.useTracking.notificationBody": {
     "message": "Location saved on this device. Open app to end track."
   },
   "$1hooks.useTracking.notificationTitle": {
     "message": "Recording a track"
-  },
-  "$1screen.EditProjectDetails.navTitle": {
-    "message": "Edit Info"
-  },
-  "$1screen.EditProjectDetails.projectDescription": {
-    "message": "Project Description"
-  },
-  "$1screen.EditProjectDetails.projectName": {
-    "message": "Project Name"
   },
   "$1screen.Settings.ProjectSettings.YourTeam.ReviewAndInvite.ReviewInvitation.sendInvite": {
     "message": "Send Invite"
@@ -300,7 +234,7 @@
     "message": "Not seeing a Device?"
   },
   "$1screen.Settings.ProjectSettings.YourTeam.SelectDevice.sameVersion": {
-    "message": "Make sure both devices are on the same version of CoMapeo"
+    "message": "Make sure both devices are on the same version of CoiabApp"
   },
   "$1screen.Settings.ProjectSettings.YourTeam.SelectDevice.sameWifi": {
     "message": "Make sure both devices are on the same Wi-Fi network"
@@ -312,11 +246,11 @@
     "message": "Select a Role"
   },
   "$1screens.AboutSettings.seeUpdates": {
-    "message": "See CoMapeo Updates"
+    "message": "See CoiabApp Updates"
   },
   "$1screens.AboutSettings.title": {
-    "message": "About CoMapeo",
-    "description": "Title of 'About CoMapeo' screen"
+    "message": "About CoiabApp",
+    "description": "Title of 'About CoiabApp' screen"
   },
   "$1screens.AppPasscode": {
     "message": "App Passcode"
@@ -353,7 +287,7 @@
     "message": "Password does not match"
   },
   "$1screens.AppPasscode.NewPasscode.InputPasscodeScreen.subTitleSet": {
-    "message": "This passcode will be required to open the CoMapeo App"
+    "message": "This passcode will be required to open the CoiabApp app"
   },
   "$1screens.AppPasscode.NewPasscode.SetPasscodeScreen.title": {
     "message": "Set Passcode"
@@ -365,10 +299,10 @@
     "message": "What is App Passcode?"
   },
   "$1screens.AppPasscode.PasscodeIntro.description": {
-    "message": "App Passcode allows you to add an additional layer of security by requiring that you enter a passcode in order to open the CoMapeo app. You can define your own 5-digit passcode by turning on the feature below."
+    "message": "App Passcode allows you to add an additional layer of security by requiring that you enter a passcode in order to open the CoiabApp app. You can define your own 5-digit passcode by turning on the feature below."
   },
   "$1screens.AppPasscode.PasscodeIntro.warning": {
-    "message": "<bold>Please note that forgotten passcodes cannot be recovered!</bold> Once this feature is enabled, if you forget or lose your passcode, you will not be able to open CoMapeo and will lose access to any CoMapeo data that has not been exchanged with other project participants."
+    "message": "<bold>Please note that forgotten passcodes cannot be recovered!</bold> Once this feature is enabled, if you forget or lose your passcode, you will not be able to open CoiabApp and will lose access to any CoiabApp data that has not been exchanged with other project participants."
   },
   "$1screens.AppPasscode.TurnOffPasscode.changePasscode": {
     "message": "Change App Passcode"
@@ -377,7 +311,7 @@
     "message": "You are currently using App Passcode. See below to stop using or change your passcode."
   },
   "$1screens.AppPasscode.TurnOffPasscode.description": {
-    "message": "App Passcode adds an additional layer of security by requiring that you enter a passcode in order to open the CoMapeo app."
+    "message": "App Passcode adds an additional layer of security by requiring that you enter a passcode in order to open the CoiabApp app."
   },
   "$1screens.AppPasscode.TurnOffPasscode.title": {
     "message": "App Passcode"
@@ -397,7 +331,7 @@
     "description": "Screen button text for not granting audio permission"
   },
   "$1screens.AudioPermission.title": {
-    "message": "Recording Audio with CoMapeo",
+    "message": "Recording Audio with CoiabApp",
     "description": "Screen title for audio permission screen"
   },
   "$1screens.AudioPlaybackNew.delete": {
@@ -416,13 +350,7 @@
     "message": "Document with Photos"
   },
   "$1screens.CameraScreen.cameraUnavailable": {
-    "message": "Camera unavailable. Please close and reopen CoMapeo to try again."
-  },
-  "$1screens.CameraScreen.noCameraAccess": {
-    "message": "No access to camera. Please allow access in settings."
-  },
-  "$1screens.CameraScreen.openSettings": {
-    "message": "Open Settings"
+    "message": "Camera unavailable. Please close and reopen CoiabApp to try again."
   },
   "$1screens.CollaboratorInfo.navTitle": {
     "message": "Collaborator Info"
@@ -462,7 +390,7 @@
     "message": "Your data stays on your devices—fully encrypted and in your control."
   },
   "$1screens.DataPrivacy.title": {
-    "message": "CoMapeo is private by default."
+    "message": "CoiabApp is private by default."
   },
   "$1screens.DeviceNaming.Success.deviceReady": {
     "message": "{deviceName} is ready!"
@@ -494,23 +422,8 @@
   "$1screens.ExchangeSettingsBottomSheet.save": {
     "message": "Save"
   },
-  "$1screens.IntroToCoMapeo.collaborate": {
-    "message": "Securely share with collaborators"
-  },
-  "$1screens.IntroToCoMapeo.designedFor": {
-    "message": "Co-designed with and for Indigenous territory mappers & monitors."
-  },
-  "$1screens.IntroToCoMapeo.getStarted": {
-    "message": "Get Started"
-  },
-  "$1screens.IntroToCoMapeo.mapAnywhere": {
-    "message": "Map anywhere and everywhere"
-  },
   "$1screens.IntroToCoMapeo.mapWorldTogether": {
     "message": "Map your world, together."
-  },
-  "$1screens.IntroToCoMapeo.ownData": {
-    "message": "Always own and control your data"
   },
   "$1screens.IntroToCoMapeo.start": {
     "message": "Start"
@@ -544,45 +457,6 @@
     "message": "Language",
     "description": "Title language settings screen"
   },
-  "$1screens.LeaveProject.cancel": {
-    "message": "Cancel"
-  },
-  "$1screens.LeaveProject.leaveProjTitle": {
-    "message": "Leave this project?"
-  },
-  "$1screens.LeaveProject.yesLeave": {
-    "message": "Yes, Leave"
-  },
-  "$1screens.LeaveProjectWarning.cancel": {
-    "message": "Cancel"
-  },
-  "$1screens.LeaveProjectWarning.continueButton": {
-    "message": "Continue"
-  },
-  "$1screens.LeaveProjectWarning.exportRecommendation": {
-    "message": "Before leaving, export any important data."
-  },
-  "$1screens.LeaveProjectWarning.inviteRecommendation": {
-    "message": "To avoid this, invite a new device as a coordinator."
-  },
-  "$1screens.LeaveProjectWarning.lastCoordinatorDescription": {
-    "message": "If this device leaves, then no other device can add or remove devices, adjust project info, or update the categories set."
-  },
-  "$1screens.LeaveProjectWarning.lastCoordinatorTitle": {
-    "message": "Device is last coordinator."
-  },
-  "$1screens.LeaveProjectWarning.lastDeviceDescription": {
-    "message": "If this device leaves, then all data on this project will be lost."
-  },
-  "$1screens.LeaveProjectWarning.lastDeviceTitle": {
-    "message": "Device is last device."
-  },
-  "$1screens.LeftProjectConfirmation.openDefaultProject": {
-    "message": "Open {deviceName}"
-  },
-  "$1screens.LeftProjectConfirmation.youLeftProject": {
-    "message": "This device has left the project {projectName}."
-  },
   "$1screens.LocationInfoScreen.gpsHeader": {
     "message": "Current GPS Location",
     "description": "Header for GPS screen"
@@ -615,9 +489,6 @@
   },
   "$1screens.Observation.TrackList.track": {
     "message": "Track"
-  },
-  "$1screens.Observation.comapeoAlert": {
-    "message": "CoMapeo data sent from *{projectName}*"
   },
   "$1screens.Observation.defaultProjectName": {
     "message": "My Project"
@@ -659,7 +530,7 @@
     "description": "Title of dialog to share an observation with media"
   },
   "$1screens.Observation.shareMessageFooter": {
-    "message": "Sent from CoMapeo"
+    "message": "Sent from CoiabApp"
   },
   "$1screens.Observation.shareTextTitle": {
     "message": "Sharing text",
@@ -705,7 +576,7 @@
     "description": "Back button on observation list screen when no observations are yet recorded"
   },
   "$1screens.ObservationsList.ObservationsEmptyView.noObservationsTitle": {
-    "message": "Start mapping your world.",
+    "message": "Add Observations",
     "description": "Title of observation list view when the user has not yet recorded observations"
   },
   "$1screens.ObservationsList.emptyAlertas": {
@@ -939,15 +810,6 @@
   "$1screens.OrganizationSetup.retryPreparationButton": {
     "message": "Try again"
   },
-  "$1screens.OrganizationSetup.roleCoordinatorButton": {
-    "message": "Yes, I am a coordinator"
-  },
-  "$1screens.OrganizationSetup.roleParticipantButton": {
-    "message": "No, I am a participant"
-  },
-  "$1screens.OrganizationSetup.roleQuestion": {
-    "message": "Are you a coordinator?"
-  },
   "$1screens.OrganizationSetup.syncRestartRequired": {
     "message": "Sync needs to be started again.",
     "description": "A failed switch after the sync commands were already stopped (SPEC A §5.2:167, “A sincronização precisa ser iniciada novamente.”)"
@@ -972,9 +834,6 @@
   },
   "$1screens.PhotoPreviewModal.headerButtonText": {
     "message": "Delete Photo"
-  },
-  "$1screens.RemoteArchive.AddRemoteArchive.orgHint": {
-    "message": "This archive will be added to both projects of the Territory."
   },
   "$1screens.RemovedFromProjectBottomSheet.close": {
     "message": "Close"
@@ -1067,63 +926,6 @@
   "$1screens.Setting.ProjectSettings.YourTeam.title": {
     "message": "Team"
   },
-  "$1screens.Settings.Collaborate.inviteDevices": {
-    "message": "Invite Devices"
-  },
-  "$1screens.Settings.Collaborate.joinProject": {
-    "message": "Join a Project"
-  },
-  "$1screens.Settings.Collaborate.startNewProject": {
-    "message": "Start New Project"
-  },
-  "$1screens.Settings.Collaborate.title": {
-    "message": "Collaborate"
-  },
-  "$1screens.Settings.Config.importCategories": {
-    "message": "Import Categories"
-  },
-  "$1screens.Settings.Config.importSuccessTitle": {
-    "message": "Successfully imported categories:"
-  },
-  "$1screens.Settings.Config.navTitle": {
-    "message": "Categories"
-  },
-  "$1screens.Settings.Config.okButton": {
-    "message": "OK"
-  },
-  "$1screens.Settings.CreateOrJoinProject.CreateProject.title": {
-    "message": "Start New Project"
-  },
-  "$1screens.Settings.CreateOrJoinProject.CreateProject.titleSoloProject": {
-    "message": "Name My Project"
-  },
-  "$1screens.Settings.CreateOrJoinProject.ProjectCreated.done": {
-    "message": "Done"
-  },
-  "$1screens.Settings.CreateOrJoinProject.ProjectCreated.inviteDevice": {
-    "message": "Invite a Device"
-  },
-  "$1screens.Settings.CreateOrJoinProject.ProjectCreated.success": {
-    "message": "Success!"
-  },
-  "$1screens.Settings.CreateOrJoinProject.createProjectButton": {
-    "message": "Create"
-  },
-  "$1screens.Settings.CreateOrJoinProject.enterName": {
-    "message": "Project Name"
-  },
-  "$1screens.Settings.CreateOrJoinProject.saveProjectButton": {
-    "message": "Save"
-  },
-  "$1screens.Settings.JoinAProject.description": {
-    "message": "Ask a project coordinator to receive a project invitation."
-  },
-  "$1screens.Settings.JoinAProject.heading": {
-    "message": "Coordinate with your team."
-  },
-  "$1screens.Settings.JoinAProject.title": {
-    "message": "Join a Project"
-  },
   "$1screens.Settings.MapManagement.BackgroundMaps.cannotBeUndone": {
     "message": "This cannot be undone."
   },
@@ -1154,35 +956,11 @@
   "$1screens.Settings.MapManagement.BackgroundMaps.sendMap": {
     "message": "Send Map"
   },
-  "$1screens.Settings.StartNewProjectIntro.description": {
-    "message": "Invite devices to a separate and empty project."
-  },
-  "$1screens.Settings.StartNewProjectIntro.heading": {
-    "message": "Start a new project with no observations."
-  },
-  "$1screens.Settings.StartNewProjectIntro.nextButton": {
-    "message": "Next"
-  },
-  "$1screens.Settings.StartNewProjectIntro.title": {
-    "message": "Start New Project"
-  },
   "$1screens.Settings.YourTeam.InviteDeclined": {
     "message": "Invitation Declined"
   },
   "$1screens.Settings.YourTeam.close": {
     "message": "Close"
-  },
-  "$1screens.Settings.YourTeam.inviteDeclinedOrganizationDes": {
-    "message": "This device has declined your invitation. They have not joined the Territory."
-  },
-  "$1screens.ShareProjectStats.shareProjectStats": {
-    "message": "Share Project Statistics"
-  },
-  "$1screens.ShareProjectStats.skip": {
-    "message": "No, Skip for Now"
-  },
-  "$1screens.ShareProjectStats.yesShare": {
-    "message": "Yes, Share Stats"
   },
   "$1screens.Sync.NoWifiDisplay.buttonText": {
     "message": "Close"
