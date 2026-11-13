@@ -1,11 +1,6 @@
 import {useHomeTabsHarness} from './homeTabsHarness';
 
-import {
-  act,
-  screen,
-  userEvent,
-  waitFor,
-} from '@testing-library/react-native';
+import {act, screen, userEvent, waitFor} from '@testing-library/react-native';
 
 // Second half of the HomeTabs navigator suite (see index.test.tsx): the
 // split keeps each jest worker's navigator footprint small.
