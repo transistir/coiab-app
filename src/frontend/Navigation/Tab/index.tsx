@@ -2,8 +2,11 @@ import * as React from 'react';
 import {StyleSheet, TouchableOpacity, View} from 'react-native';
 import {
   createBottomTabNavigator,
+  type BottomTabBarProps,
   type BottomTabHeaderProps,
+  type BottomTabNavigationOptions,
 } from '@react-navigation/bottom-tabs';
+import {useNavigation} from '@react-navigation/native';
 import {CameraScreen} from '../../screens/CameraScreen';
 import {MenuScreen} from '../../screens/MenuScreen';
 import {MapScreen} from '../../screens/MapScreen';
@@ -11,6 +14,7 @@ import {Notificacoes} from '../../screens/Notificacoes';
 import {ObservationsList} from '../../screens/ObservationsList';
 import {
   HomeTabsParamsList,
+  NativeHomeTabsNavigationProps,
   NativeRootNavigationProps,
 } from '../../sharedTypes/navigation';
 import {HomeHeader} from '../../sharedComponents/HomeHeader';
@@ -39,6 +43,72 @@ const headerSolido = (props: BottomTabHeaderProps): React.ReactElement => (
   </React.Suspense>
 );
 
+// Everything the navigator reads from its props or a screen's `options` lives
+// at module level: `options`, `header`, `headerRight` and `screenLayout` keep
+// the same identity across HomeTabs renders, so a re-render of the navigator
+// never hands the header a new function. The header-right buttons read their
+// navigation from the header's own NavigationProvider (see `useNavigation`
+// below) instead of closing over HomeTabs' props.
+const headerTransparente = (
+  props: BottomTabHeaderProps,
+): React.ReactElement => (
+  <React.Suspense fallback={null}>
+    <HomeHeader
+      {...props}
+      backgroundColor="transparent"
+      showBottomBorder={false}
+    />
+  </React.Suspense>
+);
+
+const renderTabBar = (props: BottomTabBarProps) => <TabBar {...props} />;
+
+const screenLayout = ({children}: {children: React.ReactNode}) => (
+  <React.Suspense fallback={<FullScreenCenteredLoader />}>
+    {children}
+  </React.Suspense>
+);
+
+const TAB_SCREEN_OPTIONS: BottomTabNavigationOptions = {
+  tabBarShowLabel: false,
+  headerTransparent: true,
+  header: headerTransparente,
+};
+
+// The buttons read suspense queries; their own boundary keeps a pending query
+// from suspending the whole HomeHeader (title, safe-area padding) with it.
+const renderObservationsHeaderRight = () => (
+  <React.Suspense fallback={null}>
+    <DownloadObservationsHeaderRight />
+  </React.Suspense>
+);
+
+const renderMapHeaderRight = () => <MapTrackHeaderRight />;
+
+const MENU_OPTIONS: BottomTabNavigationOptions = {
+  headerShown: false,
+  // Slide-in rápido da esquerda (#121): espelha o push do
+  // AppSettings (que entra da direita). Só o Menu declara essa
+  // animação — as demais abas seguem sem slide horizontal.
+  animation: 'shift',
+  sceneStyleInterpolator: menuSceneInterpolator,
+  transitionSpec: MENU_TRANSITION_SPEC,
+};
+
+const OBSERVATIONS_LIST_OPTIONS: BottomTabNavigationOptions = {
+  headerTransparent: false,
+  headerRight: renderObservationsHeaderRight,
+  header: headerSolido,
+};
+
+const MAP_OPTIONS: BottomTabNavigationOptions = {
+  headerRight: renderMapHeaderRight,
+};
+
+const NOTIFICACOES_OPTIONS: BottomTabNavigationOptions = {
+  header: headerSolido,
+};
+
 export const HomeTabs = ({navigation}: NativeRootNavigationProps<'Home'>) => {
   return (
     <>
@@ -49,26 +119,10 @@ export const HomeTabs = ({navigation}: NativeRootNavigationProps<'Home'>) => {
         />
       </React.Suspense>
       <Tab.Navigator
-        tabBar={props => <TabBar {...props} />}
-        screenOptions={{
-          tabBarShowLabel: false,
-          headerTransparent: true,
-          header: props => (
-            <React.Suspense fallback={null}>
-              <HomeHeader
-                {...props}
-                backgroundColor="transparent"
-                showBottomBorder={false}
-              />
-            </React.Suspense>
-          ),
-        }}
+        tabBar={renderTabBar}
+        screenOptions={TAB_SCREEN_OPTIONS}
         initialRouteName={'Menu'}
-        screenLayout={({children}) => (
-          <React.Suspense fallback={<FullScreenCenteredLoader />}>
-            {children}
-          </React.Suspense>
-        )}
+        screenLayout={screenLayout}
         backBehavior="initialRoute">
         {/* COIAB (#32 fase 3): barra de 5 itens do Figma `footer-menu` —
               Menu (inicial pós-login; mostra o conteúdo do menu como
@@ -86,50 +140,48 @@ export const HomeTabs = ({navigation}: NativeRootNavigationProps<'Home'>) => {
         <Tab.Screen
           name="Menu"
           component={MenuScreen}
-          options={{
-            headerShown: false,
-            // Slide-in rápido da esquerda (#121): espelha o push do
-            // AppSettings (que entra da direita). Só o Menu declara essa
-            // animação — as demais abas seguem sem slide horizontal.
-            animation: 'shift',
-            sceneStyleInterpolator: menuSceneInterpolator,
-            transitionSpec: MENU_TRANSITION_SPEC,
-          }}
+          options={MENU_OPTIONS}
         />
         <Tab.Screen
           name="ObservationsList"
           component={ObservationsList}
-          options={{
-            headerTransparent: false,
-            headerRight: () => (
-              <DownloadObservationsButton
-                onPress={() => navigation.navigate('ExportObservations')}
-              />
-            ),
-            header: headerSolido,
-          }}
+          options={OBSERVATIONS_LIST_OPTIONS}
         />
-        <Tab.Screen
-          name="Map"
-          component={MapScreen}
-          options={({navigation: tabNav}) => ({
-            headerRight: () => (
-              <TrackMapButton
-                onPress={() => tabNav.navigate('Map', {trackingOpen: true})}
-              />
-            ),
-          })}
-        />
+        <Tab.Screen name="Map" component={MapScreen} options={MAP_OPTIONS} />
         <Tab.Screen
           name="Notificacoes"
           component={Notificacoes}
-          options={{header: headerSolido}}
+          options={NOTIFICACOES_OPTIONS}
         />
         <Tab.Screen name="Camera" component={CameraScreen} />
       </Tab.Navigator>
     </>
   );
 };
+
+// The header renders inside the tab route's NavigationProvider
+// (@react-navigation/elements Screen), so `useNavigation` here is the tab's
+// navigation; actions the tab navigator cannot handle bubble to the root stack.
+type HomeTabsNavigation<T extends keyof HomeTabsParamsList> =
+  NativeHomeTabsNavigationProps<T>['navigation'];
+
+function MapTrackHeaderRight() {
+  const navigation = useNavigation<HomeTabsNavigation<'Map'>>();
+  const onPress = React.useCallback(
+    () => navigation.navigate('Map', {trackingOpen: true}),
+    [navigation],
+  );
+  return <TrackMapButton onPress={onPress} />;
+}
+
+function DownloadObservationsHeaderRight() {
+  const navigation = useNavigation<HomeTabsNavigation<'ObservationsList'>>();
+  const onPress = React.useCallback(
+    () => navigation.navigate('ExportObservations'),
+    [navigation],
+  );
+  return <DownloadObservationsButton onPress={onPress} />;
+}
 
 export function TrackMapButton({onPress}: {onPress: () => void}) {
   const {isTracking} = useTracking();

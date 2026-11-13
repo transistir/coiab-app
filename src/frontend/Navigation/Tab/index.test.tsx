@@ -38,14 +38,6 @@ import {useTracking} from '../../hooks/useTracking';
 import {useTrackTimer} from '../../hooks/useTrackTimer';
 import {TrackMapButton} from './index';
 
-// THROWAWAY heap probe (tab-suite OOM): remove before merge.
-afterEach(() => {
-  const m = process.memoryUsage();
-  console.log(
-    `[heap-test] ${expect.getState().currentTestName} heapUsed=${(m.heapUsed / 1048576).toFixed(1)}MB rss=${(m.rss / 1048576).toFixed(0)}MB`,
-  );
-});
-
 describe('TrackMapButton — estado de gravação (#32)', () => {
   const realUseTracking = jest.mocked(useTracking).getMockImplementation()!;
   const realUseTrackTimer = jest.mocked(useTrackTimer).getMockImplementation()!;

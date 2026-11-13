@@ -2,14 +2,6 @@ import {useHomeTabsHarness} from './homeTabsHarness';
 
 import {act, screen, userEvent, waitFor} from '@testing-library/react-native';
 
-// THROWAWAY heap probe (tab-suite OOM): remove before merge.
-afterEach(() => {
-  const m = process.memoryUsage();
-  console.log(
-    `[heap-test] ${expect.getState().currentTestName} heapUsed=${(m.heapUsed / 1048576).toFixed(1)}MB rss=${(m.rss / 1048576).toFixed(0)}MB`,
-  );
-});
-
 // Second half of the HomeTabs navigator suite (see index.test.tsx): the
 // split keeps each jest worker's navigator footprint small.
 describe('HomeTabs — menu, download e câmera (#32)', () => {

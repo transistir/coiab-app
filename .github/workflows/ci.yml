@@ -50,25 +50,8 @@ jobs:
         run: EXPO_PUBLIC_STORYBOOK_ENABLED=true npm run storybook-generate
       - name: Check types
         run: npm run lint:types
-      # THROWAWAY probe matrix: Paneiro press vs screen vs headerRight, one step
-      # per file so an OOM in one cannot hide the others.
-      - name: Probe n1 (press Paneiro only)
-        continue-on-error: true
-        run: npm run test:jest -- --runInBand --logHeapUsage --testPathPattern '/__probe__/n1-press-only\.test\.tsx$'
-        env:
-          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
-          COMAPEO_METRICS_URL: ${{ vars.COMAPEO_METRICS_URL }}
-          COMAPEO_METRICS_API_KEY: ${{ secrets.COMAPEO_METRICS_API_KEY }}
-      - name: Probe n2 (ObservationsList without the tab navigator)
-        continue-on-error: true
-        run: npm run test:jest -- --runInBand --logHeapUsage --testPathPattern '/__probe__/n2-screen-direct\.test\.tsx$'
-        env:
-          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
-          COMAPEO_METRICS_URL: ${{ vars.COMAPEO_METRICS_URL }}
-          COMAPEO_METRICS_API_KEY: ${{ secrets.COMAPEO_METRICS_API_KEY }}
-      - name: Probe n3 (m1 without the Paneiro headerRight)
-        continue-on-error: true
-        run: npm run test:jest -- --runInBand --logHeapUsage --testPathPattern '/__probe__/n3-no-header-button\.test\.tsx$'
+      - name: Run unit tests
+        run: npm run test:jest
         env:
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
           COMAPEO_METRICS_URL: ${{ vars.COMAPEO_METRICS_URL }}
