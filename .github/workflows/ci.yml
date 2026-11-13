@@ -50,8 +50,31 @@ jobs:
         run: EXPO_PUBLIC_STORYBOOK_ENABLED=true npm run storybook-generate
       - name: Check types
         run: npm run lint:types
-      - name: Run unit tests
-        run: npm run test:jest -- --runInBand --logHeapUsage --testPathPattern '/Navigation/Tab/index(\.menu)?\.test\.tsx$'
+      # THROWAWAY probe: one step per file so an OOM in one cannot hide the others.
+      - name: Probe p4 (mocks + import, no harness)
+        continue-on-error: true
+        run: npm run test:jest -- --runInBand --logHeapUsage --testPathPattern '/__probe__/p4-'
+        env:
+          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
+          COMAPEO_METRICS_URL: ${{ vars.COMAPEO_METRICS_URL }}
+          COMAPEO_METRICS_API_KEY: ${{ secrets.COMAPEO_METRICS_API_KEY }}
+      - name: Probe p5 (plain import)
+        continue-on-error: true
+        run: npm run test:jest -- --runInBand --logHeapUsage --testPathPattern '/__probe__/p5-'
+        env:
+          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
+          COMAPEO_METRICS_URL: ${{ vars.COMAPEO_METRICS_URL }}
+          COMAPEO_METRICS_API_KEY: ${{ secrets.COMAPEO_METRICS_API_KEY }}
+      - name: Probe p6 (harness + mocks + import)
+        continue-on-error: true
+        run: npm run test:jest -- --runInBand --logHeapUsage --testPathPattern '/__probe__/p6-'
+        env:
+          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
+          COMAPEO_METRICS_URL: ${{ vars.COMAPEO_METRICS_URL }}
+          COMAPEO_METRICS_API_KEY: ${{ secrets.COMAPEO_METRICS_API_KEY }}
+      - name: Probe real index.menu.test.tsx alone
+        continue-on-error: true
+        run: npm run test:jest -- --runInBand --logHeapUsage --testPathPattern '/Navigation/Tab/index\.menu\.test\.tsx$'
         env:
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
           COMAPEO_METRICS_URL: ${{ vars.COMAPEO_METRICS_URL }}
