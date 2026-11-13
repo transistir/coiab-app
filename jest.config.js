@@ -62,6 +62,11 @@ const NODE_MODULE_PATTERNS_TO_TRANSFORM = [
 const config = {
   preset: 'jest-expo',
   testEnvironment: '<rootDir>/scripts/jest/environment.cjs',
+  // As suítes das abas montam o navegador completo com as abas reais da Home
+  // e os workers estavam sendo mortos com SIGTERM (pressão de memória no CI).
+  // Reciclar o worker ao passar de 1GB e usar só metade dos CPUs reduz o pico.
+  workerIdleMemoryLimit: '1GB',
+  maxWorkers: '50%',
   globalTeardown: '<rootDir>/scripts/jest/globalTeardown.cjs',
   // `mjs` por último: não muda a resolução dos imports existentes; apenas
   // permite que o haste-map enxergue os testes Node-only de scripts `.mjs`.
