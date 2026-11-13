@@ -4,22 +4,22 @@
 // styles ones, which p1-p3 already load.
 import {useHomeTabsHarness} from '../homeTabsHarness';
 
-jest.mock('../../hooks/useTracking', () => {
-  const actual = jest.requireActual<typeof import('../../hooks/useTracking')>(
-    '../../hooks/useTracking',
+jest.mock('../../../hooks/useTracking', () => {
+  const actual = jest.requireActual<typeof import('../../../hooks/useTracking')>(
+    '../../../hooks/useTracking',
   );
   return {...actual, useTracking: jest.fn(actual.useTracking)};
 });
-jest.mock('../../hooks/useTrackTimer', () => {
-  const actual = jest.requireActual<typeof import('../../hooks/useTrackTimer')>(
-    '../../hooks/useTrackTimer',
+jest.mock('../../../hooks/useTrackTimer', () => {
+  const actual = jest.requireActual<typeof import('../../../hooks/useTrackTimer')>(
+    '../../../hooks/useTrackTimer',
   );
   return {...actual, useTrackTimer: jest.fn(actual.useTrackTimer)};
 });
-jest.mock('../../images/Tracks.svg', () => 'TracksIcon');
+jest.mock('../../../images/Tracks.svg', () => 'TracksIcon');
 
-import {useTracking} from '../../hooks/useTracking';
-import {useTrackTimer} from '../../hooks/useTrackTimer';
+import {useTracking} from '../../../hooks/useTracking';
+import {useTrackTimer} from '../../../hooks/useTrackTimer';
 import {TrackMapButton} from '../index';
 
 test('imports', () => {
