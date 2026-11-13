@@ -50,25 +50,25 @@ jobs:
         run: EXPO_PUBLIC_STORYBOOK_ENABLED=true npm run storybook-generate
       - name: Check types
         run: npm run lint:types
-      # THROWAWAY probe matrix: first leave from the Menu tab, one step per file
-      # so an OOM in one cannot hide the others.
-      - name: Probe m1 (control, test 2 verbatim)
+      # THROWAWAY probe matrix: Paneiro press vs screen vs headerRight, one step
+      # per file so an OOM in one cannot hide the others.
+      - name: Probe n1 (press Paneiro only)
         continue-on-error: true
-        run: npm run test:jest -- --runInBand --logHeapUsage --testPathPattern '/__probe__/m1-control\.test\.tsx$'
+        run: npm run test:jest -- --runInBand --logHeapUsage --testPathPattern '/__probe__/n1-press-only\.test\.tsx$'
         env:
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
           COMAPEO_METRICS_URL: ${{ vars.COMAPEO_METRICS_URL }}
           COMAPEO_METRICS_API_KEY: ${{ secrets.COMAPEO_METRICS_API_KEY }}
-      - name: Probe m2 (Menu without the shift animation)
+      - name: Probe n2 (ObservationsList without the tab navigator)
         continue-on-error: true
-        run: npm run test:jest -- --runInBand --logHeapUsage --testPathPattern '/__probe__/m2-no-animation\.test\.tsx$'
+        run: npm run test:jest -- --runInBand --logHeapUsage --testPathPattern '/__probe__/n2-screen-direct\.test\.tsx$'
         env:
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
           COMAPEO_METRICS_URL: ${{ vars.COMAPEO_METRICS_URL }}
           COMAPEO_METRICS_API_KEY: ${{ secrets.COMAPEO_METRICS_API_KEY }}
-      - name: Probe m3 (leave Menu for Notificacoes)
+      - name: Probe n3 (m1 without the Paneiro headerRight)
         continue-on-error: true
-        run: npm run test:jest -- --runInBand --logHeapUsage --testPathPattern '/__probe__/m3-other-tab\.test\.tsx$'
+        run: npm run test:jest -- --runInBand --logHeapUsage --testPathPattern '/__probe__/n3-no-header-button\.test\.tsx$'
         env:
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
           COMAPEO_METRICS_URL: ${{ vars.COMAPEO_METRICS_URL }}
