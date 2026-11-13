@@ -1,6 +1,5 @@
 import {useHomeTabsHarness} from './homeTabsHarness';
 
-import {StackActions} from '@react-navigation/native';
 import {act, screen, userEvent, waitFor} from '@testing-library/react-native';
 
 // Second half of the HomeTabs navigator suite (see index.test.tsx): the
@@ -69,19 +68,15 @@ describe('HomeTabs — menu, download e câmera (#32)', () => {
     await user.press(await screen.findByTestId('MAIN.add-observation-btn'));
     expect(await screen.findByTestId('STUB.category-chooser')).toBeTruthy();
 
-    // A rota Camera segue registrada e montável dentro das home tabs.
-    // Volta ao Home existente como o app faz (ObservationCreateSaveButton):
-    // `navigate('Home')` com o seletor no topo empilharia um SEGUNDO Home
-    // (react-navigation 7 só reaproveita a rota se ela for a atual).
+    // `Camera` vive na stack do Home (HomeTabsParamsList), não no tab
+    // navigator. No react-navigation 7, `navigate` sem `pop` empilha outro
+    // Home; `pop: true` reusa o existente e aplica o seletor aninhado.
     act(() => {
-      h.navigation.dispatch(StackActions.popTo('Home', {screen: 'Camera'}));
+      h.navigation.navigate('Home', {screen: 'Camera'}, {pop: true});
     });
     await waitFor(() =>
       expect(h.navigation.getCurrentRoute()?.name).toBe('Camera'),
     );
-    expect(
-      (h.navigation.getRootState()?.routes ?? []).map(r => r.name),
-    ).toEqual(['Home']);
     expect(await screen.findByTestId('MAIN.camera-scrn')).toBeTruthy();
     expect(screen.queryByTestId('MENU.conteudo')).toBeNull();
   });
