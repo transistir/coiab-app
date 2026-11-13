@@ -71,11 +71,23 @@
     "message": "Discard changes?",
     "description": "Title of dialog that shows when cancelling observation edits"
   },
+  "$1ProjectSettings.RemoteArchive.AddRemoteArchive.checkingUrl": {
+    "message": "Checking remote archive…"
+  },
   "$1ProjectSettings.RemoteArchive.AddRemoteArchive.looking": {
     "message": "Looking for Remote Archive..."
   },
   "$1ProjectSettings.RemoteArchive.AddRemoteArchive.navTitle": {
     "message": "Add Remote Archive"
+  },
+  "$1ProjectSettings.RemoteArchive.AddRemoteArchive.urlRetry": {
+    "message": "Try again"
+  },
+  "$1ProjectSettings.RemoteArchive.AddRemoteArchive.urlUnreachable": {
+    "message": "Could not reach the remote archive. Check the connection and try again."
+  },
+  "$1ProjectSettings.RemoteArchive.AddRemoteArchive.validUrl": {
+    "message": "Remote archive found"
   },
   "$1ProjectSettings.RemoteArchive.AddRemoteArchive.youAreAdding": {
     "message": "You are adding:"
@@ -846,6 +858,9 @@
   },
   "$1screens.PhotoPreviewModal.headerButtonText": {
     "message": "Delete Photo"
+  },
+  "$1screens.RemoteArchive.AddRemoteArchive.orgHint": {
+    "message": "This archive will be added to both projects of the Territory."
   },
   "$1screens.RemovedFromProjectBottomSheet.close": {
     "message": "Close"
