@@ -31,8 +31,7 @@ import {
   setServiceNotification,
 } from '@comapeo/core-react-native';
 import {localeImports} from '../../translations/index';
-import {AppState, LogBox, PermissionsAndroid, Platform} from 'react-native';
-import {requestForegroundPermissionsAsync} from 'expo-location';
+import {AppState, LogBox} from 'react-native';
 import {AppProviders, wireWorkOriginResolvers} from './contexts/AppProviders';
 import NetInfo from '@react-native-community/netinfo';
 import {createLocalDiscoveryController} from './contexts/LocalDiscoveryContext';

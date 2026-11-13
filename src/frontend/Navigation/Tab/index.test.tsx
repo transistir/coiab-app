@@ -259,6 +259,12 @@ describe('HomeTabs — barra de 5 abas (#32)', () => {
     const ipc = setUpIPC({manager});
     client = ipc.client;
     coreTeardown.push(ipc.stop);
+    // Same order as setupIntegrationTest (ipc → discovery → fastify): the
+    // manager's local-peer discovery server keeps listening until forced
+    // closed, and an open server handle keeps the jest worker from exiting.
+    coreTeardown.push(() =>
+      manager.stopLocalPeerDiscoveryServer({force: true}),
+    );
     coreTeardown.push(() => fastifyController.stop());
 
     projectId = await client.createProject({name: 'Monitoramento'});
