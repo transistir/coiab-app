@@ -53,6 +53,7 @@ jobs:
       - name: Run unit tests
         run: npm run test:jest
         env:
+          NODE_OPTIONS: --max-old-space-size=2048
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
           COMAPEO_METRICS_URL: ${{ vars.COMAPEO_METRICS_URL }}
           COMAPEO_METRICS_API_KEY: ${{ secrets.COMAPEO_METRICS_API_KEY }}

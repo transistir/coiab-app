@@ -66,7 +66,7 @@ const config = {
   // e os workers estavam sendo mortos com SIGTERM (pressão de memória no CI).
   // Reciclar o worker ao passar de 1GB e usar só metade dos CPUs reduz o pico.
   workerIdleMemoryLimit: '1GB',
-  maxWorkers: '50%',
+  maxWorkers: 2,
   globalTeardown: '<rootDir>/scripts/jest/globalTeardown.cjs',
   // `mjs` por último: não muda a resolução dos imports existentes; apenas
   // permite que o haste-map enxergue os testes Node-only de scripts `.mjs`.
