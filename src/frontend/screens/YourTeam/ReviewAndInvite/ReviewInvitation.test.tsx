@@ -1,4 +1,5 @@
 import * as React from 'react';
+import {StyleSheet} from 'react-native';
 import type {TestInstance} from 'test-renderer';
 import {render, screen} from '@testing-library/react-native';
 import {IntlProvider} from 'react-intl';
@@ -62,16 +63,13 @@ describe('ReviewInvitation (PR A #19 — contraste do Send Invite)', () => {
 
     const texto = screen.getByText('Send Invite');
     expect(fundoDe(ancestralComFundo(texto)?.props.style)).toBe(ORANGE);
-    expect(texto.props.style).toEqual(
-      expect.arrayContaining([expect.objectContaining({color: DARK_GREY})]),
-    );
-    expect(texto.props.style).not.toEqual(
-      expect.arrayContaining([expect.objectContaining({color: WHITE})]),
-    );
+    // BodyText (upstream) compõe o style em array: achatar antes de checar.
+    const estiloDoTexto = StyleSheet.flatten(texto.props.style);
+    expect(estiloDoTexto).toEqual(expect.objectContaining({color: DARK_GREY}));
+    expect(estiloDoTexto).not.toEqual(expect.objectContaining({color: WHITE}));
 
     // O texto.parent é o flexRow do botão: [ícone, texto]. O v13 do
-    // vector-icons funde o color prop no style de cada Text (styleDefaults);
-    // nenhuma cor WHITE pode aparecer em nenhum nó do botão.
+    // vector-icons funde o color prop no style de cada Text (styleDefaults).
     const coresDoEstilo = (estilo: unknown): string[] => {
       if (Array.isArray(estilo)) {
         return estilo.flatMap(item => coresDoEstilo(item));

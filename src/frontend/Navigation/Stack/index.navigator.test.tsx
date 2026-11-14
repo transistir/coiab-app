@@ -63,6 +63,10 @@ jest.mock('@maplibre/maplibre-react-native', () => {
     // Named exports: the real Observation screen renders InsetMapView,
     // which destructures them directly.
     MapView: Stub,
+    // maplibre-react-native 11 renamed MapView/MarkerView to Map/Marker; the
+    // merged InsetMapView imports the new names.
+    Map: Stub,
+    Marker: Stub,
     Camera: Stub,
     MarkerView: Stub,
     UserLocation: Stub,
@@ -417,7 +421,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     await freshSetup.renderNavigationAsync();
     await waitFor(
       () =>
-        expect(mockNavigation.getRootState().routeNames).toContain(
+        expect(mockNavigation.getRootState()!.routeNames).toContain(
           'Organizations',
         ),
       {timeout: 15_000},
@@ -510,7 +514,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       expect(screen.queryByTestId('MAIN.map-screen')).not.toBeOnTheScreen();
       expect(screen.queryByTestId('ENTRONCAMENTO.scrn')).not.toBeOnTheScreen();
       expect(
-        mockNavigation.getRootState().routes.map(route => route.name),
+        mockNavigation.getRootState()!.routes.map(route => route.name),
       ).not.toContain('Home');
       await act(async () => releaseRefresh());
       // The flight ends, the hold releases, and the deferred handover
@@ -518,7 +522,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       // confirmation.
       await waitFor(() =>
         expect(
-          mockNavigation.getRootState().routes.map(route => route.name),
+          mockNavigation.getRootState()!.routes.map(route => route.name),
         ).toEqual(['Success', 'OrganizationProvisioning']),
       );
       // While the refresh was gated the document had already published the
@@ -650,10 +654,12 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       await screen.findByText('Monitoring', {}, {timeout: 15_000}),
     ).toBeOnTheScreen();
     expect(
-      mockNavigation.getRootState().routes.map(route => route.name),
+      mockNavigation.getRootState()!.routes.map(route => route.name),
     ).toEqual(['OrganizationProvisioning']);
     expect(screen.queryByTestId('MAIN.map-screen')).not.toBeOnTheScreen();
-    expect(mockNavigation.getRootState().routeNames).toContain('Organizations');
+    expect(mockNavigation.getRootState()!.routeNames).toContain(
+      'Organizations',
+    );
 
     // §7/:157: recovery cannot prune the one route that lets the user pick
     // another organization. Exercise the real StackRouter, not a screen mock.
@@ -663,7 +669,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     await waitFor(
       () =>
         expect(
-          mockNavigation.getRootState().routes.map(route => route.name),
+          mockNavigation.getRootState()!.routes.map(route => route.name),
         ).toEqual(['OrganizationProvisioning', 'Organizations']),
       {timeout: 15_000},
     );
@@ -703,7 +709,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       await screen.findByText('Monitoring', {}, {timeout: 15000}),
     ).toBeOnTheScreen();
     expect(
-      mockNavigation.getRootState().routes.map(route => route.name),
+      mockNavigation.getRootState()!.routes.map(route => route.name),
     ).toEqual(['OrganizationProvisioning']);
     expect(screen.queryByTestId('MAIN.map-screen')).not.toBeOnTheScreen();
     const raw = documentoPersistido();
@@ -820,7 +826,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     // superfície de provisionamento enquanto a promessa roda na raiz.
     await waitFor(() =>
       expect(
-        mockNavigation.getRootState().routes.map(route => route.name),
+        mockNavigation.getRootState()!.routes.map(route => route.name),
       ).toEqual(['Success', 'OrganizationProvisioning']),
     );
     // 2/2 verificado → confirmação pendente; o toque é o único caminho
@@ -1016,7 +1022,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
     await waitFor(
       () =>
         expect(
-          mockNavigation.getRootState().routes.map(route => route.name),
+          mockNavigation.getRootState()!.routes.map(route => route.name),
         ).toEqual(['Home', 'AppSettings', 'Organizations']),
       {timeout: 15_000},
     );
@@ -1121,7 +1127,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       // disparou.
       await fireEvent.press(screen.getByTestId('MENU.area-alertas'));
       expect(
-        mockNavigation.getRootState().routes.map(route => route.name),
+        mockNavigation.getRootState()!.routes.map(route => route.name),
       ).toEqual(['Home']);
 
       // O estado de navegação semeado (AGENTS.md): uma Observation entra na
@@ -1133,7 +1139,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
         });
       });
       expect(
-        mockNavigation.getRootState().routes.map(route => route.name),
+        mockNavigation.getRootState()!.routes.map(route => route.name),
       ).toEqual(['Home', 'Observation']);
 
       await act(async () => {
@@ -1143,7 +1149,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
       // o roteador terminar a reconciliação.
       await waitFor(() =>
         expect(
-          mockNavigation.getRootState().routes.map(route => route.name),
+          mockNavigation.getRootState()!.routes.map(route => route.name),
         ).toEqual(['Home']),
       );
       // O refresh de query do destino atrasa (o remount do grupo consultou o
@@ -1154,7 +1160,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
         timeout: 15_000,
       });
       expect(
-        mockNavigation.getRootState().routes.map(route => route.name),
+        mockNavigation.getRootState()!.routes.map(route => route.name),
       ).toEqual(['Home']);
 
       // O documento cru registra a área trocada e dele deriva EXATAMENTE o
@@ -1179,7 +1185,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
         await screen.findByTestId('MAIN.map-screen', {}, {timeout: 10000}),
       ).toBeOnTheScreen();
       expect(
-        mockNavigation.getRootState().routes.map(route => route.name),
+        mockNavigation.getRootState()!.routes.map(route => route.name),
       ).toEqual(['Home']);
 
       // Back NÃO volta para a Observation (SPEC A §5.2:168). O Back do tab
@@ -1189,7 +1195,7 @@ describe('RootStackNavigator startup gate (SPEC 10.1)', () => {
         mockNavigation.goBack();
       });
       expect(
-        mockNavigation.getRootState().routes.map(route => route.name),
+        mockNavigation.getRootState()!.routes.map(route => route.name),
       ).toEqual(['Home']);
       expect(screen.getByTestId('ENTRONCAMENTO.scrn')).toBeOnTheScreen();
     } finally {

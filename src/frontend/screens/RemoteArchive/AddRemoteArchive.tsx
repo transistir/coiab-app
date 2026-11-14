@@ -12,7 +12,6 @@ import {
 } from '../../lib/styles';
 import {HookFormTextInput} from '../../sharedComponents/HookFormTextInput';
 import {Control, FieldErrors, useForm} from 'react-hook-form';
-import {SaveButton} from '../../sharedComponents/SaveButton';
 import {Bar} from 'react-native-progress';
 import {ScreenContentWithDock} from '../../sharedComponents/ScreenContentWithDock';
 import {Button} from '../../sharedComponents/Button';
@@ -30,6 +29,8 @@ import {useOrganizationMaterializer} from '../../contexts/OrganizationMaterializ
 import {useCoiabOrganizationsState} from '../../contexts/CoiabOrganizationsStoreContext';
 import type {ReconstructedOrganization} from '../../lib/organization/reconstruct';
 import * as Sentry from '@sentry/react-native';
+import SaveCheck from '../../images/CheckMark.svg';
+import {HeaderRightContainerButton} from '../../sharedComponents/HeaderRightContainer';
 
 const m = defineMessages({
   navTitle: {
@@ -147,10 +148,11 @@ export const AddRemoteArchive: NativeNavigationComponent<
         // Once a valid archive is displayed the header has no job left; a
         // failed/absent result keeps it so the user can re-submit.
         submetido && validacaoArquivo.estado === 'valido' ? null : (
-          <SaveButton
+          <HeaderRightContainerButton
             onPress={handleSubmit(marcarSubmetido)}
-            isLoading={false}
-          />
+            loading={false}>
+            <SaveCheck />
+          </HeaderRightContainerButton>
         ),
     });
   }, [

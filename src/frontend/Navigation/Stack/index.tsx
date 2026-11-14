@@ -1,8 +1,9 @@
 import * as React from 'react';
 import {defineMessages, useIntl} from 'react-intl';
+import {Platform} from 'react-native';
 import {NativeStackNavigationOptions} from '@react-navigation/native-stack';
 import {SafeAreaView} from 'react-native-safe-area-context';
-import {WHITE, MEDIUM_GREY} from '../../lib/styles';
+import {WHITE, DARK_GREY, LIGHT_BLUE, MEDIUM_GREY} from '../../lib/styles';
 import {CustomHeaderLeft} from '../../sharedComponents/CustomHeaderLeft';
 import {AppStackParamsList} from '../../sharedTypes/navigation';
 import {useAuthContext} from '../../contexts/AuthContext';
@@ -43,6 +44,8 @@ import {InviteReceived} from '../../screens/Invites/InviteReceived';
 import {OrganizationInviteReceived} from '../../screens/Invites/OrganizationInviteReceived';
 import {InviteCanceled} from '../../screens/Invites/InviteCanceled';
 import {DeepLinkListener} from './DeepLinkListener';
+import {CommonActions, StackActions} from '@react-navigation/native';
+import {RUBIK} from '../../lib/fonts';
 
 export type NavigatorLayout = NonNullable<
   React.ComponentProps<typeof RootStack.Navigator>['layout']
@@ -51,11 +54,26 @@ export type NavigatorScreenLayout = NonNullable<
   React.ComponentProps<typeof RootStack.Navigator>['screenLayout']
 >;
 
+// The bottom inset sits behind the home indicator (iOS) or, since the nav bar is
+// transparent and edge-to-edge, the system navigation bar (Android). It should
+// match the screen above it: white like the tabs, except on these screens.
+const IOS_BOTTOM_INSET_COLORS: Partial<
+  Record<keyof AppStackParamsList, string>
+> = {
+  IntroToCoMapeo: LIGHT_BLUE,
+  AudioRecording: DARK_GREY,
+};
+
+function getBottomInsetColor(routeName: keyof AppStackParamsList | undefined) {
+  if (Platform.OS === 'android') return MEDIUM_GREY;
+  return (routeName && IOS_BOTTOM_INSET_COLORS[routeName]) ?? WHITE;
+}
+
 export const NavigatorScreenOptions: NativeStackNavigationOptions = {
   presentation: 'card',
   contentStyle: {backgroundColor: WHITE},
   headerStyle: {backgroundColor: WHITE},
-  headerTitleStyle: {fontFamily: 'Rubik_500Medium'},
+  headerTitleStyle: {fontFamily: RUBIK[500]},
   headerLeft: props => <CustomHeaderLeft headerBackButtonProps={props} />,
   headerBackVisible: false,
   statusBarStyle: 'dark',
@@ -97,6 +115,26 @@ const m = defineMessages({
  * pending documents, a settled document's activation, and the
  * auth/device-name guards — is unaffected by the profile.
  */
+type LayoutProps = Parameters<NavigatorLayout>[0];
+
+// Android's bottom inset sits behind the system navigation bar, where grey is a
+// deliberate visual choice. iOS's is the home activity indicator, which should
+// match the screen above it: white like the tabs, except on these screens.
+function openSheetAction(
+  {state, descriptors}: Pick<LayoutProps, 'state' | 'descriptors'>,
+  name: 'InviteReceived' | 'MapReceivedBottomSheet',
+  params: {inviteId: string} | {shareId: string},
+) {
+  const currentRoute = state.routes[state.index];
+  const presentation = currentRoute
+    ? descriptors[currentRoute.key]?.options.presentation
+    : undefined;
+
+  return presentation && presentation !== 'card'
+    ? StackActions.replace(name, params)
+    : CommonActions.navigate(name, params);
+}
+
 export function getInitialRoute(
   authState: 'authenticated' | 'unauthenticated' | 'obscured',
   deviceName: string | undefined,
@@ -198,13 +236,23 @@ export function GenerationTransitionGate({
     if (status === 'ready') {
       // A new generation means a fresh activation: the validated
       // destination is Home/Map, wherever the user happened to be.
-      if (
-        generation !== prevGeneration &&
-        state.routes[state.index]?.name !== 'Home'
-      )
+      const currentName = state.routes[state.index]?.name;
+      if (generation !== prevGeneration && currentName !== 'Home')
+        // Leaving the provisioning surface (creation/invite confirmation →
+        // "Abrir organização") lands on the tabs' own initial route, exactly
+        // like that screen's own handover reset (`navigation.reset` →
+        // `{name: 'Home'}`): under the 5-tab bar (#32) that is Menu/
+        // Entroncamento. The two resets fire in the same commit and the
+        // later one wins, so targeting Map here made the landing tab depend
+        // on effect order. Every other origin (switch, recovery) keeps the
+        // explicit Map destination.
         navigation.reset({
           index: 0,
-          routes: [{name: 'Home', params: {screen: 'Map'}}],
+          routes: [
+            currentName === 'OrganizationProvisioning'
+              ? {name: 'Home'}
+              : {name: 'Home', params: {screen: 'Map'}},
+          ],
         });
       return;
     }
@@ -275,10 +323,19 @@ export const RootStackNavigator = () => {
     generation === 0 &&
     (ativacao === 'loading' || ativacao === 'opening');
 
-  const layout: NavigatorLayout = ({children, state, navigation}) => (
+  const layout: NavigatorLayout = ({
+    children,
+    state,
+    navigation,
+    descriptors,
+  }) => (
     <SafeAreaView
-      edges={['bottom']}
-      style={{flex: 1, backgroundColor: MEDIUM_GREY}}>
+      edges={{bottom: 'maximum'}}
+      style={{
+        flex: 1,
+        paddingBottom: 20,
+        backgroundColor: getBottomInsetColor(state.routes[state.index]?.name),
+      }}>
       <GenerationTransitionGate
         state={state}
         navigation={navigation}
@@ -290,7 +347,11 @@ export const RootStackNavigator = () => {
         <PendingInvitesListener
           currentRouteName={state.routes[state.index]?.name}
           navigateToInviteScreen={inviteId =>
-            navigation.navigate('InviteReceived', {inviteId})
+            navigation.dispatch(
+              openSheetAction({state, descriptors}, 'InviteReceived', {
+                inviteId,
+              }),
+            )
           }
           navigateToOrgInviteScreen={(organizationId, inviteId) =>
             navigation.navigate('OrganizationInviteReceived', {
@@ -302,7 +363,11 @@ export const RootStackNavigator = () => {
         <PendingMapSharesListener
           currentRouteName={state.routes[state.index]?.name}
           navigateToMapShareScreen={shareId =>
-            navigation.navigate('MapReceivedBottomSheet', {shareId})
+            navigation.dispatch(
+              openSheetAction({state, descriptors}, 'MapReceivedBottomSheet', {
+                shareId,
+              }),
+            )
           }
         />
         {!isNotReadyForInvite && (

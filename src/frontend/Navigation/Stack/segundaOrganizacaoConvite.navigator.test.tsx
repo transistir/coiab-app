@@ -493,7 +493,7 @@ describe('segunda organização por convite (navigator real)', () => {
       await waitFor(
         () =>
           expect(
-            mockNavigation.getRootState().routes.map(route => route.name),
+            mockNavigation.getRootState()!.routes.map(route => route.name),
           ).toEqual(['OrganizationProvisioning']),
         {timeout: 15_000},
       );
@@ -552,7 +552,7 @@ describe('segunda organização por convite (navigator real)', () => {
         await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 15_000}),
       ).toBeOnTheScreen();
       expect(
-        mockNavigation.getRootState().routes.map(route => route.name),
+        mockNavigation.getRootState()!.routes.map(route => route.name),
       ).toEqual(['Home']);
       expect(
         await screen.findByTestId(

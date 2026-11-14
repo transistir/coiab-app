@@ -86,7 +86,8 @@ export const IntroToCoMapeo = ({
       </ScrollView>
       <View style={styles.buttonContainer}>
         <PrimaryButton
-          testID="ONBOARDING.get-started-btn"
+          // Upstream v14 testID (the merged e2e specs press it).
+          testID="ONBOARDING.navigate-to-privacy-policy-btn"
           fullSize
           text={formatMessage(m.getStarted)}
           onPress={() => {
