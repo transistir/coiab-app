@@ -183,9 +183,9 @@ jest.mock('react-native-vision-camera', () => {
 
   return {
     Camera,
-    // A back camera always exists in the Jest environment: since the v14 merge
-    // CameraView early-returns when there is no device, which skips the
-    // MAIN.camera-scrn container the navigation tests assert on.
+    // Uma câmera traseira sempre existe no ambiente de teste, como num
+    // aparelho real: `CameraView` só renderiza o elemento <Camera> quando
+    // há device.
     useCameraDevice: jest.fn(() => ({
       id: 'back',
       position: 'back',
