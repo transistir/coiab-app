@@ -45,10 +45,8 @@ import {LowStorageBanner} from '../../sharedComponents/Storage/LowStorageBanner'
 import {useAppUsageStatsStore} from '../../contexts/AppUsageStatsContext';
 import {useShouldShowAppUsagePrompt} from '../../hooks/useShouldShowAppUsagePrompt';
 import {useTrackState} from '../../contexts/TrackStoreContext';
-import {
-  useDraftObservationActions,
-  useDraftObservationState,
-} from '../../contexts/DraftObservationContext';
+import {useDraftObservationState} from '../../contexts/DraftObservationContext';
+import {useNewObservationDraft} from '../../hooks/useNewObservationDraft';
 import {
   requestLocationPermission,
   useInvalidateLocationPermission,
@@ -99,7 +97,7 @@ export const MapScreen = ({
   const trackBottomSheetOpen = route.params?.trackingOpen;
   const [zoomForScaleBar, setZoomForScaleBar] = React.useState(DEFAULT_ZOOM);
   const {dimensions, mapKey, onLayout} = useResetMapLayout();
-  const {createDraft} = useDraftObservationActions();
+  const createDraft = useNewObservationDraft();
   const {navigate} = useNavigationFromHomeTabs();
   const {isTracking} = useTracking();
   const location = useLocationState(store =>

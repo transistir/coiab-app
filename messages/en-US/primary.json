@@ -995,6 +995,9 @@
   "$1screens.Settings.YourTeam.close": {
     "message": "Close"
   },
+  "$1screens.Settings.YourTeam.inviteDeclinedOrganizationDes": {
+    "message": "This device has declined your invitation. They have not joined the Territory."
+  },
   "$1screens.Sync.NoWifiDisplay.buttonText": {
     "message": "Close"
   },

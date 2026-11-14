@@ -432,7 +432,7 @@
     "message": "Você pode optar por não compartilhar informações de diagnóstico a qualquer momento."
   },
   "screens.DataAndPrivacy.respectsPrivacy": {
-    "message": "CoiabApprespeita suas privacidade e autonomia"
+    "message": "CoiabApp respeita suas privacidade e autonomia"
   },
   "screens.EarlyAccess.infoBox": {
     "message": "Os dados do Acesso Antecipado não serão visíveis para os colaboradores que não optaram."
@@ -825,7 +825,7 @@
     "message": "Enviado por CoiabApp"
   },
   "screens.ObservationMetadataVerified.sentFrom": {
-    "message": "Metadados Copeo enviados de"
+    "message": "Metadados CoiabApp enviados de"
   },
   "screens.ObservationMetadataVerified.speed": {
     "message": "Velocidade"
@@ -905,7 +905,7 @@
     "message": "Sobre Awana Digital"
   },
   "screens.PrivacyPolicy.aboutAwanaContent": {
-    "message": "CoiabAppé desenvolvido por Awana Digital, uma organização sem fins lucrativos registrada conforme lei 501c3 nos Estados Unidos. Awana Digital trabalha em conjunto com as comunidades que estão na linha de frente, para que utilizem a tecnologia na defesa dos seus direitos e na luta contra as mudanças climáticas."
+    "message": "CoiabApp é desenvolvido por Awana Digital, uma organização sem fins lucrativos registrada conforme lei 501c3 nos Estados Unidos. Awana Digital trabalha em conjunto com as comunidades que estão na linha de frente, para que utilizem a tecnologia na defesa dos seus direitos e na luta contra as mudanças climáticas."
   },
   "screens.PrivacyPolicy.appErrors": {
     "message": "Erros do aplicativo"
@@ -962,7 +962,7 @@
     "message": "Código Aberto e a Versão \"Oficial\""
   },
   "screens.PrivacyPolicy.openSourceContent": {
-    "message": "CoiabAppé um aplicativo de código aberto. Isso significa que qualquer pessoa pode ver o código que faz o aplicativo funcionar e pode verificar as declarações de privacidade neste documento. Isso também significa que qualquer pessoa pode adaptar o aplicativo às suas próprias necessidades e lançar uma versão alternativa. Este documento refere-se aos dados coletados pelos lançamentos oficiais do CoiabApp, assinado digitalmente pela Awana Digital, disponível na Google Play Store ou no site da Awana Digital. As versões não-oficiais do CoiabApp obtidas de outros canais estão fora do nosso controle e podem compartilhar informações adicionais com outras organizações."
+    "message": "CoiabApp é um aplicativo de código aberto. Isso significa que qualquer pessoa pode ver o código que faz o aplicativo funcionar e pode verificar as declarações de privacidade neste documento. Isso também significa que qualquer pessoa pode adaptar o aplicativo às suas próprias necessidades e lançar uma versão alternativa. Este documento refere-se aos dados coletados pelos lançamentos oficiais do CoiabApp, assinado digitalmente pela Awana Digital, disponível na Google Play Store ou no site da Awana Digital. As versões não-oficiais do CoiabApp obtidas de outros canais estão fora do nosso controle e podem compartilhar informações adicionais com outras organizações."
   },
   "screens.PrivacyPolicy.overview": {
     "message": "Este documento descreve quais informações (\"dados\") são enviadas do CoiabApp para o desenvolvedor do aplicativo, Awana Digital, e como essas informações são usadas."

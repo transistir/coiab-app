@@ -20,6 +20,11 @@ const m = defineMessages({
     defaultMessage:
       'This device has declined your invitation. They have not joined the project.',
   },
+  inviteDeclinedOrganizationDes: {
+    id: '$1screens.Settings.YourTeam.inviteDeclinedOrganizationDes',
+    defaultMessage:
+      'This device has declined your invitation. They have not joined the Territory.',
+  },
   close: {
     id: '$1screens.Settings.YourTeam.close',
     defaultMessage: 'Close',
@@ -31,7 +36,7 @@ export const InviteDeclined = ({
   route,
 }: NativeRootNavigationProps<'InviteDeclined'>) => {
   const {formatMessage} = useIntl();
-  const {name, deviceType, deviceId} = route.params;
+  const {name, deviceType, deviceId, isOrganization} = route.params;
 
   usePreventBackNavigation();
 
@@ -46,7 +51,11 @@ export const InviteDeclined = ({
           {formatMessage(m.inviteDeclined)}
         </BodyText>
         <BodyText style={{marginTop: 10, textAlign: 'center', color: BLACK}}>
-          {formatMessage(m.inviteDeclinedDes)}
+          {formatMessage(
+            isOrganization
+              ? m.inviteDeclinedOrganizationDes
+              : m.inviteDeclinedDes,
+          )}
         </BodyText>
         <DeviceNameWithIcon
           name={name}

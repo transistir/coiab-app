@@ -45,7 +45,7 @@ export const TrackBottomSheet = React.memo(({isOpen}: {isOpen: boolean}) => {
       return null;
     }
     return (
-      <View style={styles.container}>
+      <View style={styles.container} testID="MAP:track-bottom-sheet">
         <View style={styles.animatedBackground}>
           <StartStopTrack />
         </View>
@@ -57,7 +57,8 @@ export const TrackBottomSheet = React.memo(({isOpen}: {isOpen: boolean}) => {
     <Animated.View
       style={[styles.animatedBackground, animatedStyle]}
       onLayout={onLayoutSheet}
-      pointerEvents={isOpen ? 'auto' : 'none'}>
+      pointerEvents={isOpen ? 'auto' : 'none'}
+      testID="MAP:track-bottom-sheet">
       <StartStopTrack />
     </Animated.View>
   );
