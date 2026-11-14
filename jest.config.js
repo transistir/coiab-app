@@ -63,6 +63,11 @@ const config = {
   preset: 'jest-expo',
   testEnvironment: '<rootDir>/scripts/jest/environment.cjs',
   globalTeardown: '<rootDir>/scripts/jest/globalTeardown.cjs',
+  // As suítes de integração sobem um cliente real do `@comapeo/core` por
+  // teste; mesmo encerrado, o heap do worker não volta ao tamanho de antes.
+  // Acima de 1GB o worker é reciclado ao fim do arquivo, em vez de acumular
+  // até o fim da execução e ser morto pelo sistema (SIGKILL no CI).
+  workerIdleMemoryLimit: '1GB',
   // `mjs` por último: não muda a resolução dos imports existentes; apenas
   // permite que o haste-map enxergue os testes Node-only de scripts `.mjs`.
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node', 'mjs'],
