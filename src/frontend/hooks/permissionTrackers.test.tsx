@@ -75,7 +75,7 @@ test('permission requests hide the passcode screen', async () => {
 
   expect(pending()).toHaveLength(0);
 
-  act(() => {
+  await act(async () => {
     result.current.camera.mutate();
     result.current.location.mutate();
   });

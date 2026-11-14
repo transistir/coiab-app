@@ -54,11 +54,14 @@ describe('HomeTabs — menu, download e câmera (#32)', () => {
 
     expect(h.navigation.getCurrentRoute()?.name).toBe('ExportObservations');
   });
-  // Último do suite por um motivo real: o navigate encaixado da câmera
-  // (rota de aba via navigation ref) deixa o PreventRemoveProvider do
-  // react-navigation com remoção pendente no worker sob jest, e o PRÓXIMO
-  // mount do navigator fica pêndulo para sempre (nenhuma aba renderiza).
-  // Cobertura da câmera intacta; o efeito morre junto com o worker.
+  // O `act` do navigate abaixo PRECISA de await: no RNTL 14 o `act` é sempre
+  // assíncrono e, sem await, o escopo de act do React nunca fecha. Com o
+  // escopo aberto nenhum render() ou unmount() posterior do arquivo comita
+  // (era esse o "próximo mount pêndulo, nenhuma aba renderiza" antes
+  // atribuído ao PreventRemoveProvider) e o unmount do teardown não desmonta
+  // a árvore, que sobrevive ao fechamento do cliente IPC e estoura
+  // `ClientClosed` (no cleanup do ClientApiProvider) em outro arquivo do
+  // mesmo worker.
   test('a criação de observação continua acessível e a rota Camera não sumiu', async () => {
     await h.renderHomeTabs();
     const user = userEvent.setup();
@@ -71,7 +74,7 @@ describe('HomeTabs — menu, download e câmera (#32)', () => {
     // `Camera` vive na stack do Home (HomeTabsParamsList), não no tab
     // navigator. No react-navigation 7, `navigate` sem `pop` empilha outro
     // Home; `pop: true` reusa o existente e aplica o seletor aninhado.
-    act(() => {
+    await act(() => {
       h.navigation.navigate('Home', {screen: 'Camera'}, {pop: true});
     });
     await waitFor(() =>
