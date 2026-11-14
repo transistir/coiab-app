@@ -21,7 +21,6 @@
  * only type imports at top level, so loading it from a factory pulls in
  * nothing else.
  */
-import {Suspense} from 'react';
 import type {
   NavigationContainerRef,
   InitialState,
@@ -164,9 +163,9 @@ export function mockSeededNavigatorModule(
               }}
             />
           ) : null}
-          <Suspense fallback={null}>
+          <React.Suspense fallback={null}>
             <RootStackNavigator />
-          </Suspense>
+          </React.Suspense>
         </NavigationContainer>
       );
     },
