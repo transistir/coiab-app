@@ -92,6 +92,7 @@ jest.mock('../../hooks/server/presets', () => ({
 }));
 
 import {setupIntegrationTestWithoutProject} from '../../../../tests/integration/helpers/setupIntegrationTest';
+import {deviceDiagnostics} from '../../metrics/deviceDiagnostics';
 
 function nomesDasRotas(): string[] {
   return mockNavigation.getRootState()!.routes.map(route => route.name);
@@ -111,6 +112,8 @@ describe('nomear o dispositivo com perfil incompleto (#128)', () => {
   });
 
   test('ao salvar o nome, o fluxo segue para EthnicGroupSelection (não Success)', async () => {
+    const setEnabledSpy = jest.spyOn(deviceDiagnostics, 'setEnabled');
+
     await setup.renderNavigationAsync({userProfile: null});
 
     // Cold start: no device name routes to the intro, before the profile
@@ -135,5 +138,11 @@ describe('nomear o dispositivo com perfil incompleto (#128)', () => {
       await screen.findByText('What is your ethnicity?'),
     ).toBeOnTheScreen();
     expect(nomesDasRotas()).toEqual(['EthnicGroupSelection']);
+
+    // #P1 privacy: an opted-out diagnostics preference (jest.setup.js's
+    // default `getDiagnosticsEnabled` mock) must be applied to the
+    // long-lived collector on save, since navigation.reset doesn't restart
+    // the app to pick it up on its own (see App.tsx's launch-time apply).
+    expect(setEnabledSpy).toHaveBeenCalledWith(false);
   }, 30000);
 });

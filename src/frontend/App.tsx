@@ -68,7 +68,7 @@ import {FatalErrorUntranslated} from './screens/FatalErrorUntranslated.tsx';
 import {postHog} from './lib/posthog.ts';
 import {getLocales} from 'expo-localization';
 import {AppUsageData} from './metrics/AppUsageData.ts';
-import {DeviceDiagnostics} from './metrics/DeviceDiagnosticMetrics.ts';
+import {deviceDiagnostics} from './metrics/deviceDiagnostics.ts';
 import StorybookUIRoot from '../../.rnstorybook';
 
 let navigationIntegration:
@@ -245,7 +245,6 @@ const appUsagePromptStore = createAppUsageStatsStore({
   },
 });
 
-const deviceDiagnostics = new DeviceDiagnostics();
 const backendDiagnosticsEnabled = getDiagnosticsEnabled();
 // Same here: only changes in the backend after a force close and reopen,
 // so match it on app launch.

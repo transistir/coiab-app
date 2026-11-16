@@ -24,6 +24,8 @@ import {
   VERY_LIGHT_GREY,
 } from '../../lib/styles';
 import {useSetOwnDeviceInfo} from '@comapeo/core-react';
+import {getDiagnosticsEnabled} from '@comapeo/core-react-native/sentry';
+import {applyDiagnosticsPreference} from '../../metrics/deviceDiagnostics';
 import {expoToCoreDeviceType} from '../../lib/deviceTypeMap';
 import {LoadingIndicator} from '../../sharedComponents/LoadingIndicator';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
@@ -85,6 +87,9 @@ export const DeviceNaming = ({
       },
       {
         onSuccess: () => {
+          // navigation.reset doesn't restart the app, so the launch-time apply in App.tsx
+          // would not pick up a diagnostics opt-out made during onboarding.
+          applyDiagnosticsPreference(getDiagnosticsEnabled());
           // Reset so that someone can't go back to the onboarding screens
           // after saving the device name. An incomplete profile (#128) must
           // continue onto EthnicGroupSelection rather than Success — the same
