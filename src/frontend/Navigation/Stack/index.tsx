@@ -28,6 +28,7 @@ import {
   useUserProfileState,
   type CoordinationRole,
 } from '../../contexts/UserProfileStoreContext';
+import {onboardingRouteForIncompleteProfile} from '../../lib/organization/onboardingRoute';
 import {AuthScreen} from '../../screens/AuthScreen';
 import {Success} from '../../screens/Onboarding/Success';
 import {EthnicGroupSelection} from '../../screens/Onboarding/EthnicGroupSelection';
@@ -153,10 +154,10 @@ export function getInitialRoute(
     return 'OrganizationProvisioning';
   }
   if (documento === 'nenhum') {
-    if (!profileComplete) return 'EthnicGroupSelection';
-    if (coordinationRole === 'coordinator') return 'CreateOrganization';
-    if (coordinationRole === 'participant') return 'JoinOrganizationIntro';
-    return 'Success';
+    return onboardingRouteForIncompleteProfile(
+      profileComplete,
+      coordinationRole,
+    );
   }
   if (ativacao === 'ready') {
     return 'Home';

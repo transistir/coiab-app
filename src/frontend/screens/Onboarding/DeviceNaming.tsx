@@ -28,6 +28,11 @@ import {expoToCoreDeviceType} from '../../lib/deviceTypeMap';
 import {LoadingIndicator} from '../../sharedComponents/LoadingIndicator';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {OnboardingParamsList} from '../../sharedTypes/navigation';
+import {
+  isProfileComplete,
+  useUserProfileState,
+} from '../../contexts/UserProfileStoreContext';
+import {onboardingRouteForIncompleteProfile} from '../../lib/organization/onboardingRoute';
 
 const m = defineMessages({
   header: {
@@ -56,6 +61,7 @@ export const DeviceNaming = ({
   const [errorTimeout, setErrorTimeout] = useTemporaryError();
   const {formatMessage: t} = useIntl();
   const {mutate, status} = useSetOwnDeviceInfo();
+  const profileState = useUserProfileState();
 
   function setNameWithValidation(nameValue: string) {
     if (nameValue.length > 60) {
@@ -79,8 +85,16 @@ export const DeviceNaming = ({
       },
       {
         onSuccess: () => {
-          // Reset so that someone can't go back to the onboarding screens after saving the device name
-          navigation.reset({index: 0, routes: [{name: 'Success'}]});
+          // Reset so that someone can't go back to the onboarding screens
+          // after saving the device name. An incomplete profile (#128) must
+          // continue onto EthnicGroupSelection rather than Success — the same
+          // rule the startup gate applies to a `documento === 'nenhum'`
+          // cold start (`getInitialRoute`).
+          const nextRoute = onboardingRouteForIncompleteProfile(
+            isProfileComplete(profileState),
+            profileState.coordinationRole,
+          );
+          navigation.reset({index: 0, routes: [{name: nextRoute}]});
         },
       },
     );
