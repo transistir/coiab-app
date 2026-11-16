@@ -99,9 +99,10 @@ jobs:
         with:
           node-version-file: ".nvmrc"
       - name: Check customization contract
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          BASE_REF="${{ github.base_ref }}"
-          PARENT=$(git merge-base "origin/${BASE_REF}" HEAD)
+          PARENT=$(git merge-base "origin/$BASE_REF" HEAD)
           node scripts/sync/check-customizations.mjs --parent "$PARENT" --head HEAD
       - name: Test the customization checker
         run: node --test scripts/sync/check-customizations.test.mjs

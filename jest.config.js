@@ -125,7 +125,11 @@ const config = {
     '<rootDir>/ios',
     '<rootDir>/assets',
   ],
-  testPathIgnorePatterns: ['<rootDir>/tests/e2e/'],
+  testPathIgnorePatterns: [
+    '<rootDir>/tests/e2e/',
+    // These files run with `node --test` in the CI sync-contract job.
+    '<rootDir>/scripts/sync/',
+  ],
 };
 
 module.exports = config;

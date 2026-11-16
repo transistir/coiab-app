@@ -145,6 +145,7 @@ export function validateRules(rules) {
   }
 
   const problems = []
+  const seenIds = new Set()
 
   rules.forEach((rule, index) => {
     const fallback = `rules[${index}]`
@@ -158,6 +159,10 @@ export function validateRules(rules) {
 
     if (typeof rule.id !== 'string' || !rule.id.trim()) {
       problems.push({ code: 'MISSING_ID', ruleId: label, message: `${label}: missing or empty "id"` })
+    } else if (seenIds.has(rule.id)) {
+      problems.push({ code: 'INVALID_RULE', ruleId: label, message: `${label}: duplicate rule id` })
+    } else {
+      seenIds.add(rule.id)
     }
 
     if (typeof rule.class !== 'string' || !rule.class.trim()) {
@@ -242,11 +247,11 @@ export function classify(entries, rules) {
     covered += 1
     files.push({ path: filePath, status, rules: ruleIds, classes, result: 'covered' })
 
-    if (matching.some((rule) => rule.class === 'fork-only') && status !== 'A') {
+    if (matching.some((rule) => rule.class === 'fork-only') && status === 'D') {
       problems.push({
-        code: 'FORK_ONLY_NOT_ADDED',
+        code: 'FORK_ONLY_DELETED',
         path: filePath,
-        message: `${status} ${filePath}: fork-only path must be added (status A)`,
+        message: `${status} ${filePath}: path belongs to this fork (fork-only) and was deleted`,
       })
     }
 

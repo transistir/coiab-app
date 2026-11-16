@@ -150,24 +150,26 @@ test('classify counts covered, uncovered and ambiguous paths', () => {
   assert.equal(files.find((file) => file.path === 'src/product/change.ts').result, 'covered')
 })
 
-test('classify rejects fork-only paths with status M or D', () => {
-  const { problems, summary } = classify(
-    [
-      { status: 'M', path: 'src/fork/changed.ts' },
-      { status: 'D', path: 'src/fork/removed.ts' },
-    ],
-    [RULES[0]],
-  )
+test('classify accepts a modified fork-only path', () => {
+  const { problems, summary } = classify([{ status: 'M', path: 'src/fork/changed.ts' }], [RULES[0]])
+  const result = { ok: problems.length === 0 }
 
-  assert.equal(summary.covered, 2)
-  assert.equal(
-    problems.filter((problem) => problem.code === 'FORK_ONLY_NOT_ADDED').length,
-    2,
-  )
-  assert.equal(
-    problems.filter((problem) => problem.code === 'DELETED_NOT_DECLARED').length,
-    1,
-  )
+  assert.equal(result.ok, true)
+  assert.equal(summary.covered, 1)
+})
+
+test('classify rejects a deleted fork-only path with FORK_ONLY_DELETED', () => {
+  const { problems } = classify([{ status: 'D', path: 'src/fork/removed.ts' }], [RULES[0]])
+
+  assert.equal(problems.length > 0, true)
+  assert.equal(problems.filter((problem) => problem.code === 'FORK_ONLY_DELETED').length, 1)
+})
+
+test('validateRules rejects duplicate rule ids', () => {
+  const rule = { id: 'dup', class: 'fork-only', policy: 'fork-only', paths: ['a/**'] }
+  const problems = validateRules([rule, { ...rule, paths: ['b/**'] }])
+
+  assert.equal(problems.filter((problem) => problem.code === 'INVALID_RULE').length, 1)
 })
 
 test('classify rejects deleted-here paths with status A or M', () => {

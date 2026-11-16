@@ -74,8 +74,15 @@
       "id": "coiab.org-layer",
       "class": "fork-only",
       "policy": "fork-only",
-      "paths": ["src/frontend/lib/organization/**", "src/frontend/hooks/organization/**", "src/frontend/screens/Organizations*", "src/frontend/hooks/server/useValidarArquivoRemoto.ts", "docs/specs/organizacao/**", "docs/specs/SPEC-46*"],
+      "paths": ["src/frontend/lib/organization/**", "src/frontend/hooks/organization/**", "src/frontend/screens/Organizations*", "src/frontend/hooks/server/useValidarArquivoRemoto.ts", "docs/specs/organizacao/**"],
       "intent": "Org-layer modules are product-only. Integration surfaces that also exist upstream (AppProviders.tsx, screens/RemoteArchive/**) are product/reconcile, not fork-only."
+    },
+    {
+      "id": "coiab.spec-46",
+      "class": "product",
+      "policy": "reconcile",
+      "paths": ["docs/specs/SPEC-46-organizacao-camada-produto.md"],
+      "intent": "Exists in the trunk (8d2abc1b) and in the fork, with fork edits (organization-layer spec). When upstream and fork diverge, reconcile by hand keeping the fork's product text; never take the trunk copy wholesale."
     },
     {
       "id": "coiab.persisted-state",
@@ -108,9 +115,9 @@
     {
       "id": "coiab.dependencies",
       "class": "shared-infra",
-      "policy": "upstream-wins",
+      "policy": "reconcile",
       "paths": ["package.json", "package-lock.json"],
-      "intent": "Upstream dependency set; fork-only devDependencies and scripts retained by name. Lockfile regenerated from the incoming lock. Patch files are classified one by one by the coiab.patch-* rules (exact package name and version), not by a directory glob."
+      "intent": "Reconciled, not taken from upstream: the fork edits both files vs the merge-base. Fork dependencies and scripts preserved by name on top of the incoming upstream set; lockfile rebuilt from the reconciled package.json. Patch files are classified one by one by the coiab.patch-* rules (exact package name and version), not by a directory glob."
     },
     {
       "id": "coiab.patch-maplibre",
