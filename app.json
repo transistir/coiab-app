@@ -27,13 +27,13 @@
       [
         "react-native-vision-camera",
         {
-          "cameraPermissionText": "CoMapeo can add photos to observations made."
+          "cameraPermissionText": "CoiabApp can add photos to observations made."
         }
       ],
       [
         "expo-audio",
         {
-          "microphonePermission": "CoMapeo can record audio while using the app to add to observations made."
+          "microphonePermission": "CoiabApp can record audio while using the app to add to observations made."
         }
       ],
       [
@@ -55,8 +55,8 @@
         {
           "isAndroidForegroundServiceEnabled": true,
           "isIosBackgroundLocationEnabled": true,
-          "locationWhenInUsePermission": "CoMapeo records GPS location for each observation made to accurately display it on the map.",
-          "locationAlwaysAndWhenInUsePermission": "CoMapeo keeps recording GPS location in the background for each track started including when the screen is off."
+          "locationWhenInUsePermission": "CoiabApp records GPS location for each observation made to accurately display it on the map.",
+          "locationAlwaysAndWhenInUsePermission": "CoiabApp keeps recording GPS location in the background for each track started including when the screen is off."
         }
       ],
       [

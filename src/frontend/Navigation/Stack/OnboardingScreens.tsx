@@ -16,7 +16,7 @@ export const createOnboardingScreens = ({
       <RootStack.Screen
         name="IntroToCoMapeo"
         component={IntroToCoMapeo}
-        options={{headerShown: false}}
+        options={{headerShown: false, statusBarStyle: 'light'}}
       />
       <RootStack.Screen
         name="DataPrivacy"

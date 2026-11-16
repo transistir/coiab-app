@@ -62,7 +62,18 @@ jobs:
       # a fresh process with --runInBand they pass. Keep them in the gate.
       - name: Run seeded navigator integration suites
         run: |
-          for f in src/frontend/Navigation/Stack/seededDeepStack.*.test.tsx; do
+          # Same files the pool skips above (`--testPathIgnorePatterns='seededDeepStack'`),
+          # narrowed to what jest collects as a suite so non-test helpers such as
+          # seededDeepStack.helpers.tsx are not passed to jest ("No tests found" exits 1).
+          tests=$(git ls-files \
+            | grep seededDeepStack \
+            | grep -E '(__tests__/.*\.[cm]?[jt]sx?$|\.(spec|test)\.([cm]?[jt]sx?|mjs)$)' \
+            || true)
+          if [ -z "$tests" ]; then
+            echo "::error::no seededDeepStack test suites found"
+            exit 1
+          fi
+          for f in $tests; do
             echo "::group::$f"
             npx dotenv -- jest "$f" --runInBand
             echo "::endgroup::"
