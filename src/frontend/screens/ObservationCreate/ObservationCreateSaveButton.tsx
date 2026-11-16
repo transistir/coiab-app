@@ -7,7 +7,6 @@ import {
 import {useNavigationFromRoot} from '../../hooks/useNavigationWithTypes';
 import {STORAGE_QUERY_KEY} from '../../hooks/useStorageReadingQuery';
 import SaveCheck from '../../images/CheckMark.svg';
-import {IconButton} from '../../sharedComponents/IconButton';
 import {useActiveProject} from '../../contexts/ActiveProjectContext';
 import {
   Attachment,
@@ -16,8 +15,7 @@ import {
 } from '../../sharedTypes';
 import * as Sentry from '@sentry/react-native';
 import {useTrackActions, useTrackState} from '../../contexts/TrackStoreContext';
-import {Alert, AlertButton, View} from 'react-native';
-import {LoadingIndicator} from '../../sharedComponents/LoadingIndicator';
+import {Alert, AlertButton} from 'react-native';
 import {useQueryClient} from '@tanstack/react-query';
 import {defineMessages, useIntl} from 'react-intl';
 import {
@@ -30,6 +28,7 @@ import {
   isUnsavedPhotoAttachment,
 } from '../../lib/attachmentTypeChecks';
 import {normalizeObserverTags} from '../../lib/observerProfile';
+import {HeaderRightContainerButton} from '../../sharedComponents/HeaderRightContainer';
 
 const MAXIMUM_ACCURACY = 10;
 
@@ -268,13 +267,12 @@ export const ObservationCreateSaveButton = () => {
       return;
     }
   }
-  return isLoading ? (
-    <View style={{marginRight: 10}}>
-      <LoadingIndicator size="large" />
-    </View>
-  ) : (
-    <IconButton onPress={handlePressSave} testID="OBS.edit-save-btn">
+  return (
+    <HeaderRightContainerButton
+      loading={isLoading}
+      onPress={handlePressSave}
+      testID="OBS.edit-save-btn">
       <SaveCheck />
-    </IconButton>
+    </HeaderRightContainerButton>
   );
 };

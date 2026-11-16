@@ -193,7 +193,7 @@ export const AppSettings: NativeNavigationComponent<'AppSettings'> = ({
       {(role !== 'solo' ||
         coordinationRole !== 'participant' ||
         estadoOrganizacoes.organizacoes.length >= 2) && (
-        <BodyText variant="tinyMeta" style={styles.sectionHeader}>
+        <BodyText weight={500} variant="tinyMeta" style={styles.sectionHeader}>
           {formatMessage(m.organization)}
         </BodyText>
       )}
@@ -274,7 +274,7 @@ export const AppSettings: NativeNavigationComponent<'AppSettings'> = ({
         />
       )}
 
-      <BodyText variant="tinyMeta" style={styles.sectionHeader}>
+      <BodyText weight={500} variant="tinyMeta" style={styles.sectionHeader}>
         {formatMessage(m.deviceName)}
       </BodyText>
 
@@ -291,7 +291,7 @@ export const AppSettings: NativeNavigationComponent<'AppSettings'> = ({
           </BodyText>
         }
       />
-      <BodyText variant="tinyMeta" style={styles.sectionHeader}>
+      <BodyText weight={500} variant="tinyMeta" style={styles.sectionHeader}>
         {formatMessage(m.language)}
       </BodyText>
       <SettingsRow
@@ -303,7 +303,7 @@ export const AppSettings: NativeNavigationComponent<'AppSettings'> = ({
           <MaterialIcon name="chevron-right" size={20} color={NEW_DARK_GREY} />
         }
       />
-      <BodyText variant="tinyMeta" style={styles.sectionHeader}>
+      <BodyText weight={500} variant="tinyMeta" style={styles.sectionHeader}>
         {formatMessage(m.coordinateSystem)}
       </BodyText>
       <SettingsRow
@@ -315,7 +315,7 @@ export const AppSettings: NativeNavigationComponent<'AppSettings'> = ({
           <MaterialIcon name="chevron-right" size={20} color={NEW_DARK_GREY} />
         }
       />
-      <BodyText variant="tinyMeta" style={styles.sectionHeader}>
+      <BodyText weight={500} variant="tinyMeta" style={styles.sectionHeader}>
         {formatMessage(m.unitSystem)}
       </BodyText>
       <SettingsRow
@@ -335,7 +335,10 @@ export const AppSettings: NativeNavigationComponent<'AppSettings'> = ({
       />
       {process.env.EXPO_PUBLIC_FEATURE_TEST_DATA_UI && (
         <>
-          <BodyText variant="tinyMeta" style={styles.sectionHeader}>
+          <BodyText
+            weight={500}
+            variant="tinyMeta"
+            style={styles.sectionHeader}>
             {formatMessage(m.testData)}
           </BodyText>
           <SettingsRow
@@ -377,7 +380,10 @@ export const AppSettings: NativeNavigationComponent<'AppSettings'> = ({
 
       {authState !== 'obscured' && (
         <>
-          <BodyText variant="tinyMeta" style={styles.sectionHeader}>
+          <BodyText
+            weight={500}
+            variant="tinyMeta"
+            style={styles.sectionHeader}>
             {formatMessage(m.passcode)}
           </BodyText>
           <SettingsRow
@@ -402,7 +408,7 @@ export const AppSettings: NativeNavigationComponent<'AppSettings'> = ({
         </>
       )}
 
-      <BodyText variant="tinyMeta" style={styles.sectionHeader}>
+      <BodyText weight={500} variant="tinyMeta" style={styles.sectionHeader}>
         {formatMessage(m.earlyAccess)}
       </BodyText>
       <SettingsRow
@@ -424,7 +430,7 @@ export const AppSettings: NativeNavigationComponent<'AppSettings'> = ({
 
       <View style={styles.divider} />
 
-      <BodyText variant="tinyMeta" style={styles.sectionHeader}>
+      <BodyText weight={500} variant="tinyMeta" style={styles.sectionHeader}>
         {formatMessage(m.dataAndPrivacy)}
       </BodyText>
 
@@ -440,7 +446,7 @@ export const AppSettings: NativeNavigationComponent<'AppSettings'> = ({
 
       <View style={styles.divider} />
 
-      <BodyText variant="tinyMeta" style={styles.sectionHeader}>
+      <BodyText weight={500} variant="tinyMeta" style={styles.sectionHeader}>
         {formatMessage(m.learnMore)}
       </BodyText>
 
@@ -506,7 +512,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     textTransform: 'uppercase',
     color: BLACK,
-    fontWeight: '500',
   },
   row: {
     flexDirection: 'row',

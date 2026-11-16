@@ -258,7 +258,7 @@ import {
 } from '../../../../tests/integration/helpers/setupIntegrationTest';
 
 const rotas = () =>
-  mockNavigation.getRootState().routes.map(route => route.name);
+  mockNavigation.getRootState()!.routes.map(route => route.name);
 
 /** The live engine: the one whose boot left `loading`. */
 const motor = () =>

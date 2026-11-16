@@ -1,5 +1,4 @@
 import {useRemoveServerPeer} from '@comapeo/core-react';
-import {type NativeStackNavigationOptions} from '@react-navigation/native-stack';
 import * as Sentry from '@sentry/react-native';
 import {useEffect, useRef} from 'react';
 import {defineMessages, useIntl} from 'react-intl';
@@ -214,15 +213,6 @@ export function RemoveRemoteArchive({
     </BottomSheetWrapper>
   );
 }
-
-export const navigationOptions: NativeStackNavigationOptions = {
-  animation: 'none',
-  contentStyle: {
-    backgroundColor: 'transparent',
-  },
-  headerShown: false,
-  presentation: 'transparentModal',
-};
 
 const styles = StyleSheet.create({
   container: {

@@ -48,11 +48,11 @@
     "message": "Olá, Parente",
     "description": "Página Entroncamento greeting (Figma Kutary App V2, 2668:4539)"
   },
-  "$1Navigation.Menu.mappingOnOwn": {
-    "message": "Você é um mapeamento próprio."
-  },
   "$1Navigation.Menu.justYou": {
     "message": "Apenas você"
+  },
+  "$1Navigation.Menu.mappingOnOwn": {
+    "message": "Você é um mapeamento próprio."
   },
   "$1Navigation.Menu.participant": {
     "message": "Participante"
@@ -67,6 +67,9 @@
   "$1Navigation.Menu.switchOrganizationTitle": {
     "message": "Trocar de território",
     "description": "Menu list entry that opens the organization selector"
+  },
+  "$1Navigation.Menu.switchProject": {
+    "message": "Trocar Projeto"
   },
   "$1Navigation.Menu.team": {
     "message": "Equipe"
@@ -156,6 +159,9 @@
   },
   "$1Screens.ProjectSettings.title": {
     "message": "Ferramentas do coordenador"
+  },
+  "$1Screens.Settings.AppSettings.aboutCoMapeo": {
+    "message": "Sobre CoiabApp"
   },
   "$1Screens.Settings.AppSettings.aboutEkanadyby": {
     "message": "Sobre CoiabApp"
@@ -514,7 +520,7 @@
   "$1screens.Observation.TrackList.track": {
     "message": "Trilha"
   },
-  "$1screens.Observation.ekanadybyAlert": {
+  "$1screens.Observation.comapeoAlert": {
     "message": "Alerta CoiabApp"
   },
   "$1screens.Observation.defaultProjectName": {
@@ -525,6 +531,9 @@
   },
   "$1screens.Observation.description": {
     "message": "Descrição:"
+  },
+  "$1screens.Observation.ekanadybyAlert": {
+    "message": "Alerta CoiabApp"
   },
   "$1screens.Observation.fallbackCategoryName": {
     "message": "Observação",
@@ -610,6 +619,14 @@
   "$1screens.ObservationMetadataVerified.navTitle": {
     "message": "Metadados da Observação"
   },
+  "$1screens.ObservationsList.ObservationsEmptyView.backButton": {
+    "message": "Ir para mapa",
+    "description": "Back button on observation list screen when no observations are yet recorded"
+  },
+  "$1screens.ObservationsList.ObservationsEmptyView.noObservationsTitle": {
+    "message": "Adicionar observações",
+    "description": "Title of observation list view when the user has not yet recorded observations"
+  },
   "$1screens.ObservationsList.emptyAlertas": {
     "message": "Ainda não há registros em Alertas",
     "description": "Title of the empty observation list in the Alerts area of an organization"
@@ -621,14 +638,6 @@
   "$1screens.ObservationsList.goToMap": {
     "message": "Ir para o mapa",
     "description": "Action that opens the map of the current work area from the empty observation list"
-  },
-  "$1screens.ObservationsList.ObservationsEmptyView.backButton": {
-    "message": "Ir para mapa",
-    "description": "Back button on observation list screen when no observations are yet recorded"
-  },
-  "$1screens.ObservationsList.ObservationsEmptyView.noObservationsTitle": {
-    "message": "Adicionar observações",
-    "description": "Title of observation list view when the user has not yet recorded observations"
   },
   "$1screens.Onboarding.CreateOrganization.archiveUrlChecking": {
     "message": "Verificando arquivo remoto…"
@@ -813,14 +822,14 @@
   "$1screens.OrganizationSetup.createdTitle": {
     "message": "Território criado"
   },
+  "$1screens.OrganizationSetup.emptyName": {
+    "message": "Informe o nome do território."
+  },
   "$1screens.OrganizationSetup.failureBody": {
     "message": "O que já foi preparado está salvo. Tente novamente para concluir."
   },
   "$1screens.OrganizationSetup.failureTitle": {
     "message": "Não foi possível concluir a criação."
-  },
-  "$1screens.OrganizationSetup.emptyName": {
-    "message": "Informe o nome do território."
   },
   "$1screens.OrganizationSetup.loadingOrganization": {
     "message": "Carregando território…"
@@ -843,14 +852,14 @@
   "$1screens.OrganizationSetup.noOrganizationGuidance": {
     "message": "Crie um território ou aguarde um convite para participar de um existente."
   },
-  "$1screens.OrganizationSetup.pacoteNaoAprovado": {
-    "message": "Não foi possível preparar os arquivos necessários neste aparelho. Nada foi criado."
-  },
   "$1screens.OrganizationSetup.openOrganizationButton": {
     "message": "Abrir território"
   },
   "$1screens.OrganizationSetup.openingOrganization": {
     "message": "Abrindo território…"
+  },
+  "$1screens.OrganizationSetup.pacoteNaoAprovado": {
+    "message": "Não foi possível preparar os arquivos necessários neste aparelho. Nada foi criado."
   },
   "$1screens.OrganizationSetup.pendingWork": {
     "message": "Conclua ou descarte o registro antes de trocar de território"

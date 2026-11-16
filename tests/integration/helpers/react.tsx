@@ -1,6 +1,11 @@
 import {type ComapeoCoreClientApi} from '@comapeo/ipc';
 import {getLocales} from 'expo-localization';
-import {Component, type ComponentPropsWithoutRef, type ReactNode} from 'react';
+import {
+  Component,
+  type ComponentPropsWithoutRef,
+  type ReactNode,
+  useEffect,
+} from 'react';
 
 import {createActiveProjectIdStore} from '../../../src/frontend/contexts/ActiveProjectIdStoreContext';
 import {AppProviders} from '../../../src/frontend/contexts/AppProviders';
@@ -86,7 +91,6 @@ const DEFAULT_LOCAL_DISCOVERY_STATE: LocalDiscoveryState = {
   status: 'started',
   ssid: 'CoMapeo Test Wi-Fi',
   wifiStatus: 'on',
-  wifiConnection: 'connected',
   wifiLinkSpeed: 1234,
 };
 
@@ -94,7 +98,6 @@ const DISCONNECTED_LOCAL_DISCOVERY_STATE: LocalDiscoveryState = {
   status: 'started',
   ssid: null,
   wifiStatus: 'off',
-  wifiConnection: 'disconnected',
   wifiLinkSpeed: null,
 };
 
@@ -255,32 +258,53 @@ export function createAppProvidersWrapper({
   // reaches the map-shares store. Two instances would leave the real cache
   // out of `teardown()`'s reach.
   const OuterWrapper = createMinimalWrapper({queryClient});
+
+  // Trees mounted with this wrapper whose passive cleanups have not run yet.
+  // The sentinel sits beside the providers, above the IntlProvider gate, so
+  // only a real unmount of the root removes it; its cleanup runs in the same
+  // passive flush as the rest of the tree's (ClientApiProvider's included).
+  // `teardown()`, which every suite runs after the unmount and before closing
+  // the IPC client, can then tell whether that unmount really committed.
+  let mountedTrees = 0;
+  function MountSentinel() {
+    useEffect(() => {
+      mountedTrees += 1;
+      return () => {
+        mountedTrees -= 1;
+      };
+    }, []);
+    return null;
+  }
+
   const wrapper = ({children}: {children: ReactNode}) => {
     return (
-      <OuterWrapper>
-        <AppProviders
-          queryClient={queryClient}
-          mapeoApi={mapeoApi}
-          mapServerApi={mockMapServerApi}
-          localDiscoveryController={localDiscoveryController}
-          activeProjectIdStore={persistedActiveProjectIdStore}
-          organizationInviteIdentityStore={organizationInviteIdentityStore}
-          persistedDrafObservationStore={persistedDraftObservationStore}
-          securityStore={persistedSecurityStore}
-          manualEntryCoordinateFormatStore={
-            persistedManualEntryCoordinateFormatStore
-          }
-          coordinateFormatStore={persistedCoordinateFormatStore}
-          savedLocationStore={persistedSavedLocationStore}
-          trackStore={persistedTrackStore}
-          lowStorageBannerStore={lowStorageBannerStore}
-          appUsageStatsStore={appUsagePromptStore}
-          earlyAccessStore={persistedEarlyAccessStore}
-          unitSystemStore={unitSystemStore}
-          qaDeviceNameStore={qaDeviceNameStore}>
-          {children}
-        </AppProviders>
-      </OuterWrapper>
+      <>
+        <MountSentinel />
+        <OuterWrapper>
+          <AppProviders
+            queryClient={queryClient}
+            mapeoApi={mapeoApi}
+            mapServerApi={mockMapServerApi}
+            localDiscoveryController={localDiscoveryController}
+            activeProjectIdStore={persistedActiveProjectIdStore}
+            organizationInviteIdentityStore={organizationInviteIdentityStore}
+            persistedDrafObservationStore={persistedDraftObservationStore}
+            securityStore={persistedSecurityStore}
+            manualEntryCoordinateFormatStore={
+              persistedManualEntryCoordinateFormatStore
+            }
+            coordinateFormatStore={persistedCoordinateFormatStore}
+            savedLocationStore={persistedSavedLocationStore}
+            trackStore={persistedTrackStore}
+            lowStorageBannerStore={lowStorageBannerStore}
+            appUsageStatsStore={appUsagePromptStore}
+            earlyAccessStore={persistedEarlyAccessStore}
+            unitSystemStore={unitSystemStore}
+            qaDeviceNameStore={qaDeviceNameStore}>
+            {children}
+          </AppProviders>
+        </OuterWrapper>
+      </>
     );
   };
 
@@ -292,6 +316,20 @@ export function createAppProvidersWrapper({
     localDiscoveryController.stop();
     appDiagnosticMetrics.setEnabled(false);
     deviceDiagnosticMetrics.setEnabled(false);
+    // The callers close the IPC client right after this. A tree still mounted
+    // here would run its passive cleanups later, against the closed client
+    // and in whatever file the worker runs next (`ClientClosed` from
+    // ClientApiProvider's `removeListener`). Fail the test that left it.
+    if (mountedTrees > 0) {
+      throw new Error(
+        'createAppProvidersWrapper: teardown() ran with the React tree still ' +
+          'mounted, so its passive cleanups would run after the IPC client ' +
+          'closes. The unmount did not commit: look for an act() that is not ' +
+          'awaited: in RNTL 14 act() is always async, and an unawaited one ' +
+          'never closes the React act scope, so later render() and unmount() ' +
+          'calls in the file are queued and never flushed.',
+      );
+    }
   };
 
   return {

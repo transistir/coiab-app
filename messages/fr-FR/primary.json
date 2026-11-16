@@ -112,6 +112,9 @@
   "$1Screens.ProjectSettings.title": {
     "message": "Outils de coordinator"
   },
+  "$1Screens.Settings.AppSettings.aboutCoMapeo": {
+    "message": "À propos de CoMapeo"
+  },
   "$1Screens.Settings.AppSettings.aboutCoiabApp": {
     "message": "À propos de CoiabApp"
   },

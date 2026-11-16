@@ -221,7 +221,16 @@ export function setupIntegrationTest() {
   };
 }
 
-export function setupIntegrationTestWithoutProject() {
+export function setupIntegrationTestWithoutProject({
+  deviceInfo = {name: 'test', deviceType: 'mobile'},
+}: Readonly<{
+  /**
+   * Defaults to a named device, as production onboarding never reaches the
+   * empty-document fork without one. Pass `{deviceType: 'mobile'}` (no
+   * `name`) for a suite that drives the device-naming screen itself.
+   */
+  deviceInfo?: Parameters<typeof createManager>[0];
+}> = {}) {
   let manager: MapeoManager;
   let client: ComapeoCoreClientApi;
   const ciclo = criarEncerramentoDoCiclo();
@@ -234,10 +243,7 @@ export function setupIntegrationTestWithoutProject() {
     // Same reason as in `setupIntegrationTest`: real fetch for the icon
     // verification HTTP route.
     core.restaurarFetch = useRealFetch();
-    const managerSetup = await createManager({
-      name: 'test',
-      deviceType: 'mobile',
-    });
+    const managerSetup = await createManager(deviceInfo);
     ({manager} = managerSetup);
     const {fastifyController} = managerSetup;
     core.pararDescoberta = () =>

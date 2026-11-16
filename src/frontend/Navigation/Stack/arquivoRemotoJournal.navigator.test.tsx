@@ -228,7 +228,7 @@ function documentoPersistido(): EstadoOrganizacoes {
 }
 
 function rotas() {
-  return mockNavigation.getRootState().routes.map(route => route.name);
+  return mockNavigation.getRootState()!.routes.map(route => route.name);
 }
 
 function areaVerificada(
@@ -799,7 +799,7 @@ describe('arquivo remoto no journal da organização (#142, navigator real)', ()
       });
       await waitFor(
         () => {
-          const state = mockNavigation.getRootState();
+          const state = mockNavigation.getRootState()!;
           expect(state.routes[state.index]?.name).toBe(
             'OrganizationProvisioning',
           );

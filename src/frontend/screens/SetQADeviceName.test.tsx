@@ -67,10 +67,7 @@ describe('On QA Device require existence of a QA Device name', () => {
 
     const {unmount} = await render(
       <React.Suspense fallback={null}>
-        <AppNavigator
-          permissionAsked={false}
-          navigationIntegration={undefined}
-        />
+        <AppNavigator navigationIntegration={undefined} />
       </React.Suspense>,
       {wrapper: app.wrapper},
     );
@@ -93,10 +90,7 @@ describe('On QA Device require existence of a QA Device name', () => {
 
     const {unmount} = await render(
       <React.Suspense fallback={null}>
-        <AppNavigator
-          permissionAsked={false}
-          navigationIntegration={undefined}
-        />
+        <AppNavigator navigationIntegration={undefined} />
       </React.Suspense>,
       {wrapper: app.wrapper},
     );
@@ -113,10 +107,7 @@ describe('On QA Device require existence of a QA Device name', () => {
 
     const {unmount} = await render(
       <React.Suspense fallback={null}>
-        <AppNavigator
-          permissionAsked={false}
-          navigationIntegration={undefined}
-        />
+        <AppNavigator navigationIntegration={undefined} />
       </React.Suspense>,
       {wrapper: app.wrapper},
     );
@@ -140,6 +131,7 @@ describe('On QA Device require existence of a QA Device name', () => {
     await waitFor(() => {
       expect(screen.queryByText('Set QA Device Name')).not.toBeOnTheScreen();
     });
+    expect(screen.getByText('Are you a coordinator?')).toBeOnTheScreen();
     expect(
       screen.getByTestId('ONBOARDING.role-coordinator-btn'),
     ).toBeOnTheScreen();

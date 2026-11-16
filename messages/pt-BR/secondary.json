@@ -234,6 +234,32 @@
   "screen.Settings.ProjectSettings.YourTeam.SelectInviteeRole.selectingDevice": {
     "message": "Você está selecionando uma função para este dispositivo:"
   },
+  "screens.AboutSettings.CoMapeoBuild": {
+    "message": "Compilação do CoiabApp",
+    "description": "Label for CoiabApp build number"
+  },
+  "screens.AboutSettings.CoMapeoType": {
+    "message": "Variante do CoiabApp",
+    "description": "Label for CoiabApp type/variant (e.g. QA for testing vs normal version of app)"
+  },
+  "screens.AboutSettings.CoMapeoVersion": {
+    "message": "Versão do CoiabApp",
+    "description": "Label for CoiabApp version"
+  },
+  "screens.AboutSettings.androidBuild": {
+    "message": "Número de compilação do Android",
+    "description": "Label for Android build number"
+  },
+  "screens.AboutSettings.androidVersion": {
+    "message": "Versão do Android",
+    "description": "Label for Android version"
+  },
+  "screens.AboutSettings.comapeoWebsiteLabel": {
+    "message": "Site Copeo"
+  },
+  "screens.AboutSettings.earlyAccessBanner": {
+    "message": "Você está no Modo de Acesso Antecipado."
+  },
   "screens.AboutSettings.ekanadybyBuild": {
     "message": "Compilação do CoiabApp",
     "description": "Label for CoiabApp build number"
@@ -246,19 +272,8 @@
     "message": "Versão do CoiabApp",
     "description": "Label for CoiabApp version"
   },
-  "screens.AboutSettings.androidBuild": {
-    "message": "Número de compilação do Android",
-    "description": "Label for Android build number"
-  },
-  "screens.AboutSettings.androidVersion": {
-    "message": "Versão do Android",
-    "description": "Label for Android version"
-  },
   "screens.AboutSettings.ekanadybyWebsiteLabel": {
     "message": "Site CoiabApp"
-  },
-  "screens.AboutSettings.earlyAccessBanner": {
-    "message": "Você está no Modo de Acesso Antecipado."
   },
   "screens.AboutSettings.emojiSource": {
     "message": "Origem dos emojis",
@@ -776,14 +791,17 @@
   "screens.ObservationMetadataVerified.altitudeAccuracy": {
     "message": "Precisão da Altitude"
   },
-  "screens.ObservationMetadataVerified.ekanadybyMetadata": {
-    "message": "Metadados do CoiabApp"
+  "screens.ObservationMetadataVerified.coMapeoMetadata": {
+    "message": "Metadados do Copeo"
   },
   "screens.ObservationMetadataVerified.dataEntered": {
     "message": "Este dado foi inserido manualmente."
   },
   "screens.ObservationMetadataVerified.date": {
     "message": "Data"
+  },
+  "screens.ObservationMetadataVerified.ekanadybyMetadata": {
+    "message": "Metadados do CoiabApp"
   },
   "screens.ObservationMetadataVerified.latitude": {
     "message": "Latitude"
@@ -800,6 +818,9 @@
   "screens.ObservationMetadataVerified.manuallyEntered": {
     "message": "Inserido manualmente."
   },
+  "screens.ObservationMetadataVerified.sentByComapeo": {
+    "message": "Enviado por CoiabApp"
+  },
   "screens.ObservationMetadataVerified.sentByEkanadyby": {
     "message": "Enviado por CoiabApp"
   },
@@ -808,6 +829,9 @@
   },
   "screens.ObservationMetadataVerified.speed": {
     "message": "Velocidade"
+  },
+  "screens.ObservationMetadataVerified.validatedByCoMapeo": {
+    "message": "Enviado e validado pelo CoiabApp"
   },
   "screens.ObservationMetadataVerified.validatedByEkanadyby": {
     "message": "Enviado e validado pelo CoiabApp"
@@ -866,6 +890,9 @@
   "screens.PhotoPreviewModal.timeAttached": {
     "message": "Anexado {formattedNum} após observação",
     "description": "Label for the time when the photo was attached to an observation"
+  },
+  "screens.PhotoPreviewModal.validatedByCoMapeo": {
+    "message": "Validado por CoiabApp"
   },
   "screens.PhotoPreviewModal.validatedByEkanadyby": {
     "message": "Validado por CoiabApp"

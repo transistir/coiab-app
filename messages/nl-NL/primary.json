@@ -109,6 +109,9 @@
   "$1Screens.ProjectSettings.title": {
     "message": "Coördinator Tools"
   },
+  "$1Screens.Settings.AppSettings.aboutCoMapeo": {
+    "message": "Over CoMapeo"
+  },
   "$1Screens.Settings.AppSettings.aboutCoiabApp": {
     "message": "Over CoiabApp"
   },

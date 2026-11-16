@@ -299,8 +299,14 @@ describe('organization stories (FlowStateScope)', () => {
     ).toBeOnTheScreen();
     // Home stays mounted beneath the sheet, hidden from accessibility as a
     // covered screen is (Entroncamento sob a tab bar de 5 abas, #32).
+    // Home sits behind a Suspense boundary and can still show its fallback
+    // when the covering route is ready: wait for it to mount.
     expect(
-      screen.getByTestId('ENTRONCAMENTO.scrn', {includeHiddenElements: true}),
+      await screen.findByTestId(
+        'ENTRONCAMENTO.scrn',
+        {includeHiddenElements: true},
+        {timeout: 30_000},
+      ),
     ).toBeOnTheScreen();
 
     // B sorts after A by name; it leads because it is the active one.
@@ -399,8 +405,14 @@ describe('organization stories (FlowStateScope)', () => {
     ).toBeOnTheScreen();
     // The real path: the drawer entry pushes over Home, which stays mounted
     // (Entroncamento sob a tab bar de 5 abas, #32).
+    // Home sits behind a Suspense boundary and can still show its fallback
+    // when the covering route is ready: wait for it to mount.
     expect(
-      screen.getByTestId('ENTRONCAMENTO.scrn', {includeHiddenElements: true}),
+      await screen.findByTestId(
+        'ENTRONCAMENTO.scrn',
+        {includeHiddenElements: true},
+        {timeout: 30_000},
+      ),
     ).toBeOnTheScreen();
     expectPersistedOrganizations(
       ['aaaaaaaaaaaaaaaa:pronta'],
@@ -430,8 +442,14 @@ describe('organization stories (FlowStateScope)', () => {
     expect(screen.getByText('Preparing')).toBeOnTheScreen();
     // Home stays mounted beneath the provisioning surface (Entroncamento sob
     // a tab bar de 5 abas, #32).
+    // Home sits behind a Suspense boundary and can still show its fallback
+    // when the covering route is ready: wait for it to mount.
     expect(
-      screen.getByTestId('ENTRONCAMENTO.scrn', {includeHiddenElements: true}),
+      await screen.findByTestId(
+        'ENTRONCAMENTO.scrn',
+        {includeHiddenElements: true},
+        {timeout: 30_000},
+      ),
     ).toBeOnTheScreen();
 
     // A stays open and active; B is persisted mid-materialization.

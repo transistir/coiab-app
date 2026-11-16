@@ -1,0 +1,246 @@
+Raw evidence backing docs/upstream-sync/v14.0-ledger.md, gathered against
+HEAD=12e8b5a0 on 2026-11-16. Base commits: fork base c1b0c949, upstream tip
+8d2abc1b, merge 40b1b407, common ancestor 8f012a15 (= git merge-base
+c1b0c949 8d2abc1b).
+
+================================================================
+Base/SHA sanity checks
+================================================================
+$ git log --oneline -1 40b1b407
+40b1b407 Merge commit '8d2abc1b8dbfd4cb59e3e22be354b959a13f6cf6' into sync/upstream-v14-integration
+
+$ git log --oneline -1 c1b0c949
+c1b0c949 docs(skill): lições do PR #172 (...) (#173)
+
+$ git log --oneline -1 cb7b53c3792be793218a62385b7b0676895a29b3
+cb7b53c3 Merge pull request #2153 from digidem/rc/v14.0
+
+$ git log --oneline -1 8d2abc1b
+8d2abc1b fix(deps): declare @react-navigation/elements and rebuild lock from upstream
+
+$ git merge-base c1b0c949 8d2abc1b
+8f012a15c441ae1bc21c88d4e57e313657cfcb72
+
+$ git merge-base --is-ancestor cb7b53c3792be793218a62385b7b0676895a29b3 8d2abc1b && echo yes
+yes   # cb7b53c3 (v14.0 release PR) is an ancestor of 8d2abc1b (actual merged tip)
+
+$ git log -1 --format='%H %P' 40b1b407
+40b1b40740796e723c57e70380a5e5f42f71cced c1b0c949f986cb73d34bf9d9b9d2ee3e17133e29 8d2abc1b8dbfd4cb59e3e22be354b959a13f6cf6
+
+================================================================
+Full commit list on this branch since the common ancestor (context)
+================================================================
+$ git log --oneline develop..HEAD
+6f4f1f4b fix(onboarding): apply the diagnostics opt-out when the device is named
+12e8b5a0 test(onboarding): drop the unused act import
+977dabbc test(onboarding): seed an empty device name instead of omitting the field
+1cd3f148 fix(sync): restore COIAB permission copy, intro status bar and the CI glob
+a433dbe7 test(e2e): select the map tab before expecting the map screen
+4ae07324 fix(onboarding): keep the ethnic-group step after naming the device (#128)
+1e186b96 test(e2e): make the onboarding setup reach the map on COIAB
+f299afbb fix(sync): restore the Rubik 600 asset and align two e2e specs with COIAB
+8c4caf8c i18n: restore the CoiabApp rebrand that the v14.0 merge reverted
+64ff8472 test: restore the MapScreen low-storage banner coverage
+... (ci/perf stabilization commits) ...
+d0f48720 test(sync): split the seeded deep stack suite so each worker boots one client
+... (ci/perf stabilization commits) ...
+8831aade fix(navigation): read the header actions from the query cache
+(full list already in `git log --oneline develop..HEAD`, 29 commits)
+
+================================================================
+Divergence checks: files identical to c1b0c949 (pre-merge develop) where the
+previous ledger claimed "took upstream ..." — i.e. confirmed corrections
+================================================================
+
+$ git diff --stat c1b0c949 HEAD -- src/frontend/screens/ObservationsList/ObservationsEmptyView.tsx src/frontend/screens/Onboarding/Success.tsx src/frontend/screens/RemovedFromProjectBottomSheet.tsx src/frontend/Navigation/Stack/OnboardingScreens.tsx src/frontend/sharedComponents/BottomSheetWrapper.tsx src/frontend/sharedTypes/navigation.ts tests/e2e/specs/onboarding/device-naming.test.ts tests/e2e/specs/onboarding/index.test.ts src/frontend/screens/Onboarding/JoinProjectIntro.test.tsx src/frontend/lib/styles.ts
+(no output — all ten paths are byte-identical to c1b0c949)
+
+$ git diff --stat 8d2abc1b HEAD -- <same ten paths>
+ src/frontend/sharedComponents/BottomSheetWrapper.tsx        | 77 ++++++++++++++++------
+ src/frontend/sharedTypes/navigation.ts                      | 61 +++++++++--------
+ tests/e2e/specs/onboarding/device-naming.test.ts             | 19 +++++-
+ tests/e2e/specs/onboarding/index.test.ts                     |  3 +-
+ src/frontend/Navigation/Stack/DeepLinkListener.tsx (control) |  (n/a, listed separately)
+ src/frontend/lib/styles.ts                                   | 41 +++-
+ src/frontend/screens/ObservationsList/ObservationsEmptyView.tsx | 114 +++++++++--
+ src/frontend/screens/Onboarding/Success.tsx                  | 204 +++++++++----------
+ src/frontend/screens/RemovedFromProjectBottomSheet.tsx       | 63 +++---
+ (all ten differ from upstream too -> confirmed == pre-merge develop, NOT upstream)
+
+--- OnboardingScreens.tsx: where did the Success route go? ---
+$ grep -n "Success" src/frontend/Navigation/Stack/OnboardingScreens.tsx
+(no output)
+
+$ grep -rn "name=\"Success\"" src/frontend/Navigation/
+src/frontend/Navigation/Stack/index.tsx:457:            <RootStack.Screen name="Success" component={Success} />
+
+$ git show c1b0c949:src/frontend/Navigation/Stack/index.tsx | grep -n Success
+391:            <RootStack.Screen name="Success" component={Success} />
+(... the route already existed in index.tsx before the merge; OnboardingScreens.tsx
+ never needed it)
+
+--- JoinProjectIntro.test.tsx: deleted screen vs surviving test ---
+$ ls src/frontend/screens/Onboarding/JoinProjectIntro.tsx
+ls: cannot access '...': No such file or directory      (screen confirmed deleted)
+
+$ head -20 src/frontend/screens/Onboarding/JoinProjectIntro.test.tsx
+... describe('teardown determinístico (#97)', () => { ...
+(file is COIAB's own harness-teardown suite, unrelated to the deleted screen,
+ that happens to share the old filename)
+
+--- lib/styles.ts: LIGHT_ORANGE provenance ---
+$ git show c1b0c949:src/frontend/lib/styles.ts | grep -n LIGHT_ORANGE
+41:export const LIGHT_ORANGE = '#FFF5EB';
+
+$ git log --oneline 8f012a15..HEAD -- src/frontend/lib/styles.ts
+262e90ce feat(onboarding): etnia e aldeia livres com autocomplete (#132)
+9bde5144 feat(coiab): Menu vira Página Entroncamento do Figma Kutary V2
+380f89a7 feat(#111): rename Ekanâdyby → CoiabApp ...
+bc917ea0 Merge pull request #113 from transistir/feat/32-nav-skeleton
+5a936425 feat(#32): esqueleto de navegação COIAB ...
+fe44e5f1 feat(theme): #19 — paleta Ekanâdyby em lib/styles + trilho do progresso
+(all of these are COIAB-side commits pre-dating the merge; none is a restore
+ commit — the merge simply never changed this file's content)
+
+--- SetQADeviceName.test.tsx: does it still assert "Start Mapping"? ---
+$ grep -n "Start Mapping" src/frontend/screens/Onboarding/Success.tsx src/frontend/screens/SetQADeviceName.test.tsx
+(no output)
+$ grep -n "Are you a coordinator" src/frontend/screens/SetQADeviceName.test.tsx
+    expect(screen.getByText('Are you a coordinator?')).toBeOnTheScreen();
+
+================================================================
+Restoration commits (full messages)
+================================================================
+
+$ git log -1 --format=%B 8c4caf8c
+i18n: restore the CoiabApp rebrand that the v14.0 merge reverted
+
+The merge took upstream's locale files, so 114 message/description values that
+coiab develop had rebranded to CoiabApp went back to CoMapeo in es-419 (primary
+and secondary), fr-FR, de-DE, id-ID, nl-NL and ja-JP.
+
+Restored key by key: only fields whose fork version said CoiabApp and whose
+current version said CoMapeo were changed. 114 insertions / 114 deletions, no
+key added, removed or reordered, JSON valid, eslint-rules/intl 10/10.
+
+The CoMapeo mentions that remain are new upstream keys (CoMapeoBuild,
+CoMapeoType, CoMapeoVersion, validatedByCoMapeo, aboutCoMapeo) — renaming those
+is a product decision, not a lost customization.
+
+$ git show 8c4caf8c --stat
+ messages/de-DE/primary.json    | 28 ++++++++++----------
+ messages/es-419/primary.json   | 30 +++++++++++-----------
+ messages/es-419/secondary.json | 58 +++++++++++++++++++++---------------------
+ messages/fr-FR/primary.json    | 30 +++++++++++-----------
+ messages/id-ID/primary.json    | 28 ++++++++++----------
+ messages/ja-JP/primary.json    | 26 +++++++++----------
+ messages/nl-NL/primary.json    | 28 ++++++++++----------
+ 7 files changed, 114 insertions(+), 114 deletions(-)
+
+$ grep -c CoMapeo messages/pt-BR/primary.json messages/pt-BR/secondary.json messages/de-DE/primary.json messages/fr-FR/primary.json messages/id-ID/primary.json messages/ja-JP/primary.json messages/nl-NL/primary.json messages/es-419/primary.json
+messages/pt-BR/primary.json:7
+messages/pt-BR/secondary.json:5
+messages/de-DE/primary.json:8
+messages/fr-FR/primary.json:8
+messages/id-ID/primary.json:8
+messages/ja-JP/primary.json:8
+messages/nl-NL/primary.json:8
+messages/es-419/primary.json:10
+
+$ grep -c CoMapeo messages/en-US/primary.json messages/en-US/secondary.json
+messages/en-US/primary.json:6
+messages/en-US/secondary.json:0
+
+$ grep -n CoMapeo messages/es-419/secondary.json
+340:  "screens.AboutSettings.CoMapeoBuild": { ... }
+344:  "screens.AboutSettings.CoMapeoType": { ... }
+348:  "screens.AboutSettings.CoMapeoVersion": { ... }
+951:  "screens.ObservationMetadataVerified.validatedByCoMapeo": { ... }
+(confirms the "5 keys, product decision" pattern from the 8c4caf8c message)
+
+---
+
+$ git log -1 --format=%B a4b56b7d
+fix(sync): restore the COIAB behaviour the v14 merge discarded
+
+The v14 merge took the trunk version of files develop had changed:
+- MapScreen now starts observations through useNewObservationDraft again, so
+  the etnia/aldeia tags (#133) survive creation from the map.
+- InviteReceived detects the organization-first onboarding fork and resets the
+  navigation state with fresh keys instead of creating an unnamed project.
+- A single Success route lives in the shared group again.
+- TrackBottomSheet keeps the MAP:track-bottom-sheet testID the storybook
+  capture manifest waits on.
+- InviteDeclined keeps the Territory wording for organization invites.
+- JoinProjectIntro.test.tsx is back with its #97 teardown coverage.
+- pt-BR strings regain their missing spaces and the CoiabApp name.
+
+$ git show a4b56b7d --stat
+ messages/en-US/primary.json                                    |   5 +-
+ messages/pt-BR/secondary.json                                  |   8 +-
+ src/frontend/Navigation/Stack/OnboardingScreens.tsx            |   6 -
+ src/frontend/Navigation/Stack/index.tsx                        |   2 +
+ src/frontend/screens/Invites/InviteReceived.tsx                |  33 ++-
+ src/frontend/screens/MapScreen/TrackBottomSheet/index.tsx      |   5 +-
+ src/frontend/screens/MapScreen/index.tsx                       |   8 +-
+ src/frontend/screens/Onboarding/JoinProjectIntro.test.tsx      | 233 +++++++++++++++++++++
+ src/frontend/screens/YourTeam/InviteDeclined.tsx               |  13 +-
+ 9 files changed, 272 insertions(+), 41 deletions(-)
+
+---
+
+$ git log -1 --format=%B 5d697cfd
+fix(ui): restore COIAB screens the merge had regressed to stale versions
+
+The conflict resolution left several screens on pre-v14 variants: the
+multi-page IntroToCoMapeo was collapsed to a single image, the observation
+save buttons lost their merged contract, and RemovedFromProject/ReviewInvitation
+kept the old shapes. Restore the develop implementation of each and keep the
+upstream changes the merge introduced. DeviceNaming copy back to CoiabApp.
+
+$ git show 5d697cfd --stat
+ messages/en-US/primary.json                                           |  18 ++-
+ src/frontend/hooks/useTracking.test.tsx                               |   5 +-
+ src/frontend/images/ComapeoIntro.svg                                  | 172 ----
+ src/frontend/screens/ObservationCreate/ObservationCreateSaveButton.tsx|  10 +-
+ src/frontend/screens/ObservationEdit/ObservationEditSaveButton.tsx    |  13 +-
+ src/frontend/screens/Onboarding/DeviceNaming.tsx                      |   2 +-
+ src/frontend/screens/Onboarding/IntroToCoMapeo.tsx                    | 155 ++--
+ src/frontend/screens/RemovedFromProjectBottomSheet.test.tsx           |  75 +---
+ src/frontend/screens/RemovedFromProjectBottomSheet.tsx                |  63 +---
+ src/frontend/screens/YourTeam/ReviewAndInvite/ReviewInvitation.test.tsx|  25 +--
+ src/frontend/screens/YourTeam/ReviewAndInvite/ReviewInvitation.tsx    |   7 +-
+ src/frontend/sharedComponents/TelaCarregamento.test.tsx               |   3 +-
+ 12 files changed, 228 insertions(+), 320 deletions(-)
+
+$ git diff 8d2abc1b HEAD -- src/frontend/screens/ObservationCreate/ObservationCreateSaveButton.tsx
+(shows: kept upstream structure/imports; added `normalizeObserverTags` and
+ `assertOrigin(projectId)` / work-origin-mismatch guard on top — see ledger row)
+
+---
+
+$ git log --oneline 8f012a15..HEAD -- src/frontend/screens/RemoteArchive/AddRemoteArchive.tsx
+98ab827a fix(remote-archive): restore the journalized add/remove flow lost in the merge
+663c5b19 chore: consolidate header right container (#2177)
+
+$ git log --oneline 8f012a15..HEAD -- src/frontend/screens/RemoteArchive/RemoveRemoteArchive.tsx
+98ab827a fix(remote-archive): restore the journalized add/remove flow lost in the merge
+1a6bbb7e fix: modal behavior ios (#2120)
+
+================================================================
+eas.json / app.json
+================================================================
+$ git diff c1b0c949 HEAD -- eas.json
+-    "requireCommit": true
++    "requireCommit": false
+...
+-        "image": "latest",
++        "image": "macos-tahoe-26.5-xcode-26.6",
+
+$ grep -n 'projectId\|"slug"\|"name"\|"scheme"\|"owner"' app.json
+    "name": "CoiabApp",
+    "slug": "ekanadyby",
+    "scheme": "ekanadyby",
+    "owner": "transisti",
+      "eas": {
+        "projectId": "528d108c-46da-4447-a6f2-774248724cde"

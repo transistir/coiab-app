@@ -47,6 +47,7 @@ const NODE_MODULE_PATTERNS_TO_TRANSFORM = [
   'p-timeout',
   'parse-json',
   'serialize-error',
+  'start-stop-state-machine',
   'string-timing-safe-equal',
   'styled-map-package',
   'uint8array-extras',
@@ -62,6 +63,12 @@ const config = {
   preset: 'jest-expo',
   testEnvironment: '<rootDir>/scripts/jest/environment.cjs',
   globalTeardown: '<rootDir>/scripts/jest/globalTeardown.cjs',
+  // As suítes de integração sobem um cliente real do `@comapeo/core` por
+  // teste e mantêm a árvore React montada até o fim do arquivo: dois arquivos
+  // pesados no mesmo worker somam ~4GB. O limite recicla o worker ENTRE
+  // arquivos, acima do pico de um arquivo isolado (~1,5GB); abaixo disso ele
+  // mata a suíte que ainda está rodando.
+  workerIdleMemoryLimit: '2GB',
   // `mjs` por último: não muda a resolução dos imports existentes; apenas
   // permite que o haste-map enxergue os testes Node-only de scripts `.mjs`.
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node', 'mjs'],
