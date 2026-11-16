@@ -51,11 +51,23 @@ jobs:
       - name: Check types
         run: npm run lint:types
       - name: Run unit tests
-        run: npm run test:jest
+        run: npm run test:jest -- --testPathIgnorePatterns /tests/e2e/ /Navigation/Stack/seededDeepStack/
         env:
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
-          # babel.config.js asserts all three are present, so they cannot be
-          # dropped from this step. The placeholder URL must not be fetched for
-          # real during the run: jest.setup.js stubs fetch for it.
+          COMAPEO_METRICS_URL: ${{ vars.COMAPEO_METRICS_URL }}
+          COMAPEO_METRICS_API_KEY: ${{ secrets.COMAPEO_METRICS_API_KEY }}
+      # These mount a real @comapeo/core client plus the navigator and hold
+      # ~1-1.5GB each. Sharing the parallel worker pool, two of them in one
+      # worker reached the 4GB heap ceiling and were killed mid-run; isolated in
+      # a fresh process with --runInBand they pass. Keep them in the gate.
+      - name: Run seeded navigator integration suites
+        run: |
+          for f in src/frontend/Navigation/Stack/seededDeepStack.*.test.tsx; do
+            echo "::group::$f"
+            npx dotenv -- jest "$f" --runInBand
+            echo "::endgroup::"
+          done
+        env:
+          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
           COMAPEO_METRICS_URL: ${{ vars.COMAPEO_METRICS_URL }}
           COMAPEO_METRICS_API_KEY: ${{ secrets.COMAPEO_METRICS_API_KEY }}
