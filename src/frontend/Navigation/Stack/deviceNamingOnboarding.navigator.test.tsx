@@ -104,10 +104,10 @@ function nomesDasRotas(): string[] {
  * away from `nenhum`, so the profile step would never come back.
  */
 describe('nomear o dispositivo com perfil incompleto (#128)', () => {
-  // No `name` in the seeded device info: production starts here, before
-  // DeviceNaming has ever run.
+  // Empty name in the seeded device info represents the cold start before
+  // DeviceNaming has ever run (routing treats a falsy name as "no name").
   const setup = setupIntegrationTestWithoutProject({
-    deviceInfo: {deviceType: 'mobile'},
+    deviceInfo: {name: '', deviceType: 'mobile'},
   });
 
   test('ao salvar o nome, o fluxo segue para EthnicGroupSelection (não Success)', async () => {
