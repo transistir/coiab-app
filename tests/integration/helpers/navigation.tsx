@@ -4,13 +4,6 @@ type MockedAppNavigatorProps = {
   permissionAsked?: boolean;
 };
 
-export const MockedAppNavigator = ({
-  permissionAsked = true,
-}: MockedAppNavigatorProps = {}) => {
-  return (
-    <AppNavigator
-      permissionAsked={permissionAsked}
-      navigationIntegration={undefined}
-    />
-  );
+export const MockedAppNavigator = (_props: MockedAppNavigatorProps = {}) => {
+  return <AppNavigator navigationIntegration={undefined} />;
 };

@@ -1,4 +1,10 @@
 {
+  "$1App.serviceNotification.body": {
+    "message": "Sync with connected devices continues in the background"
+  },
+  "$1App.serviceNotification.title": {
+    "message": "Running in the background"
+  },
   "$1Modal.GPSEnable.button.default": {
     "message": "Start Tracks"
   },
@@ -227,6 +233,12 @@
   "$1TrackBottomSheet.StartStopTrack.trackingRequirement": {
     "message": "Move one meter to see track."
   },
+  "$1hooks.useTracking.notificationBody": {
+    "message": "Location saved on this device. Open app to end track."
+  },
+  "$1hooks.useTracking.notificationTitle": {
+    "message": "Recording a track"
+  },
   "$1screen.Settings.ProjectSettings.YourTeam.ReviewAndInvite.ReviewInvitation.sendInvite": {
     "message": "Send Invite"
   },
@@ -346,14 +358,11 @@
   "$1screens.AudioRecording.nowRecording": {
     "message": "Now Recording..."
   },
+  "$1screens.CameraScreen.cameraPermissionTitle": {
+    "message": "Document with Photos"
+  },
   "$1screens.CameraScreen.cameraUnavailable": {
     "message": "Camera unavailable. Please close and reopen CoiabApp to try again."
-  },
-  "$1screens.CameraScreen.noCameraAccess": {
-    "message": "No access to camera. Please allow access in settings."
-  },
-  "$1screens.CameraScreen.openSettings": {
-    "message": "Open Settings"
   },
   "$1screens.CollaboratorInfo.navTitle": {
     "message": "Collaborator Info"
@@ -402,7 +411,7 @@
     "message": "Distinct names help collaborators using CoiabApp to recognize you."
   },
   "$1screens.DeviceNaming.header": {
-    "message": "Name Your Device"
+    "message": "Name This Device"
   },
   "$1screens.DeviceNaming.placeholder": {
     "message": "Device Name"
@@ -480,6 +489,12 @@
   "$1screens.LocationInfoScreen.yes": {
     "message": "Yes",
     "description": "if a location sensor is active yes/no"
+  },
+  "$1screens.MapScreen.TrackBottomSheet.permissionTitle": {
+    "message": "Record Tracks"
+  },
+  "$1screens.MapScreen.locationPermissionTitle": {
+    "message": "Record GPS Points"
   },
   "$1screens.Observation.ObservationView.delete": {
     "message": "Delete",

@@ -263,7 +263,7 @@ function destinoDoShareNaPilha(): boolean {
 }
 
 function nomesDasRotas(): string[] {
-  return mockNavigation.getRootState().routes.map(route => route.name);
+  return mockNavigation.getRootState()!.routes.map(route => route.name);
 }
 
 function perfilPersistido(): UserProfileState | null {

@@ -367,7 +367,7 @@ describe('segunda organização (navigator real)', () => {
     await waitFor(
       () =>
         expect(
-          mockNavigation.getRootState().routes.map(route => route.name),
+          mockNavigation.getRootState()!.routes.map(route => route.name),
         ).toEqual(['Home', 'AppSettings', 'CreateOrganization']),
       {timeout: 15_000},
     );
@@ -390,7 +390,7 @@ describe('segunda organização (navigator real)', () => {
     await waitFor(
       () =>
         expect(
-          mockNavigation.getRootState().routes.map(route => route.name),
+          mockNavigation.getRootState()!.routes.map(route => route.name),
         ).toEqual(['Home', 'AppSettings', 'OrganizationProvisioning']),
       {timeout: 15_000},
     );
@@ -428,7 +428,7 @@ describe('segunda organização (navigator real)', () => {
       await screen.findByTestId('ENTRONCAMENTO.scrn', {}, {timeout: 15_000}),
     ).toBeOnTheScreen();
     expect(
-      mockNavigation.getRootState().routes.map(route => route.name),
+      mockNavigation.getRootState()!.routes.map(route => route.name),
     ).toEqual(['Home']);
     expect(
       await screen.findByTestId('MENU.greeting-project', {}, {timeout: 15_000}),
@@ -464,7 +464,7 @@ describe('segunda organização (navigator real)', () => {
     await waitFor(
       () =>
         expect(
-          mockNavigation.getRootState().routes.map(route => route.name),
+          mockNavigation.getRootState()!.routes.map(route => route.name),
         ).toEqual(['Home', 'AppSettings', 'Organizations']),
       {timeout: 15_000},
     );
@@ -481,7 +481,7 @@ describe('segunda organização (navigator real)', () => {
     await waitFor(
       () =>
         expect(
-          mockNavigation.getRootState().routes.map(route => route.name),
+          mockNavigation.getRootState()!.routes.map(route => route.name),
         ).toEqual(['Home']),
       {timeout: 15_000},
     );
@@ -579,7 +579,7 @@ describe('segunda organização (navigator real)', () => {
     });
     await waitFor(
       () => {
-        const state = mockNavigation.getRootState();
+        const state = mockNavigation.getRootState()!;
         expect(state.routes[state.index]?.name).toBe(
           'OrganizationProvisioning',
         );
@@ -611,7 +611,7 @@ describe('segunda organização (navigator real)', () => {
     await waitFor(
       () =>
         expect(
-          mockNavigation.getRootState().routes.map(route => route.name),
+          mockNavigation.getRootState()!.routes.map(route => route.name),
         ).toEqual(['Home']),
       {timeout: 15_000},
     );
@@ -688,7 +688,7 @@ describe('segunda organização (navigator real)', () => {
     });
     await waitFor(
       () => {
-        const state = mockNavigation.getRootState();
+        const state = mockNavigation.getRootState()!;
         expect(state.routes[state.index]?.name).toBe(
           'OrganizationProvisioning',
         );
@@ -840,7 +840,7 @@ describe('segunda organização (navigator real)', () => {
         },
         {timeout: 30_000},
       );
-      const estado = mockNavigation.getRootState();
+      const estado = mockNavigation.getRootState()!;
       expect(estado.routes[estado.index]?.name).toBe('Home');
       expect(documentoPersistido().ativa).toEqual({
         organizacaoId: orgSetup.orgId,
@@ -877,7 +877,7 @@ describe('segunda organização (navigator real)', () => {
       await fireEvent.press(screen.getByTestId('HOME.org-repair-btn'));
       await waitFor(
         () => {
-          const atual = mockNavigation.getRootState();
+          const atual = mockNavigation.getRootState()!;
           expect(atual.routes[atual.index]?.name).toBe(
             'OrganizationProvisioning',
           );

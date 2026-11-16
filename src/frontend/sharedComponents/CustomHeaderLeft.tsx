@@ -5,7 +5,8 @@ import {HeaderBackButtonProps} from '@react-navigation/elements';
 import {BackIcon} from './icons';
 import {BLACK} from '../lib/styles';
 import {useNavigationFromRoot} from '../hooks/useNavigationWithTypes';
-import {StyleSheet} from 'react-native';
+import {Platform, StyleSheet} from 'react-native';
+import {HEADER_LIQUID_GLASS_WIDTH} from '../constants';
 
 // We use a slightly larger back icon, to improve accessibility
 // TODO iOS: This should probably be a chevron not an arrow
@@ -28,6 +29,8 @@ export const CustomHeaderLeft = ({
   return (
     <HeaderBackButton
       {...headerBackButtonProps}
+      // next line is needed for iOS so it doesn't include the previous screen's title in the back button
+      displayMode="minimal"
       testID="MAIN.header-back-btn"
       onPress={onPress || (() => navigation.goBack())}
       style={CustomHeaderLeftStyles}
@@ -37,5 +40,15 @@ export const CustomHeaderLeft = ({
 };
 
 export const CustomHeaderLeftStyles = StyleSheet.create({
-  headerStyles: {marginLeft: 0, marginRight: 15},
+  headerStyles: {
+    marginLeft: 0,
+    // the margin is only needed for Android because it would be inside the capsule on iOS
+    ...Platform.select({
+      ios: {
+        width: HEADER_LIQUID_GLASS_WIDTH,
+        justifyContent: 'center' as const,
+      },
+      default: {marginRight: 15},
+    }),
+  },
 }).headerStyles;

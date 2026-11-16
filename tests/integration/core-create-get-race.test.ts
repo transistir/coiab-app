@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {createRequire} from 'node:module';
 
-// Characterizes #86 against the real `@comapeo/core` 7.4.0 (no emulator): a
+// Characterizes #86 against the real `@comapeo/core` 7.5.2 (no emulator): a
 // `getProject(id)` that lands inside the `createProject()` registration window
 // builds a second `MapeoProject` over the same storage. With on-disk storage
 // the two instances race for the same OFD oplog locks and the loser fails with
@@ -83,10 +83,10 @@ function runScenario(mode: ScenarioMode): ScenarioReport {
 // same core version this suite characterizes: a bump of @comapeo/core-react-
 // native that changes the bundled core silently invalidates every assertion
 // below, and a bump of @comapeo/core alone invalidates what the suite runs.
-// V1 pins that version explicitly — the characterization describes 7.4.0 and
+// V1 pins that version explicitly — the characterization describes 7.5.2 and
 // nothing else, so a bump is a re-characterization instruction, not a routine
 // expectation mismatch.
-const CHARACTERIZED_CORE_VERSION = '7.4.0';
+const CHARACTERIZED_CORE_VERSION = '7.5.2';
 
 it('runs the same core version the device bundle pins', () => {
   const coreVersion = require('@comapeo/core/package.json').version;
@@ -152,7 +152,7 @@ it('ram: the raced getProject lands in the createProject window', () => {
   expect(report.getOutcome).toBe('resolved');
   expect(report.settledGetOutcome).toBe('resolved');
 
-  // Characterization of 7.4.0 today: the raced getProject built a second
+  // Characterization of 7.5.2 today: the raced getProject built a second
   // instance (its :593 registration), and createProject's own instance
   // overwrote it at :525 — so the instances differ. When upstream dedupes or
   // registers during createProject, this flips to true; the precondition
@@ -179,7 +179,7 @@ itOnLinux(
     expect(report.waitOutcome).toBe('met');
     expect(report.projectDirs).toHaveLength(1);
 
-    // Characterization of 7.4.0 today: every event that reaches the process is
+    // Characterization of 7.5.2 today: every event that reaches the process is
     // an unhandled rejection carrying ELOCKED on an oplog of the single project
     // — the device failure shape. The blob core's own lock failure never
     // reaches the process as a rejection (the BlobStore listener only

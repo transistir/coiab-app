@@ -4,6 +4,7 @@ import {render, screen} from '@testing-library/react-native';
 
 import {TelaCarregamento} from './TelaCarregamento';
 import {DARK_GREY, WHITE} from '../lib/styles';
+import {RUBIK} from '../lib/fonts';
 
 // Sonda: o spinner real é o ActivityIndicator nativo do LoadingIndicator; o
 // mock registra o color repassado pela TelaCarregamento.
@@ -63,7 +64,7 @@ test('T7d: com label, o rótulo é HeaderText header4 presente (fontSize 18)', a
 
   // header4 do HeaderText = {fontFamily: rubik-medium, fontSize: 18}
   expect(screen.getByText('Carregando território…')).toHaveStyle({
-    fontFamily: 'Rubik_500Medium',
+    fontFamily: RUBIK[500],
     fontSize: 18,
   });
 });

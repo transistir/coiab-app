@@ -309,15 +309,18 @@ describe('OrganizationActivationContext sob AppProviders', () => {
 
     // Outro escritor assume o id legado. A republicação de 'ready' com a
     // MESMA geração (o caminho do interruptor bloqueado que repõe o
-    // snapshot, :296-309) não pode reescrevê-lo de volta.
-    act(() => {
+    // snapshot, :296-309) não pode reescrevê-lo de volta. Cada `act` com
+    // await: no RNTL 14 o `act` é assíncrono e, sem await, o escopo de act
+    // do React nunca fecha — o unmount do teardown não comitava e a árvore
+    // ficava montada sob o cliente IPC fechado.
+    await act(() => {
       activeProjectIdStore.actions.projetar('escritor-estranho');
     });
     const engine = createOrganizationActivationMock.mock.results[0]!.value;
-    act(() => {
+    await act(() => {
       engine.instance.setState({status: 'opening'});
     });
-    act(() => {
+    await act(() => {
       engine.instance.setState(
         {status: 'ready', projectId: monitoramentoId, generation: 1},
         true,

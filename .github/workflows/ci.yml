@@ -51,7 +51,33 @@ jobs:
       - name: Check types
         run: npm run lint:types
       - name: Run unit tests
-        run: npm run test:jest
+        run: npm run test:jest -- --testPathIgnorePatterns='/tests/e2e/' --testPathIgnorePatterns='seededDeepStack'
+        env:
+          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
+          COMAPEO_METRICS_URL: ${{ vars.COMAPEO_METRICS_URL }}
+          COMAPEO_METRICS_API_KEY: ${{ secrets.COMAPEO_METRICS_API_KEY }}
+      # These mount a real @comapeo/core client plus the navigator and hold
+      # ~1-1.5GB each. Sharing the parallel worker pool, two of them in one
+      # worker reached the 4GB heap ceiling and were killed mid-run; isolated in
+      # a fresh process with --runInBand they pass. Keep them in the gate.
+      - name: Run seeded navigator integration suites
+        run: |
+          # Same files the pool skips above (`--testPathIgnorePatterns='seededDeepStack'`),
+          # narrowed to what jest collects as a suite so non-test helpers such as
+          # seededDeepStack.helpers.tsx are not passed to jest ("No tests found" exits 1).
+          tests=$(git ls-files \
+            | grep seededDeepStack \
+            | grep -E '(__tests__/.*\.[cm]?[jt]sx?$|\.(spec|test)\.([cm]?[jt]sx?|mjs)$)' \
+            || true)
+          if [ -z "$tests" ]; then
+            echo "::error::no seededDeepStack test suites found"
+            exit 1
+          fi
+          for f in $tests; do
+            echo "::group::$f"
+            npx dotenv -- jest "$f" --runInBand
+            echo "::endgroup::"
+          done
         env:
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
           COMAPEO_METRICS_URL: ${{ vars.COMAPEO_METRICS_URL }}

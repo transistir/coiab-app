@@ -115,6 +115,9 @@
   "$1Screens.ProjectSettings.title": {
     "message": "Alat Koordinator"
   },
+  "$1Screens.Settings.AppSettings.aboutCoMapeo": {
+    "message": "Tentang CoMapeo"
+  },
   "$1Screens.Settings.AppSettings.aboutCoiabApp": {
     "message": "Tentang CoiabApp"
   },

@@ -1,6 +1,6 @@
 import {BottomTabBarProps} from '@react-navigation/bottom-tabs';
 import * as React from 'react';
-import {StyleSheet, TouchableOpacity, View} from 'react-native';
+import {StyleSheet, TouchableOpacity, View, Platform} from 'react-native';
 
 import {
   TabIconConfiguracoes,
@@ -124,6 +124,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-evenly',
     alignItems: 'center',
+    paddingBottom: Platform.OS === 'android' ? 20 : 0,
   },
   buttonStyle: {
     marginTop: 10,
