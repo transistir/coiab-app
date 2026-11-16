@@ -54,5 +54,9 @@ jobs:
         run: npm run test:jest
         env:
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
-          COMAPEO_METRICS_URL: ${{ vars.COMAPEO_METRICS_URL }}
-          COMAPEO_METRICS_API_KEY: ${{ secrets.COMAPEO_METRICS_API_KEY }}
+          # The metrics vars are deliberately NOT set here. No unit test asserts
+          # them, and their only effect is to let the metrics pipeline attempt a
+          # real POST during the run; against the placeholder URL that request
+          # never settles, and the seeded deep stack suites then exhaust the
+          # worker heap (reproduced locally: same suite passes without the vars,
+          # dies at 1.2GB with them).
