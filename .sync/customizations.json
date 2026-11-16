@@ -61,7 +61,7 @@
       "id": "coiab.onboarding-fork",
       "class": "fork-only",
       "policy": "fork-only",
-      "paths": ["src/frontend/screens/Onboarding/CreateOrganization*", "src/frontend/screens/Onboarding/JoinOrganizationIntro*", "src/frontend/screens/Onboarding/OrganizationProvisioning*", "src/frontend/screens/Onboarding/VillageEntry*", "src/frontend/screens/Onboarding/EthnicGroupSelection*", "src/frontend/screens/Onboarding/OnboardingCompactHeader*"]
+      "paths": ["src/frontend/screens/Onboarding/CreateOrganization*", "src/frontend/screens/Onboarding/JoinOrganizationIntro*", "src/frontend/screens/Onboarding/OrganizationProvisioning.tsx", "src/frontend/screens/Onboarding/VillageEntry*", "src/frontend/screens/Onboarding/EthnicGroupSelection*", "src/frontend/screens/Onboarding/OnboardingCompactHeader*"]
     },
     {
       "id": "coiab.navigation",
@@ -109,8 +109,8 @@
       "id": "coiab.dependencies",
       "class": "shared-infra",
       "policy": "upstream-wins",
-      "paths": ["package.json", "package-lock.json", "patches/**"],
-      "intent": "Upstream dependency set; fork-only devDependencies and scripts retained by name. Lockfile regenerated from the incoming lock. Patch selectors by exact package name and version."
+      "paths": ["package.json", "package-lock.json"],
+      "intent": "Upstream dependency set; fork-only devDependencies and scripts retained by name. Lockfile regenerated from the incoming lock. Patch files are classified one by one by the coiab.patch-* rules (exact package name and version), not by a directory glob."
     },
     {
       "id": "coiab.patch-maplibre",
@@ -145,6 +145,271 @@
       "policy": "adopt-or-record",
       "paths": ["src/frontend/sharedComponents/HeaderRightContainer.tsx", "src/frontend/sharedComponents/PermissionButtons.tsx", "src/frontend/screens/MapScreen/TrackBottomSheet/TrackPermissionScreen.tsx", "src/frontend/lib/internetStatus.ts", "src/frontend/lib/fonts.ts", "expo-config-plugins/disableLocationNotificationBadge.js"],
       "intent": "Every new upstream file needs one disposition: adopt, reject, or defer with an issue. Generated coverage report lists all of them."
+    },
+    {
+      "id": "coiab.sync-contract",
+      "class": "fork-only",
+      "policy": "fork-only",
+      "paths": [".sync/**", "scripts/sync/**", "docs/upstream-sync/**"],
+      "intent": "The sync contract itself (manifest, profile, upstream lock, checker and its test, v14.0 ledger and evidence). Fork tooling, absent from trunk."
+    },
+    {
+      "id": "coiab.fork-added-modules",
+      "class": "fork-only",
+      "policy": "fork-only",
+      "paths": [
+        "src/frontend/metrics/deviceDiagnostics.ts",
+        "src/frontend/hooks/server/useHasCachedDocs.ts",
+        "src/frontend/Navigation/Stack/deviceNamingOnboarding.navigator.test.tsx",
+        "src/frontend/Navigation/Stack/seededDeepStack.decorator.test.tsx",
+        "src/frontend/Navigation/Stack/seededDeepStack.guardOrder.test.tsx",
+        "src/frontend/Navigation/Stack/seededDeepStack.helpers.tsx"
+      ],
+      "intent": "Files added by the fork after c1b0c949 and absent from trunk: shared diagnostics collector (6f4f1f4b), cached-docs hook, and the navigator/seeded-deep-stack suites and helpers.",
+      "evidence": ["docs/upstream-sync/v14.0-ledger.md"]
+    },
+    {
+      "id": "coiab.fork-owned-tests",
+      "class": "product",
+      "policy": "reconcile",
+      "paths": [
+        "src/frontend/Navigation/Stack/arquivoRemotoJournal.navigator.test.tsx",
+        "src/frontend/Navigation/Stack/index.navigator.test.tsx",
+        "src/frontend/Navigation/Stack/perfilOnboarding.navigator.test.tsx",
+        "src/frontend/Navigation/Stack/recuperacaoColdStart.navigator.test.tsx",
+        "src/frontend/Navigation/Stack/remocaoDoProjeto.navigator.test.tsx",
+        "src/frontend/Navigation/Stack/segundaOrganizacao.navigator.test.tsx",
+        "src/frontend/Navigation/Stack/segundaOrganizacaoConvite.navigator.test.tsx",
+        "src/frontend/screens/Onboarding/OrganizationProvisioning.test.tsx",
+        "src/frontend/screens/YourTeam/ReviewAndInvite/ReviewInvitation.test.tsx",
+        "src/frontend/sharedComponents/ProjectRemovalListener.test.tsx",
+        "src/frontend/sharedComponents/TelaCarregamento.test.tsx",
+        "src/frontend/hooks/useTracking.test.tsx"
+      ],
+      "intent": "Fork-authored suites (absent from trunk) that existed at c1b0c949 and were edited to follow v14 interfaces: getRootState()! non-null assertions, maplibre 11 Map/Marker stubs, RUBIK font token, IntlProvider wrapper, flattened BodyText style. Not fork-only in the checker sense because the checker requires status A; the tests themselves are fork content and must be kept."
+    },
+    {
+      "id": "coiab.seeded-deep-stack-test",
+      "class": "product",
+      "policy": "reconcile",
+      "paths": ["src/frontend/Navigation/Stack/seededDeepStack.navigator.test.tsx"],
+      "intent": "Upstream seeded-state-repair/back-guard test taken at the merge, split one-client-per-worker (d0f48720) with fork coverage restored (f562f21d). Hybrid; see ledger.",
+      "evidence": ["docs/upstream-sync/v14.0-ledger.md"]
+    },
+    {
+      "id": "coiab.org-integration-hybrids",
+      "class": "product",
+      "policy": "reconcile",
+      "paths": [
+        "src/frontend/hooks/server/projects.ts",
+        "src/frontend/screens/ComapeoSettings/index.tsx",
+        "src/frontend/screens/Invites/InviteReceived.tsx",
+        "src/frontend/screens/YourTeam/InviteAccepted.tsx",
+        "src/frontend/screens/YourTeam/InviteDeclined.tsx",
+        "src/frontend/screens/YourTeam/SelectInviteeRole.tsx",
+        "src/frontend/screens/SetQADeviceName.test.tsx"
+      ],
+      "intent": "Upstream screens with the fork organization layer kept on top: archive-server helpers re-exported from lib/organization/archiveServer; Territory/organization menu rows and subtitle; org-first onboarding detection and fresh-keys reset; isOrganization wording; ReviewOrganizationInvite routing; SetQADeviceName asserts the org-first fork copy.",
+      "evidence": ["docs/upstream-sync/v14.0-ledger.md"]
+    },
+    {
+      "id": "coiab.invite-button-contrast",
+      "class": "product",
+      "policy": "preserve-values",
+      "paths": ["src/frontend/screens/YourTeam/ReviewAndInvite/ReviewInvitation.tsx"],
+      "named_values": ["DARK_GREY send icon and label over ORANGE (COIAB #19, contrast 6.77; WHITE is 2.20)"],
+      "evidence": ["src/frontend/screens/YourTeam/ReviewAndInvite/ReviewInvitation.test.tsx"]
+    },
+    {
+      "id": "coiab.origin-guard",
+      "class": "product",
+      "policy": "reconcile",
+      "paths": [
+        "src/frontend/hooks/useTracking.ts",
+        "src/frontend/screens/SaveTrack/SaveTrackButton.tsx",
+        "src/frontend/screens/ObservationCreate/ObservationCreateSaveButton.tsx",
+        "src/frontend/screens/ObservationEdit/ObservationEditSaveButton.tsx",
+        "src/frontend/screens/MapScreen/index.tsx"
+      ],
+      "intent": "Fork behaviour layered on the upstream screens: SPEC A CA09 assertOrigin/work-origin-mismatch guard before writing or resuming a track, normalizeObserverTags on save, and useNewObservationDraft on the map so etnia/aldeia tags survive.",
+      "evidence": ["docs/upstream-sync/v14.0-ledger.md"]
+    },
+    {
+      "id": "coiab.observation-views",
+      "class": "product",
+      "policy": "reconcile",
+      "paths": ["src/frontend/screens/Observation/index.tsx", "src/frontend/screens/ObservationsList/index.tsx"],
+      "intent": "ObserverSection rendered for observation.createdBy; ObservationEmptyView receives onPressBack to the Map tab (COIAB empty view)."
+    },
+    {
+      "id": "coiab.branding-copy-src",
+      "class": "product",
+      "policy": "preserve-values",
+      "paths": [
+        "src/frontend/sharedComponents/CameraView.tsx",
+        "src/frontend/screens/ComapeoSettings/Security/AppPasscode/TurnOffPasscode.tsx",
+        "src/frontend/screens/ComapeoSettings/Security/AppPasscode/index.tsx",
+        "src/frontend/screens/Observation/Buttons.tsx",
+        "src/frontend/screens/ObservationMetadata.tsx",
+        "src/frontend/screens/PhotoPreviewModal/AttachedPhotoPreviewModal.tsx"
+      ],
+      "named_values": ["visible copy says CoiabApp, never CoMapeo", "message keys renamed to ekanadyby* (ekanadybyData, ekanadybyMetadata, validatedByEkanadyby, sentByEkanadyby)"],
+      "reject_incoming": ["CoMapeo wording and comapeo* message keys"],
+      "evidence": ["src/frontend/lib/noComapeoBrand.test.ts", "src/frontend/lib/visibleTerminology.test.ts"]
+    },
+    {
+      "id": "coiab.storybook-capture-hooks",
+      "class": "shared-infra",
+      "policy": "reconcile",
+      "paths": ["src/frontend/screens/ObservationFields/index.tsx", "src/frontend/screens/MapScreen/TrackBottomSheet/index.tsx"],
+      "intent": "Capture hooks kept on upstream screens: STORYBOOK diagnostic log when a field is missing, and the MAP:track-bottom-sheet testID the capture flows wait on."
+    },
+    {
+      "id": "coiab.incoming-upstream-v14",
+      "class": "incoming-upstream",
+      "policy": "adopt-or-record",
+      "paths": [
+        "src/frontend/hooks/usePreventBackNavigation.ts",
+        "src/frontend/hooks/useReplaceBackNavigation.ts",
+        "src/frontend/lib/internetStatus.test.ts",
+        "src/frontend/lib/testAlertValues.ts",
+        "src/frontend/sharedComponents/HeaderRightContainer.test.tsx",
+        "release-notes/closed-issues-v14.md",
+        "release-notes/closed-prs-v14.md"
+      ],
+      "intent": "New upstream files, adopted unchanged (byte-identical to 8d2abc1b)."
+    },
+    {
+      "id": "coiab.incoming-upstream-v14-edited",
+      "class": "incoming-upstream",
+      "policy": "adopt-or-record",
+      "paths": ["src/frontend/hooks/permissionTrackers.test.tsx", "src/frontend/screens/MapScreen/MapScreen.test.tsx"],
+      "intent": "New upstream tests adopted with fork edits: permissionTrackers.test awaits act(async) (1 line); MapScreen.test tears down tree and providers before ipc.stop through executarEmOrdem (15s hook timeout).",
+      "evidence": ["tests/integration/helpers/orderedTeardown.ts"]
+    },
+    {
+      "id": "coiab.upstream-removed-stories",
+      "class": "shared-infra",
+      "policy": "deleted-here",
+      "paths": ["src/frontend/sharedComponents/IconButton.stories.tsx", "src/frontend/sharedComponents/SaveButton.stories.tsx"],
+      "intent": "Stories of components upstream deleted (IconButton, SaveButton). Absent in 8d2abc1b; the fork follows."
+    },
+    {
+      "id": "coiab.upstream-removed-components",
+      "class": "product",
+      "policy": "deleted-here",
+      "paths": [
+        "src/frontend/sharedComponents/IconButton.tsx",
+        "src/frontend/sharedComponents/SaveButton.tsx",
+        "src/frontend/sharedComponents/Pill.tsx",
+        "src/frontend/screens/MapScreen/TrackBottomSheet/GPSForegroundPermissionDisabled.tsx",
+        "patches/expo-file-system+56.0.8.patch"
+      ],
+      "intent": "Removed upstream: IconButton, SaveButton, Pill, GPSForegroundPermissionDisabled, and the 56.0.8 expo-file-system patch (renamed to 56.0.11). Absent in 8d2abc1b; head follows."
+    },
+    {
+      "id": "coiab.upstream-wins-screens",
+      "class": "product",
+      "policy": "upstream-wins",
+      "paths": [
+        "src/frontend/screens/Audio/AudioAttachmentPlaybackScreen.tsx",
+        "src/frontend/screens/Audio/AudioDraftPlaybackScreen.tsx",
+        "src/frontend/screens/Audio/AudioRecording/index.tsx",
+        "src/frontend/screens/Audio/AudioRecording/useAudioRecording.ts",
+        "src/frontend/screens/Audio/AudioRecording/usePreventBackButtonWhileRecording.ts",
+        "src/frontend/screens/Audio/shared.tsx",
+        "src/frontend/screens/ComapeoSettings/CreateTestData.tsx",
+        "src/frontend/screens/ComapeoSettings/DeviceName/DisplayScreen.tsx",
+        "src/frontend/screens/ComapeoSettings/DeviceName/EditScreen.tsx",
+        "src/frontend/screens/ComapeoSettings/DeviceName/FieldRow.tsx",
+        "src/frontend/screens/ComapeoSettings/Security/AppPasscode/ConfirmPasscodeSheet.tsx",
+        "src/frontend/screens/ComapeoSettings/Security/AppPasscode/TurnOffPasscodeBottomSheet.tsx",
+        "src/frontend/screens/ConfirmDeletePhoto.tsx",
+        "src/frontend/screens/Exchange/ExchangeSettingsBottomSheet.tsx",
+        "src/frontend/screens/Exchange/NoWifiDisplay.tsx",
+        "src/frontend/screens/Exchange/WifiCard.tsx",
+        "src/frontend/screens/Exchange/index.tsx",
+        "src/frontend/screens/ExportObservations.tsx",
+        "src/frontend/screens/ManualGpsScreen/DdForm.tsx",
+        "src/frontend/screens/ManualGpsScreen/DmsForm/DmsInputGroup.tsx",
+        "src/frontend/screens/ManualGpsScreen/UtmForm.tsx",
+        "src/frontend/screens/ManualGpsScreen/index.tsx",
+        "src/frontend/screens/MapScreen/CurrentTrack/CurrentTrackMapLayer.tsx",
+        "src/frontend/screens/MapScreen/CurrentTrack/UserTooltipMarker.tsx",
+        "src/frontend/screens/MapScreen/MapLayers/ObservationMapLayer.tsx",
+        "src/frontend/screens/MapScreen/MapLayers/RemoteDetectionAlertsLayer.tsx",
+        "src/frontend/screens/MapScreen/MapLayers/TracksMapLayer.tsx",
+        "src/frontend/screens/Observation/ConfirmDeleteObservationBottomSheet.tsx",
+        "src/frontend/screens/Observation/InsetMapView.tsx",
+        "src/frontend/screens/Observation/ObservationHeaderRight.tsx",
+        "src/frontend/screens/ObservationCreate/HeaderLeft.tsx",
+        "src/frontend/screens/ObservationCreate/index.tsx",
+        "src/frontend/screens/ObservationEdit/HeaderLeft.tsx",
+        "src/frontend/screens/ObservationEdit/index.tsx",
+        "src/frontend/screens/ObservationFields/Date.tsx",
+        "src/frontend/screens/PhotoPreviewModal/DraftPhotoPreviewModal.tsx",
+        "src/frontend/screens/PresetChooser/CategoryGrid.tsx",
+        "src/frontend/screens/PrivacyPolicy/styles.ts",
+        "src/frontend/screens/SaveTrack/HeaderLeft.tsx",
+        "src/frontend/screens/Track/ConfirmDeleteTrackBottomSheet.tsx",
+        "src/frontend/screens/Track/MapPreview.tsx",
+        "src/frontend/screens/Track/TrackHeaderRight.tsx",
+        "src/frontend/screens/Track/index.tsx",
+        "src/frontend/screens/TrackEdit/HeaderLeft.tsx",
+        "src/frontend/screens/TrackEdit/index.tsx",
+        "src/frontend/screens/YourTeam/DeviceRemovedSuccess.tsx",
+        "src/frontend/screens/YourTeam/ReviewAndInvite/UnableToCancelInvite.tsx",
+        "src/frontend/screens/YourTeam/ReviewAndInvite/index.tsx"
+      ],
+      "intent": "Screens taken verbatim from upstream v14. Byte-identical to 8d2abc1b (trunk carrying upstream v14) at head; the fork had no edits to this file since the merge base 8f012a15, so nothing of the fork is lost."
+    },
+    {
+      "id": "coiab.upstream-wins-shared-components",
+      "class": "product",
+      "policy": "upstream-wins",
+      "paths": [
+        "src/frontend/sharedComponents/ActionsRow/KeyboardAccessory.tsx",
+        "src/frontend/sharedComponents/CustomHeaderLeft.tsx",
+        "src/frontend/sharedComponents/CustomHeaderLeftClose.tsx",
+        "src/frontend/sharedComponents/DescriptionField.tsx",
+        "src/frontend/sharedComponents/HeaderLeftClose.tsx",
+        "src/frontend/sharedComponents/HookFormTextInput.tsx",
+        "src/frontend/sharedComponents/IconTitleDescription.tsx",
+        "src/frontend/sharedComponents/MetricsDiagnosticsPermissionToggle.tsx",
+        "src/frontend/sharedComponents/PresetView.tsx",
+        "src/frontend/sharedComponents/ScreenContentWithDock.tsx",
+        "src/frontend/sharedComponents/Storage/ExclamationBadge.tsx",
+        "src/frontend/sharedComponents/Storage/MenuLowStorageAlert.tsx",
+        "src/frontend/sharedComponents/Text.tsx",
+        "src/frontend/sharedComponents/Text/BodyText.tsx",
+        "src/frontend/sharedComponents/Text/HeaderText.tsx",
+        "src/frontend/sharedComponents/TextButton.tsx",
+        "src/frontend/sharedComponents/Thumbnails/AudioSavedThumbnail.tsx"
+      ],
+      "intent": "Shared components taken verbatim from upstream v14. Byte-identical to 8d2abc1b (trunk carrying upstream v14) at head; the fork had no edits to this file since the merge base 8f012a15, so nothing of the fork is lost."
+    },
+    {
+      "id": "coiab.upstream-wins-hooks-lib",
+      "class": "product",
+      "policy": "upstream-wins",
+      "paths": [
+        "src/frontend/__mocks__/expo-location.ts",
+        "src/frontend/hooks/server/useCanEditOrDelete.ts",
+        "src/frontend/hooks/useCameraPermissionTracker.ts",
+        "src/frontend/hooks/useLocationPermissionTracker.ts",
+        "src/frontend/lib/ObservationMapLayer.ts",
+        "src/frontend/lib/trackMapStyles.ts",
+        "src/frontend/metrics/AppUsageData.ts",
+        "src/frontend/metrics/DeviceDiagnosticMetrics.ts"
+      ],
+      "intent": "Hooks, lib, metrics and mocks taken verbatim from upstream v14. Byte-identical to 8d2abc1b (trunk carrying upstream v14) at head; the fork had no edits to this file since the merge base 8f012a15, so nothing of the fork is lost."
+    },
+    {
+      "id": "coiab.upstream-wins-misc",
+      "class": "product",
+      "policy": "upstream-wins",
+      "paths": ["docs/EndToEndTests/Observations.md", "patches/README.md", "src/frontend/AppNavigator.tsx"],
+      "intent": "Remaining files taken verbatim from upstream v14. Byte-identical to 8d2abc1b (trunk carrying upstream v14) at head; the fork had no edits to this file since the merge base 8f012a15, so nothing of the fork is lost."
     }
   ],
   "coverage": {
