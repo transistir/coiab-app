@@ -417,6 +417,13 @@
       "policy": "upstream-wins",
       "paths": ["docs/EndToEndTests/Observations.md", "patches/README.md", "src/frontend/AppNavigator.tsx"],
       "intent": "Remaining files taken verbatim from upstream v14. Byte-identical to 8d2abc1b (trunk carrying upstream v14) at head; the fork had no edits to this file since the merge base 8f012a15, so nothing of the fork is lost."
+    },
+    {
+      "id": "coiab.skills",
+      "class": "product",
+      "policy": "reconcile",
+      "paths": [".agents/skills/**", ".claude/skills/**"],
+      "intent": "The fork keeps skills of its own that upstream does not have; upstream also ships .agents/skills, so when both sides touch the same path the resolution is per file and no fork skill may disappear silently. .claude/skills is the symlink layer the harnesses read, so it is reconciled alongside the skill bodies it points to."
     }
   ],
   "coverage": {
