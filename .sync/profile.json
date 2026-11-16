@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "repository": "transistir/coiab-app",
+  "role": "product",
+  "base_branch": "develop",
+  "remotes": {
+    "self": "https://github.com/transistir/coiab-app",
+    "parent_trunk": "https://github.com/transistir/comapeo-mobile-1",
+    "upstream": "https://github.com/digidem/comapeo-mobile"
+  },
+  "upstream_policy": "releases-only",
+  "upstream_read_only": true,
+  "merge_method": "merge",
+  "forbidden_merge_methods": ["squash", "rebase"],
+  "ancestry_assertions": {
+    "pre_merge": ["upstream_sha is ancestor of parent_trunk_sha", "parent_trunk_sha is ancestor of HEAD"],
+    "post_merge": ["upstream_sha is ancestor of origin/develop", "parent_trunk_sha is ancestor of origin/develop"]
+  },
+  "gates": {
+    "types": "npx tsc --noEmit",
+    "lint": "npm run lint",
+    "scripts": "npm run test:scripts",
+    "jest": "npx dotenv -- jest --ci --runInBand --runTestsByPath <files>",
+    "catalog": "npm run check:message-catalog",
+    "install": "npm ci"
+  },
+  "workflows": {
+    "ci": "ci.yml",
+    "storybook": "storybook-capture.yml",
+    "apk": "build-apk.yml"
+  },
+  "resource_limits": {
+    "ram_gb": 3,
+    "full_jest": "known OOM; run targeted suites with --runInBand"
+  }
+}

@@ -51,7 +51,7 @@ jobs:
       - name: Check types
         run: npm run lint:types
       - name: Run unit tests
-        run: npm run test:jest -- --testPathIgnorePatterns='/tests/e2e/' --testPathIgnorePatterns='seededDeepStack'
+        run: npm run test:jest -- --testPathIgnorePatterns='/tests/e2e/' --testPathIgnorePatterns='seededDeepStack' --testPathIgnorePatterns='scripts/sync/'
         env:
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
           COMAPEO_METRICS_URL: ${{ vars.COMAPEO_METRICS_URL }}
@@ -82,3 +82,27 @@ jobs:
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
           COMAPEO_METRICS_URL: ${{ vars.COMAPEO_METRICS_URL }}
           COMAPEO_METRICS_API_KEY: ${{ secrets.COMAPEO_METRICS_API_KEY }}
+
+  sync-contract:
+    # Only sync PRs touch `.sync/customizations.json`; ordinary PRs skip this
+    # job rather than failing it.
+    if: startsWith(github.head_ref, 'sync/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The checker needs history to resolve the merge-base.
+          fetch-depth: 0
+      - name: Use Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: ".nvmrc"
+      - name: Check customization contract
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          PARENT=$(git merge-base "origin/$BASE_REF" HEAD)
+          node scripts/sync/check-customizations.mjs --parent "$PARENT" --head HEAD
+      - name: Test the customization checker
+        run: node --test scripts/sync/check-customizations.test.mjs
