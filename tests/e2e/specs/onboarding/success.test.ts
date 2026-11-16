@@ -4,41 +4,38 @@ import {byResourceId, byTextMatches} from '../../utils/selectors';
 import {output} from '../../utils/naming';
 
 describe('Onboarding - Success Screen', () => {
-  it('should display device ready message and mapping options', async () => {
+  it('should display device ready message and the coordinator question', async () => {
     const deviceReadyMessage = await $(
       byTextMatches(`${output.names.device} is ready`),
     );
     await expect(deviceReadyMessage).toBeDisplayed();
 
-    const subtitle = await $(
-      byTextMatches('Coordinate with team to start or map on your own'),
+    const roleQuestion = await $(byTextMatches('Are you a coordinator'));
+    await expect(roleQuestion).toBeDisplayed();
+
+    const coordinatorButton = await $(
+      byResourceId('ONBOARDING.role-coordinator-btn'),
     );
-    await expect(subtitle).toBeDisplayed();
+    await expect(coordinatorButton).toBeDisplayed();
 
-    const snapPhotos = await $(byTextMatches('Snap photos on-the-go'));
-    await expect(snapPhotos).toBeDisplayed();
-
-    const addAudio = await $(byTextMatches('Add audio recordings'));
-    await expect(addAudio).toBeDisplayed();
-
-    const trackPaths = await $(byTextMatches('Track paths walked'));
-    await expect(trackPaths).toBeDisplayed();
+    const participantButton = await $(
+      byResourceId('ONBOARDING.role-participant-btn'),
+    );
+    await expect(participantButton).toBeDisplayed();
   });
 
-  it('should display "Start Mapping" button', async () => {
-    const startMappingButton = await $(
-      byResourceId('ONBOARDING.navigate-to-map-btn'),
+  it('should open Create Organization when the coordinator role is chosen', async () => {
+    const coordinatorButton = await $(
+      byResourceId('ONBOARDING.role-coordinator-btn'),
     );
-    await expect(startMappingButton).toBeDisplayed();
-  });
+    await coordinatorButton.click();
 
-  it('should create project and navigate to map when "Start Mapping" is tapped', async () => {
-    const startMappingButton = await $(
-      byResourceId('ONBOARDING.navigate-to-map-btn'),
+    const title = await $(byTextMatches('Create Territory'));
+    await expect(title).toBeDisplayed();
+
+    const continueButton = await $(
+      byResourceId('ORG.create-intro-continue-btn'),
     );
-    await startMappingButton.click();
-
-    await driver.pause(2000);
-    await expect($(byResourceId('MAIN.map-screen'))).toBeDisplayed();
+    await expect(continueButton).toBeDisplayed();
   });
 });
