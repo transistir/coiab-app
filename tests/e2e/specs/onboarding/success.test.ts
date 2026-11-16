@@ -62,6 +62,12 @@ describe('Onboarding - Success Screen', () => {
     await openButton.waitForDisplayed({timeout: 30000, interval: 1000});
     await openButton.click();
 
+    // Provisioning leaves routing to the navigator, which opens Home with
+    // initialRouteName 'Menu'. Select the map tab to reach the map screen.
+    const mapTab = await $('~Go to map.');
+    await mapTab.waitForDisplayed({timeout: 30000, interval: 1000});
+    await mapTab.click();
+
     const mapScreen = await $(byResourceId('MAIN.map-screen'));
     await mapScreen.waitForDisplayed({timeout: 30000, interval: 1000});
     await expect(mapScreen).toBeDisplayed();
