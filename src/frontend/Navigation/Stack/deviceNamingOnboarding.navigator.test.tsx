@@ -26,7 +26,7 @@ jest.mock('../../../../tests/integration/helpers/navigation', () => {
   };
 });
 
-import {act, fireEvent, screen} from '@testing-library/react-native';
+import {fireEvent, screen} from '@testing-library/react-native';
 
 // The full navigator module graph pulls in the app screens (MapScreen
 // included) even though this suite never leaves the empty-document branch —
