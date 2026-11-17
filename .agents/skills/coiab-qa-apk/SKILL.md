@@ -123,7 +123,11 @@ branch ou tag, **não SHA**, então crie uma branch no commit:
 git push origin c1b0c949:refs/heads/qa-baseline-pre-v14
 gh workflow run build-apk.yml -R transistir/coiab-app \
   --ref qa-baseline-pre-v14 -f profile=release-candidate
-# depois do gate, apague a branch: ela existe só para servir de ref
+```
+
+Depois do gate, apague a ref — ela existe só para servir de `--ref`:
+
+```sh
 git push origin --delete qa-baseline-pre-v14
 ```
 
