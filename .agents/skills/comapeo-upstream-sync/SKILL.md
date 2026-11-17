@@ -21,7 +21,7 @@ sync calcular a merge-base certa em vez de reaplicar conflitos antigos.
    SHA. Tag leve não tem `^{}` e resolve direto, como `v14.0` em `cb7b53c3`.
    Registre também a versão do `package.json` e atualize
    `.sync/upstream.lock.json` com `release_tag`, `release_sha`,
-   `parent_trunk.base_sha` e `merge_sha`.
+   `parent_trunk.base_sha`, `release_merge_sha` e `pr_merge_sha`.
 2. **Trunk** (`transistir/comapeo-mobile-1`): `git fetch digidem tag v14.0` e
    merge da tag (`git merge --no-edit v14.0`) em `develop`, push direto
    permitido.
