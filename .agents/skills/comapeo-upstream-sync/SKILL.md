@@ -56,6 +56,10 @@ Regras que não se negocia:
   arquivo do fork tocado por conflito no sync seguinte.
 - Regra com `intent` que contradiz a própria `policy` é bug de classificação, não
   detalhe de redação.
+- À medida que o fork cresce, caminho novo sem regra derruba o gate no próximo
+  sync. Ao adicionar diretório próprio do fork (skills, workflows, docs), adicione
+  a regra **no mesmo PR** — o gate só roda em branch `sync/*`, então o erro
+  aparece semanas depois, no pior momento.
 
 ## Ledger
 
@@ -87,8 +91,43 @@ Regras que não se negocia:
   Jest realmente lê a configuração.
 - O CI pós-merge é a única prova do commit de merge. Verde de PR prova o head do
   PR, nada mais.
+- Marcar PR em draft como "ready for review" dispara nova rodada de CI pelo
+  trigger `ready_for_review`. O verde anterior fica velho; espere `pending=0` da
+  rodada nova. A API devolve checks antigos e novos juntos no mesmo SHA.
+
+## Workflow quebrado não é regressão da release
+
+Antes de atribuir falha de CI ao sync:
+
+1. `gh run list --workflow <file> --limit 10` e compare as datas com a data do
+   merge. Falha que já existia antes não foi causada pela release.
+2. Leia o **step que falhou**, não o fim do log. `gh run view <id> --log-failed`
+   e `--json jobs --jq '.jobs[].steps[]|select(.conclusion=="failure")'`.
+3. Nome de secret errado parece erro de autenticação: `secrets.EXPO` quando o
+   secret real é `EXPO_TOKEN` produz `An Expo user account is required`. Confira
+   com `gh secret list` e `git grep -n "secrets\\." .github/workflows/`.
+4. Deploy preview de terceiro (Netlify) falhando gera **vários** check-runs a
+   partir de **um** deploy — `Redirect rules`, `Header rules`, `Pages changed` são
+   consequência, não problemas distintos. Se não é required na branch protegida,
+   não bloqueia merge; registre como dívida de configuração em vez de caçar.
+
+## Disparar build e provar artifact
+
+1. `workflow_dispatch` pode demorar a aparecer na listagem. **Confirme pela API
+   antes de disparar de novo** — dispatch repetido cria dois builds do mesmo SHA,
+   queimando ~40 min de runner cada. Se duplicou, `gh run cancel` no excedente.
+2. Artifact só existe quando a API diz `total_count >= 1`. Log de upload bem
+   sucedido não prova nada.
+3. Baixe e inspecione: `gh run download <run> -n <artifact> -D <dir>`, `file`,
+   `sha256sum`, contagem de `classes*.dex`/`lib/`. Reporte o SHA-256.
+4. Em workflow com steps encadeados, `curl ... | jq` esconde o erro HTTP: credencial
+   vazia vira `jq: parse error`. Achado real do E2E — issue #184.
 
 ## O que nunca foi provado por este processo
 
 Build nativo, APK, upgrade sobre instalação com dados e E2E em aparelho não são
 cobertos por CI de unidade. Declare isso como não verificado em vez de inferir.
+O run que produz o APK prova que compila e empacota; **não** prova que atualiza
+sobre uma instalação existente sem perder dados. São gates diferentes.
+
+Procedimento de QA e checklist de upgrade: skill `coiab-qa-apk`.

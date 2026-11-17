@@ -30,13 +30,20 @@ first, then continue from coiab-app and stop using the fork for that feature.
 
 ### Upstream sync order
 
-When `digidem/comapeo-mobile` has new commits, they land in two steps, in
-order:
+Sync **a release tag**, never the branch head. `digidem/comapeo-mobile`'s
+`develop` accumulates commits that are not part of any release; pulling them
+into the trunk puts unreleased code under every fork and makes the next sync
+diff against a base nobody shipped. List tags with `git ls-remote --tags`,
+resolve the full SHA of the chosen release, and record the version from
+`package.json` in the ledger. Procedure and pitfalls live in
+`.agents/skills/comapeo-upstream-sync/SKILL.md`.
 
-1. **First `transistir/comapeo-mobile-1`** — merge `digidem/develop` into
-   develop and push to the `transistir` remote (direct push is allowed
-   there).
-2. **Then `transistir/coiab-app`** — bring the merged develop over as a PR.
+A release lands in two steps, in order:
+
+1. **First `transistir/comapeo-mobile-1`** — merge the release tag (for
+   example `v14.0`) into develop and push to the `transistir` remote (direct
+   push is allowed there).
+2. **Then `transistir/coiab-app`** — bring the merged trunk over as a PR.
    Coiab's `develop` is protected: direct pushes are rejected and required
    checks (`all`, `frontend`) must pass before merge. (`backend` was a
    required check until 2026-09-02 — the upstream `@comapeo/core-react-native`
@@ -44,14 +51,17 @@ order:
    report again and was removed from the protection rule.) Push a branch
    like `sync/digidem-upstream` to `origin` and open a PR against `develop`.
 
+Merge commits only — squash and rebase destroy the merge-base the next sync
+needs.
+
 Merging `digidem/*` branches into local branches is always fine — the
 restriction is about where things get *pushed*.
 
 ### Upstream-merge verification
 
 An upstream merge that deletes scripts or dependencies breaks fork-owned
-files **without any textual conflict**. Before pushing a merge of
-`digidem/develop`:
+files **without any textual conflict**. Before pushing a merge of a
+`digidem` release tag:
 
 1. Grep fork-owned workflows and `package.json` scripts for references to
    anything the merge removed. Real case: the migration deleted the
@@ -92,15 +102,29 @@ the current head and the post-merge commit separately.
 ### Coiab CI environment
 
 CI on `transistir/coiab-app` needs repo-level values that are not in the
-code. Already set: `MAPBOX_ACCESS_TOKEN` (secret), `COMAPEO_METRICS_URL`
-(variable, `https://metrics.invalid` placeholder), `COMAPEO_METRICS_API_KEY`
-(secret, placeholder — only truthiness-asserted). At initial setup, `EXPO_TOKEN`
-(secret) was missing — the storybook-capture workflow's Setup EAS step fails
-without it. Recheck secret/variable names before a run; this is a setup
-snapshot, not a live inventory.
+code. Present as of 2026-11-17: secrets `EXPO_TOKEN`, `MAPBOX_ACCESS_TOKEN`,
+`COMAPEO_METRICS_API_KEY`, `SENTRY_AUTH_TOKEN`, `RELEASE_BOT_PRIVATE_KEY`;
+variables `COMAPEO_METRICS_URL` (`https://metrics.invalid` placeholder),
+`EAS_PROJECT_URL`, `RELEASE_BOT_APP_ID`.
+
+Missing and blocking work: `BROWSERSTACK_USERNAME` and
+`BROWSERSTACK_ACCESS_KEY`, so the E2E workflow cannot upload the APK and
+`run-e2e-tests` stays `skipped` (issue #184). `APP_VARIANT` is also uncopied.
+
+A secret referenced with the wrong name does not fail at parse time: it
+arrives empty and surfaces later as an authentication error. `secrets.EXPO`
+instead of `secrets.EXPO_TOKEN` broke the scheduled E2E from 2026-11-11 until
+the fix in PR #183. Always cross-check `git grep -n "secrets\." .github/workflows/`
+against `gh secret list`. Treat this section as a snapshot, not a live
+inventory.
+
 A fresh repo fork starts with zero secrets/vars; expect this class of gap
-when wiring workflows that the fork already had configured
-(`APP_VARIANT`, `RELEASE_BOT_*` are also uncopied).
+when wiring workflows that the fork already had configured.
+
+Nightly `e2e-appium-browserstack.yml` failures are unrelated to `ci.yml`:
+they do not report on PRs and never gated a merge, but they were the source of
+the "many CIs are failing" impression. Read the failing step before attributing
+them to a sync.
 
 ### `gh` targeting rules
 

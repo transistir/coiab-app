@@ -424,6 +424,13 @@
       "policy": "reconcile",
       "paths": [".agents/skills/**", ".claude/skills/**"],
       "intent": "The fork keeps skills of its own that upstream does not have; upstream also ships .agents/skills, so when both sides touch the same path the resolution is per file and no fork skill may disappear silently. .claude/skills is the symlink layer the harnesses read, so it is reconciled alongside the skill bodies it points to."
+    },
+    {
+      "id": "coiab.agent-contract",
+      "class": "product",
+      "policy": "reconcile",
+      "paths": ["AGENTS.md"],
+      "intent": "AGENTS.md é contrato operacional do fork (remotes, ordem de sync, regras de gh, gates de CI). O upstream também mantém AGENTS.md; quando ambos mudam, reconcilie por seção e nenhuma regra COIAB pode desaparecer silenciosamente."
     }
   ],
   "coverage": {
