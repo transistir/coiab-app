@@ -33,8 +33,9 @@ first, then continue from coiab-app and stop using the fork for that feature.
 Sync **a release tag**, never the branch head. `digidem/comapeo-mobile`'s
 `develop` accumulates commits that are not part of any release; pulling them
 into the trunk puts unreleased code under every fork and makes the next sync
-diff against a base nobody shipped. List tags with `git ls-remote --tags`,
-resolve the full SHA of the chosen release, and record the version from
+diff against a base nobody shipped. List tags with
+`git ls-remote --tags digidem`, resolve the full SHA of the chosen release, and
+record the version from
 `package.json` in the ledger. Procedure and pitfalls live in
 `.agents/skills/comapeo-upstream-sync/SKILL.md`.
 
@@ -109,19 +110,23 @@ variables `COMAPEO_METRICS_URL` (`https://metrics.invalid` placeholder),
 
 Missing and blocking work: `BROWSERSTACK_USERNAME` and
 `BROWSERSTACK_ACCESS_KEY`, so the E2E workflow cannot upload the APK and
-`run-e2e-tests` stays `skipped` (issue #184). `APP_VARIANT` is also uncopied.
+`run-e2e-tests` stays `skipped` (issue #184). Also referenced by workflows but
+absent: `RELEASE_BOT_USER_ID` (five workflows), `PR_BOT_APP_ID` and
+`PR_BOT_PRIVATE_KEY` (`update-core.yml`), and `LOCKFILE_BOT_*`. `APP_VARIANT` is
+not an Actions secret or variable — the workflows read it from `eas.json`.
 
 A secret referenced with the wrong name does not fail at parse time: it
 arrives empty and surfaces later as an authentication error. `secrets.EXPO`
 instead of `secrets.EXPO_TOKEN` broke the scheduled E2E from 2026-11-11 until
 the fix in PR #183. Always cross-check `git grep -n "secrets\." .github/workflows/`
-against `gh secret list`. Treat this section as a snapshot, not a live
+against `gh secret list -R transistir/coiab-app`. Treat this section as a snapshot, not a live
 inventory.
 
 A fresh repo fork starts with zero secrets/vars; expect this class of gap
 when wiring workflows that the fork already had configured.
 
-Nightly `e2e-appium-browserstack.yml` failures are unrelated to `ci.yml`:
+Scheduled `e2e-appium-browserstack.yml` runs (`cron: 0 4 * * 0-3`, Sunday to
+Wednesday) are unrelated to `ci.yml`:
 they do not report on PRs and never gated a merge, but they were the source of
 the "many CIs are failing" impression. Read the failing step before attributing
 them to a sync.
