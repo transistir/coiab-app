@@ -51,8 +51,11 @@ gh workflow run build-apk.yml -R transistir/coiab-app --ref develop \
   -f profile=release-candidate -f include_x86_64=false
 ```
 
-O APK padrão é **somente arm64**. Para emulador x86_64, `include_x86_64=true` —
-sem isso o `adb install` falha com `INSTALL_FAILED_NO_MATCHING_ABIS`.
+O APK é **arm64-v8a + armeabi-v7a**: 42 libs em cada, fixadas por
+`expo-config-plugins/targetArmArchsOnly.js`. Aparelho 32-bit está coberto. A
+única ABI ausente é **x86_64**, que serve emulador e sai com
+`include_x86_64=true`; sem isso o `adb install` falha com
+`INSTALL_FAILED_NO_MATCHING_ABIS`.
 
 Depois de 20-30 s, confirme pela API antes de qualquer novo dispatch:
 
@@ -65,9 +68,9 @@ Dispatch repetido gera dois builds do mesmo SHA — ~40 min de runner cada. Se
 acontecer, `gh run cancel <id> -R transistir/coiab-app` no excedente.
 `build-apk.yml` só tem `workflow_dispatch`: não existe build automático em push.
 
-Detalhes de assinatura, keystore e perfis que já estão documentados:
-`docs/ApkBuild.md`. Consulte antes de mudar perfil — esta skill não repete esse
-conteúdo de propósito.
+Perfis e comando de build estão em `docs/ApkBuild.md`. Assinatura/keystore
+**não** estão documentados lá: prove a identidade do certificado com
+`apksigner verify --print-certs` (ver §5) em vez de confiar no perfil.
 
 ## 3. Provar o artifact
 
@@ -86,7 +89,8 @@ morre e a baseline precisa ser reconstruída a partir do SHA.
 Reporte: URL do run, SHA do commit, tamanho, SHA-256, package e `versionName`.
 Para extrair do APK sem `aapt` instalado, use o log do run: o prebuild imprime
 `<package>@<versionName>+<versionCode>_<n>`, por exemplo
-`org.coiab.rc@14.0-rc+119645e+1_1`.
+`org.coiab.rc@14.0-rc+119645e+1_1` — ou seja, `versionName`
+`14.0-rc+119645e` mais o sufixo `+<versionCode>_<n>` do Expo.
 
 ## 4. Instalar e olhar
 
@@ -107,16 +111,25 @@ Risco central do v14: o backend mudou (`src/backend` saiu, entrou
 exercitado aqui.
 
 **Baseline obrigatória:** build do **mesmo perfil** (`release-candidate`,
-package `org.coiab.rc`), da **mesma keystore**, feito a partir do commit
-imediatamente anterior ao sync (o último commit do fork antes do merge da
-release). Release de produção não serve: package diferente instala ao lado.
+package `org.coiab.rc`) e do **mesmo certificado de assinatura**, feito a partir
+do commit imediatamente anterior ao sync — no v14, `c1b0c949`, primeiro pai do
+merge `436513f0`. Release de produção não serve: package diferente instala ao
+lado.
 
-Reconstruir a baseline, se o artifact expirou:
+Reconstruir a baseline, se o artifact expirou. `workflow_dispatch` aceita
+branch ou tag, **não SHA**, então crie uma branch no commit:
 
 ```sh
-git -C /root/dev/worktrees/<baseline> checkout <sha-pre-sync>
-gh workflow run build-apk.yml -R transistir/coiab-app --ref <sha-pre-sync> \
-  -f profile=release-candidate
+git push origin c1b0c949:refs/heads/qa-baseline-pre-v14
+gh workflow run build-apk.yml -R transistir/coiab-app \
+  --ref qa-baseline-pre-v14 -f profile=release-candidate
+```
+
+Provar que os dois APKs têm o mesmo certificado:
+
+```sh
+apksigner verify --print-certs baseline.apk | grep SHA-256
+apksigner verify --print-certs novo.apk | grep SHA-256
 ```
 
 Procedimento:
@@ -126,9 +139,10 @@ Procedimento:
    idioma alterado, 1 categoria customizada.
 3. Anotar o estado: contagens visíveis, nomes, idioma.
 4. Instalar o APK novo **por cima**, sem desinstalar: `adb install -r <apk>`.
-   O `versionCode` novo precisa ser maior ou igual ao da baseline; se o build
-   mantiver `versionCode` 1, o `-r` funciona mas não há como distinguir versões
-   no aparelho — registre isso.
+   O `versionCode` novo precisa ser maior ou igual ao da baseline. Build
+   não-produção carrega o SHA curto no `versionName` (`app.config.js`), então
+   confirme com `adb shell dumpsys package org.coiab.rc | grep versionName` qual
+   versão está instalada.
 5. Verificar, item por item: app abre; projeto existe; as 3 observações abrem
    com foto; track aparece no mapa; idioma mantido; categoria customizada
    preservada; nada duplicado; `adb logcat` sem crash de migração.
@@ -144,9 +158,8 @@ Procedimento:
 9. **Rollback**: assuma que voltar de versão após a migração **não é possível**
    sem perda. Registre essa expectativa; se o time exigir rollback, ele precisa
    ser desenhado antes da release, não testado depois.
-10. **ABI**: o APK padrão é arm64. Se houver aparelho 32-bit (`armv7`) ou
-    emulador x86_64 em campo, o build precisa incluir a ABI — confirme o parque
-    antes de declarar o APK distribuível.
+10. **ABI**: o APK cobre arm64-v8a e armeabi-v7a. Falta só x86_64, e só para
+    emulador. Nenhum aparelho Android comum fica de fora.
 11. Registre o resultado em `docs/upstream-sync/<release>-qa-status.md` como
     `PASS` ou `FAIL`, com aparelho, versão do Android, SHA-256 da baseline,
     SHA-256 do APK novo, data e a evidência de cada item (screenshot ou log).
