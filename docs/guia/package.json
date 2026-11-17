@@ -1,0 +1,21 @@
+{
+  "name": "coiab-guide",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "assets": "node scripts/build-assets.mjs",
+    "check": "node scripts/check-coverage.mjs"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.43.1",
+    "astro": "^7.4.12",
+    "sharp": "^0.35.5"
+  },
+  "engines": {
+    "node": ">=22.23.4"
+  }
+}

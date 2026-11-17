@@ -37,6 +37,7 @@ const toolingConfig = pluginTs.config({
   files: [
     '*.config.{js,mjs,cjs}',
     'scripts/**/*.{js,mjs,cjs}',
+    'docs/guia/scripts/**/*.{js,mjs,cjs}',
     'expo-config-plugins/*.{js,mjs,cjs}',
     'expo-config-plugins/**/*.{js,mjs,cjs}',
     '.claude/skills/**/*.{js,mjs,cjs}',

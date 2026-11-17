@@ -2,6 +2,7 @@ import type {Meta, StoryObj} from '@storybook/react-native';
 import {View} from 'react-native';
 import {withFlowState} from '../../../.rnstorybook/decorators/withFlowState';
 import {withNavigation} from '../../../.rnstorybook/decorators/withNavigation';
+import {withPtBrLocale} from '../../../.rnstorybook/decorators/withPtBrLocale';
 import {FLOW_STATES} from '../../../.rnstorybook/utils/flowState';
 import {ActiveProjectProvider} from '../contexts/ActiveProjectContext';
 import {useActiveProjectId} from '../contexts/ActiveProjectIdStoreContext';
@@ -40,7 +41,7 @@ function OpenDrawerMenu() {
 const meta = {
   title: 'Flows/OrgLayerDrawer',
   component: OpenDrawerMenu,
-  decorators: [withFlowState, withNavigation],
+  decorators: [withFlowState, withNavigation, withPtBrLocale],
 } satisfies Meta<typeof OpenDrawerMenu>;
 
 export default meta;
