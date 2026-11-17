@@ -62,8 +62,12 @@ gh run list -R transistir/coiab-app --workflow build-apk.yml --limit 1 \
 ```
 
 Dispatch repetido gera dois builds do mesmo SHA — ~40 min de runner cada. Se
-acontecer, `gh run cancel <id>` no excedente. `build-apk.yml` só tem
-`workflow_dispatch`: não existe build automático em push.
+acontecer, `gh run cancel <id> -R transistir/coiab-app` no excedente.
+`build-apk.yml` só tem `workflow_dispatch`: não existe build automático em push.
+
+Detalhes de assinatura, keystore e perfis que já estão documentados:
+`docs/ApkBuild.md`. Consulte antes de mudar perfil — esta skill não repete esse
+conteúdo de propósito.
 
 ## 3. Provar o artifact
 
@@ -130,15 +134,33 @@ Procedimento:
    preservada; nada duplicado; `adb logcat` sem crash de migração.
 6. Critério de aprovação: **todos** os itens acima verdadeiros. Qualquer perda
    de dado é bloqueio de release, não bug de QA.
-7. Registrar o resultado em `docs/upstream-sync/<release>-qa-status.md`, com
-   aparelho, Android, SHA da baseline, SHA do APK novo e data.
+7. **Atualize uma vez pelo instalador de pacotes**, como o usuário faz
+   (toque no APK, "abrir com" o instalador), não só por `adb install -r`. É o
+   caminho que descobre bloqueio de "instalar de fontes desconhecidas" e
+   downgrade recusado.
+8. **Sync entre versões mistas**: com um aparelho ainda na baseline e outro no
+   v14, crie um projeto num e sincronize com o outro. Se o v14 trocou o schema,
+   isso aparece aqui e não em teste unitário.
+9. **Rollback**: assuma que voltar de versão após a migração **não é possível**
+   sem perda. Registre essa expectativa; se o time exigir rollback, ele precisa
+   ser desenhado antes da release, não testado depois.
+10. **ABI**: o APK padrão é arm64. Se houver aparelho 32-bit (`armv7`) ou
+    emulador x86_64 em campo, o build precisa incluir a ABI — confirme o parque
+    antes de declarar o APK distribuível.
+11. Registre o resultado em `docs/upstream-sync/<release>-qa-status.md` como
+    `PASS` ou `FAIL`, com aparelho, versão do Android, SHA-256 da baseline,
+    SHA-256 do APK novo, data e a evidência de cada item (screenshot ou log).
 
 ## 6. E2E em aparelho
 
 Workflow `e2e-appium-browserstack.yml`: build do APK com perfil `test` e execução
-no BrowserStack. O job `run-e2e-tests` depende de `build-apk` por `needs`; não
-existe `if` sobre `app_url`. Se o upload devolver JSON de erro, o `jq` grava
-`null` e o job roda com URL nula — o verde não é prova de nada.
+no BrowserStack. Ele **não** é nightly: o cron `0-3` roda domingo a quarta, e o
+workflow também dispara em PR contra `release/**`. Não é required check de
+`develop`.
+
+O job `run-e2e-tests` depende de `build-apk` por `needs`; não existe `if` sobre
+`app_url`. Se o upload devolver JSON de erro, o `jq` grava `null` e o job roda
+com URL nula — o verde não é prova de nada.
 
 Além disso o upload mascara falhas (`curl | jq` → `jq: parse error`). Issue #184.
 `skipped` em `run-e2e-tests` significa que o build anterior falhou, nunca

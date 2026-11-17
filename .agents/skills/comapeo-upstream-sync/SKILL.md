@@ -48,12 +48,24 @@ manual. Use `--merge` no PR e `merge --no-edit` localmente. Nunca `-X ours` ou
 
 ## Contrato de customizações
 
+Duas execuções medem coisas diferentes — nomeie qual você está usando:
+
+```sh
+# 1. o que o CI roda em branch sync/*: só o que o próprio PR de sync mudou
+node scripts/sync/check-customizations.mjs \
+  --parent "$(git merge-base origin/develop HEAD)" --head HEAD
+
+# 2. auditoria completa fork × trunk: pega caminho do fork que o CI não vê
+node scripts/sync/check-customizations.mjs --parent <base-do-trunk> --head HEAD
 ```
-node scripts/sync/check-customizations.mjs --parent <fork-base> --head HEAD
-```
+
+A primeira não detecta diretório novo do fork (ele não está no diff do sync); a
+segunda detecta. Se você citar "o gate falhou", diga qual das duas.
 
 O checker falha fechado: caminho mudado sem regra, ambiguidade, id duplicado ou
 manifesto inválido derrubam. Manifesto: `.sync/customizations.json`.
+
+Comandos `gh` nesta skill sempre com `-R <repo>`; este clone não tem default.
 
 Regras que não se negocia:
 
