@@ -47,49 +47,103 @@ async function fileSize(filePath) {
   }
 }
 
-// A reference only counts when the reader can actually see it. Drop fenced
-// code blocks (``` or ~~~) and HTML comments (<!-- ... -->, including
-// multi-line) before looking for image references. Single deterministic pass:
-// no regex over the whole document, and an unterminated comment simply drops
+// Returns { char, length, trailing } when the line starts, after optional
+// indentation, with a run of three or more backticks or tildes.
+function fenceRun(line) {
+  let start = 0;
+  while (start < line.length && (line[start] === ' ' || line[start] === '\t')) {
+    start += 1;
+  }
+  const char = line[start];
+  if (char !== '`' && char !== '~') return null;
+  let end = start;
+  while (end < line.length && line[end] === char) end += 1;
+  if (end - start < 3) return null;
+  return {char, length: end - start, trailing: line.slice(end)};
+}
+
+// A reference only counts when the reader can actually see it. One pass over
+// the lines with two states: an open fence and an open HTML comment. Each
+// state is literal for the other one. Inside a fence, "<!--" is content, so a
+// stray marker cannot swallow the document; inside a comment, a fence-looking
+// line is content, so it cannot open a block and hide later images. Fences and
+// comments only open outside both states, and an unterminated comment drops
 // the rest — never a false positive.
 export function stripNonRendered(markdown) {
   const visibleLines = [];
-  let fence = null; // { char, length } of the currently open fence
+  let fence = null; // { char, length } of the open fence
+  let inComment = false; // never true together with `fence`
+
   for (const line of markdown.split('\n')) {
-    const run = /^\s*(`{3,}|~{3,})/.exec(line);
     if (fence) {
-      // The fence length matters: markdown lets a block be opened with a
-      // longer run (e.g. four backticks) so that shorter runs inside it stay
-      // literal content. Only a fence of the same character and at least the
-      // opening length closes the block; a shorter run would end it early and
-      // expose images that are not actually rendered.
-      if (run && run[1][0] === fence.char && run[1].length >= fence.length) {
+      // CommonMark: the closing run uses the same character, is at least as
+      // long as the opener and has no text after it. A shorter run, or a run
+      // followed by text, stays literal content.
+      const run = fenceRun(line);
+      if (
+        run &&
+        run.char === fence.char &&
+        run.length >= fence.length &&
+        run.trailing.trim() === ''
+      ) {
         fence = null;
       }
+      visibleLines.push('');
       continue;
     }
-    if (run) {
-      fence = {char: run[1][0], length: run[1].length};
+
+    let rest = line;
+    let rendered = '';
+    let openedFence = false;
+
+    while (true) {
+      if (inComment) {
+        const end = rest.indexOf('-->');
+        if (end === -1) break; // still commented: drop the rest of the line
+        rest = rest.slice(end + 3);
+        inComment = false;
+        continue;
+      }
+      const start = rest.indexOf('<!--');
+      if (start === -1) {
+        rendered += rest;
+        break;
+      }
+      rendered += rest.slice(0, start);
+      // Precedence: a run before the marker opens a fence, so the marker is
+      // fence content, not a comment, and the rest of the line is literal.
+      const run = fenceRun(rendered);
+      if (run) {
+        fence = {char: run.char, length: run.length};
+        openedFence = true;
+        break;
+      }
+      rest = rest.slice(start + 4);
+      const end = rest.indexOf('-->');
+      if (end === -1) {
+        inComment = true; // continues on the next line
+        break;
+      }
+      rest = rest.slice(end + 3);
+    }
+
+    if (openedFence) {
+      visibleLines.push('');
       continue;
     }
-    visibleLines.push(line);
+    if (!inComment) {
+      // Text after a closed comment is processed again, so it may open a fence.
+      const run = fenceRun(rendered);
+      if (run) {
+        fence = {char: run.char, length: run.length};
+        visibleLines.push('');
+        continue;
+      }
+    }
+    visibleLines.push(rendered);
   }
 
-  const text = visibleLines.join('\n');
-  let result = '';
-  let index = 0;
-  while (index < text.length) {
-    const commentStart = text.indexOf('<!--', index);
-    if (commentStart === -1) {
-      result += text.slice(index);
-      break;
-    }
-    result += text.slice(index, commentStart);
-    const commentEnd = text.indexOf('-->', commentStart + 4);
-    if (commentEnd === -1) break; // unterminated comment: nothing after it renders
-    index = commentEnd + 3;
-  }
-  return result;
+  return visibleLines.join('\n');
 }
 
 async function main() {
