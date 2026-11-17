@@ -76,6 +76,6 @@ observação fica salva, mas não ganha um ponto no mapa.
 
 ## Veja também
 
-- [Primeiros passos](/primeiros-passos/) — prepare o dispositivo antes do
+- [Primeiros passos](../primeiros-passos/) — prepare o dispositivo antes do
   primeiro registro.
-- [Organização](/organizacao/) — entenda as áreas Monitoramento e Alertas.
+- [Organização](../organizacao/) — entenda as áreas Monitoramento e Alertas.

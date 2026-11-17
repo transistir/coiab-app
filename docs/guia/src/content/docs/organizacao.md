@@ -102,6 +102,25 @@ atual exige um **Endereço do arquivo remoto** válido. A verificação é feita
 hora, então é preciso estar conectado para concluir a criação.
 :::
 
+### Passo 10 — Trocar para Alertas
+
+![Mapa com o cabeçalho do território e a faixa da área "Alertas"](../../assets/org-layer/13-home-with-organization-alertas.jpg)
+
+Para mudar de área, volte ao Menu e toque no card **Alertas**. O cabeçalho passa
+a mostrar a faixa da área escolhida, e o mapa exibe as observações dela.
+
+:::tip[💡 Dica]
+Tocar no card da área em que você já está volta ao mapa sem trocar de área.
+:::
+
+### Passo 11 — Nome longo de território
+
+![Mapa com o nome do território truncado por reticências no cabeçalho](../../assets/org-layer/14-home-with-long-territory-name.jpg)
+
+O cabeçalho mostra o nome do território em uma linha só. Nomes longos são
+truncados com reticências (**…**) para caber ao lado do ícone; o nome completo
+não aparece nesse espaço.
+
 ## Se a organização não abrir
 
 Às vezes o território já está preparado, mas o app não consegue abri-lo. A tela
@@ -123,26 +142,7 @@ Se a seleção guardada não aponta para nenhum território válido, a tela não
 nome nem as opções de troca. Use **Tentar novamente**; se o erro persistir, volte
 e abra a organização pela tela de Configurações.
 
-### Passo 10 — Trocar para Alertas
-
-![Mapa com o cabeçalho do território e a faixa da área "Alertas"](../../assets/org-layer/13-home-with-organization-alertas.jpg)
-
-Para mudar de área, volte ao Menu e toque no card **Alertas**. O cabeçalho passa
-a mostrar a faixa da área escolhida, e o mapa exibe as observações dela.
-
-:::tip[💡 Dica]
-Tocar no card da área em que você já está volta ao mapa sem trocar de área.
-:::
-
-### Passo 11 — Nome longo de território
-
-![Mapa com o nome do território truncado por reticências no cabeçalho](../../assets/org-layer/14-home-with-long-territory-name.jpg)
-
-O cabeçalho mostra o nome do território em uma linha só. Nomes longos são
-truncados com reticências (**…**) para caber ao lado do ícone; o nome completo
-não aparece nesse espaço.
-
 ## Veja também
 
-- [Primeiros passos](/primeiros-passos/) — como chegar à criação do território.
-- [Criar uma observação](/criar-observacao/) — o primeiro registro em uma área.
+- [Primeiros passos](../primeiros-passos/) — como chegar à criação do território.
+- [Criar uma observação](../criar-observacao/) — o primeiro registro em uma área.

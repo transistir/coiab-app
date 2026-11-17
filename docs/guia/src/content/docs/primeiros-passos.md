@@ -56,13 +56,13 @@ opção**. Enquanto o campo estiver vazio, o botão **Continuar** fica desativad
 
 ### Passo 6 — Etnia preenchida
 
-![Tela "Qual é a sua etnia?" com "Tunayana" digitado e o botão "Continuar" liberado](../../assets/onboarding/04c-ethnic-group-selected.jpg)
+![Tela "Qual é a sua etnia?" com o campo preenchido e o botão "Continuar" liberado](../../assets/onboarding/04c-ethnic-group-selected.jpg)
 
 Com a etnia preenchida, toque em **Continuar** para ir à aldeia.
 
 ### Passo 7 — Sugestões de etnia
 
-![Lista de sugestões de etnia aberta abaixo do campo, com nomes como "Kahyana", "Katuenayana" e "Katxuyana"](../../assets/onboarding/04d-ethnic-group-suggestions.jpg)
+![Lista de sugestões de etnia aberta abaixo do campo, com opções para escolher sem digitar o nome inteiro](../../assets/onboarding/04d-ethnic-group-suggestions.jpg)
 
 Ao digitar, o app mostra sugestões de etnia. Toque em uma delas para preencher o
 campo sem digitar o nome inteiro.
@@ -81,14 +81,14 @@ Confira o texto antes de tocar em **Continuar**.
 
 ### Passo 9 — Aldeia preenchida
 
-![Tela "Qual é a sua aldeia?" com "Aldeia Ekanadyby" selecionada e o botão "Continuar"](../../assets/onboarding/04f-village-prefilled.jpg)
+![Tela "Qual é a sua aldeia?" com a aldeia selecionada e o botão "Continuar"](../../assets/onboarding/04f-village-prefilled.jpg)
 
 Com a aldeia escolhida, toque em **Continuar**. O app conclui a identificação do
 dispositivo.
 
 ### Passo 10 — Tudo pronto
 
-![Tela de sucesso com o texto "Test Device is ready!", a pergunta "Você é coordenador(a)?" e os botões "Sim, sou coordenador(a)" e "Não, sou participante"](../../assets/onboarding/05-success.jpg)
+![Tela de sucesso confirmando que o dispositivo está pronto, com a pergunta sobre coordenação e as duas opções](../../assets/onboarding/05-success.jpg)
 
 A tela confirma que o dispositivo está pronto e pergunta **Você é
 coordenador(a)?** A resposta define o próximo caminho: quem coordena cria um
@@ -104,19 +104,21 @@ convite aparece no app quando chegar.
 
 ### Passo 12 — Criar território
 
-![Tela "Criar território" explicando que o território terá Monitoramento e Alertas e que pode ser criado sem internet](../../assets/onboarding/06b-create-organization.jpg)
+![Tela "Criar território" explicando que o território terá as áreas Monitoramento Territorial e Alertas](../../assets/onboarding/06b-create-organization.jpg)
 
 Se você tocou em **Sim, sou coordenador(a)**, o app abre a criação do território.
 Toque em **Continuar** para escolher o nome e concluir a criação — o passo a passo
-completo está em [Organização](/organizacao/).
+completo está em [Organização](../organizacao/).
 
 :::tip[💡 Dica]
-Você pode criar o território sem internet: a própria tela informa isso. Já o
-convite entre dispositivos é diferente — os dois aparelhos precisam estar na
-mesma rede Wi-Fi e na mesma versão do app.
+A tela de introdução diz que o território pode ser criado sem internet, mas a
+versão atual exige um **Endereço do arquivo remoto** válido, conferido na hora: é
+preciso estar conectado para concluir a criação. Veja os detalhes em
+[Organização](../organizacao/). Já o convite entre dispositivos é diferente — os
+dois aparelhos precisam estar na mesma rede Wi-Fi e na mesma versão do app.
 :::
 
 ## Veja também
 
-- [Organização](/organizacao/) — preparar o território, convidar e trocar.
-- [Criar uma observação](/criar-observacao/) — o primeiro registro no mapa.
+- [Organização](../organizacao/) — preparar o território, convidar e trocar.
+- [Criar uma observação](../criar-observacao/) — o primeiro registro no mapa.
