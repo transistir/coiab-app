@@ -424,6 +424,13 @@
       "policy": "reconcile",
       "paths": [".agents/skills/**", ".claude/skills/**"],
       "intent": "The fork keeps skills of its own that upstream does not have; upstream also ships .agents/skills, so when both sides touch the same path the resolution is per file and no fork skill may disappear silently. .claude/skills is the symlink layer the harnesses read, so it is reconciled alongside the skill bodies it points to."
+    },
+    {
+      "id": "coiab.agent-contract",
+      "class": "shared-infra",
+      "policy": "reconcile",
+      "paths": ["AGENTS.md"],
+      "intent": "AGENTS.md is the fork's operating contract (remotes, sync order, gh targeting rules, CI gates). The parent trunk owns the file and upstream digidem/comapeo-mobile has no AGENTS.md. Reconcile per section and never drop a COIAB rule silently."
     }
   ],
   "coverage": {

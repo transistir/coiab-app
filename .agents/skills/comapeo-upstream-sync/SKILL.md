@@ -11,10 +11,20 @@ sync calcular a merge-base certa em vez de reaplicar conflitos antigos.
 
 ## Ordem obrigatória
 
-1. **Release oficial**, nunca a ponta da branch. `git ls-remote --tags` e confirme
-   o SHA completo da tag. Registre também a versão do `package.json`.
-2. **Trunk** (`transistir/comapeo-mobile-1`): merge de `digidem/<tag>` em
-   `develop`, push direto permitido.
+1. **Release oficial**, nunca a ponta da branch. Descubra a tag e o SHA:
+
+   ```sh
+   git ls-remote --tags digidem 'refs/tags/v14*' 'refs/tags/v14*^{}'
+   ```
+
+   A linha `^{}` (quando existir) é a tag anotada resolvida para commit — use esse
+   SHA. Tag leve não tem `^{}` e resolve direto, como `v14.0` em `cb7b53c3`.
+   Registre também a versão do `package.json` e atualize
+   `.sync/upstream.lock.json` com `release_tag`, `release_sha`,
+   `parent_trunk.base_sha`, `release_merge_sha` e `pr_merge_sha`.
+2. **Trunk** (`transistir/comapeo-mobile-1`): `git fetch digidem tag v14.0` e
+   merge da tag (`git merge --no-edit v14.0`) em `develop`, push direto
+   permitido.
 3. **Fork** (`transistir/coiab-app`): branch `sync/...` a partir de `develop`, PR
    contra `develop`. `develop` é protegida.
 
@@ -38,12 +48,24 @@ manual. Use `--merge` no PR e `merge --no-edit` localmente. Nunca `-X ours` ou
 
 ## Contrato de customizações
 
+Duas execuções medem coisas diferentes — nomeie qual você está usando:
+
+```sh
+# 1. o que o CI roda em branch sync/*: só o que o próprio PR de sync mudou
+node scripts/sync/check-customizations.mjs \
+  --parent "$(git merge-base origin/develop HEAD)" --head HEAD
+
+# 2. auditoria completa fork × trunk: pega caminho do fork que o CI não vê
+node scripts/sync/check-customizations.mjs --parent <base-do-trunk> --head HEAD
 ```
-node scripts/sync/check-customizations.mjs --parent <fork-base> --head HEAD
-```
+
+A primeira não detecta diretório novo do fork (ele não está no diff do sync); a
+segunda detecta. Se você citar "o gate falhou", diga qual das duas.
 
 O checker falha fechado: caminho mudado sem regra, ambiguidade, id duplicado ou
 manifesto inválido derrubam. Manifesto: `.sync/customizations.json`.
+
+Comandos `gh` nesta skill sempre com `-R <repo>`; este clone não tem default.
 
 Regras que não se negocia:
 
@@ -56,6 +78,10 @@ Regras que não se negocia:
   arquivo do fork tocado por conflito no sync seguinte.
 - Regra com `intent` que contradiz a própria `policy` é bug de classificação, não
   detalhe de redação.
+- À medida que o fork cresce, caminho novo sem regra derruba o gate no próximo
+  sync. Ao adicionar diretório próprio do fork (skills, workflows, docs), adicione
+  a regra **no mesmo PR** — o gate só roda em branch `sync/*`, então o erro
+  aparece semanas depois, no pior momento.
 
 ## Ledger
 
@@ -87,8 +113,48 @@ Regras que não se negocia:
   Jest realmente lê a configuração.
 - O CI pós-merge é a única prova do commit de merge. Verde de PR prova o head do
   PR, nada mais.
+- Marcar PR em draft como "ready for review" dispara nova rodada de CI pelo
+  trigger `ready_for_review`. O verde anterior fica velho; espere `pending=0` da
+  rodada nova. A API devolve checks antigos e novos juntos no mesmo SHA, então
+  `pending=0` sozinho não basta: filtre pelo `check_suite` mais recente ou por
+  `started_at` posterior ao trigger, e compare `head_sha` com o commit atual.
+- O gate `sync-contract` roda só em branch `sync/*`; caminho novo sem regra fica
+  invisível até o próximo sync. Rodar o checker em todo PR de `develop` elimina
+  a espera — enquanto isso, adicione a regra no mesmo PR que cria o diretório.
+
+## Workflow quebrado não é regressão da release
+
+Antes de atribuir falha de CI ao sync:
+
+1. `gh run list --workflow <file> --limit 10` e compare as datas com a data do
+   merge. Falha que já existia antes não foi causada pela release.
+2. Leia o **step que falhou**, não o fim do log. `gh run view <id> --log-failed`
+   e `--json jobs --jq '.jobs[].steps[]|select(.conclusion=="failure")'`.
+3. Nome de secret errado parece erro de autenticação: `secrets.EXPO` quando o
+   secret real é `EXPO_TOKEN` produz `An Expo user account is required`. Confira
+   com `gh secret list` e `git grep -n "secrets\\." .github/workflows/`.
+4. Deploy preview de terceiro (Netlify) falhando gera **vários** check-runs a
+   partir de **um** deploy — `Redirect rules`, `Header rules`, `Pages changed` são
+   consequência, não problemas distintos. Se não é required na branch protegida,
+   não bloqueia merge; registre como dívida de configuração em vez de caçar.
+
+## Disparar build e provar artifact
+
+1. `workflow_dispatch` pode demorar a aparecer na listagem. **Confirme pela API
+   antes de disparar de novo** — dispatch repetido cria dois builds do mesmo SHA,
+   queimando ~40 min de runner cada. Se duplicou, `gh run cancel` no excedente.
+2. Artifact só existe quando a API diz `total_count >= 1`. Log de upload bem
+   sucedido não prova nada.
+3. Baixe e inspecione: `gh run download <run> -n <artifact> -D <dir>`, `file`,
+   `sha256sum`, contagem de `classes*.dex`/`lib/`. Reporte o SHA-256.
+4. Em workflow com steps encadeados, `curl ... | jq` esconde o erro HTTP: credencial
+   vazia vira `jq: parse error`. Achado real do E2E — issue #184.
 
 ## O que nunca foi provado por este processo
 
 Build nativo, APK, upgrade sobre instalação com dados e E2E em aparelho não são
 cobertos por CI de unidade. Declare isso como não verificado em vez de inferir.
+O run que produz o APK prova que compila e empacota; **não** prova que atualiza
+sobre uma instalação existente sem perder dados. São gates diferentes.
+
+Procedimento de QA e checklist de upgrade: skill `coiab-qa-apk`.

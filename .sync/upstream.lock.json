@@ -11,7 +11,6 @@
   "parent_trunk": {
     "repository": "transistir/comapeo-mobile-1",
     "base_sha": "0ba3657f3dba29eb46b504c1fb727a23d82964a7",
-    "merge_sha": "a3fb0367a8f20ee0350f256d3651d4cf40d6277a",
     "patch_fix_sha": "9bbc3c1a87dde4257af2a19a39c0516a13184f91",
     "candidate_sha": "8d2abc1b8dbfd4cb59e3e22be354b959a13f6cf6",
     "candidate_state": "authorized: all and frontend passed at this SHA",
@@ -27,7 +26,11 @@
         "https://github.com/transistir/comapeo-mobile-1/actions/runs/43271110510",
         "https://github.com/transistir/comapeo-mobile-1/actions/runs/43271110494"
       ]
-    }
+    },
+    "release_merge_sha": "a3fb0367a8f20ee0350f256d3651d4cf40d6277a",
+    "release_merge_sha_note": "merge of digidem tag v14.0 into develop; parents base + tag",
+    "pr_merge_sha": "e73607a3aecd4267e4cc25a775ed245ba0295de8",
+    "pr_merge_sha_note": "GitHub PR #81 merge commit; parents base + candidate; equals develop head on 2026-11-17"
   },
   "downstream": {
     "repository": "transistir/coiab-app",
@@ -39,14 +42,23 @@
       "content": 47,
       "delete_modify": 7,
       "modify_delete": 2
-    }
+    },
+    "develop_head_at_check": "58fe7fba080c02e0312c44d393460e8d2b99b051",
+    "pr_merge_sha": "436513f032723453f706c6fa6307c0ef621a8837",
+    "pr_merge_sha_note": "GitHub PR #176 merge_commit"
   },
   "ancestry_assertions": {
     "merge_commit_parents": [
       "0ba3657f3dba29eb46b504c1fb727a23d82964a7",
       "cb7b53c3792be793218a62385b7b0676895a29b3"
     ],
-    "verified": true
+    "verified": true,
+    "assertion_subject": "release_merge_sha",
+    "merge_commit_parents_note": "parents of release_merge_sha (a3fb0367): base + release tag",
+    "pr_merge_parents": [
+      "0ba3657f3dba29eb46b504c1fb727a23d82964a7",
+      "8d2abc1b8dbfd4cb59e3e22be354b959a13f6cf6"
+    ]
   },
   "notes": [
     "candidate_state moves to 'authorized' only after all and frontend pass at candidate_sha",
