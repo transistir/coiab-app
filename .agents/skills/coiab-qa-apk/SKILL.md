@@ -11,32 +11,48 @@ que ele **não** prova.
 `transistir/coiab-app` é o repo de trabalho. `transistir/comapeo-mobile-1` é o
 trunk; builds de QA saem do fork.
 
+## Identidade do pacote
+
+`app.config.js` compõe o applicationId a partir de `APP_ID_BASE = 'org.coiab'`
+mais o sufixo do `APP_VARIANT`:
+
+| Variante | Package | Nome |
+|---|---|---|
+| development | `org.coiab.dev` | CoiabApp Dev |
+| releaseCandidate | `org.coiab.rc` | CoiabApp RC |
+| preRelease | `org.coiab.pre` | CoiabApp Pre |
+| production | `org.coiab` | CoiabApp |
+
+`app.coiab.org` é domínio de deep link, **não** package. Build de QA com perfil
+`release-candidate` instala como `org.coiab.rc`; uma release de produção é
+`org.coiab` e **não** atualiza por cima do RC — são apps distintos.
+
 ## 1. Inventário antes de gastar runner
 
 ```sh
 gh secret list -R transistir/coiab-app
 gh variable list -R transistir/coiab-app
-git grep -n "secrets\." .github/workflows/
+git grep -n "secrets\.\|vars\." .github/workflows/
 ```
 
-Cada `secrets.X` no workflow precisa existir na lista, com o **nome exato**.
-Nome errado não falha no parsing: falha como erro de autenticação no meio do
-build, 30 minutos depois. Caso real: `secrets.EXPO` em vez de `EXPO_TOKEN`.
+Cada referência precisa existir com o **nome exato**. Nome errado não falha no
+parsing: chega vazio e vira erro de autenticação no meio do build, 30 minutos
+depois. Caso real: `secrets.EXPO` em vez de `EXPO_TOKEN`.
 
-Secrets conhecidos (revalidar, não confiar nesta lista): `EXPO_TOKEN`,
-`MAPBOX_ACCESS_TOKEN`, `COMAPEO_METRICS_API_KEY`, `SENTRY_AUTH_TOKEN`,
-`RELEASE_BOT_PRIVATE_KEY`. Variáveis: `COMAPEO_METRICS_URL`, `EAS_PROJECT_URL`,
-`RELEASE_BOT_APP_ID`.
-
-Faltando `BROWSERSTACK_USERNAME`/`BROWSERSTACK_ACCESS_KEY`, o E2E não passa do
-upload do APK — o build funciona, o teste em aparelho não roda.
+Referenciados pelos workflows e **ausentes** no repo: `BROWSERSTACK_USERNAME`,
+`BROWSERSTACK_ACCESS_KEY`, `RELEASE_BOT_USER_ID`, `PR_BOT_APP_ID`,
+`PR_BOT_PRIVATE_KEY`, `LOCKFILE_BOT_*`. `APP_VARIANT` não é secret nem variável
+de Actions: vem do `eas.json`.
 
 ## 2. Disparar
 
 ```sh
 gh workflow run build-apk.yml -R transistir/coiab-app --ref develop \
-  -f profile=release-candidate
+  -f profile=release-candidate -f include_x86_64=false
 ```
+
+O APK padrão é **somente arm64**. Para emulador x86_64, `include_x86_64=true` —
+sem isso o `adb install` falha com `INSTALL_FAILED_NO_MATCHING_ABIS`.
 
 Depois de 20-30 s, confirme pela API antes de qualquer novo dispatch:
 
@@ -45,11 +61,9 @@ gh run list -R transistir/coiab-app --workflow build-apk.yml --limit 1 \
   --json databaseId,status,headSha,event
 ```
 
-Dispatch repetido gera dois builds do mesmo SHA — 40 min de runner cada. Se
-acontecer, cancele o excedente com `gh run cancel <id>`.
-
-`build-apk.yml` só tem `workflow_dispatch`: não existe build automático em push.
-Perfis disponíveis: `release-candidate`, `pre-release` (os que produzem APK).
+Dispatch repetido gera dois builds do mesmo SHA — ~40 min de runner cada. Se
+acontecer, `gh run cancel <id>` no excedente. `build-apk.yml` só tem
+`workflow_dispatch`: não existe build automático em push.
 
 ## 3. Provar o artifact
 
@@ -62,47 +76,73 @@ file /tmp/apk/*.apk
 ```
 
 `total_count >= 1`, artifact não expirado, download concluído, `file` dizendo
-`Android package`. Sem isso, o link não vai para o QA.
+`Android package`. Retenção de artifact é de **30 dias** — passou disso, o link
+morre e a baseline precisa ser reconstruída a partir do SHA.
 
-Reporte: URL do run, SHA do commit, tamanho, SHA-256, package name e
-`versionCode`. Package do COIAB: `app.coiab.org`.
+Reporte: URL do run, SHA do commit, tamanho, SHA-256, package e `versionName`.
+Para extrair do APK sem `aapt` instalado, use o log do run: o prebuild imprime
+`<package>@<versionName>+<versionCode>_<n>`, por exemplo
+`org.coiab.rc@14.0-rc+119645e+1_1`.
 
 ## 4. Instalar e olhar
 
 ```sh
 adb install -r /tmp/apk/*.apk
-adb shell pm list packages | grep coiab
-adb shell dumpsys package app.coiab.org | grep -E "versionName|versionCode"
+adb shell pm list packages | grep org.coiab
+adb shell dumpsys package org.coiab.rc | grep -E "versionName|versionCode"
 ```
 
-Abra o app: onboarding, mapa, criar projeto, gravar ponto e track, permissões de
-câmera e localização. Tela que abre vazia ou teclado preso não aparece em teste
-unitário — só em frame.
+Abra o app e faça um smoke mínimo: onboarding, mapa carrega, criar projeto,
+gravar ponto e track, permissões de câmera e localização, idioma. Se o app não
+abre, nada depois importa — registre o crash do `adb logcat` e pare.
 
 ## 5. Gate de upgrade com dados — não coberto por CI
 
-Este é o gate que separa "compila" de "instalável em campo". Nunca foi executado
-no COIAB até o momento; não declare v14 pronta sem ele.
+Risco central do v14: o backend mudou (`src/backend` saiu, entrou
+`@comapeo/core-react-native`), então o caminho de migração de storage só é
+exercitado aqui.
 
-1. Instale a **versão anterior** (build de QA anterior ou release) em aparelho
-   limpo.
-2. Crie dados reais: projeto, pelo menos 3 observações com foto, 1 track gravado,
-   configuração de idioma alterada.
-3. Instale o APK novo **por cima**, sem desinstalar (`adb install -r`).
-4. Verifique: app abre, projeto existe, observações e fotos abrem, track aparece,
-   idioma mantido, nada duplicado, nenhum crash no `adb logcat`.
-5. Exporte um backup/arquivo do projeto antes e depois; compare.
+**Baseline obrigatória:** build do **mesmo perfil** (`release-candidate`,
+package `org.coiab.rc`), da **mesma keystore**, feito a partir do commit
+imediatamente anterior ao sync (o último commit do fork antes do merge da
+release). Release de produção não serve: package diferente instala ao lado.
 
-Falha aqui é bloqueio de release, não bug de QA.
+Reconstruir a baseline, se o artifact expirou:
+
+```sh
+git -C /root/dev/worktrees/<baseline> checkout <sha-pre-sync>
+gh workflow run build-apk.yml -R transistir/coiab-app --ref <sha-pre-sync> \
+  -f profile=release-candidate
+```
+
+Procedimento:
+
+1. Instalar a baseline em aparelho limpo (`adb uninstall org.coiab.rc` antes).
+2. Criar dados reais: 1 projeto, 3 observações com foto, 1 track gravado,
+   idioma alterado, 1 categoria customizada.
+3. Anotar o estado: contagens visíveis, nomes, idioma.
+4. Instalar o APK novo **por cima**, sem desinstalar: `adb install -r <apk>`.
+   O `versionCode` novo precisa ser maior ou igual ao da baseline; se o build
+   mantiver `versionCode` 1, o `-r` funciona mas não há como distinguir versões
+   no aparelho — registre isso.
+5. Verificar, item por item: app abre; projeto existe; as 3 observações abrem
+   com foto; track aparece no mapa; idioma mantido; categoria customizada
+   preservada; nada duplicado; `adb logcat` sem crash de migração.
+6. Critério de aprovação: **todos** os itens acima verdadeiros. Qualquer perda
+   de dado é bloqueio de release, não bug de QA.
+7. Registrar o resultado em `docs/upstream-sync/<release>-qa-status.md`, com
+   aparelho, Android, SHA da baseline, SHA do APK novo e data.
 
 ## 6. E2E em aparelho
 
 Workflow `e2e-appium-browserstack.yml`: build do APK com perfil `test` e execução
-no BrowserStack. Além dos secrets, o step de upload mascara erro (`curl | jq`),
-então log de falha pode dizer apenas `jq: parse error` — veja issue #184.
+no BrowserStack. O job `run-e2e-tests` depende de `build-apk` por `needs`; não
+existe `if` sobre `app_url`. Se o upload devolver JSON de erro, o `jq` grava
+`null` e o job roda com URL nula — o verde não é prova de nada.
 
-`run-e2e-tests` só executa quando `app_url` existe. `skipped` significa que o
-build anterior falhou, nunca "passou".
+Além disso o upload mascara falhas (`curl | jq` → `jq: parse error`). Issue #184.
+`skipped` em `run-e2e-tests` significa que o build anterior falhou, nunca
+"passou".
 
 ## 7. iOS
 

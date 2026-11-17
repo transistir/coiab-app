@@ -11,10 +11,20 @@ sync calcular a merge-base certa em vez de reaplicar conflitos antigos.
 
 ## Ordem obrigatória
 
-1. **Release oficial**, nunca a ponta da branch. `git ls-remote --tags` e confirme
-   o SHA completo da tag. Registre também a versão do `package.json`.
-2. **Trunk** (`transistir/comapeo-mobile-1`): merge de `digidem/<tag>` em
-   `develop`, push direto permitido.
+1. **Release oficial**, nunca a ponta da branch. Descubra a tag e o SHA:
+
+   ```sh
+   git ls-remote --tags digidem 'refs/tags/v14*' 'refs/tags/v14*^{}'
+   ```
+
+   A linha `^{}` (quando existir) é a tag anotada resolvida para commit — use esse
+   SHA. Tag leve não tem `^{}` e resolve direto, como `v14.0` em `cb7b53c3`.
+   Registre também a versão do `package.json` e atualize
+   `.sync/upstream.lock.json` com `release_tag`, `release_sha`,
+   `parent_trunk.base_sha` e `merge_sha`.
+2. **Trunk** (`transistir/comapeo-mobile-1`): `git fetch digidem tag v14.0` e
+   merge da tag (`git merge --no-edit v14.0`) em `develop`, push direto
+   permitido.
 3. **Fork** (`transistir/coiab-app`): branch `sync/...` a partir de `develop`, PR
    contra `develop`. `develop` é protegida.
 
@@ -93,7 +103,12 @@ Regras que não se negocia:
   PR, nada mais.
 - Marcar PR em draft como "ready for review" dispara nova rodada de CI pelo
   trigger `ready_for_review`. O verde anterior fica velho; espere `pending=0` da
-  rodada nova. A API devolve checks antigos e novos juntos no mesmo SHA.
+  rodada nova. A API devolve checks antigos e novos juntos no mesmo SHA, então
+  `pending=0` sozinho não basta: filtre pelo `check_suite` mais recente ou por
+  `started_at` posterior ao trigger, e compare `head_sha` com o commit atual.
+- O gate `sync-contract` roda só em branch `sync/*`; caminho novo sem regra fica
+  invisível até o próximo sync. Rodar o checker em todo PR de `develop` elimina
+  a espera — enquanto isso, adicione a regra no mesmo PR que cria o diretório.
 
 ## Workflow quebrado não é regressão da release
 

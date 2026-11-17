@@ -427,10 +427,10 @@
     },
     {
       "id": "coiab.agent-contract",
-      "class": "product",
+      "class": "shared-infra",
       "policy": "reconcile",
       "paths": ["AGENTS.md"],
-      "intent": "AGENTS.md é contrato operacional do fork (remotes, ordem de sync, regras de gh, gates de CI). O upstream também mantém AGENTS.md; quando ambos mudam, reconcilie por seção e nenhuma regra COIAB pode desaparecer silenciosamente."
+      "intent": "AGENTS.md is the fork's operating contract (remotes, sync order, gh targeting rules, CI gates). The parent trunk owns the file and upstream digidem/comapeo-mobile has no AGENTS.md. Reconcile per section and never drop a COIAB rule silently."
     }
   ],
   "coverage": {
