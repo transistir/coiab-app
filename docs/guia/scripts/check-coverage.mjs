@@ -50,13 +50,25 @@ async function fileSize(filePath) {
 // the rest — never a false positive.
 export function stripNonRendered(markdown) {
   const visibleLines = [];
-  let inFence = false;
+  let fence = null; // { char, length } of the currently open fence
   for (const line of markdown.split('\n')) {
-    if (/^\s*(```|~~~)/.test(line)) {
-      inFence = !inFence;
+    const run = /^\s*(`{3,}|~{3,})/.exec(line);
+    if (fence) {
+      // The fence length matters: markdown lets a block be opened with a
+      // longer run (e.g. four backticks) so that shorter runs inside it stay
+      // literal content. Only a fence of the same character and at least the
+      // opening length closes the block; a shorter run would end it early and
+      // expose images that are not actually rendered.
+      if (run && run[1][0] === fence.char && run[1].length >= fence.length) {
+        fence = null;
+      }
       continue;
     }
-    if (!inFence) visibleLines.push(line);
+    if (run) {
+      fence = { char: run[1][0], length: run[1].length };
+      continue;
+    }
+    visibleLines.push(line);
   }
 
   const text = visibleLines.join('\n');
