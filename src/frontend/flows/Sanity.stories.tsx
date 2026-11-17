@@ -1,5 +1,6 @@
 import type {Meta, StoryObj} from '@storybook/react-native';
 import {withRealNavigator} from '../../../.rnstorybook/decorators/withRealNavigator';
+import {withPtBrLocale} from '../../../.rnstorybook/decorators/withPtBrLocale';
 import {FLOW_STATES} from '../../../.rnstorybook/utils/flowState';
 
 /**
@@ -15,7 +16,7 @@ const NoStoryComponent = () => null;
 const meta = {
   title: 'Flows/_Sanity',
   component: NoStoryComponent,
-  decorators: [withRealNavigator],
+  decorators: [withRealNavigator, withPtBrLocale],
 } satisfies Meta<typeof NoStoryComponent>;
 
 export default meta;

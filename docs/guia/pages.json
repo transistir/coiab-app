@@ -1,0 +1,52 @@
+{
+  "deferredFlows": ["menu", "settings", "exchange"],
+  "pages": [
+    {
+      "file": "primeiros-passos.md",
+      "stories": [
+        "flows-onboarding--intro",
+        "flows-onboarding--data-privacy",
+        "flows-onboarding--privacy-policy",
+        "flows-onboarding--device-naming",
+        "onboarding-ethnicgroupselection--default",
+        "onboarding-ethnicgroupselection--with-selection",
+        "onboarding-ethnicgroupselection--suggestions-open",
+        "onboarding-villageentry--default",
+        "onboarding-villageentry--prefilled",
+        "flows-onboarding--success",
+        "flows-onboarding--join-organization-intro",
+        "flows-onboarding--create-organization"
+      ]
+    },
+    {
+      "file": "organizacao.md",
+      "stories": [
+        "flows-orglayer--organization-provisioning",
+        "flows-orglayer--organization-invite-received",
+        "flows-orglayer--review-organization-invite",
+        "flows-orglayer--home-with-organization",
+        "flows-orglayer--organization-selector",
+        "flows-orglayerdrawer--switch-organization-entry",
+        "flows-orglayerdrawer--single-organization-menu",
+        "flows-orglayer--create-second-organization",
+        "flows-orglayer--second-organization-provisioning",
+        "flows-orglayer--organization-unavailable",
+        "flows-orglayer--organization-unavailable-two-organizations",
+        "flows-orglayer--organization-unavailable-orphaned-selection",
+        "flows-orglayer--home-with-organization-alertas",
+        "flows-orglayer--home-with-long-territory-name"
+      ]
+    },
+    {
+      "file": "criar-observacao.md",
+      "stories": [
+        "flows-createobservation--home",
+        "flows-createobservation--category-chooser",
+        "flows-createobservation--add-photo",
+        "flows-createobservation--observation-create",
+        "flows-createobservation--observation-fields",
+        "flows-createobservation--observation-detail"
+      ]
+    }
+  ]
+}

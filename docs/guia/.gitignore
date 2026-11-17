@@ -1,0 +1,3 @@
+# Astro build output and generated type files
+dist/
+.astro/
