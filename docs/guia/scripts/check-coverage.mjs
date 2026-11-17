@@ -4,15 +4,19 @@
 //
 //   node scripts/check-coverage.mjs
 
-import { readFile, stat } from 'node:fs/promises';
+import {readFile, stat} from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import {fileURLToPath} from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const guideDir = path.resolve(here, '..');
 const repoRoot = path.resolve(guideDir, '..', '..');
 
-const MANIFEST_PATH = path.join(repoRoot, '.rnstorybook', 'capture-manifest.tsv');
+const MANIFEST_PATH = path.join(
+  repoRoot,
+  '.rnstorybook',
+  'capture-manifest.tsv',
+);
 const PAGES_PATH = path.join(guideDir, 'pages.json');
 const CONTENT_DIR = path.join(guideDir, 'src', 'content', 'docs');
 const ASSETS_DIR = path.join(guideDir, 'src', 'assets');
@@ -29,9 +33,9 @@ function slugify(label) {
 function parseTsv(text) {
   return text
     .split('\n')
-    .map((line) => line.replace(/\r$/, ''))
-    .filter((line) => line.trim().length > 0)
-    .map((line) => line.split('\t'));
+    .map(line => line.replace(/\r$/, ''))
+    .filter(line => line.trim().length > 0)
+    .map(line => line.split('\t'));
 }
 
 async function fileSize(filePath) {
@@ -65,7 +69,7 @@ export function stripNonRendered(markdown) {
       continue;
     }
     if (run) {
-      fence = { char: run[1][0], length: run[1].length };
+      fence = {char: run[1][0], length: run[1].length};
       continue;
     }
     visibleLines.push(line);
@@ -98,12 +102,14 @@ async function main() {
   // No header: flow, story_id, readiness selector, readiness, label.
   // Read the label and readiness from the tail so an extra selector column
   // upstream cannot shift them.
-  const manifestRows = parseTsv(await readFile(MANIFEST_PATH, 'utf8')).map((columns) => ({
-    flow: columns[0],
-    storyId: columns[1],
-    readiness: columns[columns.length - 2],
-    label: columns[columns.length - 1],
-  }));
+  const manifestRows = parseTsv(await readFile(MANIFEST_PATH, 'utf8')).map(
+    columns => ({
+      flow: columns[0],
+      storyId: columns[1],
+      readiness: columns[columns.length - 2],
+      label: columns[columns.length - 1],
+    }),
+  );
 
   const manifestByStory = new Map();
   for (const row of manifestRows) {
@@ -120,7 +126,9 @@ async function main() {
     for (const storyId of page.stories ?? []) {
       const manifestRow = manifestByStory.get(storyId);
       if (!manifestRow) {
-        problems.push(`pages.json references unknown story_id "${storyId}" (${page.file})`);
+        problems.push(
+          `pages.json references unknown story_id "${storyId}" (${page.file})`,
+        );
         continue;
       }
       // 3. No frame may appear twice.
@@ -136,7 +144,7 @@ async function main() {
   }
 
   // 2. Every frame of a non-deferred flow is covered exactly once.
-  const inScope = manifestRows.filter((row) => !deferred.has(row.flow));
+  const inScope = manifestRows.filter(row => !deferred.has(row.flow));
   for (const row of inScope) {
     if (!seenStories.has(row.storyId)) {
       problems.push(
@@ -153,7 +161,9 @@ async function main() {
     // 4. Each page listed in pages.json exists.
     const pageSize = await fileSize(pagePath);
     if (pageSize === null || pageSize === 0) {
-      problems.push(`page file missing or empty: ${path.relative(repoRoot, pagePath)}`);
+      problems.push(
+        `page file missing or empty: ${path.relative(repoRoot, pagePath)}`,
+      );
       continue;
     }
     const content = stripNonRendered(await readFile(pagePath, 'utf8'));
@@ -193,7 +203,7 @@ async function main() {
   console.log(`OK: ${coveredFrames} frames em ${pages.length} páginas`);
 }
 
-main().catch((error) => {
+main().catch(error => {
   console.error(`coverage check failed: ${error.message}`);
   process.exit(1);
 });
