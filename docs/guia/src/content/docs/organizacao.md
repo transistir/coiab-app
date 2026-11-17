@@ -15,13 +15,14 @@ quando a organização não abre.
 
 ### Passo 1 — Preparando o território
 
-![Tela de carregamento com um indicador circular, exibida enquanto o território é preparado](../../assets/org-layer/01-organization-provisioning.jpg)
-
-Depois de confirmar a criação, o app prepara o território. Aguarde o indicador
+Depois de confirmar a criação, o app prepara o território. Aguarde a preparação
 terminar: é neste momento que as áreas e as categorias são criadas no
 dispositivo. Quando a preparação termina, toque em **Abrir território**: o app
 abre na aba **Menu** e o mapa só aparece ao tocar em **Mapa**, na barra
 inferior.
+
+> A tela de preparação fica só com um indicador circular enquanto carrega, então
+> não há captura útil desse instante; a próxima imagem mostra a tela seguinte.
 
 ### Passo 2 — Convite recebido
 

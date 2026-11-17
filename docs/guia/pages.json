@@ -1,5 +1,6 @@
 {
   "deferredFlows": ["menu", "settings", "exchange"],
+  "deferredStories": ["flows-orglayer--organization-provisioning"],
   "pages": [
     {
       "file": "primeiros-passos.md",
@@ -21,7 +22,6 @@
     {
       "file": "organizacao.md",
       "stories": [
-        "flows-orglayer--organization-provisioning",
         "flows-orglayer--organization-invite-received",
         "flows-orglayer--review-organization-invite",
         "flows-orglayer--home-with-organization",
