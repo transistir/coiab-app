@@ -21,9 +21,6 @@ dispositivo. Quando a preparação termina, toque em **Abrir território**: o ap
 abre na aba **Menu** e o mapa só aparece ao tocar em **Mapa**, na barra
 inferior.
 
-> A tela de preparação fica só com um indicador circular enquanto carrega, então
-> não há captura útil desse instante; a próxima imagem mostra a tela seguinte.
-
 ### Passo 2 — Convite recebido
 
 ![Folha de convite informando que o convite está incompleto, com o botão "Fechar"](../../assets/org-layer/02-organization-invite-received-no-bundle.jpg)

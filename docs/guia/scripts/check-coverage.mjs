@@ -238,6 +238,7 @@ async function main() {
     for (const storyId of page.stories ?? []) {
       if (deferredStories.has(storyId)) continue; // reported as inconsistent above
       const manifestRow = manifestByStory.get(storyId);
+      if (!manifestRow) continue; // reported by the coverage loop above
       const slug = slugify(manifestRow.label);
 
       // 5. The generated JPEG exists and is not empty.
