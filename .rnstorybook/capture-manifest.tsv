@@ -10,7 +10,7 @@ onboarding	onboarding-villageentry--prefilled	testID:ONBOARDING.village-continue
 onboarding	flows-onboarding--success	route:Success	2	05 Success
 onboarding	flows-onboarding--join-organization-intro	route:JoinOrganizationIntro	2	06a Join Organization Intro
 onboarding	flows-onboarding--create-organization	route:CreateOrganization	2	06b Create Organization
-org-layer	flows-orglayer--organization-provisioning	route:OrganizationProvisioning	2	01 Organization Provisioning
+org-layer	flows-orglayer--organization-provisioning	route:OrganizationProvisioning	8	01 Organization Provisioning
 org-layer	flows-orglayer--organization-invite-received	route:OrganizationInviteReceived	2	02 Organization Invite Received (no bundle)
 org-layer	flows-orglayer--review-organization-invite	route:ReviewOrganizationInvite	2	03 Review Organization Invite
 org-layer	flows-orglayer--home-with-organization	testID:MAIN.map-screen	10	04 Home With Organization
@@ -51,7 +51,7 @@ org-layer	flows-orglayer--organization-selector	testID:ORGANIZATIONS.list	10	05 
 org-layer	flows-orglayerdrawer--switch-organization-entry	testID:MENU.main-action-button	2	06 Drawer Menu Without Switch Entry
 org-layer	flows-orglayerdrawer--single-organization-menu	testID:MENU.main-action-button	2	07 Drawer Single Organization Menu
 org-layer	flows-orglayer--create-second-organization	route:CreateOrganization	2	08 Create Second Organization
-org-layer	flows-orglayer--second-organization-provisioning	route:OrganizationProvisioning	2	09 Second Organization Provisioning
+org-layer	flows-orglayer--second-organization-provisioning	route:OrganizationProvisioning	8	09 Second Organization Provisioning
 org-layer	flows-orglayer--organization-unavailable	testID:ORG.provisioning-unavailable-name	2	10 Organization Unavailable
 org-layer	flows-orglayer--organization-unavailable-two-organizations	testID:ORG.provisioning-switch-organization-btn	2	11 Organization Unavailable (two organizations)
 org-layer	flows-orglayer--organization-unavailable-orphaned-selection	testID:ORG.provisioning-retry-activation-btn	2	12 Organization Unavailable (orphaned selection)

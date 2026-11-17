@@ -151,6 +151,7 @@ async function main() {
 
   const pagesConfig = JSON.parse(await readFile(PAGES_PATH, 'utf8'));
   const deferred = new Set(pagesConfig.deferredFlows ?? []);
+  const deferredStories = new Set(pagesConfig.deferredStories ?? []);
   const pages = pagesConfig.pages ?? [];
 
   // No header: flow, story_id, readiness selector, readiness, label.
@@ -178,6 +179,15 @@ async function main() {
   const seenStories = new Map(); // storyId -> page file(s)
   for (const page of pages) {
     for (const storyId of page.stories ?? []) {
+      // A story excluded via deferredStories must not also be listed on a page:
+      // that combination means the guide renders a frame the check was told to
+      // ignore.
+      if (deferredStories.has(storyId)) {
+        problems.push(
+          `story_id "${storyId}" is listed in deferredStories but also on ${page.file}`,
+        );
+        continue;
+      }
       const manifestRow = manifestByStory.get(storyId);
       if (!manifestRow) {
         problems.push(
@@ -197,8 +207,11 @@ async function main() {
     }
   }
 
-  // 2. Every frame of a non-deferred flow is covered exactly once.
-  const inScope = manifestRows.filter(row => !deferred.has(row.flow));
+  // 2. Every frame of a non-deferred flow, outside a deferred story, is
+  // covered exactly once.
+  const inScope = manifestRows.filter(
+    row => !deferred.has(row.flow) && !deferredStories.has(row.storyId),
+  );
   for (const row of inScope) {
     if (!seenStories.has(row.storyId)) {
       problems.push(
@@ -223,8 +236,9 @@ async function main() {
     const content = stripNonRendered(await readFile(pagePath, 'utf8'));
 
     for (const storyId of page.stories ?? []) {
+      if (deferredStories.has(storyId)) continue; // reported as inconsistent above
       const manifestRow = manifestByStory.get(storyId);
-      if (!manifestRow) continue; // already reported above
+      if (!manifestRow) continue; // reported by the coverage loop above
       const slug = slugify(manifestRow.label);
 
       // 5. The generated JPEG exists and is not empty.
@@ -254,7 +268,19 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`OK: ${coveredFrames} frames em ${pages.length} páginas`);
+  const deferredStoryCount = manifestRows.filter(row =>
+    deferredStories.has(row.storyId),
+  ).length;
+  const deferredNote =
+    deferredStoryCount === 0
+      ? ''
+      : ` (${deferredStoryCount} ${
+          deferredStoryCount === 1 ? 'story adiada' : 'stories adiadas'
+        })`;
+
+  console.log(
+    `OK: ${coveredFrames} frames em ${pages.length} páginas${deferredNote}`,
+  );
 }
 
 main().catch(error => {
