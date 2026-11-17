@@ -43,6 +43,39 @@ async function fileSize(filePath) {
   }
 }
 
+// A reference only counts when the reader can actually see it. Drop fenced
+// code blocks (``` or ~~~) and HTML comments (<!-- ... -->, including
+// multi-line) before looking for image references. Single deterministic pass:
+// no regex over the whole document, and an unterminated comment simply drops
+// the rest — never a false positive.
+export function stripNonRendered(markdown) {
+  const visibleLines = [];
+  let inFence = false;
+  for (const line of markdown.split('\n')) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (!inFence) visibleLines.push(line);
+  }
+
+  const text = visibleLines.join('\n');
+  let result = '';
+  let index = 0;
+  while (index < text.length) {
+    const commentStart = text.indexOf('<!--', index);
+    if (commentStart === -1) {
+      result += text.slice(index);
+      break;
+    }
+    result += text.slice(index, commentStart);
+    const commentEnd = text.indexOf('-->', commentStart + 4);
+    if (commentEnd === -1) break; // unterminated comment: nothing after it renders
+    index = commentEnd + 3;
+  }
+  return result;
+}
+
 async function main() {
   const problems = [];
 
@@ -111,7 +144,7 @@ async function main() {
       problems.push(`page file missing or empty: ${path.relative(repoRoot, pagePath)}`);
       continue;
     }
-    const content = await readFile(pagePath, 'utf8');
+    const content = stripNonRendered(await readFile(pagePath, 'utf8'));
 
     for (const storyId of page.stories ?? []) {
       const manifestRow = manifestByStory.get(storyId);

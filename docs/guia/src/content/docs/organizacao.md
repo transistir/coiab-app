@@ -19,7 +19,9 @@ quando a organização não abre.
 
 Depois de confirmar a criação, o app prepara o território. Aguarde o indicador
 terminar: é neste momento que as áreas e as categorias são criadas no
-dispositivo.
+dispositivo. Quando a preparação termina, toque em **Abrir território**: o app
+abre na aba **Menu** e o mapa só aparece ao tocar em **Mapa**, na barra
+inferior.
 
 ### Passo 2 — Convite recebido
 
@@ -47,9 +49,9 @@ não aparece na lista.
 
 ![Mapa aberto com o nome do território no cabeçalho e a área atual indicada](../../assets/org-layer/04-home-with-organization.jpg)
 
-Quando a organização fica pronta, a Home abre no mapa. O cabeçalho mostra o nome
-do território e a área em uso; a barra inferior leva a Menu, Paneiro, Mapa,
-Notificações e Configurações.
+Quando a organização fica pronta, toque em **Mapa** na barra inferior para
+abrir o mapa. O cabeçalho mostra o nome do território e a área em uso; a barra
+inferior leva a Menu, Paneiro, Mapa, Notificações e Configurações.
 
 ### Passo 5 — Seletor de organização
 
@@ -139,8 +141,9 @@ território** e abrir a outra.
 ![Tela de erro sem o nome do território, com as áreas prontas e apenas o botão "Tentar novamente"](../../assets/org-layer/12-organization-unavailable-orphaned-selection.jpg)
 
 Se a seleção guardada não aponta para nenhum território válido, a tela não mostra
-nome nem as opções de troca. Use **Tentar novamente**; se o erro persistir, volte
-e abra a organização pela tela de Configurações.
+nome nem as opções de troca, e a navegação volta para ela. Use **Tentar
+novamente** — é a única ação disponível. Se o erro persistir, o app não oferece
+saída: não há como abrir a organização pela tela de Configurações.
 
 ## Veja também
 

@@ -184,9 +184,20 @@ async function main() {
       continue;
     }
 
-    const slug = slugify(capture.label);
+    const slug = slugify(row.label);
     if (!slug) {
-      problems.push(`label "${capture.label}" (${row.storyId}) produces an empty slug`);
+      problems.push(`label "${row.label}" (${row.storyId}) produces an empty slug`);
+      continue;
+    }
+
+    // The manifest is the naming authority: the frame's slug comes from the
+    // manifest label, never from captures.tsv. A capture produced before a
+    // label rename would otherwise write a filename that check-coverage.mjs
+    // never looks for — a silent orphan. Refuse the divergence instead.
+    if (capture.label !== row.label) {
+      problems.push(
+        `label mismatch for story_id "${row.storyId}": manifest has "${row.label}", captures.tsv has "${capture.label}" — update the manifest or recapture before building assets`,
+      );
       continue;
     }
 

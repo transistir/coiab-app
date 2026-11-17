@@ -5,6 +5,7 @@ on:
     branches: [develop]
     paths:
       - 'docs/guia/**'
+      - '.rnstorybook/capture-manifest.tsv'
       - '.github/workflows/deploy-guide.yml'
   workflow_dispatch:
 

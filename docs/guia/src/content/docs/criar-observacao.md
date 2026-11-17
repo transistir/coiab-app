@@ -54,6 +54,9 @@ imagem e **Áudio** para gravar um comentário.
 
 Em **Detalhes**, responda uma pergunta por vez. O cabeçalho mostra **Pergunta 1
 de 5**; use **Próximo** para avançar e **Concluído** na última pergunta.
+**Concluído** apenas volta ao formulário: para salvar a observação, toque no
+**✓** no canto superior direito. O **X** abre a confirmação para descartar o
+rascunho.
 
 :::tip[💡 Dica]
 Os campos mudam com a categoria. Responda apenas os que aparecerem — não é
