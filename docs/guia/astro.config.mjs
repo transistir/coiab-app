@@ -2,7 +2,7 @@ import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
 export default defineConfig({
-  site: 'https://transistir.github.io',
+  site: 'https://transistir.com',
   base: '/coiab-app',
   // Astro 7 (Vite 8 + Rolldown) resolves Markdown files against the topmost
   // tsconfig in the folder chain. This repo's root tsconfig extends a React
